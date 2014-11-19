@@ -193,13 +193,12 @@ class CNAMELookupMiddleware(object):
                     a_domain = found_domain
             if error:
                 if found_domain:
-                    msg = 'CNAME lookup failed after %d tries' % \
-                        self.lookup_depth
+                    msg = 'CNAME lookup failed after %d tries (%s/%s)' % \
+                            (self.lookup_depth, given_domain, env['PATH_INFO'])
                 else:
-                    msg = 'CNAME lookup failed to resolve to a valid domain'
-                resp = HTTPBadRequest(request=Request(env), body=msg,
-                                      content_type='text/plain')
-                return resp(env, start_response)
+                    msg = 'CNAME lookup failed to resolve to a valid domain ' \
+                          '(%s/%s)' % (given_domain, env['PATH_INFO'])
+                self.logger.error(msg)
             else:
                 context = _CnameLookupContext(self.app, requested_host,
                                               env['HTTP_HOST'])
