@@ -1167,50 +1167,51 @@ class TestStoragePolicies(unittest.TestCase):
         devs_by_ring_name1 = {
             'object': [  # 'aay'
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[0],
-                 'port': 6006},
+                 'port': 6006, 'replication_port': 6206},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[0],
-                 'port': 6007},
+                 'port': 6007, 'replication_port': 6207},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[1],
-                 'port': 6008},
+                 'port': 6008, 'replication_port': 6208},
                 None,
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[1],
-                 'port': 6009}],
+                 'port': 6009, 'replication_port': 6209}],
             'object-1': [  # 'bee'
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[1],
-                 'port': 6006},  # dupe
+                 'port': 6006, 'replication_port': 6206},  # dupe
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[0],
-                 'port': 6010},
+                 'port': 6010, 'replication_port': 6210},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[1],
-                 'port': 6011},
+                 'port': 6011, 'replication_port': 6211},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[1],
-                 'port': 6012}],
+                 'port': 6012, 'replication_port': 6212}],
             'object-2': [  # 'cee'
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[0],
-                 'port': 6010},  # on our IP and a not-us IP
+                 'port': 6010, 'replication_port': 6210},
+                # on our IP and a not-us IP
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[0],
-                 'port': 6013},
+                 'port': 6013, 'replication_port': 6213},
                 None,
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[1],
-                 'port': 6014},
+                 'port': 6014, 'replication_port': 6214},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[1],
-                 'port': 6015}],
+                 'port': 6015, 'replication_port': 6215}],
         }
         devs_by_ring_name2 = {
             'object': [  # 'aay'
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[0],
-                 'port': 6016},
+                 'port': 6016, 'replication_port': 6216},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[1],
-                 'port': 6019}],
+                 'port': 6019, 'replication_port': 6219}],
             'object-1': [  # 'bee'
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[1],
-                 'port': 6016},  # dupe
+                 'port': 6016, 'replication_port': 6216},  # dupe
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[1],
-                 'port': 6022}],
+                 'port': 6022, 'replication_port': 6222}],
             'object-2': [  # 'cee'
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': my_ips[0],
-                 'port': 6020},
+                 'port': 6020, 'replication_port': 6220},
                 {'id': 0, 'zone': 0, 'region': 1, 'ip': other_ips[1],
-                 'port': 6025}],
+                 'port': 6025, 'replication_port': 6225}],
         }
         ring_files = [ring_name + '.ring.gz'
                       for ring_name in sorted(devs_by_ring_name1)]
@@ -1230,7 +1231,7 @@ class TestStoragePolicies(unittest.TestCase):
                 temptree(ring_files) as tempdir:
             mock_whataremyips.return_value = my_ips
 
-            cache = BindPortsCache(tempdir, bind_ip)
+            cache = BindPortsCache(tempdir, bind_ip, ['port'])
 
             self.assertEqual([
                 mock.call(bind_ip),
@@ -1285,6 +1286,30 @@ class TestStoragePolicies(unittest.TestCase):
                 6016, 6020,
             ]), cache.all_bind_ports_for_node())
             self.assertEqual([], mock_ld.mock_calls)
+
+            # Test with replication_port
+            cache = BindPortsCache(tempdir, bind_ip, ['replication_port'])
+            mock_whataremyips.reset_mock()
+
+            mock_ld.side_effect = partial(_fake_load,
+                                          stub_objs=devs_by_ring_name1)
+            self.assertEqual(set([
+                6206, 6208, 6211,
+            ]), cache.all_bind_ports_for_node())
+            mock_ld.reset_mock()
+
+            # Test with port and replication_port
+            cache = BindPortsCache(tempdir, bind_ip,
+                                   ['port', 'replication_port'])
+            mock_whataremyips.reset_mock()
+
+            mock_ld.side_effect = partial(_fake_load,
+                                          stub_objs=devs_by_ring_name1)
+            self.assertEqual(set([
+                6006, 6008, 6011,
+                6206, 6208, 6211,
+            ]), cache.all_bind_ports_for_node())
+            mock_ld.reset_mock()
 
         # whataremyips() is only called in the constructor
         self.assertEqual([], mock_whataremyips.mock_calls)

@@ -44,7 +44,8 @@ from swift.common.swob import Request, wsgi_unquote
 from swift.common.utils import capture_stdio, disable_fallocate, \
     drop_privileges, get_logger, NullLogger, config_true_value, \
     validate_configuration, get_hub, config_auto_int_value, \
-    reiterate, clean_up_daemon_hygiene, systemd_notify, NicerInterpolation
+    reiterate, clean_up_daemon_hygiene, systemd_notify, NicerInterpolation, \
+    list_from_csv
 
 SIGNUM_TO_NAME = {getattr(signal, n): n for n in dir(signal)
                   if n.startswith('SIG') and '_' not in n}
@@ -666,6 +667,8 @@ class ServersPerPortStrategy(StrategyBase):
     def __init__(self, conf, logger, servers_per_port):
         super(ServersPerPortStrategy, self).__init__(conf, logger)
         self.servers_per_port = servers_per_port
+        self.servers_per_port_type = list_from_csv(
+            conf.get('servers_per_port_type', 'port'))
         self.swift_dir = conf.get('swift_dir', '/etc/swift')
         self.ring_check_interval = float(conf.get('ring_check_interval', 15))
 
@@ -673,7 +676,8 @@ class ServersPerPortStrategy(StrategyBase):
         # bind_ip might be differnt than the host ip address used to lookup
         # devices/ports in the ring
         ring_ip = conf.get('ring_ip', conf.get('bind_ip', '0.0.0.0'))
-        self.cache = BindPortsCache(self.swift_dir, ring_ip)
+        self.cache = BindPortsCache(self.swift_dir, ring_ip,
+                                    self.servers_per_port_type)
 
     def _reload_bind_ports(self):
         self.bind_ports = self.cache.all_bind_ports_for_node()

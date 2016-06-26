@@ -28,6 +28,10 @@ bind_port = 6200
 # ring_ip will be used when listening on the configured bind_ip address.
 # ring_ip = <bind_ip>
 #
+# If servers_per_port is enabled, define for what type of port processes must
+# be started. Can be 'port', 'replication_port', or both separated by a comma
+# servers_per_port_type = port
+#
 # Maximum concurrent requests per worker
 # max_clients = 1024
 #

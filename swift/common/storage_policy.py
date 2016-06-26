@@ -37,11 +37,12 @@ DEFAULT_EC_OBJECT_SEGMENT_SIZE = 1048576
 
 
 class BindPortsCache(object):
-    def __init__(self, swift_dir, ring_ip):
+    def __init__(self, swift_dir, ring_ip, ports_type):
         self.swift_dir = swift_dir
         self.mtimes_by_ring_path = {}
         self.portsets_by_ring_path = {}
         self.my_ips = set(whataremyips(ring_ip))
+        self.ports_type = set(ports_type)
 
     def all_bind_ports_for_node(self):
         """
@@ -69,11 +70,16 @@ class BindPortsCache(object):
                 continue
             old_mtime = self.mtimes_by_ring_path.get(serialized_path)
             if not old_mtime or old_mtime != new_mtime:
-                self.portsets_by_ring_path[serialized_path] = set(
-                    dev['port']
-                    for dev in RingData.load(serialized_path,
-                                             metadata_only=True).devs
-                    if dev and dev['ip'] in self.my_ips)
+                devs = RingData.load(serialized_path, metadata_only=True).devs
+                self.portsets_by_ring_path[serialized_path] = set()
+                if 'port' in self.ports_type:
+                    self.portsets_by_ring_path[serialized_path].update(set(
+                        dev['port'] for dev in devs
+                        if dev and dev['ip'] in self.my_ips))
+                if 'replication_port' in self.ports_type:
+                    self.portsets_by_ring_path[serialized_path].update(set(
+                        dev['replication_port'] for dev in devs
+                        if dev and dev['ip'] in self.my_ips))
                 self.mtimes_by_ring_path[serialized_path] = new_mtime
                 # No "break" here so that the above line will update the
                 # mtimes_by_ring_path entry for any ring that changes, not just

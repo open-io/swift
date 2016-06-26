@@ -1468,7 +1468,7 @@ class TestServersPerPortStrategy(unittest.TestCase, CommonTestMixin):
         }
         self.strategy = wsgi.ServersPerPortStrategy(conf, self.logger, 1)
         self.assertEqual(self.mock_cache_class.call_args,
-                         mock.call('/etc/swift', '1.2.3.4'))
+                         mock.call('/etc/swift', '1.2.3.4', ['port']))
         self.assertEqual({6006, 6007},
                          self.strategy.cache.all_bind_ports_for_node())
         ports = {item[1][0] for item in self.strategy.new_worker_socks()}
@@ -1484,7 +1484,7 @@ class TestServersPerPortStrategy(unittest.TestCase, CommonTestMixin):
         # BindPortsCache would only return ports for devices that match the ip
         # address in the ring
         self.assertEqual(self.mock_cache_class.call_args,
-                         mock.call('/etc/swift', '2.3.4.5'))
+                         mock.call('/etc/swift', '2.3.4.5', ['port']))
         self.assertEqual({6006, 6007},
                          self.strategy.cache.all_bind_ports_for_node())
         ports = {item[1][0] for item in self.strategy.new_worker_socks()}
