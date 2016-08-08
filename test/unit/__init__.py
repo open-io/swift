@@ -367,6 +367,7 @@ class FabricatedRing(Ring):
         self.port = port
         self.replicas = replicas
         self._part_shift = 32 - part_power
+        self.serialized_path = ''
         self._reload()
 
     def has_changed(self):

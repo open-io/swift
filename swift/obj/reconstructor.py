@@ -38,6 +38,7 @@ from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.bufferedhttp import http_connect
 from swift.common.daemon import Daemon
 from swift.common.recon import RECON_OBJECT_FILE, DEFAULT_RECON_CACHE_PATH
+from swift.common.ring.builder import RingBuilder
 from swift.common.ring.utils import is_local_device
 from swift.obj.ssync_sender import Sender as ssync_sender
 from swift.common.http import HTTP_OK, HTTP_NOT_FOUND, \
@@ -251,6 +252,8 @@ class ObjectReconstructor(Daemon):
         self._df_router = DiskFileRouter(conf, self.logger)
         self.all_local_devices = self.get_local_devices()
         self.rings_mtime = None
+        self.sync_job_delay_after_part_move = \
+            int(conf.get('sync_job_delay_after_part_move', 24*60*60))
 
     def get_worker_args(self, once=False, **kwargs):
         """
@@ -372,6 +375,26 @@ class ObjectReconstructor(Daemon):
             if object_ring.has_changed():
                 return False
         return True
+
+    def get_last_part_move_epoch(self, ring, partition):
+        if not hasattr(self, '_builder_cache'):
+            self._builder_cache = {}  # path => (timestamp, RingBuilder)
+
+        path = ring.serialized_path.replace('.ring.gz', '.builder')
+        (ts, builder) = self._builder_cache.get(path, (None, None))
+
+        try:
+            mtime = os.path.getmtime(path)
+            if ts is None or ts < mtime:
+                builder = RingBuilder.load(path)
+                self._builder_cache[path] = (mtime, builder)
+        except:
+            pass
+
+        if builder is None or partition >= len(builder._last_part_moves):
+            return 0
+        else:
+            return builder._last_part_moves_epoch - builder._last_part_moves[partition]*60*60
 
     def _get_response(self, node, policy, partition, path, headers):
         """
@@ -1462,6 +1485,16 @@ class ObjectReconstructor(Daemon):
                     self.run_pool.spawn(self.delete_partition,
                                         part_info['part_path'])
                 for job in jobs:
+                    if job['job_type'] == SYNC:
+                        ring = job['policy'].object_ring
+                        part = job['partition']
+                        last_move = self.get_last_part_move_epoch(ring, part)
+                        if self.sync_job_delay_after_part_move > \
+                                time.time() - last_move:
+                            self.logger.info("Partition %d has recently been "
+                                             "moved, not reconstructing it." %
+                                             part)
+                            continue
                     self.run_pool.spawn(self.process_job, job)
             with Timeout(self.lockup_timeout):
                 self.run_pool.waitall()
