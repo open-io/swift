@@ -66,7 +66,7 @@ class TestCNAMELookup(unittest.TestCase):
         self.assertEqual(resp, [b'FAKE APP'])
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, d))
+                new=lambda d, r, rdtype='CNAME': (0, d))
     def test_passthrough(self):
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                             headers={'Host': 'foo.example.com'})
@@ -83,7 +83,7 @@ class TestCNAMELookup(unittest.TestCase):
         self.assertEqual(resp, [b'FAKE APP'])
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, '%s.example.com' % d))
+                new=lambda d, r, rdtype='CNAME': (0, '%s.example.com' % d))
     def test_good_lookup(self):
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                             headers={'Host': 'mysite.com'})
@@ -118,7 +118,7 @@ class TestCNAMELookup(unittest.TestCase):
             self.assertEqual(resp, [b'CNAME lookup failed after 2 tries'])
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, 'some.invalid.site.com'))
+                new=lambda d, r, rdtype='CNAME': (0, 'some.invalid.site.com'))
     def test_lookup_chain_bad_target(self):
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                             headers={'Host': 'mysite.com'})
@@ -127,7 +127,7 @@ class TestCNAMELookup(unittest.TestCase):
                          [b'CNAME lookup failed to resolve to a valid domain'])
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, None))
+                new=lambda d, r, rdtype='CNAME': (0, None))
     def test_something_weird(self):
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                             headers={'Host': 'mysite.com'})
@@ -136,7 +136,7 @@ class TestCNAMELookup(unittest.TestCase):
                          [b'CNAME lookup failed to resolve to a valid domain'])
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, '%s.example.com' % d))
+                new=lambda d, r, rdtype='CNAME': (0, '%s.example.com' % d))
     def test_with_memcache(self):
         class memcache_stub(object):
             def __init__(self):
@@ -213,7 +213,7 @@ class TestCNAMELookup(unittest.TestCase):
                                     headers={'Host': 'mysite%d.com' % num})
                 resp = self.app(req.environ, start_response)
                 self.assertEqual(resp, fail_to_resolve)
-                self.assertEqual(m.call_count, 1)
+                self.assertEqual(m.call_count, 2)  # 2, once for CNAME, once for TXT
                 self.assertEqual(memcache.cache.get('cname-mysite3.com'),
                                  False)
                 req = Request.blank('/', environ={'REQUEST_METHOD': 'GET',
@@ -221,7 +221,7 @@ class TestCNAMELookup(unittest.TestCase):
                                     headers={'Host': 'mysite%d.com' % num})
                 resp = self.app(req.environ, start_response)
                 self.assertEqual(resp, fail_to_resolve)
-                self.assertEqual(m.call_count, 1)
+                self.assertEqual(m.call_count, 2)  # 2, once for CNAME, once for TXT
                 self.assertEqual(
                     memcache.cache.get('cname-mysite%d.com' % num), False)
 
@@ -232,18 +232,18 @@ class TestCNAMELookup(unittest.TestCase):
                                 headers={'Host': 'mysite5.com'})
             resp = self.app(req.environ, start_response)
             self.assertEqual(resp, fail_to_resolve)
-            self.assertEqual(m.call_count, 1)
+            self.assertEqual(m.call_count, 2)  # 2, once for CNAME, once for TXT
             self.assertFalse('cname-mysite5.com' in memcache.cache)
             req = Request.blank('/', environ={'REQUEST_METHOD': 'GET',
                                               'swift.cache': memcache},
                                 headers={'Host': 'mysite5.com'})
             resp = self.app(req.environ, start_response)
             self.assertEqual(resp, fail_to_resolve)
-            self.assertEqual(m.call_count, 2)
+            self.assertEqual(m.call_count, 4)  # 4, once for CNAME, once for TXT
             self.assertFalse('cname-mysite5.com' in memcache.cache)
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, 'c.aexample.com'))
+                new=lambda d, r, rdtype='CNAME': (0, 'c.aexample.com'))
     def test_cname_matching_ending_not_domain(self):
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                             headers={'Host': 'foo.com'})
@@ -252,7 +252,7 @@ class TestCNAMELookup(unittest.TestCase):
                          [b'CNAME lookup failed to resolve to a valid domain'])
 
     @mock.patch('swift.common.middleware.cname_lookup.lookup_cname',
-                new=lambda d, r: (0, None))
+                new=lambda d, r, rdtype='CNAME': (0, None))
     def test_cname_configured_with_empty_storage_domain(self):
         app = cname_lookup.CNAMELookupMiddleware(FakeApp(),
                                                  {'storage_domain': '',
@@ -292,7 +292,7 @@ class TestCNAMELookup(unittest.TestCase):
             req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                                 headers={'Host': 'c.a.example.com'})
             module = 'swift.common.middleware.cname_lookup.lookup_cname'
-            with mock.patch(module, lambda d, r: (0, lookup_back)):
+            with mock.patch(module, lambda d, r, rdtype='CNAME': (0, lookup_back)):
                 return app(req.environ, start_response)
 
         resp = do_test('c.storage1.com')
@@ -335,7 +335,7 @@ class TestCNAMELookup(unittest.TestCase):
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'},
                             headers={'Host': 'mysite.com'})
         module = 'swift.common.middleware.cname_lookup.lookup_cname'
-        with mock.patch(module, lambda d, r: (0, 'example.com')):
+        with mock.patch(module, lambda d, r, rdtype='CNAME': (0, 'example.com')):
             resp = app(req.environ, start_response)
             self.assertEqual(resp, [b'FAKE APP'])
 
@@ -343,7 +343,7 @@ class TestCNAMELookup(unittest.TestCase):
         app = cname_lookup.CNAMELookupMiddleware(RedirectSlashApp(), {})
 
         module = 'swift.common.middleware.cname_lookup.lookup_cname'
-        with mock.patch(module, lambda d, r: (0, 'cont.acct.example.com')):
+        with mock.patch(module, lambda d, r, rdtype='CNAME': (0, 'cont.acct.example.com')):
             req = Request.blank('/test', environ={'REQUEST_METHOD': 'GET'},
                                 headers={'Host': 'mysite.com'})
             resp = req.get_response(app)

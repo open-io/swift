@@ -48,7 +48,7 @@ from swift.common.utils import cache_from_env, get_logger, is_valid_ip, \
 from swift.common.registry import register_swift_info
 
 
-def lookup_cname(domain, resolver):  # pragma: no cover
+def lookup_cname(domain, resolver, rdtype='CNAME'):  # pragma: no cover
     """
     Given a domain, returns its DNS CNAME mapping and DNS ttl.
 
@@ -58,9 +58,11 @@ def lookup_cname(domain, resolver):  # pragma: no cover
     :returns: (ttl, result)
     """
     try:
-        answer = resolver.query(domain, 'CNAME').rrset
+        answer = resolver.query(domain, rdtype).rrset
         ttl = answer.ttl
         result = list(answer.items)[0].to_text()
+        if rdtype == 'TXT':
+            result = result.strip('"')
         result = result.rstrip('.')
         return ttl, result
     except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
@@ -155,6 +157,10 @@ class CNAMELookupMiddleware(object):
                         found_domain = found_domain.encode('utf-8')
                 if found_domain is None:
                     ttl, found_domain = lookup_cname(a_domain, self.resolver)
+                    if not found_domain:
+                        ttl, found_domain = lookup_cname('_swift-remap.' + a_domain,
+                                                         self.resolver,
+                                                         rdtype='TXT')
                     if self.memcache and ttl > 0:
                         memcache_key = ''.join(['cname-', given_domain])
                         self.memcache.set(memcache_key, found_domain,
