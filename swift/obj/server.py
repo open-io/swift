@@ -342,7 +342,8 @@ class ObjectController(BaseStorageServer):
                     '%(ip)s:%(port)s/%(dev)s (saving for async update later)',
                     {'ip': ip, 'port': port, 'dev': contdevice})
         data = {'op': op, 'account': account, 'container': container,
-                'obj': obj, 'headers': headers_out}
+                'obj': obj, 'headers': headers_out,
+                'update_ctime': time.time()}
         if redirect_data:
             self.logger.debug(
                 'Update to %(path)s redirected to %(redirect)s',

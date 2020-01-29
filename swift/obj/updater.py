@@ -617,6 +617,7 @@ class ObjectUpdater(Daemon):
 
         def do_update():
             successes = update.get('successes', [])
+            update_ctime = update.get('update_ctime')
             headers_out = HeaderKeyDict(update['headers'].copy())
             headers_out['user-agent'] = 'object-updater %s' % os.getpid()
             headers_out.setdefault('X-Backend-Storage-Policy-Index',
@@ -627,7 +628,8 @@ class ObjectUpdater(Daemon):
             part, nodes = self.get_container_ring().get_nodes(acct, cont)
             obj = '/%s/%s/%s' % (acct, cont, update['obj'])
             events = [spawn(self.object_update,
-                            node, part, update['op'], obj, headers_out)
+                            node, part, update['op'], obj, headers_out,
+                            update_ctime)
                       for node in nodes if node['id'] not in successes]
             success = True
             new_successes = rewrite_pickle = False
@@ -696,7 +698,7 @@ class ObjectUpdater(Daemon):
             write_pickle(update, update_path, os.path.join(
                 device, get_tmp_dir(policy)))
 
-    def object_update(self, node, part, op, obj, headers_out):
+    def object_update(self, node, part, op, obj, headers_out, update_ctime):
         """
         Perform the object update to the container
 
@@ -739,6 +741,9 @@ class ObjectUpdater(Daemon):
                     'server %(node)s',
                     {'status': resp.status,
                      'node': node_to_string(node, replication=True)})
+            else:
+                if update_ctime:
+                    self.logger.timing_since('lag', update_ctime)
             return success, node['id'], redirect
         except Exception:
             self.logger.exception('ERROR with remote server %s',

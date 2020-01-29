@@ -992,6 +992,7 @@ class TestObjectController(BaseTestCase):
 
         with mock.patch('swift.obj.server.http_connect', fake_http_connect), \
                 mock.patch('swift.common.utils.HASH_PATH_PREFIX', b''), \
+                mock.patch('time.time', return_value=1.0), \
                 fake_spawn():
             resp = req.get_response(self.object_controller)
 
@@ -1017,7 +1018,8 @@ class TestObjectController(BaseTestCase):
         self.assertDictEqual(
             pickle.load(open(async_pending_file_put, 'rb')),
             {'headers': expected_put_headers,
-             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT'})
+             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT',
+             'update_ctime': 1.0})
 
         # POST with newer metadata returns success and container update
         # is expected
@@ -1036,6 +1038,7 @@ class TestObjectController(BaseTestCase):
 
         with mock.patch('swift.obj.server.http_connect', fake_http_connect), \
                 mock.patch('swift.common.utils.HASH_PATH_PREFIX', b''), \
+                mock.patch('time.time', return_value=1.0), \
                 fake_spawn():
             resp = req.get_response(self.object_controller)
 
@@ -1046,7 +1049,8 @@ class TestObjectController(BaseTestCase):
         self.assertDictEqual(
             pickle.load(open(async_pending_file_put, 'rb')),
             {'headers': expected_put_headers,
-             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT'})
+             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT',
+             'update_ctime': 1.0})
 
         # check distinct async pending file for POST
         async_pending_file_post = os.path.join(
@@ -1072,7 +1076,8 @@ class TestObjectController(BaseTestCase):
         self.assertDictEqual(
             pickle.load(open(async_pending_file_post, 'rb')),
             {'headers': expected_post_headers,
-             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT'})
+             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT',
+             'update_ctime': 1.0})
 
         # verify that only the POST (most recent) async update gets sent by the
         # object updater, and that both update files are deleted
@@ -1150,6 +1155,7 @@ class TestObjectController(BaseTestCase):
 
         with mocked_http_conn(301, headers=[resp_headers]) as conn, \
                 mock.patch('swift.common.utils.HASH_PATH_PREFIX', b''),\
+                mock.patch('time.time', return_value=1.0), \
                 fake_spawn():
             resp = req.get_response(self.object_controller)
 
@@ -1181,7 +1187,8 @@ class TestObjectController(BaseTestCase):
         self.assertEqual(
             {'headers': expected_put_headers,
              'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT',
-             'container_path': '.sharded_a/c_shard_1'},
+             'container_path': '.sharded_a/c_shard_1',
+             'update_ctime': 1.0},
             pickle.load(open(async_pending_file_put, 'rb')))
 
         # when updater is run its first request will be to the redirect
@@ -5811,11 +5818,12 @@ class TestObjectController(BaseTestCase):
         orig_http_connect = object_server.http_connect
         try:
             object_server.http_connect = fake_http_connect
-            self.object_controller.async_update(
-                'PUT', 'a', 'c', 'o', '127.0.0.1:1234', 1, 'sdc1',
-                {'x-timestamp': '1', 'x-out': 'set',
-                 'X-Backend-Storage-Policy-Index': int(policy)}, 'sda1',
-                policy)
+            with mock.patch('time.time', return_value=1.0):
+                self.object_controller.async_update(
+                    'PUT', 'a', 'c', 'o', '127.0.0.1:1234', 1, 'sdc1',
+                    {'x-timestamp': '1', 'x-out': 'set',
+                     'X-Backend-Storage-Policy-Index': int(policy)}, 'sda1',
+                    policy)
         finally:
             object_server.http_connect = orig_http_connect
             utils.HASH_PATH_PREFIX = _prefix
@@ -5828,7 +5836,8 @@ class TestObjectController(BaseTestCase):
             {'headers': {'x-timestamp': '1', 'x-out': 'set',
                          'user-agent': 'object-server %s' % os.getpid(),
                          'X-Backend-Storage-Policy-Index': int(policy)},
-             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT'})
+             'account': 'a', 'container': 'c', 'obj': 'o', 'op': 'PUT',
+             'update_ctime': 1.0})
 
     def test_async_update_saves_on_non_2xx(self):
         policy = random.choice(list(POLICIES))
@@ -5855,11 +5864,12 @@ class TestObjectController(BaseTestCase):
         try:
             for status in (199, 300, 503):
                 object_server.http_connect = fake_http_connect(status)
-                self.object_controller.async_update(
-                    'PUT', 'a', 'c', 'o', '127.0.0.1:1234', 1, 'sdc1',
-                    {'x-timestamp': '1', 'x-out': str(status),
-                     'X-Backend-Storage-Policy-Index': int(policy)}, 'sda1',
-                    policy)
+                with mock.patch('time.time', return_value=1.0):
+                    self.object_controller.async_update(
+                        'PUT', 'a', 'c', 'o', '127.0.0.1:1234', 1, 'sdc1',
+                        {'x-timestamp': '1', 'x-out': str(status),
+                         'X-Backend-Storage-Policy-Index': int(policy)},
+                        'sda1', policy)
                 async_dir = diskfile.get_async_dir(policy)
                 self.assertEqual(
                     pickle.load(open(os.path.join(
@@ -5872,7 +5882,7 @@ class TestObjectController(BaseTestCase):
                                  'X-Backend-Storage-Policy-Index':
                                  int(policy)},
                      'account': 'a', 'container': 'c', 'obj': 'o',
-                     'op': 'PUT'})
+                     'op': 'PUT', 'update_ctime': 1.0})
         finally:
             object_server.http_connect = orig_http_connect
             utils.HASH_PATH_PREFIX = _prefix
@@ -6108,7 +6118,7 @@ class TestObjectController(BaseTestCase):
 
             req = Request.blank('/sda1/0/a/c/o', method='PUT',
                                 headers=headers, body='')
-            with mocked_http_conn(
+            with mock.patch('time.time', return_value=1.0), mocked_http_conn(
                     500, give_connect=capture_updates) as fake_conn:
                 with fake_spawn():
                     resp = req.get_response(self.object_controller)
@@ -6146,7 +6156,8 @@ class TestObjectController(BaseTestCase):
                 'obj': 'o',
                 'account': 'a',
                 'container': 'c',
-                'op': 'PUT'}
+                'op': 'PUT',
+                'update_ctime': 1.0}
             if expected_container_path:
                 expected_data['container_path'] = expected_container_path
             self.assertEqual(expected_data, data)
@@ -6198,7 +6209,7 @@ class TestObjectController(BaseTestCase):
 
             req = Request.blank('/sda1/0/a/c/o', method='PUT',
                                 headers=headers, body='')
-            with mocked_http_conn(
+            with mock.patch('time.time', return_value=1.0), mocked_http_conn(
                     500, give_connect=capture_updates) as fake_conn:
                 with fake_spawn():
                     resp = req.get_response(self.object_controller)
@@ -6236,7 +6247,8 @@ class TestObjectController(BaseTestCase):
                 'obj': 'o',
                 'account': 'a',
                 'container': 'c',
-                'op': 'PUT'}
+                'op': 'PUT',
+                'update_ctime': 1.0}
             if expected_container_path:
                 expected_data['container_path'] = expected_container_path
             self.assertEqual(expected_data, data)
@@ -6272,7 +6284,8 @@ class TestObjectController(BaseTestCase):
             given_args[:] = args
         diskfile_mgr = self.object_controller._diskfile_router[policy]
         diskfile_mgr.pickle_async_update = fake_pickle_async_update
-        with mocked_http_conn(500) as fake_conn, fake_spawn():
+        with mock.patch('time.time', return_value=1.0), mocked_http_conn(500
+                ) as fake_conn, fake_spawn():
             resp = req.get_response(self.object_controller)
         # fake_spawn() above waits on greenthreads to finish;
         # don't start making assertions until then
@@ -6301,7 +6314,8 @@ class TestObjectController(BaseTestCase):
             'obj': 'o',
             'account': 'a',
             'container': 'c',
-            'op': 'PUT'})
+            'op': 'PUT',
+            'update_ctime': 1.0})
 
     def test_container_update_as_greenthread(self):
         greenthreads = []
