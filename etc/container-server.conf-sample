@@ -335,6 +335,39 @@ use = egg:swift#backend_ratelimit
 # Work only with ionice_class.
 # ionice_class =
 # ionice_priority =
+#
+# Producer/consumer split
+#
+# daemon_mode defines how the process will behave:
+# - classic: upstream behavior where process scans and processes the rows
+#            (default, must run on container-server)
+# - producer: the daemon scans rows and push them in queues
+#             (must run on container-server)
+# - consumer: the daemon processes rows fetched from the queues
+#             (can run anywhere except on container-server)
+# daemon_mode = classic
+#
+# URL to connect to the RabbitMQ server (producer and consumer)
+# rabbit_url =
+#
+# RabbitMQ exchange to publish containers existence announcement
+# (producer and consumer)
+# rabbit_announcement_exchange = container_sync_announcement
+#
+# Maximum size of the queues receiving the rows. It limits the number of
+# in-flight objects (producer only)
+# container_queue_length = 100
+#
+# Default number of tokens per remote. It limits the concurrency on remotes
+# (producer only)
+# remote_concurrency = 10
+#
+# Delay before a consumer forget about a container and stop watching its queue
+# (consumer only)
+# rabbit_announcement_ttl = 900
+#
+# Maximum time a consumer will keep a token for a remote (consumer only)
+# remote_time_limit = 60
 
 # Note: Put it at the beginning of the pipeline to profile all middleware. But
 # it is safer to put this after healthcheck.

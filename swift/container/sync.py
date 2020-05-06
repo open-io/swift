@@ -45,6 +45,13 @@ from swift.common.http import HTTP_UNAUTHORIZED, HTTP_NOT_FOUND, HTTP_CONFLICT
 from swift.common.wsgi import ConfigString
 from swift.common.middleware.versioned_writes.object_versioning import (
     SYSMETA_VERSIONS_CONT, SYSMETA_VERSIONS_SYMLINK)
+import json
+from hashlib import md5
+from eventlet import spawn, import_patched
+from random import shuffle
+pika = import_patched("pika")
+from pika.exceptions import AMQPError, ChannelClosedByBroker
+from pika.spec import PRECONDITION_FAILED as AMQP_PRECONDITION_FAILED
 
 
 # The default internal client config body is to support upgrades without
@@ -70,6 +77,77 @@ use = egg:swift#proxy_logging
 [filter:catch_errors]
 use = egg:swift#catch_errors
 """.lstrip()
+
+
+def remote_q(remote):
+    return "remote-%s" % remote
+
+
+def container_q(container):
+    return "container-%s" % container
+
+
+def rabbit_connect(url, logger):
+    url_param = pika.URLParameters(url)
+    logger.info("Connecting to %r" % url_param)
+
+    connection = pika.BlockingConnection(url_param)
+    try:
+        channel = connection.channel()
+    except AMQPError:
+        connection.close()
+        raise
+    else:
+        return connection, channel
+
+
+def rabbit_disconnect(connection, channel):
+    if getattr(channel, 'is_open', False):
+        try:
+            channel.cancel()
+        except AMQPError:  # pragma: no cover
+            pass
+    if getattr(connection, 'is_open', False):
+        try:
+            connection.close()
+        except AMQPError:  # pragma: no cover
+            pass
+
+
+class RabbitSyncStore(object):
+    """
+    The original SyncStore yields the sqlite files that have container-sync
+    enabled (symlink in /srv/node/device/sync_containers). This implementation
+    yields the remote cluster for which we have been able to get a token.
+    """
+    def __init__(self, rabbit_url, remotes, logger):
+        self.rabbit_url = rabbit_url
+        self.logger = logger
+        self.remotes = remotes
+        self.rabbit_conn, self.rabbit_ch = None, None
+
+    def synced_containers_generator(self):
+        try:
+            if self.rabbit_conn is None:
+                self.rabbit_conn, self.rabbit_ch = rabbit_connect(
+                    self.rabbit_url, self.logger)
+                self.rabbit_ch.basic_qos(prefetch_count=1)
+
+            for remote in self.remotes.keys():
+                values = self.rabbit_ch.basic_get(remote_q(remote))
+                if values is not None and values != (None, None, None):
+                    method, _, _ = values
+                    self.logger.debug("Got a token for remote %s" % remote)
+                    yield remote
+                    self.logger.debug("Releasing a token for remote %s"
+                                      % remote)
+                    self.rabbit_ch.basic_nack(delivery_tag=method.delivery_tag)
+        except Exception as e:
+            self.logger.exception('ERROR Fetching a remote token')
+            self.logger.increment('failures')
+            if isinstance(e, AMQPError):
+                rabbit_disconnect(self.rabbit_conn, self.rabbit_ch)
+                self.rabbit_conn, self.rabbit_ch = None, None
 
 
 class ContainerSync(Daemon):
@@ -226,11 +304,18 @@ class ContainerSync(Daemon):
                 '%(conf)r (%(error)s)'
                 % {'conf': internal_client_conf_path, 'error': err})
 
+        self.daemon_mode = conf.get("daemon_mode", "classic")
+        if self.daemon_mode not in ("classic", "producer", "consumer"):
+            raise SystemExit("Invalid daemon_mode specified: %r"
+                             % self.daemon_mode)
+
     def run_forever(self, *args, **kwargs):
         """
         Runs container sync scans until stopped.
         """
         sleep(random() * self.interval)
+        if self.daemon_mode != "classic":
+            self.init_daemon_mode()
         while True:
             begin = time()
             for path in self.sync_store.synced_containers_generator():
@@ -247,6 +332,8 @@ class ContainerSync(Daemon):
         Runs a single container sync scan.
         """
         self.logger.info('Begin container sync "once" mode')
+        if self.daemon_mode != "classic":
+            self.init_daemon_mode()
         begin = time()
         for path in self.sync_store.synced_containers_generator():
             self.container_sync(path)
@@ -371,6 +458,9 @@ class ContainerSync(Daemon):
                 next_sync_point = None
                 sync_stage_time = start_at
                 try:
+                    if self.daemon_mode == "producer":
+                        self.container_announcement(sync_to, user_key, info,
+                                                    realm, realm_key)
                     while time() < stop_at and sync_point2 < sync_point1:
                         rows = broker.get_items_since(sync_point2, 1)
                         if not rows:
@@ -650,3 +740,290 @@ class ContainerSync(Daemon):
 
     def select_http_proxy(self):
         return choice(self.http_proxies) if self.http_proxies else None
+
+    #
+    # Common part
+    #
+
+    def init_daemon_mode(self):
+        if self.daemon_mode == "producer":
+            # RabbitMQ params
+            self.rabbit_url = self.conf.get("rabbit_url")
+            self.rabbit_announcement_exchange = self.conf.get(
+                "rabbit_announcement_exchange", "container_sync_announcement")
+            # Various params
+            self.container_queue_length = int(
+                self.conf.get("container_queue_length", 100))
+            self.remote_concurrency = int(self.conf.get("remote_concurrency",
+                                                        10))
+            # States
+            self.rabbit_conn, self.rabbit_ch = None, None
+
+            # Monkey-patch the original sync code
+            self.container_sync_row = self.container_sync_row_producer
+        elif self.daemon_mode == "consumer":
+            # RabbitMQ params
+            self.rabbit_url = self.conf.get("rabbit_url")
+            self.rabbit_announcement_exchange = self.conf.get(
+                "rabbit_announcement_exchange", "container_sync_announcement")
+            self.rabbit_announcement_ttl = int(
+                self.conf.get("rabbit_announcement_ttl", 900))
+            # Various params
+            self.remote_time_limit = int(self.conf.get("remote_time_limit",
+                                                       60))
+            # States
+            self.rabbit_conn, self.rabbit_ch = None, None
+            self.remotes = {}
+            self.containers = {}
+
+            # Monkey-patch the original sync code
+            self.sync_store = RabbitSyncStore(self.rabbit_url, self.remotes,
+                                              self.logger)
+            self.container_sync = self.container_sync_consumer
+
+            # Start the thread that handle announcements from producers
+            self.announcement_thread = spawn(self.announcements_consumer)
+
+    def rabbit_connect(self):
+        if self.rabbit_conn is None:
+            try:
+                self.rabbit_conn, self.rabbit_ch = rabbit_connect(
+                    self.rabbit_url, self.logger)
+            except AMQPError:
+                self.rabbit_disconnect()
+
+    def rabbit_disconnect(self):
+        rabbit_disconnect(self.rabbit_conn, self.rabbit_ch)
+        self.rabbit_conn, self.rabbit_ch = None, None
+
+    #
+    # Producer side
+    #
+
+    def container_announcement(self, sync_to, user_key, info,
+                               realm, realm_key):
+        """
+        Called each time a container with a valid container-sync configuration
+        is opened. It ensures that
+        - an exchange for announcements exist;
+        - a queue for the remote cluster of the current container exists
+          (it creates it with a default number of token if necessary);
+        - a queue for the current container exists.
+        Then, it publishes to the announcements exchange the container
+        informations with mutable parameters (sync_to/realm, credentials).
+        """
+        remote = md5(urlparse(sync_to).hostname.encode('utf-8')).hexdigest()
+        container = hash_path(info['account'], info['container'])
+
+        try:
+            self.rabbit_connect()
+            self.rabbit_ch.exchange_declare(
+                exchange=self.rabbit_announcement_exchange,
+                exchange_type='fanout', durable=True)
+
+            # Create the remote-cluster queue with some tokens if necessary
+            created = self.rabbit_ch.queue_declare(remote_q(remote),
+                                                   durable=True)
+            if created.method.message_count == 0:
+                # There is no message in the queue, it means it was just
+                # created
+                for i in range(self.remote_concurrency):
+                    self.rabbit_ch.basic_publish(exchange="",
+                                                 routing_key=remote_q(remote),
+                                                 body=remote,
+                                                 mandatory=True)
+
+            # Create the container queue if necessary
+            # NOTE: x-max-length cannot be changed after declaration and
+            #       queue_declare cannot be called with parameters different
+            #       than what's already existing. Just ignore the error if
+            #       x-max-length is not matching. It can happen if we change
+            #       the configuration value "container_queue_length".
+            q_arguments = {"x-max-length": self.container_queue_length,
+                           "x-overflow": "reject-publish"}
+            try:
+                self.rabbit_ch.queue_declare(container_q(container),
+                                             durable=True,
+                                             arguments=q_arguments)
+            except ChannelClosedByBroker as e:
+                if (e.reply_code == AMQP_PRECONDITION_FAILED and
+                        "inequivalent arg 'x-max-length' for queue"
+                        in e.reply_text):
+                    # The queue already exists with a different max-length. We
+                    # can safely ignore this error, but the channel is now
+                    # dead, re-open one and continue
+                    self.rabbit_ch = self.rabbit_conn.channel()
+                else:
+                    # Some other error
+                    raise
+
+            # Announce the existence of a container-queue (+sync params) and
+            # the matching remote
+            announcement_message = {"announcement_type": "container",
+                                    "remote": remote,
+                                    "container": container,
+                                    "sync_to": sync_to,
+                                    "user_key": user_key,
+                                    "realm": realm,
+                                    "realm_key": realm_key}
+
+            self.rabbit_ch.basic_publish(
+                exchange=self.rabbit_announcement_exchange,
+                routing_key="fanout-ignored",
+                body=json.dumps(announcement_message),
+                mandatory=True)
+        except AMQPError:
+            self.rabbit_disconnect()
+            raise  # Forward the exception to interrupt container handling
+
+    def container_sync_row_producer(self, row, sync_to, user_key, broker, info,
+                                    realm, realm_key):
+        """
+        Called for each row of a container db that need to be synchronized. The
+        original method send a request to the remote cluster to PUT/DELETE the
+        object. This version just send a message in the container queue with
+        all immutable parameters (row/info).
+        """
+        try:
+            self.rabbit_connect()
+
+            container = hash_path(info['account'], info['container'])
+            container_message = {"row": row, "info": info,
+                                 "broker": str(broker)}
+
+            # Push the message in the container-queue
+            self.rabbit_ch.basic_publish(
+                exchange="", routing_key=container_q(container),
+                body=json.dumps(container_message), mandatory=True)
+            return True
+        except Exception as e:
+            if isinstance(e, AMQPError):
+                self.rabbit_disconnect()
+            self.logger.exception(
+                _('ERROR Publishing %(db_file)s %(row)s'),
+                {'db_file': str(broker), 'row': row})
+            self.container_failures += 1
+            self.logger.increment('failures')
+            # If we re-raise, it would interrupt the parsing of the current DB
+            # (good), but it would break the contract of the method (do not
+            # raise any exceptions)
+            # raise
+            return False
+
+    #
+    # Consumer side
+    #
+
+    def announcements_consumer(self, exit_condition=lambda: False):
+        """
+        This method runs in a dedicated thread. It creates an anonymous queue
+        that is binded to the announcements exchange. For each announcement,
+        it will do the appropriate action. To avoid any interferences with the
+        consummer, it uses its own connection/channel.
+        The supported announcement types are:
+        - container_announcement: populate a list of containers and remotes
+                                  that must be watched by the consumer. Any
+                                  remote or container that did not get recent
+                                  announcements is removed from lists.
+        """
+        rabbit_conn, rabbit_ch = None, None
+        remote_expiration, container_expiration = {}, {}
+        while not exit_condition():
+            try:
+                if rabbit_conn is None:
+                    rabbit_conn, rabbit_ch = rabbit_connect(self.rabbit_url,
+                                                            self.logger)
+                    rabbit_ch.exchange_declare(
+                        exchange=self.rabbit_announcement_exchange,
+                        exchange_type='fanout', durable=True)
+
+                    # Declare a tmp queue binded to the announcements exchange
+                    created = rabbit_ch.queue_declare("", exclusive=True,
+                                                      auto_delete=True)
+                    queue = created.method.queue
+                    rabbit_ch.queue_bind(queue,
+                                         self.rabbit_announcement_exchange)
+
+                for values in rabbit_ch.consume(queue, auto_ack=True,
+                                                inactivity_timeout=1):
+                    now = time()
+                    if values is not None and values != (None, None, None):
+                        method, properties, body = values
+                        msg = json.loads(body)
+
+                        if msg["announcement_type"] == "container":
+                            msg.pop("announcement_type")
+                            self.remotes[msg["remote"]] = {}
+                            self.containers[msg["container"]] = msg
+
+                            expiration = now + self.rabbit_announcement_ttl
+                            remote_expiration[msg["remote"]] = expiration
+                            container_expiration[msg["container"]] = expiration
+                        else:
+                            raise Exception("Unhandled announcement type: %r"
+                                            % msg["announcement_type"])
+
+                    # Clean expired remotes/containers
+                    for remote, expiration in list(remote_expiration.items()):
+                        if expiration <= now:
+                            self.remotes.pop(remote, None)
+                            remote_expiration.pop(remote, None)
+                    for cont, expiration in list(container_expiration.items()):
+                        if expiration <= now:
+                            self.containers.pop(cont)
+                            container_expiration.pop(cont)
+            except Exception as e:
+                self.logger.exception("ERROR Receiving announcement failed")
+                if isinstance(e, AMQPError):
+                    rabbit_disconnect(rabbit_conn, rabbit_ch)
+                    rabbit_conn, rabbit_ch = None, None
+                    sleep(5)
+
+    def container_sync_consumer(self, remote):
+        """
+        This method is in charge of calling container_sync_row() for each
+        container db row. The original method opens a sqlite file and iterate
+        over all row. This version consume messages from a RabbitMQ queue.
+        Instead of accepting a sqlite path as parameter, it accepts a remote
+        id (which translate to a queue).
+        """
+        containers = [k for k, c in self.containers.items()
+                      if c["remote"] == remote]
+        shuffle(containers)
+
+        try:
+            self.rabbit_connect()
+            self.rabbit_ch.basic_qos(prefetch_count=1)
+
+            time_limit = time() + self.remote_time_limit
+            while containers and time() < time_limit:
+                for container in list(containers):
+                    values = self.rabbit_ch.basic_get(container_q(container))
+                    if values is None or values == (None, None, None):
+                        # This container queue is empty, remove it from the
+                        # list for this pass
+                        containers.remove(container)
+                    else:
+                        method, properties, body = values
+                        container = self.containers[container]
+                        message = json.loads(body)
+
+                        success = self.container_sync_row(
+                            message["row"], container["sync_to"],
+                            container["user_key"], message["broker"],
+                            message["info"], container["realm"],
+                            container["realm_key"])
+                        if success:
+                            self.rabbit_ch.basic_ack(
+                                delivery_tag=method.delivery_tag)
+                        else:
+                            self.rabbit_ch.basic_nack(
+                                delivery_tag=method.delivery_tag)
+                    if time() >= time_limit:
+                        break
+        except Exception as e:
+            if isinstance(e, AMQPError):
+                self.rabbit_disconnect()
+            self.container_failures += 1
+            self.logger.increment('failures')
+            self.logger.exception('ERROR Syncing %s' % remote)

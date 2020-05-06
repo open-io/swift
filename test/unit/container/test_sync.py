@@ -30,9 +30,10 @@ from swift.common.exceptions import ClientException
 from swift.common.storage_policy import StoragePolicy
 import test
 from test.unit import patch_policies, with_tempdir
-
-utils.HASH_PATH_SUFFIX = b'endcap'
-utils.HASH_PATH_PREFIX = b'endcap'
+import json
+import pika
+from pika.exceptions import AMQPError
+from eventlet import kill
 
 
 class FakeRing(object):
@@ -82,6 +83,8 @@ class TestContainerSync(unittest.TestCase):
 
     def setUp(self):
         self.logger = debug_logger('test-container-sync')
+        utils.HASH_PATH_SUFFIX = b'endcap'
+        utils.HASH_PATH_PREFIX = b'endcap'
 
     def test_FileLikeIter(self):
         # Retained test to show new FileLikeIter acts just like the removed
@@ -1389,6 +1392,530 @@ class TestContainerSync(unittest.TestCase):
         self.assertEqual(
             set(cs.http_proxies),
             set(['http://one', 'http://two', 'http://three']))
+
+    def test_producer_consumer_monkey_patching(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'classic'},
+                                    container_ring=cring)
+        cs.init_daemon_mode()
+        self.assertNotEqual(cs.container_sync_row,
+                            cs.container_sync_row_producer)
+        self.assertNotIsInstance(cs.sync_store, sync.RabbitSyncStore)
+        self.assertNotEqual(cs.container_sync, cs.container_sync_consumer)
+
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'producer'},
+                                    container_ring=cring)
+        cs.init_daemon_mode()
+        self.assertEqual(cs.container_sync_row,
+                         cs.container_sync_row_producer)
+        self.assertNotIsInstance(cs.sync_store, sync.RabbitSyncStore)
+        self.assertNotEqual(cs.container_sync, cs.container_sync_consumer)
+
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'consumer'},
+                                    container_ring=cring)
+        cs.init_daemon_mode()
+        kill(cs.announcement_thread)
+        self.assertNotEqual(cs.container_sync_row,
+                            cs.container_sync_row_producer)
+        self.assertIsInstance(cs.sync_store, sync.RabbitSyncStore)
+        self.assertEqual(cs.container_sync, cs.container_sync_consumer)
+
+        with mock.patch('swift.container.sync.InternalClient'):
+            self.assertRaises(SystemExit,
+                              sync.ContainerSync, {'daemon_mode': 'foo'},
+                              container_ring=cring)
+
+    def test_rabbit_connect(self):
+        url = 'amqps://user:pass@some_host/some_vhost'
+        expected_url_params = pika.URLParameters(url)
+
+        # Success
+        m_channel = mock.Mock()
+        m_conn = mock.Mock(channel=mock.Mock(return_value=m_channel))
+        m_BlockingConnection = mock.Mock(return_value=m_conn)
+        m_logger = mock.Mock()
+        with mock.patch('swift.container.sync.pika.BlockingConnection',
+                        new=m_BlockingConnection):
+            self.assertEqual(sync.rabbit_connect(url, m_logger),
+                             (m_conn, m_channel))
+
+        m_BlockingConnection.assert_called_once_with(expected_url_params)
+        m_conn.channel.assert_called_once_with()
+
+        # Channel failure
+        m_conn = mock.Mock(channel=mock.Mock(side_effect=AMQPError))
+        m_BlockingConnection = mock.Mock(return_value=m_conn)
+        m_logger = mock.Mock()
+        with mock.patch('swift.container.sync.pika.BlockingConnection',
+                        new=m_BlockingConnection):
+            self.assertRaises(AMQPError, sync.rabbit_connect, url, m_logger)
+
+        m_BlockingConnection.assert_called_once_with(expected_url_params)
+        m_conn.channel.assert_called_once_with()
+        m_conn.close.assert_called_once_with()
+
+    def test_rabbit_disconnect(self):
+        # Valid conn/channel
+        m_conn = mock.Mock(is_open=True)
+        m_channel = mock.Mock(is_open=True)
+        sync.rabbit_disconnect(m_conn, m_channel)
+        self.assertEqual(m_channel.cancel.call_count, 1)
+        self.assertEqual(m_conn.close.call_count, 1)
+
+        # Valid conn/Closed channel
+        m_conn = mock.Mock(is_open=True)
+        m_channel = mock.Mock(is_open=False)
+        sync.rabbit_disconnect(m_conn, m_channel)
+        self.assertEqual(m_channel.cancel.call_count, 0)
+        self.assertEqual(m_conn.close.call_count, 1)
+
+        # Closed conn/Valid channel
+        m_conn = mock.Mock(is_open=False)
+        m_channel = mock.Mock(is_open=True)
+        sync.rabbit_disconnect(m_conn, m_channel)
+        self.assertEqual(m_channel.cancel.call_count, 1)
+        self.assertEqual(m_conn.close.call_count, 0)
+
+    def test_rabbit_sync_store(self):
+        # Scenario: REMOTE1 and REMOTE3 have token while REMOTE2 does not
+        remotes = {'<REMOTE1>': None, '<REMOTE2>': None, '<REMOTE3>': None}
+
+        def fake_basic_get(remote):
+            if remote == 'remote-<REMOTE1>':
+                return (mock.Mock(delivery_tag='TAG1'), None, None)
+            elif remote == 'remote-<REMOTE2>':
+                return (None, None, None)
+            elif remote == 'remote-<REMOTE3>':
+                return (mock.Mock(delivery_tag='TAG3'), None, None)
+
+        m_logger = mock.Mock()
+        rss = sync.RabbitSyncStore('<RABBIT_URL>', remotes, m_logger)
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock(
+            basic_get=mock.Mock(side_effect=fake_basic_get))
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect:
+            res = list(rss.synced_containers_generator())
+
+        # Assert it created a connection and set the right prefetch
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', m_logger)
+        m_rabbit_ch.basic_qos.assert_called_once_with(prefetch_count=1)
+
+        # Assert it tried to fetch a token for each remote, yield and nack
+        # those it got
+        self.assertEqual(m_rabbit_ch.basic_get.call_count, 3)
+        for args in [(('remote-<REMOTE1>',),),
+                     (('remote-<REMOTE2>',),),
+                     (('remote-<REMOTE3>',),)]:
+            self.assertIn(args, m_rabbit_ch.basic_get.call_args_list)
+
+        self.assertEqual(sorted(res), ['<REMOTE1>', '<REMOTE3>'])
+
+        self.assertEqual(m_rabbit_ch.basic_nack.call_count, 2)
+        for args in [({'delivery_tag': 'TAG1'},),
+                     ({'delivery_tag': 'TAG3'},)]:
+            self.assertIn(args, m_rabbit_ch.basic_nack.call_args_list)
+
+    def test_rabbit_sync_store_exception(self):
+        remotes = {'<REMOTE>': None}
+        m_logger = mock.Mock()
+        rss = sync.RabbitSyncStore('<RABBIT_URL>', remotes, m_logger)
+
+        # AMQPError exception triggers disconnection
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock(
+            basic_get=mock.Mock(side_effect=AMQPError))
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect, \
+                mock.patch('swift.container.sync.rabbit_disconnect') \
+                as m_rabbit_disconnect:
+            list(rss.synced_containers_generator())
+
+        # Assert it created a connection and disconnected on error
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', m_logger)
+        m_rabbit_disconnect.assert_called_once_with(m_rabbit_conn, m_rabbit_ch)
+
+        # ...standard exception does not
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock(
+            basic_get=mock.Mock(side_effect=Exception))
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect, \
+                mock.patch('swift.container.sync.rabbit_disconnect') \
+                as m_rabbit_disconnect:
+            list(rss.synced_containers_generator())
+
+        # Assert it reconnected
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', m_logger)
+        self.assertEqual(m_rabbit_disconnect.call_count, 0)
+
+        # Assert it does not reconnect if it did not disconnect
+        list(rss.synced_containers_generator())
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', m_logger)
+
+    def test_rabbit_connect_disconnect_wrappers(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'producer'},
+                                    container_ring=cring)
+        cs.init_daemon_mode()
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock()
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect, \
+                mock.patch('swift.container.sync.rabbit_disconnect') \
+                as m_rabbit_disconnect:
+
+            # Check initial connection
+            cs.rabbit_connect()
+            self.assertEqual(m_rabbit_connect.call_count, 1)
+            self.assertEqual(m_rabbit_disconnect.call_count, 0)
+            self.assertEqual(cs.rabbit_conn, m_rabbit_conn)
+            self.assertEqual(cs.rabbit_ch, m_rabbit_ch)
+
+            # No reconnection needed
+            cs.rabbit_connect()
+            self.assertEqual(m_rabbit_connect.call_count, 1)
+            self.assertEqual(m_rabbit_disconnect.call_count, 0)
+            self.assertEqual(cs.rabbit_conn, m_rabbit_conn)
+            self.assertEqual(cs.rabbit_ch, m_rabbit_ch)
+
+            # Disconnect
+            cs.rabbit_disconnect()
+            self.assertEqual(m_rabbit_connect.call_count, 1)
+            self.assertEqual(m_rabbit_disconnect.call_count, 1)
+            self.assertIsNone(cs.rabbit_conn)
+            self.assertIsNone(cs.rabbit_ch)
+
+            # Reconnection needed, but it fails
+            m_rabbit_connect.side_effect = AMQPError
+            cs.rabbit_connect()
+            self.assertEqual(m_rabbit_connect.call_count, 2)
+            self.assertEqual(m_rabbit_disconnect.call_count, 2)
+            self.assertIsNone(cs.rabbit_conn)
+            self.assertIsNone(cs.rabbit_ch)
+
+            # Reconnection succeed
+            m_rabbit_connect.side_effect = None
+            cs.rabbit_connect()
+            self.assertEqual(m_rabbit_connect.call_count, 3)
+            self.assertEqual(m_rabbit_disconnect.call_count, 2)
+            self.assertEqual(cs.rabbit_conn, m_rabbit_conn)
+            self.assertEqual(cs.rabbit_ch, m_rabbit_ch)
+
+    def test_container_announcement(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'producer',
+                                     'rabbit_url': '<RABBIT_URL>',
+                                     'rabbit_announcement_exchange': '<XCHG>',
+                                     'container_queue_length': 42,
+                                     'remote_concurrency': 2},
+                                    container_ring=cring)
+        cs.logger = mock.Mock()
+        cs.init_daemon_mode()
+
+        sync_to = 'http://remote_cluster:80/v1/AUTH_dst/c'
+        user_key = 'u53r_k3y'
+        account, container = 'AUTH_src', 'c'
+        realm = 'r34lm'
+        realm_key = 'r34lm_k3y'
+
+        # md5('remote_cluster')
+        expected_remote = '97a8d1e6765c5f5cc8ed3768543d20ca'
+        # hash_path('AUTH_src', 'c')
+        expected_container = '5c3f7c76fb50ccd827c354cdfa3014f4'
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock()
+        m_rabbit_ch.queue_declare.return_value.method.message_count = 0
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect:
+            cs.container_announcement(sync_to, user_key,
+                                      {'account': account,
+                                       'container': container},
+                                      realm, realm_key)
+
+        # Assert it created a connection
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', cs.logger)
+
+        # Assert it created the announcements exchange
+        m_rabbit_ch.exchange_declare.assert_called_once_with(
+            exchange='<XCHG>', exchange_type='fanout', durable=True)
+
+        # Assert it created the remote queue
+        expected_args = ('remote-%s' % expected_remote, )
+        expected_kwargs = {'durable': True}
+        self.assertEqual(m_rabbit_ch.queue_declare.call_args_list[0],
+                         (expected_args, expected_kwargs))
+        # ...and added some tokens
+        expected_kwargs = {'exchange': '',
+                           'routing_key': 'remote-%s' % expected_remote,
+                           'body': expected_remote,
+                           'mandatory': True}
+        self.assertEqual([(expected_kwargs, )] * 2,
+                         m_rabbit_ch.basic_publish.call_args_list[0:2])
+
+        # Assert it created the container queue
+        expected_args = ('container-%s' % expected_container, )
+        expected_kwargs = {'durable': True,
+                           'arguments': {'x-max-length': 42,
+                                         'x-overflow': 'reject-publish'}}
+        self.assertEqual(m_rabbit_ch.queue_declare.call_args_list[1],
+                         (expected_args, expected_kwargs))
+
+        # Assert it published an announcement
+        expected_body = json.dumps({'announcement_type': 'container',
+                                    'remote': expected_remote,
+                                    'container': expected_container,
+                                    'sync_to': sync_to,
+                                    'user_key': user_key,
+                                    'realm': realm,
+                                    'realm_key': realm_key})
+        self.assertEqual(m_rabbit_ch.basic_publish.call_args_list[2],
+                         ({'exchange': '<XCHG>',
+                           'routing_key': 'fanout-ignored',
+                           'body': expected_body, 'mandatory': True}, ))
+
+        # Assert there is no extra calls
+        # remote + container
+        self.assertEqual(m_rabbit_ch.queue_declare.call_count, 2)
+        # 2 remote tokens + 1 container announce
+        self.assertEqual(m_rabbit_ch.basic_publish.call_count, 3)
+
+    def test_container_sync_row_producer(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'producer',
+                                     'rabbit_url': '<RABBIT_URL>',
+                                     'container_queue_length': 42},
+                                    container_ring=cring)
+        cs.logger = mock.Mock()
+        cs.init_daemon_mode()
+
+        row = {'key1': 'value1'}
+        sync_to = 'http://remote_cluster:80/v1/AUTH_dst/c'
+        user_key = 'u53r_k3y'
+        broker = '/some/broker/path.db'
+        info = {'account': 'AUTH_src', 'container': 'c'}
+        realm = 'r34lm'
+        realm_key = 'r34lm_k3y'
+
+        # hash_path('AUTH_src', 'c')
+        expected_container = '5c3f7c76fb50ccd827c354cdfa3014f4'
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock()
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect:
+            cs.container_sync_row(row, sync_to, user_key, broker, info,
+                                  realm, realm_key)
+
+        # Assert it created a connection
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', cs.logger)
+
+        # Assert it published a row
+        expected_body = json.dumps({'row': row,
+                                    'info': info,
+                                    'broker': broker})
+        m_rabbit_ch.basic_publish.assert_called_once_with(
+            exchange='', routing_key='container-%s' % expected_container,
+            body=expected_body, mandatory=True)
+
+    def test_announcements_consumer(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'consumer',
+                                     'rabbit_url': '<RABBIT_URL>',
+                                     'rabbit_announcement_exchange': '<XCHG>',
+                                     'rabbit_announcement_ttl': 5},
+                                    container_ring=cring)
+        cs.logger = mock.Mock()
+        cs.init_daemon_mode()
+        kill(cs.announcement_thread)
+
+        global iteration
+        iteration = 0
+
+        def exit_condition():
+            global iteration
+            iteration += 1
+            return iteration > 4
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock()
+        m_rabbit_ch.queue_declare.return_value.method.queue = '<QUEUE>'
+        # Senario:
+        # - t=1: receive an announcement for container1/remote1
+        #        => insertion
+        # - t=2: receive an announcement for container2/remote2
+        #        => insertion
+        # - t=3: inactivity timeout
+        #         => noop
+        # - t=4: inactivity timeout
+        #        => noop
+        # - t=5: receive an announcement for container1/remote3 (update)
+        #        => update the existing entry
+        # - t=9: inactivity timeout
+        #        => cleanup of remote1, remote2 and container2
+        # => Expected output: remote3 and container1
+        time_side_effect = [1, 2, 3, 4, 5, 9]
+        m_rabbit_ch.consume.side_effect = [
+            [(None, None, '{"announcement_type": "container", '
+                          ' "remote": "<REMOTE1>", '
+                          ' "container": "<CONTAINER1>"}'),
+             (None, None, '{"announcement_type": "container", '
+                          ' "remote": "<REMOTE2>", '
+                          ' "container": "<CONTAINER2>"}')],
+            [None, (None, None, None)],
+            [(None, None, '{"announcement_type": "container", '
+                          ' "remote": "<REMOTE3>", '
+                          ' "container": "<CONTAINER1>"}')],
+            [None],
+        ]
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect, mock.patch('swift.container.sync.time',
+                                                side_effect=time_side_effect):
+            cs.announcements_consumer(exit_condition=exit_condition)
+
+        # Assert it created a connection only once
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', cs.logger)
+
+        # Assert it created an exchange and a temporary queue only once
+        m_rabbit_ch.exchange_declare.assert_called_once_with(
+            exchange='<XCHG>', exchange_type='fanout', durable=True)
+        m_rabbit_ch.queue_declare.assert_called_once_with('', exclusive=True,
+                                                          auto_delete=True)
+        m_rabbit_ch.queue_bind.assert_called_once_with('<QUEUE>', '<XCHG>')
+
+        self.assertEqual(list(cs.remotes.keys()), ['<REMOTE3>'])
+        self.assertEqual(cs.containers,
+                         {'<CONTAINER1>': {'container': '<CONTAINER1>',
+                                           'remote': '<REMOTE3>'}})
+
+    def test_announcements_consumer_invalid_announcement(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'consumer',
+                                     'rabbit_url': '<RABBIT_URL>',
+                                     'rabbit_announcement_exchange': '<XCHG>',
+                                     'rabbit_announcement_ttl': 5},
+                                    container_ring=cring)
+        cs.logger = mock.Mock()
+        cs.init_daemon_mode()
+        kill(cs.announcement_thread)
+
+        global iteration
+        iteration = 0
+
+        def exit_condition():
+            global iteration
+            iteration += 1
+            return iteration > 1
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock()
+        m_rabbit_ch.consume.side_effect = [
+            [(None, None, '{"announcement_type": "INVALID_ANNOUNCEMENT"}')],
+        ]
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)):
+            cs.announcements_consumer(exit_condition=exit_condition)
+
+        # Assert it logged an exception (the real message would be in log as
+        # logger.exception log a stack trace)
+        cs.logger.exception.assert_called_once_with("ERROR Receiving "
+                                                    "announcement failed")
+
+    def test_container_sync_consumer(self):
+        cring = FakeRing()
+        with mock.patch('swift.container.sync.InternalClient'):
+            cs = sync.ContainerSync({'daemon_mode': 'consumer',
+                                     'rabbit_url': '<RABBIT_URL>',
+                                     'remote_time_limit': 10},
+                                    container_ring=cring)
+        cs.logger = mock.Mock()
+        cs.init_daemon_mode()
+        kill(cs.announcement_thread)
+
+        def _make_container(remote):
+            return {'sync_to': '5ync_t0', 'user_key': 'u53r_k3y',
+                    'realm': 'r34lm', 'realm_key': 'r34lm_k3y',
+                    'remote': remote}
+
+        def _make_msg(container, obj):
+            return (mock.Mock(delivery_tag='%s/%s' % (container, obj)),
+                    None, json.dumps({'row': '<ROW>', 'broker': container,
+                                      'info': obj}))
+
+        # Scenario: CONTAINER1 and CONTAINER3 matches the remote
+        # It should consume in this order or something similar:
+        # - <CONTAINER1>/obj1
+        # - <CONTAINER3>/obj1
+        # - <CONTAINER1>/obj2
+        # - <CONTAINER3>/obj2
+        # - <CONTAINER1>/obj3
+        # - <CONTAINER1>/obj4
+        # <CONTAINER1>/obj5 won't be treated because of the time limit reached
+        # One of them will fail
+        cs.containers = {'<CONTAINER1>': _make_container('<REMOTE1>'),
+                         '<CONTAINER2>': _make_container('<REMOTE2>'),
+                         '<CONTAINER3>': _make_container('<REMOTE1>')}
+
+        container1_msg = [_make_msg('container1', 'obj1'),
+                          _make_msg('container1', 'obj2'),
+                          _make_msg('container1', 'obj3'),
+                          _make_msg('container1', 'obj4'),
+                          _make_msg('container1', 'obj5'),
+                          None]
+        container3_msg = [_make_msg('container3', 'obj1'),
+                          _make_msg('container3', 'obj2'),
+                          None]
+
+        time_side_effect = [0, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 10]
+
+        cs.container_sync_row = mock.Mock(side_effect=[True, True, False,
+                                                       True, True, True])
+
+        def fake_basic_get(container):
+            if container == 'container-<CONTAINER1>':
+                return container1_msg.pop(0)
+            elif container == 'container-<CONTAINER3>':
+                return container3_msg.pop(0)
+
+        m_rabbit_conn = mock.Mock()
+        m_rabbit_ch = mock.Mock()
+        m_rabbit_ch.basic_get.side_effect = fake_basic_get
+        with mock.patch('swift.container.sync.rabbit_connect',
+                        return_value=(m_rabbit_conn, m_rabbit_ch)) \
+                as m_rabbit_connect, mock.patch('swift.container.sync.time',
+                                                side_effect=time_side_effect):
+            cs.container_sync('<REMOTE1>')
+
+        # Assert it created a connection
+        m_rabbit_connect.assert_called_once_with('<RABBIT_URL>', cs.logger)
+
+        # Assert the calls on container_sync_row
+        self.assertEqual(m_rabbit_ch.basic_get.call_count, 7)  # One is None
+        self.assertEqual(cs.container_sync_row.call_count, 6)
+        # NOTE: We should assert that the ordering is fair, but's it's complex
+        #       because of the shuffle in the tested method. So we don't :)
+
+        # Assert we got 5 ack and 1 nack
+        self.assertEqual(m_rabbit_ch.basic_ack.call_count, 5)
+        self.assertEqual(m_rabbit_ch.basic_nack.call_count, 1)
 
 
 if __name__ == '__main__':
