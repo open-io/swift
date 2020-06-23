@@ -1,0 +1,9 @@
+[submodule "third_party/oio-sds"]
+	path = third_party/oio-sds
+	url = https://github.com/open-io/oio-sds.git
+	# Latest stable/supported version
+	branch = 7.x
+[submodule "oio-sds"]
+	path = third_party/oio-sds
+	url = https://github.com/open-io/oio-sds.git
+	branch = 7.x
