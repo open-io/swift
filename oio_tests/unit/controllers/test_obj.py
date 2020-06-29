@@ -27,15 +27,14 @@ from oio.common import green as oiogreen
 from oio.common.http import CustomHttpConnection
 from swift.proxy.controllers.base import get_info as _real_get_info
 from swift.common import swob
+from swift.common.ring import FakeRing
 from swift.common.utils import Timestamp
-from oioswift.common.ring import FakeRing
-from oioswift import server as proxy_server
-from oio_tests.unit import FakeStorageAPI, FakeMemcache, debug_logger
+from swift.proxy import oio_server as proxy_server
+from oio_tests.unit import FakeStorageAPI, debug_logger
 
 
 def fake_stream(length, exception=None):
-    for i in "X" * length:
-        yield i
+    yield b"X" * length
     if exception:
         # pylint: disable=raising-bad-type
         raise exception
@@ -114,7 +113,7 @@ class TestObjectController(unittest.TestCase):
             namespace='NS', timeouts={}, logger=self.logger)
 
         self.app = PatchedObjControllerApp(
-            {'sds_namespace': "NS"}, FakeMemcache(), account_ring=FakeRing(),
+            {'sds_namespace': "NS"}, account_ring=FakeRing(),
             container_ring=FakeRing(), storage=self.storage,
             logger=self.logger)
         self.app.container_info = dict(self.container_info)
@@ -400,9 +399,9 @@ class TestObjectController(unittest.TestCase):
 
             def read(self, size):
                 if self.count == self.MAX_COUNT:
-                    return ''
+                    return b''
                 self.count += min(size, self.MAX_COUNT)
-                return 'a' * min(size, self.MAX_COUNT)
+                return b'a' * min(size, self.MAX_COUNT)
 
         req = Request.blank('/v1/a/c/o.jpg', method='PUT',
                             body='test body')

@@ -33,7 +33,7 @@ from swift.common.constraints import AUTO_CREATE_ACCOUNT_PREFIX, \
 from swift.common.storage_policy import POLICIES
 from swift.common.exceptions import ListingIterError, SegmentError
 from swift.common.http import is_success, is_server_error
-from swift.common.swob import HTTPBadRequest, \
+from swift.common.swob import HTTPBadRequest, HTTPForbidden,\
     HTTPServiceUnavailable, Range, is_chunked, multi_range_iterator, \
     HTTPPreconditionFailed, wsgi_to_bytes, wsgi_unquote, wsgi_to_str
 from swift.common.utils import split_path, validate_device_partition, \
@@ -776,6 +776,24 @@ class SegmentedIterable(object):
         backend server is closed.
         """
         close_if_possible(self.app_iter)
+
+
+class SafeSegmentedIterable(SegmentedIterable):
+    """
+    SegmentedIterable subclass that does not melt all segment errors
+    into SegmentError.
+    """
+
+    def validate_first_segment(self):
+        try:
+            return super(SafeSegmentedIterable, self).validate_first_segment()
+        except SegmentError as err:
+            if 'got 403 while retrieving' in err.args[0]:
+                raise HTTPForbidden(request=self.req)
+            elif 'got 400 while retrieving' in err.args[0]:
+                raise HTTPBadRequest(request=self.req)
+            else:
+                raise
 
 
 def http_response_to_document_iters(response, read_chunk_size=4096):

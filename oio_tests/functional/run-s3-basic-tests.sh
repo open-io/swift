@@ -18,10 +18,10 @@ RET=0
 # Run all suites in the same environment.
 # They do not share buckets so this should be OK.
 run_functional_test s3-default.cfg \
-    s3-tagging.sh \
-    s3-multipart.sh \
-    s3-mpu.py \
-    s3-s3cmd.sh
+    s3-acl-metadata.sh \
+    buckets-listing.sh \
+    s3-marker.sh \
+    s3-basic-test.py
 
 # TODO(FVE): gridinit_cmd stop
 exit $RET

@@ -25,7 +25,7 @@ from six.moves.urllib import parse as urlparse
 from swift import gettext_ as _
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.swob import HTTPInternalServerError
-from swift.common.utils import get_logger
+from swift.common.utils import get_logger, strict_b64decode
 from swift.common.wsgi import WSGIContext
 from cgi import parse_header
 
@@ -293,3 +293,11 @@ def extract_crypto_meta(value):
     if 'swift_meta' in meta:
         swift_meta = load_crypto_meta(meta['swift_meta'])
     return value, swift_meta
+
+
+def decode_secret(b64_secret):
+    """Decode and check a base64 encoded secret key."""
+    binary_secret = strict_b64decode(b64_secret, allow_line_breaks=True)
+    if len(binary_secret) != Crypto.key_length:
+        raise ValueError
+    return binary_secret
