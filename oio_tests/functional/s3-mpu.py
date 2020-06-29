@@ -26,7 +26,7 @@ import os
 ENDPOINT = os.getenv("USE_ENDPOINT", "http://127.0.0.1:5000")
 AWS = ["aws", "--endpoint", ENDPOINT]
 
-random_chars = string.lowercase + string.digits
+random_chars = string.ascii_lowercase + string.digits
 
 
 def random_str(size, chars=random_chars):

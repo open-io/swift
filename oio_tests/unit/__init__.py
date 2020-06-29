@@ -16,7 +16,6 @@
 import sys
 import logging
 from collections import defaultdict
-from contextlib import contextmanager
 from mock import MagicMock as Mock
 from swift.common import utils
 from swift.common.utils import NOTICE
@@ -24,36 +23,6 @@ from oio.api.object_storage import ObjectStorageApi
 from oio.account.client import AccountClient
 from oio.container.client import ContainerClient
 from oio.blob.client import BlobClient
-
-
-class FakeMemcache(object):
-    def __init__(self):
-        self.store = {}
-
-    def get(self, key):
-        return self.store.get(key)
-
-    def keys(self):
-        return self.store.keys()
-
-    def set(self, key, value, time=0):
-        self.store[key] = value
-        return True
-
-    def incr(self, key, time=0):
-        self.store[key] = self.store.setdefault(key, 0) + 1
-        return self.store[key]
-
-    @contextmanager
-    def soft_lock(self, key, timeout=0, retries=5):
-        yield True
-
-    def delete(self, key):
-        try:
-            del self.store[key]
-        except Exception:
-            pass
-        return True
 
 
 class FakeStorageAPI(ObjectStorageApi):
@@ -84,9 +53,9 @@ def debug_logger(name):
 
 
 class FakeLogger(logging.Logger, object):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, name='swift.unit.fake_logger', *args, **kwargs):
+        super(FakeLogger, self).__init__(name, *args, **kwargs)
         self._clear()
-        self.name = 'swift.unit.fake_logger'
         self.level = logging.NOTSET
         if 'facility' in kwargs:
             self.facility = kwargs['facility']
