@@ -84,9 +84,9 @@ def debug_logger(name):
 
 
 class FakeLogger(logging.Logger, object):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, name='swift.unit.fake_logger', *args, **kwargs):
+        super(FakeLogger, self).__init__(name, *args, **kwargs)
         self._clear()
-        self.name = 'swift.unit.fake_logger'
         self.level = logging.NOTSET
         if 'facility' in kwargs:
             self.facility = kwargs['facility']

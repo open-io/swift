@@ -252,6 +252,7 @@ CLIENT_VERSIONS_LOC = 'x-versions-location'
 CLIENT_HISTORY_LOC = 'x-history-location'
 SYSMETA_VERSIONS_LOC = get_sys_meta_prefix('container') + 'versions-location'
 SYSMETA_VERSIONS_MODE = get_sys_meta_prefix('container') + 'versions-mode'
+VERSIONING_SUFFIX = '+versioning'
 
 
 class VersionedWritesContext(WSGIContext):

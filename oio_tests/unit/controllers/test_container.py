@@ -17,9 +17,9 @@ import unittest
 from mock import patch
 from mock import MagicMock as Mock
 
-from oioswift.common.ring import FakeRing
-from oioswift import server as proxy_server
+from swift.common.ring import FakeRing
 from swift.common.swob import Request
+from swift.proxy import oio_server as proxy_server
 from swift.proxy.controllers.base import headers_to_container_info
 from swift.common.request_helpers import get_sys_meta_prefix
 

@@ -20,8 +20,8 @@ from swift.common import constraints
 from swift.common.swob import Request
 from swift.common.request_helpers import get_sys_meta_prefix
 from swift.proxy.controllers.base import headers_to_account_info
-from oioswift.common.ring import FakeRing
-from oioswift import server as proxy_server
+from swift.common.ring import FakeRing
+from swift.proxy import oio_server as proxy_server
 from oio.common import exceptions as oioexc
 from oio_tests.unit import FakeStorageAPI, FakeMemcache, debug_logger
 
