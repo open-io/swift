@@ -993,3 +993,9 @@ def reload_storage_policies():
 _POLICIES = None
 reload_storage_policies()
 POLICIES = StoragePolicySingleton()
+
+_OIO_POLICIES = [
+    StoragePolicy(0, 'SINGLE', True)
+]
+
+OIO_POLICIES = StoragePolicyCollection(_OIO_POLICIES)

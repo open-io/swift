@@ -155,8 +155,8 @@ function run_script() {
 
 function run_functional_test() {
     local conf
-    if [ -f "conf/$1" ]; then
-        conf="conf/$1"
+    if [ -f "etc/$1" ]; then
+        conf="etc/$1"
     else
         conf="$1"
     fi
@@ -165,7 +165,7 @@ function run_functional_test() {
     local test_suites=$(for suite in $*; do echo "oio_tests/functional/${suite}"; done)
     configure_oioswift $conf
 
-    coverage run -p runserver.py $conf -v >/tmp/journal.log 2>&1 &
+    coverage run -p bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
     export GW_CONF=$(readlink -e $conf)
     sleep 1
     PID=$(jobs -p)

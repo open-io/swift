@@ -20,10 +20,10 @@ from swift.common import constraints
 from swift.common.swob import Request
 from swift.common.request_helpers import get_sys_meta_prefix
 from swift.proxy.controllers.base import headers_to_account_info
-from oioswift.common.ring import FakeRing
-from oioswift import server as proxy_server
+from swift.common.ring import FakeRing
+from swift.proxy import oio_server as proxy_server
 from oio.common import exceptions as oioexc
-from oio_tests.unit import FakeStorageAPI, FakeMemcache, debug_logger
+from oio_tests.unit import FakeStorageAPI, debug_logger
 
 
 def get_fake_info(meta={}):
@@ -43,7 +43,7 @@ class TestAccountController(unittest.TestCase):
         self.storage = FakeStorageAPI(logger=self.logger)
 
         self.app = proxy_server.Application(
-            {'sds_namespace': "TEST"}, FakeMemcache(),
+            {'sds_namespace': "TEST"},
             account_ring=FakeRing(), container_ring=FakeRing(),
             storage=self.storage, logger=self.logger)
 

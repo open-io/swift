@@ -12,12 +12,13 @@ addons:
 env:
   matrix:
 #    - TEST_SUITE=iam
-    - TEST_SUITE=s3 # Latest stable/supported versions
-    - TEST_SUITE=s3 SDS_BRANCH=master # Integration with latest versions
-    - TEST_SUITE=encryption
-    - TEST_SUITE=encryption SDS_BRANCH=master
-    - TEST_SUITE=swift
-    - TEST_SUITE=swift SDS_BRANCH=master
+#    - TEST_SUITE=s3 # Latest stable/supported versions
+#    - TEST_SUITE=s3 SDS_BRANCH=master # Integration with latest versions
+    - TEST_SUITE=s3-basic SDS_BRANCH=master # Integration with latest versions
+#    - TEST_SUITE=encryption
+#    - TEST_SUITE=encryption SDS_BRANCH=master
+#    - TEST_SUITE=swift
+#    - TEST_SUITE=swift SDS_BRANCH=master
     - TEST_SUITE=unit
     - TEST_SUITE=unit SDS_BRANCH=master
 
@@ -34,7 +35,7 @@ install:
   - pip install --upgrade -r deps-requirements.txt
   - cd third_party/oio-sds && python setup.py install && cd ../..
   - python setup.py develop
-  - pip install --upgrade -r test-requirements.txt awscli nose-timer
+  - pip install --upgrade -r test-requirements.txt awscli nose-timer s3cmd
   - go get gopkg.in/ini.v1 golang.org/x/sys/unix
   - echo -en "travis_fold:end:install\r"
 
@@ -42,6 +43,3 @@ script:
   - set -e
   - flake8 swift oio_tests
   - ./oio_tests/run_tests.sh "$TEST_SUITE"
-
-after_success:
-  - codecov -X gcov
