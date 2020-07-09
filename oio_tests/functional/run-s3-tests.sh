@@ -18,6 +18,7 @@ RET=0
 # Run all suites in the same environment.
 # They do not share buckets so this should be OK.
 run_functional_test s3-default.cfg \
+    s3-versioning.sh \
     s3-tagging.sh \
     s3-multipart.sh \
     s3-mpu.py \
