@@ -198,7 +198,8 @@ class ContainerController(SwiftContainerController):
         else:
             if not container_list:
                 return HTTPNoContent(request=req, headers=resp_headers)
-            ret.body = '\n'.join(rec['name'] for rec in container_list) + '\n'
+            ret.body = ('\n'.join(rec['name']
+                        for rec in container_list) + '\n').encode('utf-8')
 
         return ret
 
