@@ -1,4 +1,4 @@
-# Copyright (c) 2011-2014 OpenStack Foundation.
+# Copyright (c) 2011-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -835,24 +835,32 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self._test_unsupported_resource('cors')
 
     def test_tagging(self):
+        # More tests are implemented in the test_tagging module.
+        tagset = """<Tagging><TagSet><Tag>
+                        <Key>org</Key><Value>marketing</Value>
+                    </Tag></TagSet></Tagging>"""
         req = Request.blank('/bucket?tagging',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
-        status, headers, body = self.call_s3api(req)
-        self.assertEqual(status.split()[0], '200')
+                                     'Date': self.get_date_header()},
+                            )
+        status, _, _ = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '404')
+
         req = Request.blank('/bucket?tagging',
                             environ={'REQUEST_METHOD': 'PUT'},
                             headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
-        status, headers, body = self.call_s3api(req)
-        self.assertEqual(self._get_error_code(body), 'NotImplemented')
+                                     'Date': self.get_date_header()},
+                            body=tagset)
+        status, _, _ = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '204')
+
         req = Request.blank('/bucket?tagging',
                             environ={'REQUEST_METHOD': 'DELETE'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
-        status, headers, body = self.call_s3api(req)
-        self.assertEqual(self._get_error_code(body), 'NotImplemented')
+        status, _, _ = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '204')
 
     def test_restore(self):
         self._test_unsupported_resource('restore')

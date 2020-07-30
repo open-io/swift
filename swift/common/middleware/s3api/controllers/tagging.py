@@ -1,4 +1,4 @@
-# Copyright (c) 2014 OpenStack Foundation.
+# Copyright (c) 2014-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from swift.common.utils import public
+
+from swift.common.utils import close_if_possible, public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    S3NotImplemented
-from swift.common.middleware.s3api.s3response import HTTPOk
-from swift.common.middleware.s3api.etree import Element, tostring, \
-    SubElement
+    check_container_existence
+from swift.common.middleware.s3api.etree import fromstring, tostring, \
+    DocumentInvalid, Element, SubElement, XMLSyntaxError
+from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
+    MalformedXML, NoSuchTagSet
+from swift.common.middleware.s3api.utils import sysmeta_header
+
+
+SYSMETA_TAGGING_KEY = 'swift3-tagging'
+BUCKET_TAGGING_HEADER = sysmeta_header('bucket', 'tagging')
+OBJECT_TAGGING_HEADER = sysmeta_header('object', 'tagging')
+
+# Not a swift3 header, cannot use sysmeta_header()
+VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
+
+# FIXME(FVE): compute better size estimation according to key/value limits
+# 10 tags with 128b key and 256b value should be 3840 + envelope
+MAX_TAGGING_BODY_SIZE = 8 * 1024
 
 
 class TaggingController(Controller):
@@ -31,27 +46,80 @@ class TaggingController(Controller):
     * DELETE Bucket and Object tagging
 
     """
+
     @public
-    def GET(self, req):
+    @check_container_existence
+    def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket and Object tagging.
         """
-        elem = Element('Tagging')
-        SubElement(elem, 'TagSet')
-        body = tostring(elem)
+        resp = req._get_response(self.app, 'HEAD',
+                                 req.container_name, req.object_name)
+        headers = dict()
+        if req.is_object_request:
+            body = resp.sysmeta_headers.get(OBJECT_TAGGING_HEADER)
+            # It seems that S3 returns x-amz-version-id,
+            # even if it is not documented.
+            headers['x-amz-version-id'] = resp.sw_headers[VERSION_ID_HEADER]
+        else:
+            body = resp.sysmeta_headers.get(BUCKET_TAGGING_HEADER)
+        close_if_possible(resp.app_iter)
 
-        return HTTPOk(body=body, content_type=None)
+        if not body:
+            if not req.is_object_request:
+                raise NoSuchTagSet(headers=headers)
+            else:
+                elem = Element('Tagging')
+                SubElement(elem, 'TagSet')
+                body = tostring(elem)
+
+        return HTTPOk(body=body, content_type='application/xml',
+                      headers=headers)
 
     @public
-    def PUT(self, req):
+    @check_container_existence
+    def PUT(self, req):  # pylint: disable=invalid-name
         """
         Handles PUT Bucket and Object tagging.
         """
-        raise S3NotImplemented('The requested resource is not implemented')
+        body = req.xml(MAX_TAGGING_BODY_SIZE)
+        try:
+            # Just validate the body
+            fromstring(body, 'Tagging')
+        except (DocumentInvalid, XMLSyntaxError) as exc:
+            raise MalformedXML(str(exc))
+
+        if req.object_name:
+            req.headers[OBJECT_TAGGING_HEADER] = body
+        else:
+            req.headers[BUCKET_TAGGING_HEADER] = body
+        resp = req._get_response(self.app, 'POST',
+                                 req.container_name, req.object_name)
+        if resp.status_int == 202:
+            headers = dict()
+            if req.object_name:
+                headers['x-amz-version-id'] = \
+                    resp.sw_headers[VERSION_ID_HEADER]
+            return HTTPOk(headers=headers)
+        return resp
 
     @public
-    def DELETE(self, req):
+    @check_container_existence
+    def DELETE(self, req):  # pylint: disable=invalid-name
         """
         Handles DELETE Bucket and Object tagging.
         """
-        raise S3NotImplemented('The requested resource is not implemented')
+        # Send empty header to remove any previous value.
+        if req.object_name:
+            req.headers[OBJECT_TAGGING_HEADER] = ""
+        else:
+            req.headers[BUCKET_TAGGING_HEADER] = ""
+        resp = req._get_response(self.app, 'POST',
+                                 req.container_name, req.object_name)
+        if resp.status_int == 202:
+            headers = dict()
+            if req.object_name:
+                headers['x-amz-version-id'] = \
+                    resp.sw_headers[VERSION_ID_HEADER]
+            return HTTPNoContent(headers=headers)
+        return resp
