@@ -109,7 +109,7 @@ class S3Response(S3ResponseBase, swob.Response):
                           'content-range', 'content-encoding',
                           'content-disposition', 'content-language',
                           'etag', 'last-modified', 'x-robots-tag',
-                          'cache-control', 'expires'):
+                          'cache-control', 'expires', 'x-amz-version-id'):
                 headers[key] = val
             elif _key == 'x-object-version-id':
                 headers['x-amz-version-id'] = val
@@ -565,6 +565,11 @@ class NoSuchKey(ErrorResponse):
 class NoSuchLifecycleConfiguration(ErrorResponse):
     _status = '404 Not Found'
     _msg = 'The lifecycle configuration does not exist. .'
+
+
+class NoSuchTagSet(ErrorResponse):
+    _status = '404 Not Found'
+    _msg = 'There is no tag set associated with the bucket or object.'
 
 
 class NoSuchUpload(ErrorResponse):

@@ -21,6 +21,7 @@ run_functional_test s3-default.cfg \
     s3-acl-metadata.sh \
     buckets-listing.sh \
     s3-marker.sh \
+    s3-tagging.sh \
     s3-basic-test.py
 
 # TODO(FVE): gridinit_cmd stop
