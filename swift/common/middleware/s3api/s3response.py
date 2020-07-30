@@ -68,7 +68,7 @@ def translate_swift_to_s3(key, val):
                   'content-range', 'content-encoding',
                   'content-disposition', 'content-language',
                   'etag', 'last-modified', 'x-robots-tag',
-                  'cache-control', 'expires'):
+                  'cache-control', 'expires', 'x-amz-version-id'):
         return key, val
     elif _key == 'x-object-version-id':
         return 'x-amz-version-id', val
@@ -601,6 +601,11 @@ class NoSuchKey(ErrorResponse):
 class NoSuchLifecycleConfiguration(ErrorResponse):
     _status = '404 Not Found'
     _msg = 'The lifecycle configuration does not exist. .'
+
+
+class NoSuchTagSet(ErrorResponse):
+    _status = '404 Not Found'
+    _msg = 'There is no tag set associated with the bucket or object.'
 
 
 class NoSuchUpload(ErrorResponse):
