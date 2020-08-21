@@ -55,7 +55,8 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     MissingContentLength, InvalidStorageClass, S3NotImplemented, InvalidURI, \
     MalformedXML, InvalidRequest, RequestTimeout, InvalidBucketName, \
     BadDigest, AuthorizationHeaderMalformed, SlowDown, \
-    AuthorizationQueryParametersError, ServiceUnavailable, BrokenMPU
+    AuthorizationQueryParametersError, ServiceUnavailable, BrokenMPU, \
+    NoSuchVersion
 from swift.common.middleware.s3api.exception import NotS3Request, \
     BadSwiftRequest
 from swift.common.middleware.s3api.utils import utf8encode, \
@@ -1293,6 +1294,9 @@ class S3Request(swob.Request):
                 if container.endswith(MULTIUPLOAD_SUFFIX) or \
                         is_success(get_container_info(
                             env, app, swift_source='S3').get('status')):
+                    if 'versionId' in self.params:
+                        # TODO(FVE): check there is another version
+                        return NoSuchVersion(obj, self.params['versionId'])
                     return NoSuchKey(obj)
                 return NoSuchBucket(container)
 
@@ -1339,6 +1343,11 @@ class S3Request(swob.Request):
             container = self.container_name
         if obj is None:
             obj = self.object_name
+        if (obj and 'versionId' in self.params and (
+                not query or 'version-id' not in query)):
+            if query is None:
+                query = dict()
+            query['version-id'] = self.params['versionId']
 
         sw_req = self.to_swift_req(method, container, obj, headers=headers,
                                    body=body, query=query)

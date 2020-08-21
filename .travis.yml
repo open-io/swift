@@ -13,7 +13,7 @@ env:
   matrix:
 #    - TEST_SUITE=iam
 #    - TEST_SUITE=s3 # Latest stable/supported versions
-#    - TEST_SUITE=s3 SDS_BRANCH=master # Integration with latest versions
+    - TEST_SUITE=s3 SDS_BRANCH=master # Integration with latest versions
     - TEST_SUITE=s3-basic SDS_BRANCH=master # Integration with latest versions
 #    - TEST_SUITE=encryption
 #    - TEST_SUITE=encryption SDS_BRANCH=master
@@ -31,7 +31,7 @@ install:
   - pip install --upgrade pip setuptools virtualenv tox flake8
   - test -n "$SDS_BRANCH" && git config --local submodule.third_party/oio-sds.branch "$SDS_BRANCH" || true
   - git submodule update --init --remote
-  - ( grep -v -e "PyECLib" -e "requests" -e "six" third_party/oio-sds/all-requirements.txt ; grep -v -e "eventlet" -e "lxml" requirements.txt ) | sort > deps-requirements.txt
+  - ( grep -v -e "PyECLib" -e "requests" -e "six" third_party/oio-sds/all-requirements.txt ; grep -v -e "eventlet" -e "lxml" -e "xattr" requirements.txt ) | sort > deps-requirements.txt
   - pip install --upgrade -r deps-requirements.txt
   - cd third_party/oio-sds && python setup.py install && cd ../..
   - python setup.py develop

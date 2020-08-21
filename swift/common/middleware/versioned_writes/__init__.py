@@ -1,4 +1,4 @@
-# Copyright (c) 2019 OpenStack Foundation
+# Copyright (c) 2019-2020 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ from swift.common.middleware.versioned_writes. \
     VersionedWritesMiddleware
 from swift.common.middleware.versioned_writes. \
     object_versioning import ObjectVersioningMiddleware
+from swift.common.middleware.versioned_writes. \
+    oio_object_versioning import OioObjectVersioningMiddleware
 
 from swift.common.utils import config_true_value
 from swift.common.registry import register_swift_info, get_swift_info
@@ -39,6 +41,8 @@ def filter_factory(global_conf, **local_conf):
 
     allow_object_versioning = config_true_value(conf.get(
         'allow_object_versioning'))
+    allow_oio_versioning = config_true_value(conf.get(
+        'allow_oio_versioning'))
     if allow_object_versioning:
         register_swift_info('object_versioning')
 
@@ -46,6 +50,11 @@ def filter_factory(global_conf, **local_conf):
         if allow_object_versioning:
             if 'symlink' not in get_swift_info():
                 raise ValueError('object versioning requires symlinks')
+            if allow_oio_versioning:
+                vfunc = OioObjectVersioningMiddleware.is_valid_version_id
+                register_swift_info('object_versioning',
+                                    is_valid_version_id=vfunc)
+                return OioObjectVersioningMiddleware(app, conf)
             app = ObjectVersioningMiddleware(app, conf)
         return VersionedWritesMiddleware(app, conf)
     return versioning_filter

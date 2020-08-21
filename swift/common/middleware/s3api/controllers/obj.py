@@ -20,7 +20,7 @@ from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
     normalize_etag
-from swift.common.utils import public, list_from_csv
+from swift.common.utils import public, list_from_csv, config_true_value
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.versioned_writes.object_versioning import \
@@ -30,6 +30,23 @@ from swift.common.middleware.s3api.controllers.base import Controller
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError
+
+
+def version_id_param(req):
+    """
+    Get the version ID specified by the request, if any.
+    """
+    version_id = req.params.get('versionId')
+    if version_id not in ('null', None):
+        obj_vers_info = get_swift_info().get('object_versioning')
+        if obj_vers_info is None:
+            raise S3NotImplemented()
+        is_valid_version = obj_vers_info.get('is_valid_version_id',
+                                             lambda x: True)
+        if not is_valid_version(version_id):
+            raise InvalidArgument('versionId', version_id,
+                                  'Invalid version id specified')
+    return version_id
 
 
 class ObjectController(Controller):
@@ -86,10 +103,7 @@ class ObjectController(Controller):
             update_etag_is_at_header(req, sysmeta_header('object', 'etag'))
 
         object_name = req.object_name
-        version_id = req.params.get('versionId')
-        if version_id not in ('null', None) and \
-                'object_versioning' not in get_swift_info():
-            raise S3NotImplemented()
+        version_id = version_id_param(req)
 
         query = {} if version_id is None else {'version-id': version_id}
         if version_id not in ('null', None):
@@ -195,17 +209,20 @@ class ObjectController(Controller):
             break
         return resp
 
+    def _versioning_enabled(self, req):
+        """
+        Tell if versioning is enabled for the container specified by req.
+        """
+        container_info = req.get_container_info(self.app)
+        return config_true_value(
+            container_info.get('sysmeta', {}).get('versions-enabled', False))
+
     @public
     def DELETE(self, req):
         """
         Handle DELETE Object request
         """
-        if 'versionId' in req.params and \
-                req.params['versionId'] != 'null' and \
-                'object_versioning' not in get_swift_info():
-            raise S3NotImplemented()
-
-        version_id = req.params.get('versionId')
+        version_id = version_id_param(req)
         if version_id not in ('null', None):
             container_info = req.get_container_info(self.app)
             if not container_info.get(
@@ -217,7 +234,7 @@ class ObjectController(Controller):
             try:
                 query = req.gen_multipart_manifest_delete_query(
                     self.app, version=version_id)
-            except NoSuchKey:
+            except (NoSuchKey, NoSuchVersion):
                 query = {}
 
             req.headers['Content-Type'] = None  # Ignore client content-type
@@ -225,6 +242,9 @@ class ObjectController(Controller):
             if version_id is not None:
                 query['version-id'] = version_id
                 query['symlink'] = 'get'
+            # FIXME(FVE): only do this when allow_oio_versioning is true
+            elif self._versioning_enabled(req):
+                query.pop('multipart-manifest', None)
 
             resp = req.get_response(self.app, query=query)
             if query.get('multipart-manifest') and resp.status_int == HTTP_OK:
@@ -236,7 +256,7 @@ class ObjectController(Controller):
                 new_resp = self._restore_on_delete(req)
                 if new_resp:
                     resp = new_resp
-        except NoSuchKey:
+        except (NoSuchKey, NoSuchVersion):
             # expect to raise NoSuchBucket when the bucket doesn't exist
             req.get_container_info(self.app)
             # else -- it's gone! Success.
