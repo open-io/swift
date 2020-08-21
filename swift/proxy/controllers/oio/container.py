@@ -20,23 +20,21 @@ from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
     handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX
 from swift.common.utils import public, Timestamp, \
-    override_bytes_from_content_type
+    config_true_value, override_bytes_from_content_type
 from swift.common.constraints import check_metadata
 from swift.common import constraints
-try:
-    from swift.common.middleware.listing_formats import \
-        get_listing_content_type
-except ImportError:
-    # Before Queens
-    from swift.common.request_helpers import get_listing_content_type
+from swift.common.middleware.listing_formats import get_listing_content_type
 
+from swift.common.middleware.versioned_writes.object_versioning import \
+    CLIENT_VERSIONS_ENABLED, SYSMETA_VERSIONS_CONT
 from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.swob import Response, HTTPBadRequest, HTTPNotFound, \
     HTTPNoContent, HTTPConflict, HTTPPreconditionFailed, HTTPForbidden, \
     HTTPCreated
 from swift.common.http import is_success, HTTP_ACCEPTED
-from swift.common.request_helpers import is_sys_or_user_meta, get_param
+from swift.common.request_helpers import is_sys_or_user_meta, get_param, \
+    get_reserved_name
 from swift.proxy.controllers.container import ContainerController \
     as SwiftContainerController
 from swift.proxy.controllers.base import clear_info_cache, \
@@ -49,7 +47,7 @@ class ContainerController(SwiftContainerController):
 
     pass_through_headers = ['x-container-read', 'x-container-write',
                             'x-container-sync-key', 'x-container-sync-to',
-                            'x-versions-location']
+                            'x-versions-enabled', 'x-versions-location']
 
     @handle_oio_no_such_container
     @handle_oio_timeout
@@ -111,6 +109,16 @@ class ContainerController(SwiftContainerController):
             if v and (k.lower() in self.pass_through_headers or
                       is_sys_or_user_meta('container', k)):
                 headers[k] = v
+        # HACK: oio-sds always sets version numbers, so let some middlewares
+        # think that versioning is always enabled.
+        if SYSMETA_VERSIONS_CONT not in headers and 'sys.user.name' in system:
+            try:
+                v_con = get_reserved_name('versions', system['sys.user.name'])
+                headers[SYSMETA_VERSIONS_CONT] = v_con
+            except ValueError:
+                # sys.user.name contains reserved characters
+                # -> this is probably a versioning container.
+                pass
         return headers
 
     def get_container_list_resp(self, req):
@@ -220,7 +228,8 @@ class ContainerController(SwiftContainerController):
                     'bytes': record['size'],
                     'last_modified': Timestamp(record['mtime']).isoformat,
                     'content_type': record.get(
-                        'mime_type', 'application/octet-stream')}
+                        'mime_type', 'application/octet-stream'),
+                    'is_latest': record.get('is_latest', True)}
         if hash_:
             response['hash'] = hash_
         if record.get('deleted', False):
@@ -268,11 +277,17 @@ class ContainerController(SwiftContainerController):
         }
 
         system = dict()
-        # This header enables versioning
+        # This headers enable versioning.
+        # First the legacy one.
         ver_loc = headers.get('X-Container-Sysmeta-Versions-Location')
         if ver_loc is not None:
             # When suspending versioning, header has empty string value
             ver_val = "-1" if ver_loc else "1"
+            system['sys.m2.policy.version'] = ver_val
+        # Then the new one.
+        vers_enabled = headers.get(CLIENT_VERSIONS_ENABLED)
+        if vers_enabled is not None:
+            ver_val = "-1" if config_true_value(vers_enabled) else "1"
             system['sys.m2.policy.version'] = ver_val
 
         return metadata, system
