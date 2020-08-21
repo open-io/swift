@@ -165,7 +165,7 @@ from swift.common.swob import HTTPPreconditionFailed, HTTPServiceUnavailable, \
     HTTPBadRequest, str_to_wsgi, bytes_to_wsgi, wsgi_quote, \
     wsgi_to_str, wsgi_unquote, Request, HTTPNotFound, HTTPException, \
     HTTPRequestEntityTooLarge, HTTPInternalServerError, HTTPNotAcceptable, \
-    HTTPConflict
+    HTTPConflict, normalize_etag
 from swift.common.storage_policy import POLICIES
 from swift.common.utils import get_logger, Timestamp, drain_and_close, \
     config_true_value, close_if_possible, closing_if_possible, \
@@ -500,7 +500,7 @@ class ObjectContext(ObjectVersioningContext):
                                                 object_name)
 
         # and add an static symlink to original container
-        target_etag = put_resp.headers['Etag']
+        target_etag = normalize_etag(put_resp.headers['Etag'])
         return self._put_symlink_to_version(req, versions_cont,
                                             put_vers_obj_name, api_version,
                                             account_name, object_name,

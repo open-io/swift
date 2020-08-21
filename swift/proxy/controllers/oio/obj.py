@@ -28,7 +28,8 @@ from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
-    REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX
+    REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
+    obj_version_from_env
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPNotFound, \
     HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
@@ -244,7 +245,7 @@ class ObjectController(BaseObjectController):
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('oio.perfdata')
-        version = req.environ.get('oio.query', {}).get('version')
+        version = obj_version_from_env(req.environ)
         force_master = False
         while True:
             try:
@@ -313,7 +314,7 @@ class ObjectController(BaseObjectController):
                 metadata, stream = storage.object_fetch(
                     self.account_name, self.container_name, self.object_name,
                     ranges=ranges, headers=oio_headers,
-                    version=req.environ.get('oio.query', {}).get('version'),
+                    version=obj_version_from_env(req.environ),
                     force_master=force_master, cache=oio_cache,
                     perfdata=perfdata)
                 break
@@ -427,7 +428,7 @@ class ObjectController(BaseObjectController):
             self.app.storage.object_set_properties(
                 self.account_name, self.container_name, self.object_name,
                 metadata, clear=clear, headers=oio_headers,
-                version=req.environ.get('oio.query', {}).get('version'),
+                version=obj_version_from_env(req.environ),
                 cache=oio_cache, perfdata=perfdata)
         except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
             return HTTPNotFound(request=req)
@@ -566,7 +567,7 @@ class ObjectController(BaseObjectController):
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('oio.perfdata')
         # FIXME(FVE): use object_show, cache in req.environ
-        version = req.environ.get('oio.query', {}).get('version')
+        version = obj_version_from_env(req.environ)
         props = storage.object_get_properties(from_account, container, obj,
                                               headers=oio_headers,
                                               version=version,
@@ -740,11 +741,15 @@ class ObjectController(BaseObjectController):
 
         last_modified = int(_meta.get('mtime', math.ceil(time.time())))
 
+        # FIXME(FVE): if \x10 character in object name, decode version
+        # number and set it in the response headers, instead of the oio
+        # version number.
+        version_id = _meta.get('version', 'null')
         resp = HTTPCreated(
             request=req, etag=checksum,
             last_modified=last_modified,
             headers={
-                'x-object-sysmeta-version-id': _meta.get('version', None)
+                'x-object-sysmeta-version-id': version_id
             })
         return resp
 
@@ -800,7 +805,7 @@ class ObjectController(BaseObjectController):
         try:
             storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
-                version=req.environ.get('oio.query', {}).get('version'),
+                version=obj_version_from_env(req.environ),
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
