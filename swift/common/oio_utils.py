@@ -28,6 +28,19 @@ BUCKET_NAME_PROP = "sys.m2.bucket.name"
 MULTIUPLOAD_SUFFIX = '+segments'
 
 
+def obj_version_from_env(env):
+    """
+    Fetch an object version from a request environment dictionary.
+
+    This discards 'null' versions since they are not supported by the
+    oio backend.
+    """
+    vers = env.get('oio.query', {}).get('version')
+    if isinstance(vers, str) and vers.lower() == 'null':
+        vers = None
+    return vers
+
+
 def handle_service_busy(fnc):
     @wraps(fnc)
     def _service_busy_wrapper(self, req, *args, **kwargs):
@@ -97,7 +110,7 @@ def check_if_none_match(fnc):
         try:
             metadata = self.app.storage.object_get_properties(
                 self.account_name, self.container_name, self.object_name,
-                version=req.environ.get('oio.query', {}).get('version'),
+                version=obj_version_from_env(req.environ),
                 headers=oio_headers)
         except (NoSuchObject, NoSuchContainer):
             return fnc(self, req, *args, **kwargs)
