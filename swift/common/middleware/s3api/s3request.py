@@ -919,17 +919,18 @@ class S3Request(swob.Request):
             raise PreconditionFailed()
 
         if (self.container_name == src_bucket and
-                self.object_name == src_obj and
-                self.headers.get('x-amz-metadata-directive',
-                                 'COPY') == 'COPY' and
-                not query):
-            raise InvalidRequest("This copy request is illegal "
-                                 "because it is trying to copy an "
-                                 "object to itself without "
-                                 "changing the object's metadata, "
-                                 "storage class, website redirect "
-                                 "location or encryption "
-                                 "attributes.")
+                self.object_name == src_obj):
+            if (self.headers.get('x-amz-metadata-directive',
+                                 'COPY') == 'COPY' and not query):
+                raise InvalidRequest("This copy request is illegal "
+                                     "because it is trying to copy an "
+                                     "object to itself without "
+                                     "changing the object's metadata, "
+                                     "storage class, website redirect "
+                                     "location or encryption "
+                                     "attributes.")
+            else:
+                self.environ['s3api.copy_to_itself'] = True
         # We've done some normalizing; write back so it's ready for
         # to_swift_req
         self.headers['X-Amz-Copy-Source'] = quote(src_path)
@@ -1149,6 +1150,10 @@ class S3Request(swob.Request):
                 for key in list(env.keys()):
                     if key.startswith('HTTP_X_OBJECT_META_'):
                         del env[key]
+            if env.get('s3api.copy_to_itself', False):
+                if query is None:
+                    query = dict()
+                query['multipart-manifest'] = 'get'
 
         if self.conf.force_swift_request_proxy_log:
             env['swift.proxy_access_log_made'] = False
