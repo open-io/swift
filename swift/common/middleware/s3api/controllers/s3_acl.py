@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from six.moves.urllib.parse import quote
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller
@@ -51,17 +50,7 @@ class S3AclController(Controller):
         """
         Handles PUT Bucket acl and PUT Object acl.
         """
-        if req.is_object_request:
-            headers = {}
-            src_path = '/%s/%s' % (req.container_name, req.object_name)
-
-            # object-sysmeta' can be updated by 'Copy' method,
-            # but can not be by 'POST' method.
-            # So headers['X-Copy-From'] for copy request is added here.
-            headers['X-Copy-From'] = quote(src_path)
-            headers['Content-Length'] = 0
-            req.get_response(self.app, 'PUT', headers=headers)
-        else:
-            req.get_response(self.app, 'POST')
+        # ACLs will be set as sysmeta
+        req.get_response(self.app, 'POST')
 
         return HTTPOk()
