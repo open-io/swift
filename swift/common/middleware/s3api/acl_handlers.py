@@ -291,6 +291,9 @@ class S3AclHandler(BaseAclHandler):
                     'Grant %s %s permission on the bucket /%s' %
                     (g.grantee, g.permission, self.req.container_name))
             self.req.bucket_acl = req_acl
+        elif self.req.is_object_request:
+            # Same behavior
+            return self.PUT(app)
         else:
             self._handle_acl(app, self.method)
 
