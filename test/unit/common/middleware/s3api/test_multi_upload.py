@@ -50,6 +50,18 @@ XML = '<CompleteMultipartUpload>' \
     '</Part>' \
     '</CompleteMultipartUpload>'
 
+OBJECT_MANIFEST = \
+    [{'bytes': 11,
+      'content_type': 'application/octet-stream',
+      'etag': '0123456789abcdef',
+      'last_modified': '2018-05-21T08:40:58.000000',
+      'path': '/bucket+segments/object/X/1'},
+     {'bytes': 21,
+      'content_type': 'application/octet-stream',
+      'etag': 'fedcba9876543210',
+      'last_modified': '2018-05-21T08:40:59.000000',
+      'path': '/bucket+segments/object/X/2'}]
+
 OBJECTS_TEMPLATE = \
     (('object/X/1', '2014-05-07T19:47:51.592270', '0123456789abcdef', 100),
      ('object/X/2', '2014-05-07T19:47:52.592270', 'fedcba9876543210', 200))
@@ -80,7 +92,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def setUp(self):
         super(TestS3ApiMultiUpload, self).setUp()
 
-        segment_bucket = '/v1/AUTH_test/bucket+segments'
+        bucket = '/v1/AUTH_test/bucket'
+        segment_bucket = bucket + '+segments'
         self.etag = '7dfa07a8e59ddbcd1dc84d4c4f82aea1'
         self.last_modified = 'Fri, 01 Apr 2014 12:00:00 GMT'
         put_headers = {'etag': self.etag, 'last-modified': self.last_modified}
@@ -128,6 +141,20 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             swob.HTTPNoContent, {}, None)
         self.swift.register('DELETE', segment_bucket + '/object/X/2',
                             swob.HTTPNoContent, {}, None)
+
+        mp_manifest = bucket + '/object?format=raw&multipart-manifest=get'
+        self.swift.register('GET', mp_manifest,
+                            swob.HTTPOk,
+                            {'content-type': 'application/x-sharedlib',
+                             'X-Object-Sysmeta-Swift3-Etag': S3_ETAG,
+                             'X-Static-Large-Object': 'True'},
+                            json.dumps(OBJECT_MANIFEST))
+        self.swift.register('HEAD', segment_bucket + '/object/X/1',
+                            swob.HTTPOk,
+                            {'etag': '0123456789abcdef',
+                             'content-type': 'application/octet-stream',
+                             'content-length': '11'},
+                            None)
 
     @s3acl
     def test_bucket_upload_part(self):
@@ -1554,6 +1581,29 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             body='part object')
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '200')
+
+    def _test_object_head_part(self, part_number=1):
+        req = Request.blank('/bucket/object?partNumber=%d' % part_number,
+                            environ={'REQUEST_METHOD': 'HEAD'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=None)
+        return self.call_s3api(req)
+
+    @s3acl
+    def test_object_head_part(self):
+        status, headers, body = self._test_object_head_part()
+        self.assertEqual('200', status.split()[0])
+        self.assertFalse(body)
+        self.assertIn('ETag', headers)
+        self.assertIn('X-Amz-Mp-Parts-Count', headers)
+        self.assertEqual(S3_ETAG, headers['ETag'])
+        self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+
+    @s3acl
+    def test_object_head_part_error(self):
+        status, headers, body = self._test_object_head_part(12)
+        self.assertEqual('416', status.split()[0])
 
     @s3acl
     def test_object_list_parts_error(self):
