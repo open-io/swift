@@ -125,7 +125,7 @@ def run_test(bucket, path):
     assert data.get('ContentLength', -1) == mpu_size
 
     # create a new object MPU by copying previous object as part of new object
-    path2 = "dédé/copie"
+    path2 = u"dédéŝ/copie"
     data = run_aws("s3api", "create-multipart-upload", "--bucket", bucket,
                    "--key", path2)
     upload_id = data['UploadId']
@@ -144,7 +144,7 @@ def run_test(bucket, path):
                    "--key", path2, "--upload-id", upload_id,
                    "--multipart-upload", json.dumps({"Parts": copy_mpu_parts}))
     print(data, copy_mpu_parts)
-    assert data['Key'] == path2.decode('utf-8')
+    assert data['Key'] == path2
     assert data['ETag'].endswith('-2"')
 
     data = run_aws("s3api", "head-object", "--bucket", bucket, "--key", path2)
