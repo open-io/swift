@@ -68,10 +68,13 @@ import time
 import six
 
 from swift.common import constraints
-from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, wsgi_to_str
-from swift.common.utils import json, public, reiterate, md5
+from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, \
+    str_to_wsgi, wsgi_to_str
+from swift.common.utils import json, public, reiterate, md5, list_from_csv, \
+    close_if_possible
 from swift.common.db import utf8encode
-from swift.common.request_helpers import get_container_update_override_key
+from swift.common.request_helpers import get_container_update_override_key, \
+    update_etag_is_at_header
 
 from six.moves.urllib.parse import quote, urlparse
 
@@ -81,7 +84,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     ErrorResponse, MalformedXML, BadDigest, KeyTooLongError, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
-    NoSuchBucket, BucketAlreadyOwnedByYou
+    NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange
 from swift.common.middleware.s3api.exception import BadSwiftRequest
 from swift.common.middleware.s3api.utils import unique_id, \
     MULTIUPLOAD_SUFFIX, S3Timestamp, sysmeta_header
@@ -144,6 +147,8 @@ def _make_complete_body(req, s3_etag, yielded_anything):
 
     SubElement(result_elem, 'Location').text = host_url + req.path
     SubElement(result_elem, 'Bucket').text = req.container_name
+    # The client application wants the same key as is the request, not
+    # the internal representation, hence the call to wsgi_to_str.
     SubElement(result_elem, 'Key').text = wsgi_to_str(req.object_name)
     SubElement(result_elem, 'ETag').text = '"%s"' % s3_etag
     body = tostring(result_elem, xml_declaration=not yielded_anything)
@@ -161,6 +166,23 @@ class PartController(Controller):
 
     Those APIs are logged as PART operations in the S3 server log.
     """
+
+    def parse_part_number(self, req):
+        """
+        Parse the part number from query string.
+        Raise InvalidArgument if missing or invalid.
+        """
+        try:
+            part_number = int(req.params['partNumber'])
+            if part_number < 1 or self.conf.max_upload_part_num < part_number:
+                raise Exception()
+        except Exception:
+            err_msg = 'Part number must be an integer between 1 and %d,' \
+                      ' inclusive' % self.conf.max_upload_part_num
+            raise InvalidArgument('partNumber', req.params['partNumber'],
+                                  err_msg)
+        return part_number
+
     @public
     @object_operation
     @check_container_existence
@@ -173,15 +195,7 @@ class PartController(Controller):
             raise InvalidArgument('ResourceType', 'partNumber',
                                   'Unexpected query string parameter')
 
-        try:
-            part_number = int(req.params['partNumber'])
-            if part_number < 1 or self.conf.max_upload_part_num < part_number:
-                raise Exception()
-        except Exception:
-            err_msg = 'Part number must be an integer between 1 and %d,' \
-                      ' inclusive' % self.conf.max_upload_part_num
-            raise InvalidArgument('partNumber', req.params['partNumber'],
-                                  err_msg)
+        part_number = self.parse_part_number(req)
 
         upload_id = req.params['uploadId']
         _get_upload_info(req, self.app, upload_id)
@@ -236,6 +250,94 @@ class PartController(Controller):
 
         resp.status = 200
         return resp
+
+    @public
+    @object_operation
+    @check_container_existence
+    def GET(self, req):
+        """
+        Handles Get Part (regular Get but with ?part-number=N).
+        """
+        return self.GETorHEAD(req)
+
+    @public
+    @object_operation
+    @check_container_existence
+    def HEAD(self, req):
+        """
+        Handles Head Part (regular HEAD but with ?part-number=N).
+        """
+        return self.GETorHEAD(req)
+
+    def GETorHEAD(self, req):
+        """
+        Handled GET or HEAD request on a part of a multipart object.
+        """
+        part_number = self.parse_part_number(req)
+
+        had_match = False
+        for match_header in ('if-match', 'if-none-match'):
+            if match_header not in req.headers:
+                continue
+            had_match = True
+            for value in list_from_csv(req.headers[match_header]):
+                if value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
+                if value.endswith('-N'):
+                    # Deal with fake S3-like etags for SLOs uploaded via Swift
+                    req.headers[match_header] += ', ' + value[:-2]
+
+        if had_match:
+            # Update where to look
+            update_etag_is_at_header(req, sysmeta_header('object', 'etag'))
+
+        # Get the list of parts. Must be raw to get all response headers.
+        slo_resp = req.get_response(
+            self.app, 'GET', req.container_name, req.object_name,
+            query={'multipart-manifest': 'get', 'format': 'raw'})
+
+        # Check if the object is really a SLO. If not, and user asked
+        # for the first part, do a regular request.
+        if 'X-Static-Large-Object' not in slo_resp.sw_headers:
+            if part_number == 1:
+                if slo_resp.is_success and req.method == 'HEAD':
+                    # Clear body
+                    slo_resp.body = ''
+                return slo_resp
+            else:
+                close_if_possible(slo_resp.app_iter)
+                raise InvalidRange()
+
+        # Locate the part
+        slo = json.loads(slo_resp.body)
+        try:
+            part = slo[part_number - 1]
+        except IndexError:
+            raise InvalidRange()
+
+        # Redirect the request on the part
+        _, req.container_name, req.object_name = part['path'].split('/', 2)
+        req.container_name = str_to_wsgi(req.container_name)
+        req.object_name = str_to_wsgi(req.object_name)
+        # The etag check was performed with the manifest
+        if had_match:
+            for match_header in ('if-match', 'if-none-match'):
+                req.headers.pop(match_header, None)
+        resp = req.get_response(self.app)
+
+        # Replace status
+        slo_resp.status = resp.status
+        # Replace body
+        slo_resp.body = None
+        slo_resp.app_iter = resp.app_iter
+        # Update with the size of the part
+        slo_resp.headers['Content-Length'] = \
+            resp.headers.get('Content-Length', 0)
+        slo_resp.sw_headers['Content-Length'] = \
+            slo_resp.headers['Content-Length']
+        # Add the number of parts in this object
+        slo_resp.headers['X-Amz-Mp-Parts-Count'] = len(slo)
+        return slo_resp
 
 
 class UploadsController(Controller):
@@ -699,7 +801,6 @@ class UploadController(Controller):
                                           for c in etag):
                     raise InvalidPart(upload_id=upload_id,
                                       part_number=part_number)
-
                 manifest.append({
                     'path': '/%s/%s/%s/%d' % (
                         wsgi_to_str(container), wsgi_to_str(req.object_name),
