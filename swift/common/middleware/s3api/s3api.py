@@ -150,6 +150,8 @@ from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
+from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
+    BucketDbWrapper
 from swift.common.middleware.s3api.exception import NotS3Request, \
     InvalidSubresource
 from swift.common.middleware.s3api.s3request import get_request_class
@@ -280,9 +282,13 @@ class S3ApiMiddleware(object):
             conf, log_route=conf.get('log_name', 's3api'))
         self.slo_enabled = self.conf.allow_multipart_uploads
         self.check_pipeline(self.conf)
+        self.bucket_db = get_bucket_db(conf)
 
     def __call__(self, env, start_response):
         try:
+            # XXX(FVE): this should be done in an independant middleware
+            if self.bucket_db:
+                env['s3api.bucket_db'] = BucketDbWrapper(self.bucket_db)
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(
                 env, self.app, self.slo_enabled, self.conf.storage_domain,
