@@ -83,7 +83,7 @@ from six.moves.configparser import (ConfigParser, NoSectionError,
                                     NoOptionError, RawConfigParser)
 from six.moves import range, http_client
 from six.moves.urllib.parse import quote as _quote, unquote
-from six.moves.urllib.parse import urlparse
+from six.moves.urllib.parse import parse_qs, urlparse
 from six.moves import UserList
 
 from swift import gettext_ as _
@@ -6549,3 +6549,17 @@ class WatchdogTimeout(object):
 
     def __exit__(self, type, value, traceback):
         self.watchdog.stop(self.key)
+
+
+def parse_connection_string(conn_str):
+    """
+    Get the connection scheme, network host (or hosts)
+    and a dictionary of extra arguments from a connection string.
+
+    Example:
+    >>> parse_conn_str('redis://10.0.1.27:666,10.0.1.25:667?opt1=val1&opt2=5')
+    ('redis', '10.0.1.27:666,10.0.1.25:667', {'opt1': 'val1', 'opt2': '5'})
+    """
+    scheme, netloc, _, _, query, _ = urlparse(conn_str)
+    kwargs = {k: ','.join(v) for k, v in parse_qs(query).items()}
+    return scheme, netloc, kwargs
