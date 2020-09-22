@@ -1,4 +1,4 @@
-# Copyright (c) 2014 OpenStack Foundation.
+# Copyright (c) 2014-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,12 +33,15 @@ from swift.common.middleware.s3api.controllers.versioning import \
     VersioningController
 from swift.common.middleware.s3api.controllers.tagging import \
     TaggingController
+from swift.common.middleware.s3api.controllers.unique_bucket import \
+    UniqueBucketController
 
 __all__ = [
     'Controller',
     'ServiceController',
     'BucketController',
     'ObjectController',
+    'UniqueBucketController',
 
     'AclController',
     'S3AclController',
