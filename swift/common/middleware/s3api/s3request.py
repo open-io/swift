@@ -1,4 +1,4 @@
-# Copyright (c) 2014 OpenStack Foundation.
+# Copyright (c) 2014-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     LocationController, LoggingStatusController, PartController, \
     UploadController, UploadsController, VersioningController, \
     UnsupportedController, S3AclController, BucketController, \
-    TaggingController
+    TaggingController, UniqueBucketController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
@@ -537,14 +537,18 @@ class S3Request(swob.Request):
         self.bucket_in_host = self._parse_host()
         self.container_name, self.object_name = self._parse_uri()
         self._validate_headers()
-        # Lock in string-to-sign now, before we start messing with query params
-        self.string_to_sign = self._string_to_sign()
-        self.environ['s3api.auth_details'] = {
-            'access_key': self.access_key,
-            'signature': self.signature,
-            'string_to_sign': self.string_to_sign,
-            'check_signature': self.check_signature,
-        }
+        if not self._is_anonymous:
+            # Lock in string-to-sign now, before we start messing
+            # with query params
+            self.string_to_sign = self._string_to_sign()
+            self.environ['s3api.auth_details'] = {
+                'access_key': self.access_key,
+                'signature': self.signature,
+                'string_to_sign': self.string_to_sign,
+                'check_signature': self.check_signature,
+            }
+        else:
+            self.string_to_sign = None
         self.account = None
         self.user_id = None
 
@@ -601,7 +605,15 @@ class S3Request(swob.Request):
 
     @property
     def _is_query_auth(self):
-        return 'AWSAccessKeyId' in self.params
+        return ('AWSAccessKeyId' in self.params or
+                'X-Amz-Credential' in self.params)
+
+    @property
+    def _is_anonymous(self):
+        return (not self._is_header_auth and
+                'Signature' not in self.params and
+                'Expires' not in self.params and
+                'X-Amz-Credential' not in self.params)
 
     def _parse_host(self):
         if not self.conf.storage_domains:
@@ -691,6 +703,10 @@ class S3Request(swob.Request):
         elif self._is_header_auth:
             self._validate_dates()
             return self._parse_header_authentication()
+        elif self.bucket_db and self._is_allowed_anonymous_request():
+            # This is an anonymous request, we will have to resolve the
+            # account name from the bucket name thanks to the bucket DB.
+            return None, None
         else:
             # if this request is neither query auth nor header auth
             # s3api regard this as not s3 request
@@ -721,6 +737,9 @@ class S3Request(swob.Request):
         :raises: AccessDenied
         :raises: RequestTimeTooSkewed
         """
+        if self._is_anonymous:
+            return
+
         date_header = self.headers.get('Date')
         amz_date_header = self.headers.get('X-Amz-Date')
         if not date_header and not amz_date_header:
@@ -1054,6 +1073,8 @@ class S3Request(swob.Request):
 
         if self.is_object_request:
             return ObjectController
+        elif self.bucket_db:
+            return UniqueBucketController
         return BucketController
 
     @property
@@ -1072,18 +1093,29 @@ class S3Request(swob.Request):
     def is_authenticated(self):
         return self.account is not None
 
+    @property
+    def bucket_db(self):
+        return self.environ.get('s3api.bucket_db')
+
     def to_swift_req(self, method, container, obj, query=None,
                      body=None, headers=None):
         """
         Create a Swift request based on this request's environment.
         """
-        if self.account is None:
-            account = self.access_key
-        else:
-            account = self.account
-
         env = self.environ.copy()
         env['swift.infocache'] = self.environ.setdefault('swift.infocache', {})
+
+        if container and self.bucket_db:
+            ct_owner = self.bucket_db.get_owner(container)
+            account = ct_owner if ct_owner else None
+        else:
+            account = None
+
+        if account is None:
+            if self.account is None:
+                account = self.access_key
+            else:
+                account = self.account
 
         def sanitize(value):
             if set(value).issubset(string.printable):
@@ -1214,6 +1246,12 @@ class S3Request(swob.Request):
                     HTTP_NO_CONTENT,
                 ],
             }
+            # If bucket creation succeeds after a timeout,
+            # we have to accept that the container already exists.
+            # We rely on the bucket_db to know if the bucket already
+            # exists or not.
+            if self.bucket_db:
+                code_map['PUT'].append(HTTP_NO_CONTENT)
         else:
             # Swift object access.
             code_map = {
@@ -1356,6 +1394,11 @@ class S3Request(swob.Request):
 
         sw_req = self.to_swift_req(method, container, obj, headers=headers,
                                    body=body, query=query)
+
+        if self.bucket_db:
+            if self._is_anonymous and method == 'HEAD':
+                # Allow anonymous HEAD requests to read object ACLs
+                sw_req.environ['swift.authorize_override'] = True
 
         try:
             sw_resp = sw_req.get_response(app)
@@ -1530,7 +1573,8 @@ class S3AclRequest(S3Request):
     """
     def __init__(self, env, app=None, conf=None):
         super(S3AclRequest, self).__init__(env, app, conf)
-        self.authenticate(app)
+        if not self._is_anonymous:
+            self.authenticate(app)
         self.acl_handler = None
 
     @property

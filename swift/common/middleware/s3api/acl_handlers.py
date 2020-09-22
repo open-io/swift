@@ -59,7 +59,8 @@ from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
 
 
 def get_acl_handler(controller_name):
-    for base_klass in [BaseAclHandler, MultiUploadAclHandler]:
+    for base_klass in [BaseAclHandler, MultiUploadAclHandler,
+                       BucketAclHandler]:
         # pylint: disable-msg=E1101
         for handler in base_klass.__subclasses__():
             handler_suffix_len = len('AclHandler') \
@@ -208,6 +209,9 @@ class BucketAclHandler(BaseAclHandler):
             return self._handle_acl(app, 'GET')
 
     def PUT(self, app):
+        if self.container.endswith(MULTIUPLOAD_SUFFIX):
+            # create multiupload container doesn't need acls
+            return
         req_acl = ACL.from_headers(self.req.headers,
                                    Owner(self.user_id, self.user_id))
 
@@ -225,6 +229,11 @@ class BucketAclHandler(BaseAclHandler):
         # FIXME If this request is failed, there is a possibility that the
         # bucket which has no ACL is left.
         return self.req.get_acl_response(app, 'POST')
+
+
+class UniqueBucketAclHandler(BucketAclHandler):
+    """Handle ACL requests for UniqueBucketController."""
+    pass
 
 
 class ObjectAclHandler(BaseAclHandler):

@@ -661,6 +661,26 @@ use = egg:swift#s3api
 # You can override the default log routing for this filter here:
 # log_name = s3api
 
+# Enable the Redis-based bucket database. This will make the bucket names
+# globally unique, and will enable anonymous requests (provided that ACLs
+# are enabled and set to public-read for the requested object).
+# Notice that anonymous requests only work with virtual-hosted style
+# requests (you must define storage_domain) or by enabling
+# allow_anymous_path_request
+#
+# Default (disabled)
+#bucket_db_connection =
+#
+# IP address and port of a single Redis server.
+#bucket_db_connection = redis://127.0.0.1:6379?prefix=s3bucket%3A
+#
+# Sentinel-enabled Redis cluster.
+#bucket_db_connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1&prefix=s3bucket%3A
+
+# Allow anymous request without virtual-hosted style
+# (bucket_db_enabled is required)
+#allow_anymous_path_request = true
+
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials
 # provided in the request header. Please put s3token between s3api

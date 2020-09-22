@@ -151,6 +151,8 @@ from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
+from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
+    BucketDbWrapper
 from swift.common.middleware.s3api.exception import NotS3Request, \
     InvalidSubresource
 from swift.common.middleware.s3api.s3request import get_request_class
@@ -292,6 +294,7 @@ class S3ApiMiddleware(object):
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)
+        self.bucket_db = get_bucket_db(wsgi_conf)
 
     def is_s3_cors_preflight(self, env):
         if env['REQUEST_METHOD'] != 'OPTIONS' or not env.get('HTTP_ORIGIN'):
@@ -337,6 +340,9 @@ class S3ApiMiddleware(object):
             return [b'']
 
         try:
+            # XXX(FVE): this should be done in an independant middleware
+            if self.bucket_db:
+                env['s3api.bucket_db'] = BucketDbWrapper(self.bucket_db)
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
             resp = self.handle_request(req)
