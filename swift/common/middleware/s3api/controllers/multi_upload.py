@@ -88,6 +88,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange
 from swift.common.middleware.s3api.exception import BadSwiftRequest
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import unique_id, \
     MULTIUPLOAD_SUFFIX, S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.etree import Element, SubElement, \
@@ -190,6 +191,7 @@ class PartController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access('s3:PutObject')
     def PUT(self, req):
         """
         Handles Upload Part and Upload Part Copy.
@@ -263,6 +265,7 @@ class PartController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
         Handles Get Part (regular Get but with ?part-number=N).
@@ -274,6 +277,7 @@ class PartController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
         Handles Head Part (regular HEAD but with ?part-number=N).
@@ -367,6 +371,7 @@ class UploadsController(Controller):
                       err_msg="Key is not expected for the GET method "
                               "?uploads subresource")
     @check_container_existence
+    @check_iam_access('s3:ListBucketMultipartUploads')
     def GET(self, req):
         """
         Handles List Multipart Uploads
@@ -525,6 +530,7 @@ class UploadsController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access('s3:PutObject')
     def POST(self, req):
         """
         Handles Initiate Multipart Upload.
@@ -605,6 +611,7 @@ class UploadController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access('s3:ListMultipartUploadParts')
     def GET(self, req):
         """
         Handles List Parts.
@@ -717,6 +724,7 @@ class UploadController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access('s3:AbortMultipartUpload')
     def DELETE(self, req):
         """
         Handles Abort Multipart Upload.
@@ -767,6 +775,7 @@ class UploadController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_iam_access('s3:PutObject')
     def POST(self, req):
         """
         Handles Complete Multipart Upload.

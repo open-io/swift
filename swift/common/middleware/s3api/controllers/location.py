@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2014 OpenStack Foundation.
+# Copyright (c) 2010-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from swift.common.utils import public
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation
 from swift.common.middleware.s3api.etree import Element, tostring
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk
 
 
@@ -28,6 +29,7 @@ class LocationController(Controller):
     """
     @public
     @bucket_operation
+    @check_iam_access('s3:GetBucketLocation')
     def GET(self, req):
         """
         Handles GET Bucket location.
