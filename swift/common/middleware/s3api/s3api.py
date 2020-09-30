@@ -290,6 +290,10 @@ class S3ApiMiddleware(object):
                              'all domains, * must be the only entry')
         self.conf.ratelimit_as_client_error = config_true_value(
             wsgi_conf.get('ratelimit_as_client_error', False))
+        self.conf.log_s3api_command = config_true_value(
+            wsgi_conf.get('log_s3api_command', False))
+        self.conf.allow_anonymous_path_requests = config_true_value(
+            wsgi_conf.get('allow_anonymous_path_requests', False))
 
         self.conf.log_s3api_command = config_true_value(
             wsgi_conf.get('log_s3api_command', False))
@@ -415,6 +419,10 @@ class S3ApiMiddleware(object):
             self.logger.warning('s3api middleware requires SLO middleware '
                                 'to support multi-part upload, please add it '
                                 'in pipeline')
+
+        # Check IAM middleware position: when enabled, must be before s3api
+        if 'iam' in pipeline:
+            self.check_filter_order(pipeline, ['iam', 's3api'])
 
         if not self.conf.auth_pipeline_check:
             self.logger.debug('Skip pipeline auth check.')

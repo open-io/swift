@@ -29,6 +29,7 @@ from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.controllers.base import Controller
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError
@@ -132,6 +133,7 @@ class ObjectController(Controller):
         return resp
 
     @public
+    @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
         Handle HEAD Object request
@@ -147,6 +149,7 @@ class ObjectController(Controller):
         return resp
 
     @public
+    @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
         Handle GET Object request
@@ -156,6 +159,7 @@ class ObjectController(Controller):
         return self.GETorHEAD(req)
 
     @public
+    @check_iam_access("s3:PutObject")
     def PUT(self, req):
         """
         Handle PUT Object and PUT Object (Copy) request
@@ -236,6 +240,7 @@ class ObjectController(Controller):
             container_info.get('sysmeta', {}).get('versions-enabled', False))
 
     @public
+    @check_iam_access("s3:DeleteObject")
     def DELETE(self, req):
         """
         Handle DELETE Object request

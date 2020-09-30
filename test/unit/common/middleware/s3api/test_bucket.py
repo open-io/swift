@@ -116,7 +116,7 @@ class TestS3ApiBucket(S3ApiTestCase):
             json.dumps(object_list_subdir))
         self.swift.register(
             'GET',
-            '/v1/AUTH_test/subdirs?delimiter=/&limit=3',
+            '/v1/AUTH_test/subdirs?delimiter=/&format=json&limit=3',
             swob.HTTPOk, {}, json.dumps([
                 {'subdir': 'nothing/'},
                 {'subdir': u'but-\u062a/'},
@@ -1062,7 +1062,7 @@ class TestS3ApiBucket(S3ApiTestCase):
         ]
         self.assertEqual(expected, discovered)
         self.assertEqual(self.swift.calls, [
-            ('GET', normalize_path('/v1/AUTH_test/junk?'
+            ('GET', normalize_path('/v1/AUTH_test/junk?format=json&'
              'limit=1001&marker=rose&version_marker=null&versions=')),
         ])
 
@@ -1127,7 +1127,7 @@ class TestS3ApiBucket(S3ApiTestCase):
 
         self.assertEqual(self.swift.calls, [
             ('GET', normalize_path('/v1/AUTH_test/junk'
-             '?limit=1001&prefix=subdir/&versions=')),
+             '?format=json&limit=1001&prefix=subdir/&versions=')),
         ])
 
     @s3acl

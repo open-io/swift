@@ -20,6 +20,9 @@ from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     MalformedACLError, InvalidArgument
 
 
+ACL_EXPLICIT_ALLOW = 'swift.acl.explicit_allow'
+
+
 def swift_acl_translate(acl, group='', user='', xml=False):
     """
     Takes an S3 style ACL and returns a list of header/value pairs that

@@ -44,6 +44,9 @@ test_create_objects() {
   ${AWSA1ADM} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic
   ${AWSA1ADM} s3 cp "${BIGFILE}" s3://${SHARED_BUCKET}/bigfiles/bigfile
 
+  # Create an object to test public-read access later
+  ${AWSA1ADM} s3 cp --acl public-read /etc/magic s3://${SHARED_BUCKET}/public-magic
+
   # user1 can create any object in its own bucket
   ${AWSA1U1} s3 cp /etc/magic s3://${U1_BUCKET}/magic
   ${AWSA1U1} s3 cp /etc/magic s3://${U1_BUCKET}/not_so_magic
@@ -112,6 +115,9 @@ test_read_objects() {
   # admin can read objects from any bucket
   ${AWSA1ADM} s3 cp s3://${U1_BUCKET}/magic "$TEMPDIR/magic"
   ${AWSA1ADM} s3 cp s3://${U1_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_u1_bucket"
+
+  # Anonymous users can read "public-read" objects
+  curl -I "http://localhost:5000/${SHARED_BUCKET}/public-magic"
 }
 
 test_delete_objects() {
@@ -130,6 +136,7 @@ test_delete_objects() {
 
   # admin can delete objects from any bucket
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/magic
+  ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/public-magic
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/user1_bigfile
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/bigfiles/bigfile
   ${AWSA1ADM} s3 rm s3://${U1_BUCKET}/not_so_magic

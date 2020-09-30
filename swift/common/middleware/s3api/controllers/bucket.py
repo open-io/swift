@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2014 OpenStack Foundation.
+# Copyright (c) 2010-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ from swift.common.registry import get_swift_info
 from swift.common.middleware.s3api.controllers.base import Controller
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
@@ -89,6 +90,7 @@ class BucketController(Controller):
             raise ServiceUnavailable()
 
     @public
+    @check_iam_access("s3:ListBucket")
     def HEAD(self, req):
         """
         Handle HEAD Bucket (Get Metadata) request
@@ -327,6 +329,7 @@ class BucketController(Controller):
                                  fetch_owner)
 
     @public
+    @check_iam_access("s3:ListBucket")
     def GET(self, req):
         """
         Handle GET Bucket (List Objects) request
@@ -346,6 +349,7 @@ class BucketController(Controller):
         else:
             self.set_s3api_command(req, 'list-objects')
 
+        query['format'] = 'json'
         resp = req.get_response(self.app, query=query)
 
         objects = json.loads(resp.body)
@@ -368,6 +372,7 @@ class BucketController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @public
+    @check_iam_access("s3:CreateBucket")
     def PUT(self, req):
         """
         Handle PUT Bucket request
@@ -400,6 +405,7 @@ class BucketController(Controller):
         return resp
 
     @public
+    @check_iam_access("s3:DeleteBucket")
     def DELETE(self, req):
         """
         Handle DELETE Bucket request
