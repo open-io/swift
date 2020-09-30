@@ -36,7 +36,7 @@ from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
     HTTP_BAD_REQUEST, HTTP_REQUEST_TIMEOUT, HTTP_SERVICE_UNAVAILABLE, \
     HTTP_TOO_MANY_REQUESTS, HTTP_RATE_LIMITED, is_success
 
-from swift.common.constraints import check_utf8
+from swift.common.constraints import check_utf8, valid_api_version
 from swift.proxy.controllers.base import get_container_info
 from swift.common.request_helpers import check_path_header
 
@@ -63,7 +63,10 @@ from swift.common.middleware.s3api.utils import utf8encode, \
 from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
 from swift.common.middleware.s3api.utils import sysmeta_header, \
     validate_bucket_name
-from swift.common.middleware.s3api.acl_utils import handle_acl_header
+from swift.common.middleware.s3api.acl_utils import handle_acl_header, \
+    ACL_EXPLICIT_ALLOW
+from swift.common.middleware.s3api.iam import iam_explicit_allow, \
+    iam_is_enabled
 
 
 # List of sub-resources that must be maintained as part of the HMAC
@@ -529,7 +532,7 @@ class S3Request(swob.Request):
     def __init__(self, env, app=None, slo_enabled=True, storage_domain='',
                  location='us-east-1', force_request_log=False,
                  dns_compliant_bucket_names=True, allow_multipart_uploads=True,
-                 allow_no_owner=False):
+                 allow_no_owner=False, allow_anonymous_path_requests=False):
         # NOTE: app and allow_no_owner are not used by this class, need for
         #       compatibility of S3acl
         swob.Request.__init__(self, env)
@@ -538,6 +541,7 @@ class S3Request(swob.Request):
         self.force_request_log = force_request_log
         self.dns_compliant_bucket_names = dns_compliant_bucket_names
         self.allow_multipart_uploads = allow_multipart_uploads
+        self.allow_anonymous_path_requests = allow_anonymous_path_requests
         self._timestamp = None
         self.access_key, self.signature = self._parse_auth_info()
         self.bucket_in_host = self._parse_host()
@@ -696,6 +700,32 @@ class S3Request(swob.Request):
         # This means signature format V2
         access, sig = auth_str.split(' ', 1)[1].rsplit(':', 1)
         return access, sig
+
+    def _is_allowed_anonymous_request(self):
+        """
+        Tell if the current request represents an allowed anonymous request.
+
+        Will return False if anonymous requests are disabled by configuration.
+        """
+        if not self.allow_anonymous_path_requests:
+            return False
+
+        if not self._is_anonymous:
+            return False
+
+        if self._parse_host():
+            # Virtual-hosted style anonymous request
+            return True
+
+        src = self.environ['PATH_INFO'].lstrip('/').split('/', 2)[0]
+        if not src:
+            # Maybe a virtual-hosted style CORS request
+            return self.method == 'OPTIONS'
+        elif valid_api_version(src) or src in ('auth', 'info'):
+            # Not an S3 request
+            return False
+        # Path-style anonymous request
+        return True
 
     def _parse_auth_info(self):
         """Extract the access key identifier and signature.
@@ -1553,10 +1583,11 @@ class S3AclRequest(S3Request):
     def __init__(self, env, app, slo_enabled=True, storage_domain='',
                  location='us-east-1', force_request_log=False,
                  dns_compliant_bucket_names=True, allow_multipart_uploads=True,
-                 allow_no_owner=False):
+                 allow_no_owner=False, allow_anonymous_path_requests=False):
         super(S3AclRequest, self).__init__(
             env, app, slo_enabled, storage_domain, location, force_request_log,
-            dns_compliant_bucket_names, allow_multipart_uploads)
+            dns_compliant_bucket_names, allow_multipart_uploads,
+            allow_anonymous_path_requests=allow_anonymous_path_requests)
         self.allow_no_owner = allow_no_owner
         if not self._is_anonymous:
             self.authenticate(app)
@@ -1639,8 +1670,20 @@ class S3AclRequest(S3Request):
         if not self.acl_handler:
             # we should set acl_handler all time before calling get_response
             raise Exception('get_response called before set_acl_handler')
-        resp = self.acl_handler.handle_acl(
-            app, method, container, obj, headers)
+        try:
+            resp = self.acl_handler.handle_acl(
+                app, method, container, obj, headers)
+            self.environ[ACL_EXPLICIT_ALLOW] = True
+        except AccessDenied:
+            # If IAM is disabled and ACLs say no -> deny.
+            # If IAM is enabled, already checked and False -> deny.
+            # If IAM is enabled, but explicit_allow is None -> let the
+            # request handling continue, it will be checked later.
+            if not iam_is_enabled(self.environ) or \
+                    iam_explicit_allow(self.environ) is False:
+                raise
+            resp = None
+            self.environ[ACL_EXPLICIT_ALLOW] = False
 
         # possible to skip recalling get_response_acl if resp is not
         # None (e.g. HEAD)

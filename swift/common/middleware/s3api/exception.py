@@ -34,3 +34,7 @@ class InvalidSubresource(S3Exception):
     def __init__(self, resource, cause):
         self.resource = resource
         self.cause = cause
+
+
+class IAMException(S3Exception):
+    pass
