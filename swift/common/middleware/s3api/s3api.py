@@ -279,6 +279,8 @@ class S3ApiMiddleware(object):
             conf.get('min_segment_size', 5242880))
         self.conf.log_s3api_command = config_true_value(
             conf.get('log_s3api_command', False))
+        self.conf.allow_anonymous_path_requests = config_true_value(
+            conf.get('allow_anonymous_path_requests', False))
 
         self.logger = get_logger(
             conf, log_route=conf.get('log_name', 's3api'))
@@ -296,7 +298,8 @@ class S3ApiMiddleware(object):
                 env, self.app, self.slo_enabled, self.conf.storage_domain,
                 self.conf.location, self.conf.force_swift_request_proxy_log,
                 self.conf.dns_compliant_bucket_names,
-                self.conf.allow_multipart_uploads, self.conf.allow_no_owner)
+                self.conf.allow_multipart_uploads, self.conf.allow_no_owner,
+                self.conf.allow_anonymous_path_requests)
             resp = self.handle_request(req)
         except NotS3Request:
             resp = self.app
@@ -364,6 +367,10 @@ class S3ApiMiddleware(object):
             self.logger.warning('s3api middleware requires SLO middleware '
                                 'to support multi-part upload, please add it '
                                 'in pipeline')
+
+        # Check IAM middleware position: when enabled, must be before s3api
+        if 'iam' in pipeline:
+            self.check_filter_order(pipeline, ['iam', 's3api'])
 
         if not conf.auth_pipeline_check:
             self.logger.debug('Skip pipeline auth check.')
