@@ -53,6 +53,11 @@ class TaggingController(Controller):
         """
         Handles GET Bucket and Object tagging.
         """
+        if req.is_object_request:
+            self.set_s3api_command(req, 'get-object-tagging')
+        else:
+            self.set_s3api_command(req, 'get-bucket-tagging')
+
         resp = req._get_response(self.app, 'HEAD',
                                  req.container_name, req.object_name)
         headers = dict()
@@ -82,6 +87,11 @@ class TaggingController(Controller):
         """
         Handles PUT Bucket and Object tagging.
         """
+        if req.is_object_request:
+            self.set_s3api_command(req, 'put-object-tagging')
+        else:
+            self.set_s3api_command(req, 'put-bucket-tagging')
+
         body = req.xml(MAX_TAGGING_BODY_SIZE)
         try:
             # Just validate the body
@@ -109,6 +119,11 @@ class TaggingController(Controller):
         """
         Handles DELETE Bucket and Object tagging.
         """
+        if req.is_object_request:
+            self.set_s3api_command(req, 'delete-object-tagging')
+        else:
+            self.set_s3api_command(req, 'delete-bucket-tagging')
+
         # Send empty header to remove any previous value.
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = ""

@@ -190,6 +190,11 @@ class PartController(Controller):
         """
         Handles Upload Part and Upload Part Copy.
         """
+        if 'X-Amz-Copy-Source' in req.headers and \
+                'X-Amz-Copy-Source-Range' in req.headers:
+            self.set_s3api_command(req, 'upload-part-copy')
+        else:
+            self.set_s3api_command(req, 'upload-part')
 
         if 'uploadId' not in req.params:
             raise InvalidArgument('ResourceType', 'partNumber',
@@ -258,6 +263,8 @@ class PartController(Controller):
         """
         Handles Get Part (regular Get but with ?part-number=N).
         """
+        self.set_s3api_command(req, 'get-object-part')
+
         return self.GETorHEAD(req)
 
     @public
@@ -267,6 +274,8 @@ class PartController(Controller):
         """
         Handles Head Part (regular HEAD but with ?part-number=N).
         """
+        self.set_s3api_command(req, 'head-object-part')
+
         return self.GETorHEAD(req)
 
     def GETorHEAD(self, req):
@@ -358,6 +367,7 @@ class UploadsController(Controller):
         """
         Handles List Multipart Uploads
         """
+        self.set_s3api_command(req, 'list-multipart-uploads')
 
         def separate_uploads(uploads, prefix, delimiter):
             """
@@ -506,6 +516,8 @@ class UploadsController(Controller):
         """
         Handles Initiate Multipart Upload.
         """
+        self.set_s3api_command(req, 'create-multipart-upload')
+
         # Create a unique S3 upload id from UUID to avoid duplicates.
         upload_id = unique_id()
 
@@ -570,6 +582,8 @@ class UploadController(Controller):
         """
         Handles List Parts.
         """
+        self.set_s3api_command(req, 'list-parts')
+
         def filter_part_num_marker(o):
             try:
                 num = int(os.path.basename(o['name']))
@@ -669,6 +683,8 @@ class UploadController(Controller):
         """
         Handles Abort Multipart Upload.
         """
+        self.set_s3api_command(req, 'abort-multipart-upload')
+
         upload_id = req.params['uploadId']
         _get_upload_info(req, self.app, upload_id)
 
@@ -712,6 +728,8 @@ class UploadController(Controller):
         """
         Handles Complete Multipart Upload.
         """
+        self.set_s3api_command(req, 'complete-multipart-upload')
+
         upload_id = req.params['uploadId']
         resp = _get_upload_info(req, self.app, upload_id)
         headers = {'Accept': 'application/json',

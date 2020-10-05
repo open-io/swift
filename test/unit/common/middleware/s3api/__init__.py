@@ -86,6 +86,7 @@ class S3ApiTestCase(unittest.TestCase):
             'force_swift_request_proxy_log': False,
             'allow_multipart_uploads': True,
             'min_segment_size': 5242880,
+            'log_s3api_command': False
         })
         # those 2 settings has existed the original test setup
         self.conf.log_level = 'debug'

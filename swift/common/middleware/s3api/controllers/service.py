@@ -32,6 +32,8 @@ class ServiceController(Controller):
         """
         Handle GET Service request
         """
+        self.set_s3api_command(req, 'list-buckets')
+
         resp = req.get_response(self.app, query={'format': 'json'})
 
         containers = json.loads(resp.body)

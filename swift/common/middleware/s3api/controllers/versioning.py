@@ -40,6 +40,8 @@ class VersioningController(Controller):
         """
         Handles GET Bucket versioning.
         """
+        self.set_s3api_command(req, 'get-bucket-versioning')
+
         sysmeta = req.get_container_info(self.app).get('sysmeta', {})
 
         elem = Element('VersioningConfiguration')
@@ -57,6 +59,8 @@ class VersioningController(Controller):
         """
         Handles PUT Bucket versioning.
         """
+        self.set_s3api_command(req, 'put-bucket-versioning')
+
         if 'object_versioning' not in get_swift_info():
             raise S3NotImplemented()
 

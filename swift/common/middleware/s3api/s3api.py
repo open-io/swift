@@ -277,6 +277,8 @@ class S3ApiMiddleware(object):
             conf.get('allow_multipart_uploads', True))
         self.conf.min_segment_size = config_positive_int_value(
             conf.get('min_segment_size', 5242880))
+        self.conf.log_s3api_command = config_true_value(
+            conf.get('log_s3api_command', False))
 
         self.logger = get_logger(
             conf, log_route=conf.get('log_name', 's3api'))
