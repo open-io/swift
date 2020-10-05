@@ -85,7 +85,8 @@ class S3ApiTestCase(unittest.TestCase):
             'force_swift_request_proxy_log': False,
             'allow_multipart_uploads': True,
             'min_segment_size': 5242880,
-            'log_level': 'debug'
+            'log_level': 'debug',
+            'log_s3api_command': False
         }
 
         self.app = FakeApp()

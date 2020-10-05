@@ -52,6 +52,8 @@ class MultiObjectDeleteController(Controller):
         """
         Handles Delete Multiple Objects.
         """
+        self.set_s3api_command(req, 'delete-objects')
+
         def object_key_iter(elem):
             for obj in elem.iterchildren('Object'):
                 key = obj.find('./Key').text

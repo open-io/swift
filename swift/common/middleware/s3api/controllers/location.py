@@ -32,6 +32,8 @@ class LocationController(Controller):
         """
         Handles GET Bucket location.
         """
+        self.set_s3api_command(req, 'get-bucket-location')
+
         req.get_response(self.app, method='HEAD')
 
         elem = Element('LocationConstraint')

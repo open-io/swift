@@ -17,7 +17,6 @@ from swift.common.utils import public
 from swift.common.middleware.s3api.controllers import BucketController
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
     BucketAlreadyOwnedByYou, NoSuchBucket
-# from swift3.utils import log_s3api_command
 
 
 class UniqueBucketController(BucketController):
@@ -30,7 +29,8 @@ class UniqueBucketController(BucketController):
         """
         Handle PUT Bucket request
         """
-        # log_s3api_command(req, 'create-bucket')
+        self.set_s3api_command(req, 'create-bucket')
+
         # We are about to create a container, reserve its name.
         can_create = req.bucket_db.reserve(req.container_name, req.account)
         if not can_create:
@@ -54,7 +54,8 @@ class UniqueBucketController(BucketController):
         """
         Handle DELETE Bucket request
         """
-        # log_s3api_command(req, 'delete-bucket')
+        self.set_s3api_command(req, 'delete-bucket')
+
         try:
             resp = super(UniqueBucketController, self).DELETE(req)
         except NoSuchBucket:
