@@ -36,6 +36,11 @@ class S3AclController(Controller):
         """
         Handles GET Bucket acl and GET Object acl.
         """
+        if req.is_object_request:
+            self.set_s3api_command(req, 'get-object-acl')
+        else:
+            self.set_s3api_command(req, 'get-bucket-acl')
+
         resp = req.get_response(self.app, method='HEAD')
 
         acl = resp.object_acl if req.is_object_request else resp.bucket_acl
@@ -50,6 +55,11 @@ class S3AclController(Controller):
         """
         Handles PUT Bucket acl and PUT Object acl.
         """
+        if req.is_object_request:
+            self.set_s3api_command(req, 'put-object-acl')
+        else:
+            self.set_s3api_command(req, 'put-bucket-acl')
+
         # ACLs will be set as sysmeta
         req.get_response(self.app, 'POST')
 

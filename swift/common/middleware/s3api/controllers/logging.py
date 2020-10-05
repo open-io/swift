@@ -37,6 +37,8 @@ class LoggingStatusController(Controller):
         """
         Handles GET Bucket logging.
         """
+        self.set_s3api_command(req, 'get-bucket-logging')
+
         req.get_response(self.app, method='HEAD')
 
         # logging disabled
@@ -51,4 +53,6 @@ class LoggingStatusController(Controller):
         """
         Handles PUT Bucket logging.
         """
+        self.set_s3api_command(req, 'put-bucket-logging')
+
         raise S3NotImplemented()

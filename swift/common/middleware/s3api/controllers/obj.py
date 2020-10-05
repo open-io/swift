@@ -134,6 +134,8 @@ class ObjectController(Controller):
         """
         Handle HEAD Object request
         """
+        self.set_s3api_command(req, 'head-object')
+
         resp = self.GETorHEAD(req)
 
         if 'range' in req.headers:
@@ -147,6 +149,8 @@ class ObjectController(Controller):
         """
         Handle GET Object request
         """
+        self.set_s3api_command(req, 'get-object')
+
         return self.GETorHEAD(req)
 
     @public
@@ -154,8 +158,14 @@ class ObjectController(Controller):
         """
         Handle PUT Object and PUT Object (Copy) request
         """
+        if 'X-Amz-Copy-Source' in req.headers:
+            self.set_s3api_command(req, 'copy-object')
+        else:
+            self.set_s3api_command(req, 'put-object')
+
         if len(req.object_name) > constraints.MAX_OBJECT_NAME_LENGTH:
             raise KeyTooLongError()
+
         # set X-Timestamp by s3api to use at copy resp body
         req_timestamp = S3Timestamp.now()
         req.headers['X-Timestamp'] = req_timestamp.internal
@@ -223,6 +233,8 @@ class ObjectController(Controller):
         Handle DELETE Object request
         """
         version_id = version_id_param(req)
+        self.set_s3api_command(req, 'delete-object')
+
         if version_id not in ('null', None):
             container_info = req.get_container_info(self.app)
             if not container_info.get(

@@ -93,6 +93,8 @@ class BucketController(Controller):
         """
         Handle HEAD Bucket (Get Metadata) request
         """
+        self.set_s3api_command(req, 'head-bucket')
+
         resp = req.get_response(self.app)
 
         return HTTPOk(headers=resp.headers)
@@ -337,6 +339,13 @@ class BucketController(Controller):
         encoding_type, query, listing_type, fetch_owner = \
             self._parse_request_options(req, max_keys)
 
+        if listing_type == 'object-versions':
+            self.set_s3api_command(req, 'list-object-versions')
+        elif listing_type == 'version-2':
+            self.set_s3api_command(req, 'list-objects-v2')
+        else:
+            self.set_s3api_command(req, 'list-objects')
+
         resp = req.get_response(self.app, query=query)
 
         objects = json.loads(resp.body)
@@ -363,6 +372,8 @@ class BucketController(Controller):
         """
         Handle PUT Bucket request
         """
+        self.set_s3api_command(req, 'create-bucket')
+
         xml = req.xml(MAX_PUT_BUCKET_BODY_SIZE)
         if xml:
             # check location
@@ -393,6 +404,8 @@ class BucketController(Controller):
         """
         Handle DELETE Bucket request
         """
+        self.set_s3api_command(req, 'delete-bucket')
+
         # NB: object_versioning is responsible for cleaning up its container
         if self.conf.allow_multipart_uploads:
             self._delete_segments_bucket(req)

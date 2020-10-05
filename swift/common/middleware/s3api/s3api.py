@@ -291,6 +291,9 @@ class S3ApiMiddleware(object):
         self.conf.ratelimit_as_client_error = config_true_value(
             wsgi_conf.get('ratelimit_as_client_error', False))
 
+        self.conf.log_s3api_command = config_true_value(
+            wsgi_conf.get('log_s3api_command', False))
+
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)
