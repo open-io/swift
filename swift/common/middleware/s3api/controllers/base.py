@@ -82,6 +82,7 @@ class Controller(object):
         self.app = app
         self.conf = conf
         self.logger = logger
+        self.command = None
 
     @classmethod
     def resource_type(cls):
@@ -90,6 +91,21 @@ class Controller(object):
         """
         name = cls.__name__[:-len('Controller')]
         return camel_to_snake(name).upper()
+
+    def set_s3api_command(self, req, command):
+        """
+        Set s3api command
+        and add this command to current request in swift.log_info fields.
+        :param req: HTTP request object
+        :param command: s3 command string
+        """
+        if self.command:
+            return
+        self.command = command
+        if not self.conf.log_s3api_command:
+            return
+        req.environ.setdefault(
+            'swift.log_info', list()).append(self.command)
 
 
 class UnsupportedController(Controller):

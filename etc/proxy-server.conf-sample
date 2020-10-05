@@ -577,6 +577,9 @@ use = egg:swift#s3api
 # upload, except the last part.
 # min_segment_size = 5242880
 
+# Expose S3API command in swift log
+# log_s3api_command = False
+
 # You can override the default log routing for this filter here:
 # log_name = s3api
 
