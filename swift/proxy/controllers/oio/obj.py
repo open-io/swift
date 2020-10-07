@@ -227,7 +227,7 @@ class ObjectController(BaseObjectController):
 
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         try:
             meta = self.app.storage.container_get_properties(
                 self.account_name, root_container, headers=oio_headers,
@@ -244,7 +244,7 @@ class ObjectController(BaseObjectController):
         storage = self.app.storage
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         version = obj_version_from_env(req.environ)
         force_master = False
         while True:
@@ -307,7 +307,7 @@ class ObjectController(BaseObjectController):
             ranges = None
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         force_master = False
         while True:
             try:
@@ -419,7 +419,7 @@ class ObjectController(BaseObjectController):
         metadata = self.load_object_metadata(headers)
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         try:
             # Genuine Swift clears all properties on POST requests.
             # But for convenience, keep them when the request originates
@@ -565,7 +565,7 @@ class ObjectController(BaseObjectController):
         metadata = self.load_object_metadata(headers)
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         # FIXME(FVE): use object_show, cache in req.environ
         version = obj_version_from_env(req.environ)
         props = storage.object_get_properties(from_account, container, obj,
@@ -672,7 +672,7 @@ class ObjectController(BaseObjectController):
         metadata = self.load_object_metadata(headers)
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         # only send headers if needed
         if SUPPORT_VERSIONING and headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
@@ -797,7 +797,7 @@ class ObjectController(BaseObjectController):
         storage = self.app.storage
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         # only send headers if needed
         if SUPPORT_VERSIONING and req.headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
