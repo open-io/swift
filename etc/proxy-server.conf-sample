@@ -1110,6 +1110,13 @@ use = egg:swift#proxy_logging
 # not in this list will have "BAD_METHOD" for the <verb> portion of the metric.
 # log_statsd_valid_http_methods = GET,HEAD,POST,PUT,DELETE,COPY,OPTIONS
 #
+# If true, log performance data in "log_info" field.
+# It's possible to enable this log for specific user agents
+# (with regular expressions).
+# perfdata = false
+# perfdata_user_agent_0 = ^aws-cli
+# perfdata_user_agent_1 = ...
+#
 # Note: The double proxy-logging in the pipeline is not a mistake. The
 # left-most proxy-logging is there to log requests that were handled in
 # middleware and never made it through to the right-most middleware (and
