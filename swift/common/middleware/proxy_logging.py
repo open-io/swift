@@ -72,6 +72,7 @@ bandwidth usage will want to only sum up logs with no swift.source.
 """
 
 import os
+import re
 import time
 
 from swift.common.middleware.catch_errors import enforce_byte_count
@@ -88,6 +89,49 @@ from swift.common.registry import get_sensitive_headers, \
     get_sensitive_params, register_sensitive_header
 
 
+def flat_dict_from_dict(dict_):
+    """
+    Create a dictionary without depth.
+    {
+        'depth0': {
+            'depth1': {
+                'depth2': 'test1',
+                'depth2': 'test2'
+            }
+        }
+    }
+    =>
+    {
+        'depth0.depth1.depth2': 'test1',
+        'depth0.depth1.depth2': 'test2'
+    }
+    """
+    flat_dict = dict()
+    for key, value in dict_.items():
+        if not isinstance(value, dict):
+            flat_dict[key] = value
+            continue
+
+        flat_dict_ = flat_dict_from_dict(value)
+        for key_, value_ in flat_dict_.items():
+            flat_dict[key + '.' + key_] = value_
+    return flat_dict
+
+
+def perfdata_to_str(perfdata):
+    if not perfdata:
+        return ''
+    flat_perfdata = flat_dict_from_dict(perfdata)
+    perfdata_list = list()
+    perfdata_list.append('PERFDATA')
+    for key, value in sorted(flat_perfdata.items()):
+        if key.startswith('rawx.'):
+            if 'http' in key[5:]:
+                key = key[:key.index('http') + 4]
+        perfdata_list.append(key + ':' + '%.4f' % value)
+    return '...'.join(perfdata_list)
+
+
 class ProxyLoggingMiddleware(object):
     """
     Middleware that logs Swift proxy requests in the swift log format.
@@ -96,6 +140,8 @@ class ProxyLoggingMiddleware(object):
     def __init__(self, app, conf, logger=None):
         self.app = app
         self.pid = os.getpid()
+        self.logger = get_logger(
+            conf, log_route=conf.get('log_name', 'proxy-logging'))
         self.log_formatter = LogStringFormatter(default='-', quote=True)
         self.log_msg_template = conf.get(
             'log_msg_template', (
@@ -140,6 +186,18 @@ class ProxyLoggingMiddleware(object):
         self.reveal_sensitive_prefix = int(
             conf.get('reveal_sensitive_prefix', 16))
         self.check_log_msg_template_validity()
+
+        self.perfdata = config_true_value(conf.get('perfdata', 'false'))
+        self.perfdata_user_agents = None
+        if self.perfdata:
+            pattern_dict = {k: v for k, v in conf.items()
+                            if k.startswith('perfdata_user_agent')}
+            self.perfdata_user_agents = [re.compile(pattern_dict[k])
+                                         for k in sorted(pattern_dict.keys())]
+            if not self.perfdata_user_agents:
+                self.logger.warn('No user-agent pattern defined, '
+                                 'performance data will be logged '
+                                 'for every request.')
 
     def check_log_msg_template_validity(self):
         replacements = {
@@ -303,6 +361,7 @@ class ProxyLoggingMiddleware(object):
             'ttfb': ttfb,
             'pid': self.pid,
             'wire_status_int': wire_status_int or status_int,
+            'perfdata': perfdata_to_str(req.environ.get('swift.perfdata'))
         }
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
@@ -369,6 +428,21 @@ class ProxyLoggingMiddleware(object):
             return self.app(env, start_response)
 
         self.mark_req_logged(env)
+
+        if self.perfdata:
+            add_perfata = False
+            if not self.perfdata_user_agents:
+                add_perfata = True
+            else:
+                user_agent = env.get('HTTP_USER_AGENT')
+                if user_agent is None:
+                    user_agent = ''
+                for pat in self.perfdata_user_agents:
+                    if pat.match(user_agent):
+                        add_perfata = True
+                        break
+            if add_perfata:
+                env.setdefault('swift.perfdata', dict())
 
         start_response_args = [None]
         input_proxy = InputProxy(env['wsgi.input'])
