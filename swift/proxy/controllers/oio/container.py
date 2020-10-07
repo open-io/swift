@@ -149,7 +149,7 @@ class ContainerController(SwiftContainerController):
         opts = req.environ.get('oio.query', {})
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         result = self.app.storage.object_list(
             self.account_name, self.container_name, prefix=prefix,
             limit=limit, delimiter=delimiter, marker=marker,
@@ -261,7 +261,7 @@ class ContainerController(SwiftContainerController):
         headers['Content-Type'] = out_content_type
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         meta = self.app.storage.container_get_properties(
             self.account_name, self.container_name, headers=oio_headers,
             cache=oio_cache, perfdata=perfdata)
@@ -315,7 +315,7 @@ class ContainerController(SwiftContainerController):
         # TODO container update metadata
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         created = self.app.storage.container_create(
             self.account_name, self.container_name,
             properties=properties, system=system,
@@ -410,7 +410,7 @@ class ContainerController(SwiftContainerController):
 
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         try:
             self.app.storage.container_set_properties(
                 self.account_name, self.container_name,
@@ -424,7 +424,7 @@ class ContainerController(SwiftContainerController):
     def get_container_delete_resp(self, req):
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('oio.perfdata')
+        perfdata = req.environ.get('swift.perfdata')
         try:
             self.app.storage.container_delete(
                 self.account_name, self.container_name, headers=oio_headers,
