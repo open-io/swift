@@ -424,7 +424,11 @@ class UploadAclHandler(MultiUploadAclHandler):
     def PUT(self, app):
         container = self.req.container_name + MULTIUPLOAD_SUFFIX
         obj = '%s/%s' % (self.obj, self.req.params['uploadId'])
-        resp = self.req._get_response(app, 'HEAD', container, obj)
+        self.req.environ['oio.ephemeral_object'] = True
+        try:
+            resp = self.req._get_response(app, 'HEAD', container, obj)
+        finally:
+            self.req.environ['oio.ephemeral_object'] = False
         self.req.headers[sysmeta_header('object', 'acl')] = \
             resp.sysmeta_headers.get(sysmeta_header('object', 'tmpacl'))
 
