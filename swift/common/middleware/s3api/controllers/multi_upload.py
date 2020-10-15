@@ -545,7 +545,7 @@ class UploadsController(Controller):
 
         result_elem = Element('InitiateMultipartUploadResult')
         SubElement(result_elem, 'Bucket').text = req.container_name
-        SubElement(result_elem, 'Key').text = req.object_name
+        SubElement(result_elem, 'Key').text = wsgi_to_str(req.object_name)
         SubElement(result_elem, 'UploadId').text = upload_id
 
         body = tostring(result_elem)
