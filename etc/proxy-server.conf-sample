@@ -526,12 +526,13 @@ user_test5_tester5 = testing5 service
 # basically a swiftoperator, but read-only.
 # project_reader_roles =
 
-# Note: put iam before s3api in the pipeline.
+# Note: put iam before authtoken and s3api in the pipeline.
 # If you don't put it in the pipeline, it will be disabled.
 [filter:iam]
-use = egg:swift#iam
+use = egg:swift#oioiam
 
-# Load IAM user policies from a JSON file.
+# Load IAM user policies from a JSON file or from a Redis database.
+#
 # The file must contain a JSON object, with one IAM policy document per
 # user ID. Example for tempauth user "admin" from account "admin":
 #
@@ -551,12 +552,48 @@ use = egg:swift#iam
 #     ]
 #   }
 # }
-connection = file:///etc/swift/iam_rules.json
+#
+# When using a Redis database, the rules can be manipulated with the
+# following commands:
+# - openio-admin iam set-user-policy
+# - openio-admin iam get-user-policy
+#
+# A good user policy example is documented here
+# https://aws.amazon.com/blogs/security/writing-iam-policies-grant-access-to-user-specific-folders-in-an-amazon-s3-bucket/
+
+# When running with an OpenIO backend, the 'connection' parameter can also
+# be set in the namespace's configuration file, under the key 'iam.connection'.
+
+# Load IAM user policies from a JSON file.
+#connection = file:///etc/swift/iam_rules.json
+
+# Load IAM user policies from a Redis database.
+#connection = redis://127.0.0.1:6379
+
+# Load IAM user policies from a Redis database, with Redis Sentinel enabled.
+connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1
+
+# Required parameters when using Redis Sentinel:
+# - sentinel_name
+
+# Available connection parameters:
+# - socket_timeout
+# - socket_connect_timeout
+# - socket_keepalive
+# - retry_on_timeout
+# - max_connections
+# - sentinel_socket_timeout
+# - sentinel_socket_connect_timeout
+# - sentinel_socket_keepalive
+# - sentinel_retry_on_timeout
+# - sentinel_max_connections
+# - key_prefix ("IAM:" by default)
 
 # Keep this number of rules in cache
-cache_size = 1000
+#cache_size = 1000
+
 # Keep rules in cache for this long (seconds)
-cache_ttl = 30
+#cache_ttl = 30
 
 [filter:s3api]
 use = egg:swift#s3api
