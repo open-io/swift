@@ -48,9 +48,9 @@ use = egg:swift#slo
 use = egg:swift#staticweb
 
 [filter:iam]
-use = egg:swift#iam
+use = egg:swift#oioiam
 log_level = DEBUG
-connection = file://%RULES_FILE%
+connection = %IAM_RULES_CONN%
 
 [filter:s3api]
 use = egg:swift#s3api
