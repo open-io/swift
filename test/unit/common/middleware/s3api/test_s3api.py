@@ -805,9 +805,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                                       'STREAMING-AWS4-HMAC-SHA256-PAYLOAD')
         self._test_unsupported_header('x-amz-decoded-content-length')
 
-    def test_object_tagging(self):
-        self._test_unsupported_header('x-amz-tagging')
-
     def _test_unsupported_resource(self, resource):
         req = Request.blank('/error?' + resource,
                             environ={'REQUEST_METHOD': 'GET',

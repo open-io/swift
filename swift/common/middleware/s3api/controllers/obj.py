@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2014 OpenStack Foundation.
+# Copyright (c) 2010-2020 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.tagging import \
+    HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError
@@ -174,6 +176,12 @@ class ObjectController(Controller):
             raise InvalidArgument('x-amz-copy-source-range',
                                   req.headers['X-Amz-Copy-Source-Range'],
                                   'Illegal copy header')
+
+        if HTTP_HEADER_TAGGING_KEY in req.headers:
+            tagging = tagging_header_to_xml(
+                req.headers.pop(HTTP_HEADER_TAGGING_KEY))
+            req.headers[OBJECT_TAGGING_HEADER] = tagging
+
         req.check_copy_source(self.app)
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason
