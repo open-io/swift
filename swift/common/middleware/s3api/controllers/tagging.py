@@ -14,6 +14,8 @@
 # limitations under the License.
 
 
+from six.moves.urllib.parse import parse_qs
+
 from swift.common.utils import close_if_possible, public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -21,9 +23,10 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
-    MalformedXML, NoSuchTagSet
+    MalformedXML, NoSuchTagSet, InvalidArgument
 from swift.common.middleware.s3api.utils import sysmeta_header
 
+HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 
 SYSMETA_TAGGING_KEY = 'swift3-tagging'
 BUCKET_TAGGING_HEADER = sysmeta_header('bucket', 'tagging')
@@ -35,6 +38,28 @@ VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # FIXME(FVE): compute better size estimation according to key/value limits
 # 10 tags with 128b key and 256b value should be 3840 + envelope
 MAX_TAGGING_BODY_SIZE = 8 * 1024
+
+INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
+                  'the PutObject operation: The header \'x-amz-tagging\' ' \
+                  'shall be encoded as UTF-8 then URLEncoded URL query ' \
+                  'parameters without tag name duplicates.'
+
+
+def tagging_header_to_xml(header_val):
+    """Convert x-amz-tagging header value to a Tagging XML document."""
+    root = Element('Tagging')
+    elem = SubElement(root, 'TagSet')
+    # AWS supports keys with empty values like key1=&key2=
+    items = parse_qs(header_val, keep_blank_values=True)
+    for key, val in items.items():
+        if len(val) != 1:
+            raise InvalidArgument(HTTP_HEADER_TAGGING_KEY,
+                                  value=val,
+                                  msg=INVALID_TAGGING)
+        tag = SubElement(elem, 'Tag')
+        SubElement(tag, 'Key').text = key
+        SubElement(tag, 'Value').text = val[0]
+    return tostring(root)
 
 
 class TaggingController(Controller):
