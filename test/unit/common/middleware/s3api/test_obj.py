@@ -1,4 +1,4 @@
-# Copyright (c) 2014 OpenStack Foundation
+# Copyright (c) 2014-2020 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ from swift.common.middleware.proxy_logging import ProxyLoggingMiddleware
 from test.unit.common.middleware.s3api import S3ApiTestCase
 from test.unit.common.middleware.s3api.test_s3_acl import s3acl
 from swift.common.middleware.s3api.s3request import SigV4Request
+from swift.common.middleware.s3api.controllers import tagging
 from swift.common.middleware.s3api.subresource import ACL, User, encode_acl, \
     Owner, Grant
 from swift.common.middleware.s3api.etree import fromstring
@@ -1893,6 +1894,33 @@ class TestS3ApiObj(S3ApiTestCase):
             headers['Access-Control-Allow-Methods'],
             'GET, PUT, POST, DELETE, PUT, OPTIONS')
         self.assertEqual('underscored', headers['x-amz-meta-test_underscore'])
+
+    @s3acl
+    def test_object_PUT_tagging(self):
+        etag = self.response_headers['etag']
+        content_md5 = binascii.b2a_base64(binascii.a2b_hex(etag)).strip()
+
+        req = Request.blank(
+            '/bucket/object',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'x-amz-storage-class': 'STANDARD',
+                     'Content-MD5': content_md5,
+                     'Date': self.get_date_header(),
+                     'x-amz-tagging': 'a=&b='},
+            body=self.object_body)
+        req.date = datetime.now()
+        req.content_type = 'text/plain'
+        status, headers, _body = self.call_s3api(req)
+        print(_body)
+        self.assertEqual(status.split()[0], '200')
+        # Check that s3api returns an etag header.
+        self.assertEqual(headers['etag'], '"%s"' % etag)
+
+        _, _, headers = self.swift.calls_with_headers[-1]
+        # Check that s3api converts a Content-MD5 header into an etag.
+        self.assertEqual(headers['etag'], etag)
+        self.assertIn(tagging.OBJECT_TAGGING_HEADER, headers)
 
 
 class TestS3ApiObjNonUTC(TestS3ApiObj):

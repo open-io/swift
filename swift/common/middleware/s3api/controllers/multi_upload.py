@@ -80,6 +80,8 @@ from six.moves.urllib.parse import quote, urlparse
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence
+from swift.common.middleware.s3api.controllers.tagging import \
+    HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     ErrorResponse, MalformedXML, BadDigest, KeyTooLongError, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
@@ -569,6 +571,11 @@ class UploadsController(Controller):
 
         obj = '%s/%s' % (req.object_name, upload_id)
 
+        if HTTP_HEADER_TAGGING_KEY in req.headers:
+            tagging = tagging_header_to_xml(
+                req.headers.get(HTTP_HEADER_TAGGING_KEY))
+            req.headers[OBJECT_TAGGING_HEADER] = tagging
+
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)
         req.environ['oio.ephemeral_object'] = True
@@ -774,6 +781,10 @@ class UploadController(Controller):
             _key = key.lower()
             if _key.startswith('x-amz-meta-'):
                 headers['x-object-meta-' + _key[11:]] = val
+        for key, val in resp.sysmeta_headers.items():
+            _key = key.lower()
+            if _key == OBJECT_TAGGING_HEADER.lower():
+                headers[key] = val
 
         hct_header = sysmeta_header('object', 'has-content-type')
         if resp.sysmeta_headers.get(hct_header) == 'yes':
