@@ -74,6 +74,20 @@ def check_container_existence(func):
     return check_container
 
 
+def log_s3api_command(cmd_name):
+    """
+    A decorator to append the specified command name to the swift.log_info
+    fields, if the log_s3api_command parameter is enabled.
+    """
+    def _log_s3api_command(func):
+        @functools.wraps(func)
+        def log_s3api_command_wrapper(self, req, *args, **kwargs):
+            self.set_s3api_command(req, cmd_name)
+            return func(self, req, *args, **kwargs)
+        return log_s3api_command_wrapper
+    return _log_s3api_command
+
+
 class Controller(object):
     """
     Base WSGI controller class for the middleware
