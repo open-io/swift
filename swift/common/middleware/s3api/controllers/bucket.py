@@ -26,14 +26,18 @@ from swift.common.middleware.versioned_writes.object_versioning import \
 from swift.common.utils import json, public, config_true_value, Timestamp
 from swift.common.registry import get_swift_info
 
-from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.base import Controller, \
+    log_s3api_command
+from swift.common.middleware.s3api.controllers.cors import \
+    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
-    BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey
+    BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
+    CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
@@ -368,8 +372,15 @@ class BucketController(Controller):
             req, elem, objects, encoding_type, listing_type, fetch_owner)
 
         body = tostring(elem)
+        resp = HTTPOk(body=body, content_type='application/xml')
 
-        return HTTPOk(body=body, content_type='application/xml')
+        origin = req.headers.get('Origin')
+        if origin:
+            rule = get_cors(self.app, req, "GET", origin)
+            if rule:
+                cors_fill_headers(req, resp, rule)
+
+        return resp
 
     @public
     @check_iam_access("s3:CreateBucket")
@@ -424,3 +435,24 @@ class BucketController(Controller):
         Handle POST Bucket request
         """
         raise S3NotImplemented()
+
+    @public
+    @log_s3api_command('options')
+    def OPTIONS(self, req):
+        origin = req.headers.get('Origin')
+        if not origin:
+            raise CORSOriginMissing()
+
+        method = req.headers.get('Access-Control-Request-Method')
+        if method not in CORS_ALLOWED_HTTP_METHOD:
+            raise CORSInvalidAccessControlRequest(method=method)
+
+        rule = get_cors(self.app, req, method, origin)
+        # FIXME(mbo): we should raise also NoSuchCORSConfiguration
+        if rule is None:
+            raise CORSForbidden(method)
+
+        resp = HTTPOk(body=None)
+        del resp.headers['Content-Type']
+
+        return cors_fill_headers(req, resp, rule)
