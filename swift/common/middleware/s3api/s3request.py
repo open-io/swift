@@ -45,7 +45,7 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     LocationController, LoggingStatusController, PartController, \
     UploadController, UploadsController, VersioningController, \
     UnsupportedController, S3AclController, BucketController, \
-    TaggingController, UniqueBucketController
+    TaggingController, UniqueBucketController, CorsController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
@@ -1072,6 +1072,8 @@ class S3Request(swob.Request):
 
         if 'acl' in self.params:
             return AclController
+        if 'cors' in self.params:
+            return CorsController
         if 'delete' in self.params:
             return MultiObjectDeleteController
         if 'location' in self.params:
@@ -1090,7 +1092,7 @@ class S3Request(swob.Request):
             return TaggingController
 
         unsupported = ('notification', 'policy', 'requestPayment', 'torrent',
-                       'website', 'cors', 'restore')
+                       'website', 'restore')
         if set(unsupported) & set(self.params):
             return UnsupportedController
 
