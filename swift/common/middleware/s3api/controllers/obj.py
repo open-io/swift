@@ -27,12 +27,15 @@ from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.cors import \
+    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, KeyTooLongError
+    PreconditionFailed, KeyTooLongError, HTTPOk, CORSForbidden, \
+    CORSInvalidAccessControlRequest, CORSOriginMissing
 
 
 def version_id_param(req):
@@ -116,6 +119,10 @@ class ObjectController(Controller):
                 # Versioning has never been enabled
                 raise NoSuchVersion(object_name, version_id)
 
+        cors_rule = None
+        if req.headers.get('Origin'):
+            cors_rule = get_cors(self.app, req, req.method,
+                                 req.headers.get('Origin'))
         resp = req.get_response(self.app, query=query)
 
         if req.method == 'HEAD':
@@ -130,6 +137,8 @@ class ObjectController(Controller):
             if 'response-' + key in req.params:
                 resp.headers[key] = req.params['response-' + key]
 
+        if cors_rule is not None:
+            cors_fill_headers(req, resp, cors_rule)
         return resp
 
     @public
@@ -287,3 +296,23 @@ class ObjectController(Controller):
             # else -- it's gone! Success.
             return HTTPNoContent()
         return resp
+
+    @public
+    def OPTIONS(self, req):
+        origin = req.headers.get('Origin')
+        if not origin:
+            raise CORSOriginMissing()
+
+        method = req.headers.get('Access-Control-Request-Method')
+        if method not in CORS_ALLOWED_HTTP_METHOD:
+            raise CORSInvalidAccessControlRequest(method=method)
+
+        rule = get_cors(self.app, req, method, origin)
+        # FIXME(mbo): we should raise also NoSuchCORSConfiguration
+        if rule is None:
+            raise CORSForbidden(method)
+
+        resp = HTTPOk(body=None)
+        del resp.headers['Content-Type']
+
+        return cors_fill_headers(req, resp, rule)

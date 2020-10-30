@@ -334,6 +334,42 @@ class BucketNotEmpty(ErrorResponse):
     _msg = 'The bucket you tried to delete is not empty'
 
 
+class CORSForbidden(ErrorResponse):
+    _status = '403 Forbidden'
+    _msg = 'CORSResponse: This CORS request is not allowed. This is usually ' \
+           'because the evalution of Origin, request method / ' \
+           'Access-Control-Request-Method or Access-Control-Request-Headers ' \
+           'are not whitelisted by the resource\'s CORS spec.'
+
+    def __init__(self, method, *args, **kwargs):
+        if not method:
+            raise InternalError()
+        ErrorResponse.__init__(self, None, method=method,
+                               resourcetype="BUCKET", *args, **kwargs)
+
+
+class CORSInvalidAccessControlRequest(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'Invalid Access-Control-Request-Method: %s'
+
+    def __init__(self, method, *args, **kwargs):
+        if not method:
+            method = 'null'
+        ErrorResponse.__init__(self, self._msg % method, *args, **kwargs)
+
+
+class CORSInvalidRequest(ErrorResponse):
+    _status = '400 Bad Request'
+
+    def __init__(self, msg, *args, **kwargs):
+        ErrorResponse.__init__(self, msg)
+
+
+class CORSOriginMissing(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'Insufficient information. Origin request header needed.'
+
+
 class CredentialsNotSupported(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'This request does not support credentials.'
@@ -586,6 +622,11 @@ class NoSuchBucket(ErrorResponse):
         if not bucket:
             raise InternalError()
         ErrorResponse.__init__(self, msg, bucket_name=bucket, *args, **kwargs)
+
+
+class NoSuchCORSConfiguration(ErrorResponse):
+    _status = '404 Not Found'
+    _msg = 'The CORS configuration does not exist'
 
 
 class NoSuchKey(ErrorResponse):

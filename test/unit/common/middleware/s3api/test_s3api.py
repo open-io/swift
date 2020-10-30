@@ -829,7 +829,16 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self._test_unsupported_resource('website')
 
     def test_cors(self):
-        self._test_unsupported_resource('cors')
+        self.swift.register('HEAD', '/v1/AUTH_X',
+                            swob.HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket',
+                            swob.HTTPNoContent, {}, None)
+        req = Request.blank('/bucket?cors',
+                            environ={'REQUEST_METHOD': 'GET',
+                                     'HTTP_AUTHORIZATION': 'AWS X:Y:Z'},
+                            headers={'Date': self.get_date_header()})
+        _status, _headers, body = self.call_s3api(req)
+        self.assertEqual(self._get_error_code(body), 'NoSuchCORSConfiguration')
 
     def test_tagging(self):
         # More tests are implemented in the test_tagging module.
