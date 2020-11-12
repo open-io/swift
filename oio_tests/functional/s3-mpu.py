@@ -61,6 +61,8 @@ def run_test(bucket, path):
     data = run_aws("s3api", "create-bucket", "--bucket", bucket)
     assert data['Location'] == '/%s' % bucket
 
+    run_aws("s3api", "get-bucket-acl", "--bucket", bucket)
+
     full_data = b"*" * size
 
     # create MPU
