@@ -72,6 +72,8 @@ def translate_swift_to_s3(key, val):
         return key, val
     elif _key == 'x-object-version-id':
         return 'x-amz-version-id', val
+    elif _key == 'x-object-sysmeta-version-id':
+        return 'x-amz-version-id', val
     elif _key == 'x-copied-from-version-id':
         return 'x-amz-copy-source-version-id', val
     elif _key == 'x-backend-content-type' and \
