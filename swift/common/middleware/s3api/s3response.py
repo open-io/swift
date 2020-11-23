@@ -113,6 +113,8 @@ class S3Response(S3ResponseBase, swob.Response):
                 headers[key] = val
             elif _key == 'x-object-version-id':
                 headers['x-amz-version-id'] = val
+            elif _key == 'x-object-sysmeta-version-id':
+                headers['x-amz-version-id'] = val
             elif _key == 'x-copied-from-version-id':
                 headers['x-amz-copy-source-version-id'] = val
             elif _key == 'x-static-large-object':
