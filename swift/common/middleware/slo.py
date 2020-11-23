@@ -1052,6 +1052,8 @@ class SloGetContext(WSGIContext):
             dict(seg_dict, path=self._segment_path(ver, account, seg_dict))
             for seg_dict in ratelimited_listing_iter)
 
+        # remove version used on the manifest to retrieve Segments
+        req.environ.pop('oio.query', None)
         segmented_iter = SegmentedIterable(
             req, self.slo.app, segment_listing_iter,
             name=req.path, logger=self.slo.logger,
