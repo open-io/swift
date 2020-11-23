@@ -784,12 +784,17 @@ class UploadController(Controller):
 
         upload_id = req.params['uploadId']
         resp = _get_upload_info(req, self.app, upload_id)
+        version_id = None
         headers = {'Accept': 'application/json',
                    sysmeta_header('object', 'upload-id'): upload_id}
         for key, val in resp.headers.items():
             _key = key.lower()
             if _key.startswith('x-amz-meta-'):
                 headers['x-object-meta-' + _key[11:]] = val
+            elif _key == 'x-amz-version-id':
+                # As heartbeat is enabled, the headers are sent before calling
+                # SLO, we will reuse version-id of the uploadId
+                version_id = val
         for key, val in resp.sysmeta_headers.items():
             _key = key.lower()
             if _key == OBJECT_TAGGING_HEADER.lower():
@@ -867,7 +872,8 @@ class UploadController(Controller):
             # upload-id; assuming the segments to use haven't changed, the work
             # is already done
             return HTTPOk(body=_make_complete_body(req, s3_etag, False),
-                          content_type='application/xml')
+                          content_type='application/xml',
+                          headers={'x-amz-version-id': version_id})
         headers[s3_etag_header] = s3_etag
         # Leave base header value blank; SLO will populate
         c_etag = '; s3_etag=%s' % s3_etag
@@ -899,12 +905,14 @@ class UploadController(Controller):
 
             try:
                 try:
-                    # TODO: add support for versioning
+                    # Force version-id to use version-id of the uploadId
+                    req.environ['oio.force-version'] = version_id
                     put_resp = req.get_response(
                         self.app, 'PUT', body=json.dumps(manifest),
                         query={'multipart-manifest': 'put',
                                'heartbeat': 'on'},
                         headers=headers)
+                    req.environ.pop('oio.force-version')
                     if put_resp.status_int == 202:
                         body = []
                         put_resp.fix_conditional_response()
@@ -967,6 +975,7 @@ class UploadController(Controller):
                     yield chunk
 
         resp = HTTPOk()  # assume we're good for now... but see above!
+        resp.headers['x-amz-version-id'] = version_id
         resp.app_iter = reiterate(response_iter())
         resp.content_type = "application/xml"
 
