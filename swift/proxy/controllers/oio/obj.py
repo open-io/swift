@@ -645,6 +645,7 @@ class ObjectController(BaseObjectController):
         return _chunks, _size, checksum, {}
 
     def _store_object(self, req, data_source, headers):
+        kwargs = {}
         content_type = req.headers.get('content-type', 'octet/stream')
         policy = None
         container_info = self.container_info(self.account_name,
@@ -677,6 +678,11 @@ class ObjectController(BaseObjectController):
         if SUPPORT_VERSIONING and headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
                 headers.get(FORCEVERSIONING_HEADER)
+        if req.environ.get('oio.force-version'):
+            # In a case of MPU, it contains version of the UploadId
+            # to be able to include version-id of MPU in S3 reponse
+            kwargs['version'] = req.environ.get('oio.force-version')
+
         # In case a shard is being created, save the name of the S3 bucket
         # in a container property. This will be used when aggregating
         # container statistics to make bucket statistics.
@@ -694,7 +700,8 @@ class ObjectController(BaseObjectController):
                 mime_type=content_type, policy=policy, headers=oio_headers,
                 etag=req.headers.get('etag', '').strip('"'),
                 properties=metadata, container_properties=ct_props,
-                cache=oio_cache, perfdata=perfdata)
+                cache=oio_cache, perfdata=perfdata,
+                **kwargs)
             # TODO(FVE): when oio-sds supports it, do that in a callback
             # passed to object_create (or whatever upload method supports it)
             footer_md = self.load_object_metadata(self._get_footers(req))
