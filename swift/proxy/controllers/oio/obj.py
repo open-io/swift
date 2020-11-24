@@ -478,7 +478,8 @@ class ObjectController(BaseObjectController):
         # we will have to delete the parts if the current
         # operation is a success.
         if (self.app.delete_slo_parts and
-                not container_info['sysmeta'].get('versions-location', None)):
+                not config_true_value(container_info.get(
+                    'sysmeta', {}).get('versions-enabled', False))):
             try:
                 dest_info = get_object_info(req.environ, self.app)
                 if 'slo-size' in dest_info['sysmeta']:
