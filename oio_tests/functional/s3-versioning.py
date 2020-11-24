@@ -55,17 +55,24 @@ class TestVersioning(unittest.TestCase):
         # run_s3api("create-bucket", "--bucket", self.bucket)
         pass
 
-    def test_simple_object_with_versioning(self):
-        key = random_str(20)
+    def _create_simple_object(self, key):
         data = run_s3api("put-object", "--bucket", self.bucket,
                          "--key", key)
-
         self.assertIn("VersionId", data)
-        version = data['VersionId']
-        self._run_versioning_test(key, version)
+        return data['VersionId']
 
-    def test_mpu_object_with_versioning(self):
+    def test_simple_object(self):
         key = random_str(20)
+        version = self._create_simple_object(key)
+        self._run_versioning_test(key, versions=[version])
+
+    def test_two_simple_object(self):
+        key = random_str(20)
+        version1 = self._create_simple_object(key)
+        version2 = self._create_simple_object(key)
+        self._run_versioning_test(key, versions=[version2, version1])
+
+    def _create_mpu_object(self, key):
         size = 4 * 1024 * 1024
         mpu_size = 5242880
         full_data = b"*" * size * 5
@@ -91,23 +98,40 @@ class TestVersioning(unittest.TestCase):
                          json.dumps({"Parts": mpu_parts}))
 
         self.assertIn("VersionId", data)
-        version = data['VersionId']
-        run_s3api("get-object", "--bucket", self.bucket, "--key", key,
-                  "--version-id", version,
-                  "/tmp/out")
-        self._run_versioning_test(key, version)
+        return data['VersionId']
 
-    def _run_versioning_test(self, key, version):
+    def test_mpu_object(self):
+        key = random_str(20)
+        version = self._create_mpu_object(key)
+        self._run_versioning_test(key, versions=[version])
+
+    def test_two_mpu_object(self):
+        key = random_str(20)
+        version1 = self._create_mpu_object(key)
+        version2 = self._create_mpu_object(key)
+        self._run_versioning_test(key, versions=[version2, version1])
+
+    def _run_versioning_test(self, key, versions):
         data = run_s3api("list-object-versions", "--bucket", self.bucket)
-        self.assertEqual(len(data.get('Versions', [])), 1)
+        self.assertEqual(len(data.get('Versions', [])), len(versions))
         self.assertEqual(len(data.get('DeleteMarkers', [])), 0)
+        self.assertListEqual(versions, [entry['VersionId']
+                                        for entry in data['Versions']])
+        for version in versions:
+            run_s3api("get-object", "--bucket", self.bucket, "--key", key,
+                      "--version-id", version, "/tmp/out")
 
         data = run_s3api("delete-object", "--bucket", self.bucket,
                          "--key", key)
-
         data = run_s3api("list-object-versions", "--bucket", self.bucket)
-        self.assertEqual(len(data.get('Versions', [])), 1)
+        self.assertEqual(len(data.get('Versions', [])), len(versions))
         self.assertEqual(len(data.get('DeleteMarkers', [])), 1)
+        self.assertListEqual(versions, [entry['VersionId']
+                                        for entry in data['Versions']])
+        for version in versions:
+            run_s3api("get-object", "--bucket", self.bucket, "--key", key,
+                      "--version-id", version, "/tmp/out")
+
         for entry in data['Versions'] + data['DeleteMarkers']:
             run_s3api("delete-object",
                       "--bucket", self.bucket,
