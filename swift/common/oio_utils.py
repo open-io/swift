@@ -22,6 +22,7 @@ from swift.common.swob import HTTPMethodNotAllowed, \
 from oio.common.constants import REQID_HEADER
 from oio.common.exceptions import MethodNotAllowed, NoSuchContainer, \
     NoSuchObject, OioTimeout, ServiceBusy, ServiceUnavailable, DeadlineReached
+from oio.common.redis_conn import catch_service_errors, RedisConnection
 
 
 BUCKET_NAME_PROP = "sys.m2.bucket.name"
@@ -122,3 +123,68 @@ def check_if_none_match(fnc):
                 raise HTTPPreconditionFailed(request=req)
         return fnc(self, req, *args, **kwargs)
     return _if_none_match_wrapper
+
+
+class RedisDb(RedisConnection):
+    """
+    Helper for middlewares needing to connect to a Redis database.
+    Sends write operations to the master and reads to the slaves.
+    """
+
+    def __init__(self, host=None, sentinel_hosts=None, sentinel_name=None,
+                 **kwargs):
+        super(RedisDb, self).__init__(
+            host=host, sentinel_hosts=sentinel_hosts,
+            sentinel_name=sentinel_name, **kwargs)
+
+        self._script_zkeys = None
+
+        # The interface of the zadd() method has changed in redis-py 3.0.0,
+        # we have to check which version we are running, and create the zset
+        # wrapper accordingly.
+        import inspect
+        if 'mapping' not in inspect.getargspec(self.conn.zadd).args:
+            self.zset = self.zset_legacy
+        else:
+            self.zset = self.zset3
+
+    @catch_service_errors
+    def get(self, key):
+        return self.conn.get(key)
+
+    @catch_service_errors
+    def hset(self, key, path, val):
+        return self.conn.hset(key, path, val)
+
+    @catch_service_errors
+    def hget(self, key, path):
+        return self.conn.hget(key, path)
+
+    @catch_service_errors
+    def zset3(self, key, path):
+        """Wrapper for the zadd method."""
+        return self.conn.zadd(key, {path: 1}, nx=True)
+
+    @catch_service_errors
+    def zset_legacy(self, key, path):
+        """Wrapper for the zadd method."""
+        return self.conn.zadd(key, 1, path)
+
+    @catch_service_errors
+    def hdel(self, key, hkey):
+        return self.conn.hdel(key, hkey)
+
+    @catch_service_errors
+    def zdel(self, key, zkey):
+        return self.conn.zrem(key, zkey)
+
+    @catch_service_errors
+    def zrangebylex(self, key, start, end, count):
+        return self.conn_slave.zrangebylex(key, start, end, 0, count)
+
+    @catch_service_errors
+    def hexists(self, key, hkey):
+        return self.conn_slave.hexists(key, hkey)
+
+    def pipeline(self, *args, **kwargs):
+        return self.conn.pipeline(*args, **kwargs)
