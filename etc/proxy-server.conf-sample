@@ -1421,3 +1421,12 @@ use = egg:swift#symlink
 # symlinks exceeds the limit symloop_max a 409 (HTTPConflict) error
 # response will be produced.
 # symloop_max = 2
+
+# This middleware intercepts requests about "epheremal" objects (especially
+# empty objects created as MPU placeholders) and stores them in an alternative
+# backend (Redis). Must be placed at the end of the pipeline.
+[filter:ephemeral_objects]
+use = egg:swift#ephemeral_objects
+# Tell how to connect to the ephemeral object backend. Only redis and
+# redis+sentinel schemes are accepted (see IAM middleware for examples).
+connection = redis://127.0.0.1:6379
