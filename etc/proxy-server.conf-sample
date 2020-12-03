@@ -1430,3 +1430,13 @@ use = egg:swift#ephemeral_objects
 # Tell how to connect to the ephemeral object backend. Only redis and
 # redis+sentinel schemes are accepted (see IAM middleware for examples).
 connection = redis://127.0.0.1:6379
+
+# Drop-in replacement for the memcache middleware, which also caches
+# object and container metadata (oio-sds backend only).
+#[filter:cache]
+#use = egg:swift#oiomemcache
+#memcache_servers = 127.0.0.1:11211
+# Enable or disable object and container metadata caching
+#oio_cache = true
+# How long to cache object and container metadata
+#oio_cache_ttl = 3600
