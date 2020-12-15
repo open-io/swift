@@ -1,0 +1,17 @@
+name: swift
+version: v2.0
+
+workflow:
+  swift-build:
+    pipeline: swift-build
+    application: swift
+
+metadata:
+  default_tags: git.branch,git.author,git.tag
+
+retention_policy: return (git_branch_exist == "false" and run_days_before < 2) or run_days_before < 365
+
+notifications:
+  - type: vcs
+    settings:
+      on_success: always

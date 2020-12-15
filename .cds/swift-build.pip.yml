@@ -1,0 +1,45 @@
+version: v1.0
+name: swift-build
+jobs:
+#  - job: Compile package
+#    steps:
+#      - checkout: '{{ .cds.workspace }}'
+#      - script: |+
+#          #!/bin/bash
+#          cat $0
+#          set -x
+#          curl -qs "https://{{ .cds.proj.drive_mirrors_objectstorage_openio_user }}:{{ .cds.proj.drive_mirrors_objectstorage_openio_password }}@{{ .cds.proj.drive_mirrors_hostname }}/pub.key" | apt-key add -
+#          add-apt-repository "deb https://{{ .cds.proj.drive_mirrors_objectstorage_openio_user }}:{{ .cds.proj.drive_mirrors_objectstorage_openio_password }}@{{ .cds.proj.drive_mirrors_hostname }}/ubuntu bionic/main main"
+#          apt update
+#          if [[ "{{ .git.tag }}" =~  ^[0-9]+\. ]]; then
+#            pkg_version={{ .git.tag }}
+#            repository=main
+#            limit=0
+#          else
+#            pkg_version=$(date +%Y%m%d%H%M).git{{ .git.hash.short }}
+#            repository=dev
+#            limit=100
+#          fi
+#          debchange --newversion $pkg_version --distribution bionic --package oio-swift --create --controlmaint update
+#          export DEBIAN_FRONTEND=noninteractive
+#          mk-build-deps -i -t 'apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y'
+#          dpkg-buildpackage -us -uc -rfakeroot
+#          curl -u "{{ .cds.proj.drive_mirrors_objectstorage_openio_user }}:{{ .cds.proj.drive_mirrors_objectstorage_openio_password }}" {{ .cds.proj.drive_mirrors_url }}/incoming/oio-swift_${pkg_version}_all.deb -X POST -F file=@../oio-swift_${pkg_version}_all.deb -F repo=deb-multi -F suite=bionic -F codename=bionic/$repository -F basedir=ubuntu -F limit=$limit -F signWith=9C74E84C
+#    requirements:
+#      - model: openio-debbuild-18.04
+
+  - job: Mirror to github
+    steps:
+      - gitClone:
+          branch: '{{ .git.branch }}'
+          commit: '{{ .git.hash }}'
+          directory: '{{ .cds.workspace }}'
+          url: '{{ .git.url }}'
+          privateKey: proj-ssh-openio
+          depth: "false"
+      - script:
+          - eval $(worker key install --env-git proj-ssh-openio)
+          - git fetch --all
+          - git push --prune https://openiobot:{{ .cds.proj.OPENIOBOT_GITHUB_TOKEN }}@github.com/open-io/swift.git +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*
+    requirements:
+      - binary: git
