@@ -1,0 +1,4 @@
+debian/*.upstart
+debian/*.init
+debian/*.service
+debian/python3-swift.postinst
