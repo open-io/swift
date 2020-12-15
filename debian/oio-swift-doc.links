@@ -1,0 +1,7 @@
+usr/share/doc/swift-doc/api-ref usr/share/doc/swift/api-ref
+usr/share/doc/swift-doc/base usr/share/doc/swift/base
+usr/share/doc/swift-doc/install-guide usr/share/doc/swift/install-guide
+usr/share/javascript/bootstrap/css/bootstrap.min.css usr/share/doc/swift-doc/install-guide/_static/css/bootstrap.min.css
+usr/share/javascript/bootstrap/js/bootstrap.min.js usr/share/doc/swift-doc/install-guide/_static/js/bootstrap.min.js
+usr/share/javascript/jquery/jquery.min.js usr/share/doc/swift-doc/install-guide/_static/jquery.js
+usr/share/javascript/underscore/underscore.min.js usr/share/doc/swift-doc/install-guide/_static/underscore.js
