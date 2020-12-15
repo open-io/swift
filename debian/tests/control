@@ -1,0 +1,18 @@
+Tests: help
+Depends:
+ swift-account,
+ swift-container,
+ swift-drive-audit,
+ swift-object,
+ swift-object-expirer,
+ swift-proxy,
+
+Tests: daemons
+Depends:
+ swift-account,
+ swift-container,
+ swift-object,
+ swift-object-expirer,
+ swift-proxy,
+ wget,
+Restrictions: needs-root, isolation-container
