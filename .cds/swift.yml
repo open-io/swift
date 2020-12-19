@@ -2,9 +2,26 @@ name: swift
 version: v2.0
 
 workflow:
-  swift-build:
+  root:
+    pipeline: swift-root
+    application: swift
+
+  mirror:
+    pipeline: swift-mirror
+    application: swift
+    depends_on:
+      - root
+
+  build:
     pipeline: swift-build
     application: swift
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
 
 metadata:
   default_tags: git.branch,git.author,git.tag
@@ -15,3 +32,11 @@ notifications:
   - type: vcs
     settings:
       on_success: always
+
+hooks:
+  root:
+    - type: Scheduler
+      config:
+        # once very hour
+        cron: "33 * * * *"
+        timezone: UTC
