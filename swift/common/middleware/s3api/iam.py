@@ -364,6 +364,8 @@ def check_iam_access(action):
                 raise AccessDenied()
             # else:
             #    # acl_allow is None -> ACLs were not checked yet.
+            # FIXME(FVE): no ACLs to be checked if the bucket is being created
+            # or deleted: we must deny the request!
 
             return func(*args, **kwargs)
         return wrapper
