@@ -18,7 +18,7 @@ from xml.etree.cElementTree import Element, SubElement, tostring
 
 from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
-    handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX
+    handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP
 from swift.common.utils import public, Timestamp, \
     config_true_value, override_bytes_from_content_type
 from swift.common.constraints import check_metadata
@@ -305,13 +305,12 @@ class ContainerController(SwiftContainerController):
 
     def get_container_create_resp(self, req, headers):
         properties, system = self.properties_from_headers(headers)
-        # Save the name of the S3 bucket in a container property.
-        # This will be used when aggregating container statistics
-        # to make bucket statistics.
-        bname = self.container_name
-        if bname.endswith(MULTIUPLOAD_SUFFIX):
-            bname = bname[:-len(MULTIUPLOAD_SUFFIX)]
-        system[BUCKET_NAME_PROP] = bname
+        bucket_name = req.environ.get('s3api.bucket')
+        if bucket_name:
+            # Save the name of the S3 bucket in a container property.
+            # This will be used when aggregating container statistics
+            # to make bucket statistics.
+            system[BUCKET_NAME_PROP] = bucket_name
         # TODO container update metadata
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')

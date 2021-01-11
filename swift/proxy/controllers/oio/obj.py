@@ -206,9 +206,10 @@ class ObjectController(BaseObjectController):
         # There is no reason to save several versions of segments:
         # a new version of a multipart object manifest will point to a
         # completely different set of segments, with another uploadId.
-        root_container = req.headers.get(BUCKET_NAME_HEADER)
-        if (root_container is None or
-                root_container.endswith(MULTIUPLOAD_SUFFIX)):
+        bucket_name = req.environ.get('s3api.bucket')
+        if not bucket_name \
+                or self.container_name == bucket_name \
+                or self.container_name.endswith(MULTIUPLOAD_SUFFIX):
             return None
 
         # We can't use _get_info_from_caches as it would use local worker cache
@@ -218,7 +219,7 @@ class ObjectController(BaseObjectController):
         if memcache is None:
             return None
 
-        key = "/".join(("versioning", self.account_name, root_container))
+        key = "/".join(("versioning", self.account_name, bucket_name))
         val = memcache.get(key)
         if val is not None:
             if val != '':
@@ -230,7 +231,7 @@ class ObjectController(BaseObjectController):
         perfdata = req.environ.get('swift.perfdata')
         try:
             meta = self.app.storage.container_get_properties(
-                self.account_name, root_container, headers=oio_headers,
+                self.account_name, bucket_name, headers=oio_headers,
                 cache=oio_cache, perfdata=perfdata)
         except exceptions.NoSuchContainer:
             raise HTTPNotFound(request=req)
@@ -684,16 +685,12 @@ class ObjectController(BaseObjectController):
             # to be able to include version-id of MPU in S3 reponse
             kwargs['version'] = req.environ.get('oio.force-version')
 
-        # In case a shard is being created, save the name of the S3 bucket
-        # in a container property. This will be used when aggregating
-        # container statistics to make bucket statistics.
-        if BUCKET_NAME_HEADER in headers:
-            bname = headers[BUCKET_NAME_HEADER]
-            # FIXME(FVE): the segments container is not part of another bucket!
-            # We should not have to strip this here.
-            if bname and bname.endswith(MULTIUPLOAD_SUFFIX):
-                bname = bname[:-len(MULTIUPLOAD_SUFFIX)]
-            ct_props['system'][BUCKET_NAME_PROP] = bname
+        bucket_name = req.environ.get('s3api.bucket')
+        if bucket_name:
+            # In case a shard is being created, save the name of the S3 bucket
+            # in a container property. This will be used when aggregating
+            # container statistics to make bucket statistics.
+            ct_props['system'][BUCKET_NAME_PROP] = bucket_name
         try:
             _chunks, _size, checksum, _meta = self._object_create(
                 self.account_name, self.container_name,
