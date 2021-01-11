@@ -352,6 +352,7 @@ class S3ApiMiddleware(object):
                 env['s3api.bucket_db'] = BucketDbWrapper(self.bucket_db)
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
+            env['s3api.bucket'] = req.container_name
             resp = self.handle_request(req)
         except NotS3Request:
             resp = self.app
