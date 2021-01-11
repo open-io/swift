@@ -300,6 +300,7 @@ class S3ApiMiddleware(object):
                 self.conf.dns_compliant_bucket_names,
                 self.conf.allow_multipart_uploads, self.conf.allow_no_owner,
                 self.conf.allow_anonymous_path_requests)
+            env['s3api.bucket'] = req.container_name
             resp = self.handle_request(req)
         except NotS3Request:
             resp = self.app
