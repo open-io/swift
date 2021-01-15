@@ -1,6 +1,7 @@
 #!/usr/bin/make -f
 
 DESTDIR=$(CURDIR)/debian/${PACKAGE}
+PREFIX=/opt/${PACKAGE}
 
 export DH_VIRTUALENV_INSTALL_ROOT=/opt/
 PYTHON_PATH=$(shell readlink -f /opt/python-*)
@@ -18,15 +19,22 @@ override_dh_virtualenv:
 
 	# reflect the repo / branch that is set on debian/requirements.txt
 	# please update both in case of change in repo url or branch
-	git archive --remote=ssh://git@stash.ovh.net:7999/openio/oio-sds master all-requirements.txt --format tar | tar -xO | grep -v zookeeper >> debian/requirements.txt
+	git archive --remote=ssh://git@stash.ovh.net:7999/openio/oio-sds master all-requirements.txt --format tar | tar -xO >> debian/requirements.txt
 
 	dh_virtualenv \
 	  --python ${PYTHON_PATH}/bin/python \
-	  --install-suffix swift-${VERSION} \
+	  --install-suffix ${PACKAGE} \
 	  --use-system-packages \
 	  --builtin-venv \
 	  --preinstall wheel \
 	  --requirements debian/requirements.txt \
 	  --index-url https://last-pypi.snap.mirrors.ovh.net/simple/
+	# fix shebangs
+	sed -i "s@${DESTDIR}@@" $(DESTDIR)$(PREFIX)/bin/*
 
 .PHONY: override_dh_strip override_dh_shlibdeps
+
+# remove postinst from dh-virtualenv as it's buggy and useless
+override_dh_installdeb:
+	dh_installdeb
+	rm -f $(DESTDIR)/DEBIAN/postinst
