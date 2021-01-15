@@ -1,32 +1,32 @@
 #!/usr/bin/make -f
 
--include /usr/share/openstack-pkg-tools/pkgos.make
+DESTDIR=$(CURDIR)/debian/${PACKAGE}
 
-export SWIFT_TEST_CONFIG_FILE=$(CURDIR)/debian/swift-test.conf
+export DH_VIRTUALENV_INSTALL_ROOT=/opt/
+PYTHON_PATH=$(shell readlink -f /opt/python-*)
 
-# VL: FIXME: disabled failing tests: middleware & locale
-export PYBUILD_TEST_ARGS=\
-	test/unit \
-	--exclude-test=test.unit.common.test_utils.TestUtils.test_get_logger_sysloghandler_plumbing \
-	--exclude-test=test.unit.common.middleware.test_bulk.TestUntar.test_extract_tar_fail_unicode \
-	--exclude-test=test.unit.common.middleware.test_bulk.TestUntar.test_extract_tar_works \
-	--exclude-test=test.unit.test_locale.test_locale.TestTranslations.test_translations \
-	# --processes=-1
+export CFLAGS=-I${PYTHON_PATH}/include/
+export LIBRARY_PATH=${PYTHON_PATH}/lib
+export LD_LIBRARY_PATH=${LIBRARY_PATH}
 
 %:
-	dh $@ --buildsystem=pybuild --with python3,sphinxdoc
+	dh $@ --with python-virtualenv
 
-override_dh_installinit:
-	echo "Do nothing"
+override_dh_virtualenv:
+	echo "Name: swift" > PKG-INFO
+	echo "Version: $(VERSION)" >> PKG-INFO
 
-override_dh_installsystemd:
-	echo "Do nothing"
+	# reflect the repo / branch that is set on debian/requirements.txt
+	# please update both in case of change in repo url or branch
+	git archive --remote=ssh://git@stash.ovh.net:7999/openio/oio-sds master all-requirements.txt --format tar | tar -xO | grep -v zookeeper >> debian/requirements.txt
 
-override_dh_auto_test:
-	echo "Do nothing"
+	dh_virtualenv \
+	  --python ${PYTHON_PATH}/bin/python \
+	  --install-suffix swift-${VERSION} \
+	  --use-system-packages \
+	  --builtin-venv \
+	  --preinstall wheel \
+	  --requirements debian/requirements.txt \
+	  --index-url https://last-pypi.snap.mirrors.ovh.net/simple/
 
-gen-init-configurations:
-	echo "Do nothing"
-
-override_dh_sphinxdoc:
-	echo "Do nothing"
+.PHONY: override_dh_strip override_dh_shlibdeps

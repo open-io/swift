@@ -1,0 +1,47 @@
+Source: ${PACKAGE}
+Section: net
+Priority: optional
+Maintainer: PU ObjectStorage <pu.objectstorage@internal.ovh.net>
+Build-Depends:
+  debhelper (>= 9),
+  python-3.7.9-ovh102,
+  dh-virtualenv (>= 1.0),
+Build-Depends-Indep:
+ git,
+Standards-Version: 4.5.0
+Homepage: https://github.com/openstack/swift
+Testsuite: autopkgtest-pkg-python
+Rules-Requires-Root: no
+
+Package: ${PACKAGE}
+Architecture: any
+Section: python
+Pre-Depends:
+  dpkg (>= 1.16.1),
+  python-3.7.9-ovh102,
+  ${misc:Pre-Depends}
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: distributed virtual object store - Python 3 libraries
+ OpenStack Object Storage (code-named Swift) creates redundant, scalable object
+ storage using clusters of standardized servers to store petabytes of
+ accessible data. It is not a file system or real-time data storage system, but
+ rather a long-term storage system for a more permanent type of static data
+ that can be retrieved, leveraged, and then updated if necessary. Primary
+ examples of data that best fit this type of storage model are virtual machine
+ images, photo storage, email storage and backup archiving. Having no central
+ "brain" or master point of control provides greater scalability, redundancy
+ and permanence.
+ .
+ Objects are written to multiple hardware devices in the data center, with
+ the OpenStack software responsible for ensuring data replication and
+ integrity across the cluster. Storage clusters can scale horizontally by
+ adding new nodes. Should a node fail, OpenStack works to replicate its
+ content from other active nodes. Because OpenStack uses software logic to
+ ensure data replication and distribution across different devices,
+ inexpensive commodity hard drives and servers can be used in lieu of more
+ expensive equipment.
+ .
+ This package provides the Python 3 libraries that actually implement
+ everything.
