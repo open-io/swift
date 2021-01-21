@@ -1,4 +1,4 @@
-git+ssh://git@stash.ovh.net:7999/cloudstoragepcs/ceilometermiddleware@v1.4.0#egg=ceilometermiddleware
+ceilometermiddleware
 git+ssh://git@stash.ovh.net:7999/openio/swift-headers4ceilometer@master#egg=swift_headers4ceilometer
 git+ssh://git@stash.ovh.net:7999/cloudstoragepcs/swift-logger-ltsv@master#egg=swift_logger_ltsv
 keystonemiddleware
