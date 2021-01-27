@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2020 OpenStack Foundation.
+# Copyright (c) 2014-2021 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ from swift.common.middleware.s3api.controllers.multi_delete import \
     MultiObjectDeleteController
 from swift.common.middleware.s3api.controllers.multi_upload import \
     UploadController, PartController, UploadsController
+from swift.common.middleware.s3api.controllers.lifecycle import \
+    LifecycleController
 from swift.common.middleware.s3api.controllers.location import \
     LocationController
 from swift.common.middleware.s3api.controllers.logging import \
@@ -51,6 +53,7 @@ __all__ = [
     'PartController',
     'UploadsController',
     'UploadController',
+    'LifecycleController',
     'LocationController',
     'LoggingStatusController',
     'VersioningController',
