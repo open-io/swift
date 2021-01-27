@@ -45,7 +45,8 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     LocationController, LoggingStatusController, PartController, \
     UploadController, UploadsController, VersioningController, \
     UnsupportedController, S3AclController, BucketController, \
-    TaggingController, UniqueBucketController, CorsController
+    TaggingController, UniqueBucketController, CorsController, \
+    LifecycleController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
@@ -1082,6 +1083,8 @@ class S3Request(swob.Request):
             return CorsController
         if 'delete' in self.params:
             return MultiObjectDeleteController
+        if 'lifecycle' in self.params:
+            return LifecycleController
         if 'location' in self.params:
             return LocationController
         if 'logging' in self.params:
