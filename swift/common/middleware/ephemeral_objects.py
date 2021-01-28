@@ -257,7 +257,10 @@ class EphemeralObjects(object):
 
     def __call__(self, env, start_response):
         req = Request(env)
-        _vers, account, container, obj = req.split_path(1, 4, True)
+        try:
+            _vers, account, container, obj = req.split_path(1, 4, True)
+        except ValueError:
+            return self.app(env, start_response)
 
         # if obj and prefix are None with container+segments, we want the
         # normal listing because it is the list-multipart-uploads operation
