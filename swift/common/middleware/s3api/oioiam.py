@@ -23,19 +23,22 @@ from swift.common.middleware.s3api.iam import IamMiddleware, \
 
 class RedisIamMiddleware(IamMiddleware, RedisIamDb):
     """
-    Middleware loading IAM rules from a Redis database.
+    Middleware loading IAM policies from a Redis database.
 
     There is one hash per account.
-    Each field of the hash holds the IAM rules document for one user.
+    Each field of the hash holds one IAM policy document for one user.
+    It is possible to set several documents per user.
 
     Examples (Keystone's style account names):
         IAM:account:AUTH_d1bcefa04c41403c92f4ee5634559e4c
-            admin:admin
+            admin:admin/default
                 '{"Statement": [...]}'
         IAM:account:AUTH_acc6af49dcfe41799323b3b7902ae1b0
-            demo:demo
+            demo:demo/default
                 '{"Statement": [...]}'
-            demo:demo2
+            demo:demo/custom
+                '{"Statement": [...]}'
+            demo:demo2/default
                 '{"Statement": [...]}'
     """
 
