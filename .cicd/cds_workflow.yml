@@ -1,0 +1,61 @@
+name: swift
+version: v1.0
+workflow:
+  CICD:
+    pipeline: CICD
+    application: swift
+    environment: PROD
+    payload:
+      git.author: ""
+      git.branch: v2.18.0
+      git.hash: ""
+      git.hash.before: ""
+      git.message: ""
+      git.repository: CLOUDSTORAGEPCS/swift
+      git.tag: ""
+  UnitTestsStretchPy37:
+    depends_on:
+    - fork
+    when:
+    - success
+    pipeline: ImportUnitTestsResults
+    application: swift
+    environment: PROD
+    parameters:
+      test_prefix: stretch_test_py3.7
+  UnitTestsWheezyPy27:
+    depends_on:
+    - fork
+    when:
+    - success
+    pipeline: ImportUnitTestsResults
+    application: swift
+    environment: PROD
+    parameters:
+      test_prefix: wheezy_test_py2.7
+  UnitTestsWheezyPy37:
+    depends_on:
+    - fork
+    when:
+    - success
+    pipeline: ImportUnitTestsResults
+    application: swift
+    environment: PROD
+    parameters:
+      test_prefix: wheezy_test_py3.7
+  UnitTestssStretchPy27:
+    depends_on:
+    - fork
+    when:
+    - success
+    pipeline: ImportUnitTestsResults
+    application: swift
+    environment: PROD
+    parameters:
+      test_prefix: stretch_test_py2.7
+  fork:
+    depends_on:
+    - CICD
+metadata:
+  default_tags: git.branch,git.author
+

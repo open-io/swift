@@ -1,0 +1,15 @@
+# model:focal
+
+for dist in debian:wheezy debian:bookworm ubuntu:focal; do
+    basedir=${dist%:*}
+    codename=${dist#*:}
+
+    artifact download tag=${WORKFLOW_RUN_NUMBER}:${codename} path=/root/${codename}
+    snapmirror_upload package=$(find /root/${codename} -type f -name "*py3*.deb" -print -quit) \
+                      username=${ENV[mirrordrive.private.username]} \
+                      password=${ENV[mirrordrive.private.password]} \
+                      basedir=${basedir} \
+                      codename=${codename} \
+                      components=main \
+                      suite=${codename}
+done

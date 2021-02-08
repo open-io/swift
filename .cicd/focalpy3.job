@@ -1,0 +1,5 @@
+# model:focal
+
+python_version=${ENV[python.3.version]}
+
+. $(dirname $0)/common.sh
