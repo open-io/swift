@@ -364,8 +364,14 @@ def check_iam_access(action):
                 raise AccessDenied()
             # else:
             #    # acl_allow is None -> ACLs were not checked yet.
-            # FIXME(FVE): no ACLs to be checked if the bucket is being created
-            # or deleted: we must deny the request!
+
+            # TODO(FVE): check bucket policy (not implemented ATM)
+            # If the bucket has an owner, but the request's account is
+            # different, deny the request.
+            if acl_allow is None and req.container_name and req.bucket_db:
+                bkt_owner = req.bucket_db.get_owner(req.container_name)
+                if bkt_owner and bkt_owner != req.account:
+                    raise AccessDenied()
 
             return func(*args, **kwargs)
         return wrapper
