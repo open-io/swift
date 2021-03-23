@@ -186,7 +186,7 @@ class OioMemcacheMiddleware(MemcacheMiddleware):
         self.memcache_dict = None
         if config_true_value(conf.get('oio_cache', 'true')):
             oio_cache_ttl = config_auto_int_value(
-                conf.pop('oio_cache_ttl', None), 24 * 3600)
+                conf.pop('oio_cache_ttl', None), 3600)
             self.memcache_dict = MemcacheDict(
                 self.memcache, ttl=oio_cache_ttl)
 
