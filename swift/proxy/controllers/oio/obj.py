@@ -531,12 +531,13 @@ class ObjectController(BaseObjectController):
         return headers
 
     def _get_auto_policy_from_size(self, content_length):
-        # the default stgpol has an offset of 0 so should always be choose
+        # The default storage policy has an offset of -1
+        # so should always be chosen
         policy = None
         for (name, offset) in self.app.oio_stgpol:
-            if offset <= content_length:
-                policy = name
-
+            if offset > content_length:
+                break
+            policy = name
         return policy
 
     def _link_object(self, req):
@@ -668,7 +669,7 @@ class ObjectController(BaseObjectController):
             if policy_index != 0:
                 policy = self.app.POLICIES.get_by_index(policy_index).name
             else:
-                content_length = int(req.headers.get('content-length', 0))
+                content_length = int(req.headers.get('content-length', -1))
                 policy = self._get_auto_policy_from_size(content_length)
 
         ct_props = {'properties': {}, 'system': {}}

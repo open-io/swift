@@ -71,8 +71,16 @@ class Application(SwiftApplication):
                     name, offset = elem.split(':')
                     self.oio_stgpol.append((name, int(offset)))
                 else:
-                    self.oio_stgpol.append((elem, 0))
+                    self.oio_stgpol.append((elem, -1))
             self.oio_stgpol.sort(key=lambda x: x[1])
+            previous_offset = None
+            for _, offset in self.oio_stgpol:
+                if previous_offset is not None and previous_offset == offset:
+                    self.logger.warn(
+                        'Several storage policies use the same offset: %s',
+                        str(self.oio_stgpol))
+                    break
+                previous_offset = offset
 
         policies = []
         if 'oio_storage_policies' in conf:
@@ -90,14 +98,8 @@ class Application(SwiftApplication):
         # Loaded by ObjectStorageApi if None
         sds_proxy_url = sds_conf.pop('proxy_url', None)
         # Fix boolean parameter
-        if 'autocreate' in sds_conf and not (
-                hasattr(ObjectStorageApi, 'EXTRA_KEYWORDS') or
-                'autocreate' in ObjectStorageApi.EXTRA_KEYWORDS):
-            logger.warn("'autocreate' parameter is ignored by current version"
-                        " of OpenIO SDS. Please update to oio>=4.1.23.")
-        else:
-            sds_conf['autocreate'] = config_true_value(
-                sds_conf.get('autocreate', 'true'))
+        sds_conf['autocreate'] = config_true_value(
+            sds_conf.get('autocreate', 'true'))
 
         self.storage = storage or \
             ObjectStorageApi(sds_namespace, endpoint=sds_proxy_url, **sds_conf)
