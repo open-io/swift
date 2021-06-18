@@ -59,6 +59,11 @@ class Application(SwiftApplication):
                     for k, v in conf.items()
                     if k.startswith("sds_")}
 
+        if 'disallowed_sections' not in conf:
+            # object_versioning.is_valid_version_id is a function
+            self.disallowed_sections.append(
+                'object_versioning.is_valid_version_id')
+
         self.oio_stgpol = []
         if 'auto_storage_policies' in conf:
             for elem in conf['auto_storage_policies'].split(','):
