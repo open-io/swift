@@ -348,6 +348,27 @@ use = egg:swift#proxy
 # concurrency_timeout = 0.5
 # concurrent_ec_extra_requests = 0
 
+
+# -- OpenIO backend specific --
+#
+# Passthrough OpenIO SDS Python API parameters
+#sds_proxy_url = http://127.0.0.1:6000
+#sds_connection_timeout=5
+#sds_read_timeout=20
+#sds_write_timeout=20
+#
+# When a static large object manifest is overwritten, swift's default behavior
+# is to keep the parts, in case another manifest references them. It is the
+# container owner's responsability to delete them.
+# oioswift allows to automatically delete the parts (enabled by default).
+#delete_slo_parts=true
+#
+# When handling HEAD requests on objects, verify that the required number
+# of chunks are reachable. When disabled (the default), just check the
+# object exist in the container.
+#check_state=false
+
+
 [filter:tempauth]
 use = egg:swift#tempauth
 # You can override the default log routing for this filter here:
