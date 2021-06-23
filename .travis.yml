@@ -27,11 +27,13 @@ before_install:
   - sudo apt-get install -y --force-yes python-virtualenv jq liberasurecode-dev libssl-dev libattr1-dev libleveldb-dev libzookeeper-mt-dev
 
 install:
+  - gimme stable
+  - source ~/.gimme/envs/latest.env
   - echo -en "travis_fold:start:install\r"
   - pip install --upgrade pip setuptools virtualenv tox flake8
-  - test -n "$SDS_BRANCH" && git config --local submodule.third_party/oio-sds.branch "$SDS_BRANCH" || true
+  - test -n "$SDS_BRANCH" && git config --local submodule.oio-sds.branch "$SDS_BRANCH" || true
   - git submodule update --init --remote
-  - ( grep -v -e "PyECLib" -e "requests" -e "six" third_party/oio-sds/all-requirements.txt ; grep -v -e "eventlet" -e "lxml" -e "xattr" requirements.txt ) | sort > deps-requirements.txt
+  - ( grep -v -e "PyECLib" -e "requests" -e "six" third_party/oio-sds/all-requirements.txt ; grep -v -e "eventlet" -e "lxml" -e "oio" -e "xattr" requirements.txt ) | sort > deps-requirements.txt
   - pip install --upgrade -r deps-requirements.txt
   - cd third_party/oio-sds && python setup.py install && cd ../..
   - python setup.py develop
@@ -40,6 +42,7 @@ install:
   - echo -en "travis_fold:end:install\r"
 
 script:
+  - source ~/.gimme/envs/latest.env
   - set -e
   - if [ "$TEST_SUITE" = "unit" ]; then flake8 oio_tests swift test; fi
   - if [ "$TEST_SUITE" = "unit" ]; then tox -e py37 test.unit.common.middleware.s3api; fi
