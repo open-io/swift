@@ -104,7 +104,7 @@ class Application(SwiftApplication):
         self.storage = storage or \
             ObjectStorageApi(sds_namespace, endpoint=sds_proxy_url, **sds_conf)
         self.delete_slo_parts = \
-            config_true_value(conf.get('delete_slo_parts', False))
+            config_true_value(conf.get('delete_slo_parts', True))
         self.check_state = \
             config_true_value(conf.get('check_state', False))
 
