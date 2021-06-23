@@ -676,7 +676,7 @@ use = egg:swift#s3api
 # are enabled and set to public-read for the requested object).
 # Notice that anonymous requests only work with virtual-hosted style
 # requests (you must define storage_domain) or by enabling
-# allow_anymous_path_request
+# allow_anymous_path_requests
 #
 # Default (disabled)
 #bucket_db_connection =
@@ -687,9 +687,8 @@ use = egg:swift#s3api
 # Sentinel-enabled Redis cluster.
 #bucket_db_connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1&prefix=s3bucket%3A
 
-# Allow anymous request without virtual-hosted style
-# (bucket_db_enabled is required)
-#allow_anymous_path_request = true
+# Allow path-style anymous requests (bucket_db_enabled is required)
+#allow_anymous_path_requests = false
 
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials

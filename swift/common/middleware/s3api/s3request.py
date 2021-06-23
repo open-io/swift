@@ -707,9 +707,6 @@ class S3Request(swob.Request):
 
         Will return False if anonymous requests are disabled by configuration.
         """
-        if not self.allow_anonymous_path_requests:
-            return False
-
         if not self._is_anonymous:
             return False
 
@@ -724,8 +721,9 @@ class S3Request(swob.Request):
         elif valid_api_version(src) or src in ('auth', 'info'):
             # Not an S3 request
             return False
+
         # Path-style anonymous request
-        return True
+        return self.allow_anonymous_path_requests
 
     def _parse_auth_info(self):
         """Extract the access key identifier and signature.
