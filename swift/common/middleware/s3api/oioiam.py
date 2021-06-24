@@ -47,6 +47,9 @@ class RedisIamMiddleware(IamMiddleware, RedisIamDb):
         RedisIamDb.__init__(self, logger=self.logger, **conf)
 
     def load_rules_for_user(self, account, user):
+        if not (account and user):
+            # No user policy if there is no user
+            return None
         return self.load_merged_user_policies(account, user)
 
 
