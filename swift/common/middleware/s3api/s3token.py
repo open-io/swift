@@ -223,8 +223,9 @@ class S3Token(object):
         resp.body = error_msg
         return resp
 
-    def _json_request(self, creds_json):
-        headers = {'Content-Type': 'application/json'}
+    def _json_request(self, creds_json, trans_id):
+        headers = {'Content-Type': 'application/json',
+                   'X-Openstack-Request-Id': trans_id}
         try:
             response = requests.post(self._request_uri,
                                      headers=headers, data=creds_json,
@@ -323,6 +324,7 @@ class S3Token(object):
                     cached_auth_data = None
 
         if not cached_auth_data:
+            trans_id = environ.get('swift.trans_id', 'UNKNOWN')
             creds_json = json.dumps(creds)
             self._logger.debug('Connecting to Keystone sending this JSON: %s',
                                creds_json)
@@ -336,7 +338,7 @@ class S3Token(object):
             #              pass it through to swiftauth in this case.
             try:
                 # NB: requests.Response, not swob.Response
-                resp = self._json_request(creds_json)
+                resp = self._json_request(creds_json, trans_id)
             except HTTPException as e_resp:
                 if self._delay_auth_decision:
                     msg = ('Received error, deferring rejection based on '
