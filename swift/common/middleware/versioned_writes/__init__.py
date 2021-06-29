@@ -53,7 +53,8 @@ def filter_factory(global_conf, **local_conf):
             if allow_oio_versioning:
                 vfunc = OioObjectVersioningMiddleware.is_valid_version_id
                 register_swift_info('object_versioning',
-                                    is_valid_version_id=vfunc)
+                                    is_valid_version_id=vfunc,
+                                    allow_oio_versioning=True)
                 return OioObjectVersioningMiddleware(app, conf)
             app = ObjectVersioningMiddleware(app, conf)
         return VersionedWritesMiddleware(app, conf)
