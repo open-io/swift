@@ -56,6 +56,8 @@ This middleware:
 
 import base64
 import json
+import logging
+import time
 
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session as keystone_session
@@ -308,7 +310,10 @@ class S3Token(object):
         cached_auth_data = None
 
         if memcache_client:
+            start = time.monotonic()
             cached_auth_data = memcache_client.get(memcache_token_key)
+            req.environ['keystone.resp_time.get_cache'] = \
+                time.monotonic() - start
             if cached_auth_data:
                 if len(cached_auth_data) == 4:
                     # Old versions of swift may have cached token, too,
@@ -362,18 +367,26 @@ class S3Token(object):
                     headers, tenant = parse_v3_response(token)
                 else:
                     raise ValueError
+                req.environ['keystone.resp_time.check_token'] = \
+                    resp.elapsed.total_seconds()
                 if memcache_client:
                     user_id = headers.get('X-User-Id')
                     if not user_id:
                         raise ValueError
                     try:
+                        start = time.monotonic()
                         cred_ref = self.keystoneclient.ec2.get(
                             user_id=user_id,
                             access=access)
+                        ks_resp_end = time.monotonic()
+                        req.environ['keystone.resp_time.fetch_secret'] = \
+                            ks_resp_end - start
                         memcache_client.set(
                             memcache_token_key,
                             (headers, tenant, cred_ref.secret),
                             time=self._secret_cache_duration)
+                        req.environ['keystone.resp_time.set_cache'] = \
+                            time.monotonic() - ks_resp_end
                         self._logger.debug("Cached keystone credentials")
                     except Exception:
                         self._logger.warning("Unable to cache secret",
@@ -407,6 +420,11 @@ class S3Token(object):
         new_tenant_name = '%s%s' % (self._reseller_prefix, tenant_to_connect)
         environ['PATH_INFO'] = environ['PATH_INFO'].replace(account,
                                                             new_tenant_name)
+        if self._logger.isEnabledFor(logging.DEBUG):
+            resp_times = '\t'.join("s3token_%s_float:%.6f" % (k[19:], v)
+                                   for k, v in environ.items()
+                                   if k.startswith("keystone.resp_time"))
+            self._logger.debug('%s', resp_times)
         return self._app(environ, start_response)
 
 
