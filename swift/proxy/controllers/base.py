@@ -45,7 +45,7 @@ from swift.common.utils import Timestamp, WatchdogTimeout, config_true_value, \
     public, split_path, list_from_csv, GreenthreadSafeIterator, \
     GreenAsyncPile, quorum_size, parse_content_type, drain_and_close, \
     document_iters_to_http_response_body, ShardRange, find_shard_range, \
-    cache_from_env, MetricsPrefixLoggerAdapter
+    cache_from_env, MetricsPrefixLoggerAdapter, get_swift_info
 from swift.common.bufferedhttp import http_connect
 from swift.common import constraints
 from swift.common.exceptions import ChunkReadTimeout, ChunkWriteTimeout, \
@@ -489,6 +489,10 @@ def get_container_info(env, app, swift_source=None):
 
     if info.get('sharding_state') is None:
         info['sharding_state'] = 'unsharded'
+
+    obj_vers_info = get_swift_info().get('object_versioning')
+    if obj_vers_info and obj_vers_info.get('allow_oio_versioning', False):
+        return info
 
     versions_cont = info.get('sysmeta', {}).get('versions-container', '')
     if versions_cont:

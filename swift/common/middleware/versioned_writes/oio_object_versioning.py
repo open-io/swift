@@ -228,52 +228,12 @@ class OioContainerContext(ContainerContext):
         For container listings of a versioned container, update the object's
         bytes and etag to use the target's instead of using the symlink info.
         """
-        # FIXME(FVE): this request is not needed when handling
-        # list-object-versions requests.
         app_resp = self._app_call(req.environ)
-        _, account, container, _ = req.split_path(3, 4, True)
-        location = ''
-        curr_bytes = 0
-        bytes_idx = -1
-        for i, (header, value) in enumerate(self._response_headers):
-            if header == 'X-Container-Bytes-Used':
-                curr_bytes = value
-                bytes_idx = i
-            if header.lower() == SYSMETA_VERSIONS_CONT:
-                location = value
+        _, _, container, _ = req.split_path(3, 4, True)
+        for _, (header, value) in enumerate(self._response_headers):
             if header.lower() == SYSMETA_VERSIONS_ENABLED:
                 self._response_headers.extend([
                     (CLIENT_VERSIONS_ENABLED.title(), value)])
-
-        if location:
-            location = wsgi_unquote(location)
-
-            # update bytes header
-            if bytes_idx > -1:
-                head_req = make_pre_authed_request(
-                    req.environ, method='HEAD', swift_source='OV',
-                    path=wsgi_quote('/v1/%s/%s' % (account, location)),
-                    headers={'X-Backend-Allow-Reserved-Names': 'true'})
-                vresp = head_req.get_response(self.app)
-                if vresp.is_success:
-                    ver_bytes = vresp.headers.get('X-Container-Bytes-Used', 0)
-                    self._response_headers[bytes_idx] = (
-                        'X-Container-Bytes-Used',
-                        str(int(curr_bytes) + int(ver_bytes)))
-                drain_and_close(vresp)
-        elif is_success(self._get_status_int()):
-            # If client is doing a version-aware listing for a container that
-            # (as best we could tell) has never had versioning enabled,
-            # err on the side of there being data anyway -- the metadata we
-            # found may not be the most up-to-date.
-
-            # Note that any extra listing request we make will likely 404.
-            try:
-                location = self._build_versions_container_name(container)
-            except ValueError:
-                # may be internal listing to a reserved namespace container
-                pass
-        # else, we won't need location anyway
 
         if req.method == 'GET' and 'versions' in req.params:
             return self._list_versions(
