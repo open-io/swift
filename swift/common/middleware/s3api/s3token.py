@@ -58,6 +58,7 @@ import base64
 import json
 import logging
 import time
+from random import randint
 
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session as keystone_session
@@ -181,8 +182,15 @@ class S3Token(object):
             self._verify = None
 
         self._secret_cache_duration = int(conf.get('secret_cache_duration', 0))
+        self._secret_cache_duration_min = \
+            int(conf.get('secret_cache_duration_min',
+                         self._secret_cache_duration))
         if self._secret_cache_duration < 0:
             raise ValueError('secret_cache_duration must be non-negative')
+        elif (self._secret_cache_duration_min > self._secret_cache_duration
+              or self._secret_cache_duration_min < 0):
+            raise ValueError('secret_cache_duration_min must be lower or equal'
+                             ' to secret_cache_duration and non-negative')
         if self._secret_cache_duration:
             try:
                 auth_plugin = keystone_loading.get_plugin_loader(
@@ -374,6 +382,9 @@ class S3Token(object):
                     if not user_id:
                         raise ValueError
                     try:
+                        # Introduce jitter in the cache duration
+                        duration = randint(self._secret_cache_duration_min,
+                                           self._secret_cache_duration)
                         start = time.monotonic()
                         cred_ref = self.keystoneclient.ec2.get(
                             user_id=user_id,
@@ -384,10 +395,12 @@ class S3Token(object):
                         memcache_client.set(
                             memcache_token_key,
                             (headers, tenant, cred_ref.secret),
-                            time=self._secret_cache_duration)
+                            time=duration)
                         req.environ['keystone.resp_time.set_cache'] = \
                             time.monotonic() - ks_resp_end
-                        self._logger.debug("Cached keystone credentials")
+                        self._logger.debug(
+                            "Cached keystone credentials for %ds",
+                            duration)
                     except Exception:
                         self._logger.warning("Unable to cache secret",
                                              exc_info=True)
