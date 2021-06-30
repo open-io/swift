@@ -735,6 +735,10 @@ http_timeout = 10.0
 # Number of seconds to cache the S3 secret. By setting this to a positive
 # number, the S3 authorization validation checks can happen locally.
 # secret_cache_duration = 0
+#
+# Set this between 1 and secret_cache_duration to introduce jitter in the
+# secret cache duration. Default value is the same as secret_cache_duration.
+# secret_cache_duration_min = 0
 
 # If S3 secret caching is enabled, Keystone auth credentials to be used to
 # validate S3 authorization must be provided here. The appropriate options
