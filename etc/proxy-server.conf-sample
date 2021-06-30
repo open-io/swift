@@ -715,6 +715,11 @@ use = egg:swift#s3api
 # s3token middleware authenticates with keystone using the s3 credentials
 # provided in the request header. Please put s3token between s3api
 # and keystoneauth if you're using keystoneauth.
+# s3token publishes the following metrics:
+# - s3token_time[get_cache]: get a token from memcache
+# - s3token_time[check_token]: ask keystone to check a token (if no cache)
+# - s3token_time[fetch_secret]: ask keystone for the token's secret
+# - s3token_time[set_cache]: save the secret in memcache
 use = egg:swift#s3token
 
 # Prefix that will be prepended to the tenant to form the account
@@ -1081,7 +1086,7 @@ use = egg:swift#proxy_logging
 #
 # Template used to format access logs. All words surrounded by curly brackets
 # will be substituted with the appropriate values
-# log_msg_template = {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index}
+# log_msg_template = {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index} {s3token_time[check_token]}
 
 # Note: Put before both ratelimit and auth in the pipeline.
 [filter:bulk]
