@@ -260,7 +260,6 @@ class S3Token(object):
         # Always drop auth headers if we're first in the pipeline
         if 'keystone.token_info' not in req.environ:
             req.headers.update({h: None for h in KEYSTONE_AUTH_HEADERS})
-
         try:
             parts = split_path(urllib.parse.unquote(req.path), 1, 4, True)
             version, account, container, obj = parts
@@ -316,11 +315,12 @@ class S3Token(object):
         if self._secret_cache_duration > 0:
             memcache_client = cache_from_env(environ)
         cached_auth_data = None
+        environ.setdefault('s3token.time', {})
 
         if memcache_client:
             start = time.monotonic()
             cached_auth_data = memcache_client.get(memcache_token_key)
-            req.environ['keystone.resp_time.get_cache'] = \
+            req.environ['s3token.time']['get_cache'] = \
                 time.monotonic() - start
             if cached_auth_data:
                 if len(cached_auth_data) == 4:
@@ -375,7 +375,7 @@ class S3Token(object):
                     headers, tenant = parse_v3_response(token)
                 else:
                     raise ValueError
-                req.environ['keystone.resp_time.check_token'] = \
+                environ['s3token.time']['check_token'] = \
                     resp.elapsed.total_seconds()
                 if memcache_client:
                     user_id = headers.get('X-User-Id')
@@ -390,13 +390,13 @@ class S3Token(object):
                             user_id=user_id,
                             access=access)
                         ks_resp_end = time.monotonic()
-                        req.environ['keystone.resp_time.fetch_secret'] = \
+                        environ['s3token.time']['fetch_secret'] = \
                             ks_resp_end - start
                         memcache_client.set(
                             memcache_token_key,
                             (headers, tenant, cred_ref.secret),
                             time=duration)
-                        req.environ['keystone.resp_time.set_cache'] = \
+                        environ['s3token.time']['set_cache'] = \
                             time.monotonic() - ks_resp_end
                         self._logger.debug(
                             "Cached keystone credentials for %ds",
@@ -434,9 +434,8 @@ class S3Token(object):
         environ['PATH_INFO'] = environ['PATH_INFO'].replace(account,
                                                             new_tenant_name)
         if self._logger.isEnabledFor(logging.DEBUG):
-            resp_times = '\t'.join("s3token_%s_float:%.6f" % (k[19:], v)
-                                   for k, v in environ.items()
-                                   if k.startswith("keystone.resp_time"))
+            resp_times = '\t'.join('s3token_%s_float:%.6f' % (k, v)
+                                   for k, v in environ['s3token.time'].items())
             self._logger.debug('%s', resp_times)
         return self._app(environ, start_response)
 

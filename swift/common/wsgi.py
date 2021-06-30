@@ -1371,7 +1371,7 @@ def make_env(env, method=None, path=None, agent='Swift', query_string=None,
                  'swift.authorize', 'HTTP_X_USER_ID', 'HTTP_X_PROJECT_ID',
                  'HTTP_REFERER', 'swift.infocache',
                  'swift.shard_listing_history', 'swift.perfdata',
-                 's3api.bucket'):
+                 's3api.bucket', 's3token.time'):
         if name in env:
             newenv[name] = env[name]
     if method:

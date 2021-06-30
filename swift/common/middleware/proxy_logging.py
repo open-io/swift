@@ -75,6 +75,8 @@ import os
 import re
 import time
 
+from collections import defaultdict
+
 from swift.common.middleware.catch_errors import enforce_byte_count
 from swift.common.swob import Request
 from swift.common.utils import (get_logger, get_remote_client,
@@ -240,6 +242,8 @@ class ProxyLoggingMiddleware(object):
             'ttfb': '0.05',
             'pid': '42',
             'wire_status_int': '200',
+            'perfdata': '',
+            's3token_time': defaultdict(lambda: '-'),
         }
         try:
             self.log_formatter.format(self.log_msg_template, **replacements)
@@ -314,6 +318,9 @@ class ProxyLoggingMiddleware(object):
         if swift_path.startswith('/v1/'):
             _, acc, cont, obj = split_path(swift_path, 1, 4, True)
 
+        s3token_time = defaultdict(lambda: '-')
+        s3token_time.update(req.environ.get('s3token.time', {}))
+
         replacements = {
             # Time information
             'end_time': StrFormatTime(end_time),
@@ -361,7 +368,8 @@ class ProxyLoggingMiddleware(object):
             'ttfb': ttfb,
             'pid': self.pid,
             'wire_status_int': wire_status_int or status_int,
-            'perfdata': perfdata_to_str(req.environ.get('swift.perfdata'))
+            'perfdata': perfdata_to_str(req.environ.get('swift.perfdata')),
+            's3token_time': s3token_time,
         }
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
@@ -443,6 +451,7 @@ class ProxyLoggingMiddleware(object):
                         break
             if add_perfata:
                 env.setdefault('swift.perfdata', dict())
+        env.setdefault('s3token.time', {})
 
         start_response_args = [None]
         input_proxy = InputProxy(env['wsgi.input'])
