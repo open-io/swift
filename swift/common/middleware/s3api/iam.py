@@ -372,11 +372,14 @@ def check_iam_access(action):
 
             # TODO(FVE): check bucket policy (not implemented ATM)
             # If the bucket has an owner, but the request's account is
-            # different, deny the request.
-            if acl_allow is None and req.container_name and req.bucket_db:
+            # different, deny the request. User policies cannot give access
+            # to other account's buckets.
+            if (acl_allow is None and req.container_name and req.bucket_db
+                    and req.environ[IAM_EXPLICIT_ALLOW]):
                 bkt_owner = req.bucket_db.get_owner(req.container_name)
                 if bkt_owner and bkt_owner != req.account:
-                    raise AccessDenied()
+                    # We cannot deny access immediately. Let the ACLs decide.
+                    req.environ[IAM_EXPLICIT_ALLOW] = False
 
             return func(*args, **kwargs)
         return wrapper
