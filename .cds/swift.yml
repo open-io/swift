@@ -26,7 +26,7 @@ workflow:
 metadata:
   default_tags: git.branch,git.author,git.tag
 
-retention_policy: return (git_branch_exist == "false" and run_days_before < 2) or run_days_before < 365
+retention_policy: "if(cds_triggered_by_username == 'cds.scheduler') then\n  return run_days_before < 1\nend\nif(has_git_branch == \"true\") then\n  if(git_branch_exist == \"true\") then    \n    return run_days_before < 365\n  else\n    return run_days_before < 2\n  end\nelse\n  return run_days_before < 365\nend"
 
 notifications:
   - type: vcs
@@ -37,6 +37,6 @@ hooks:
   root:
     - type: Scheduler
       config:
-        # once very hour
-        cron: "33 * * * *"
+        # twice a day
+        cron: "17 13,21 * * *"
         timezone: UTC
