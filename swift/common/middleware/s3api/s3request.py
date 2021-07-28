@@ -1554,7 +1554,8 @@ class S3Request(swob.Request):
 
             sw_resp = sw_req.get_response(app)
 
-            if not sw_req.remote_user:
+            if not self._is_allowed_anonymous_request() \
+                    and not sw_req.remote_user:
                 raise SignatureDoesNotMatch(
                     **self.signature_does_not_match_kwargs())
 
