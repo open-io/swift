@@ -153,6 +153,7 @@ from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
+from swift.common.middleware.s3api.etree import Element
 from swift.common.middleware.s3api.exception import NotS3Request, \
     InvalidSubresource
 from swift.common.middleware.s3api.s3request import get_request_class
@@ -294,6 +295,29 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('log_s3api_command', False))
         self.conf.allow_anonymous_path_requests = config_true_value(
             wsgi_conf.get('allow_anonymous_path_requests', False))
+        self.conf.cors_rules = list()
+        for allow_origin in (
+                a.strip()
+                for a in wsgi_conf.get('cors_allow_origin', '').split(',')
+                if a.strip()):
+            rule = Element('CORSRule')
+            allow_origin_elm = Element('AllowedOrigin')
+            allow_origin_elm.text = allow_origin
+            rule.append(allow_origin_elm)
+            for allow_method in ('GET', 'HEAD', 'PUT', 'POST', 'DELETE',
+                                 'OPTIONS'):
+                allow_method_elm = Element('AllowedMethod')
+                allow_method_elm.text = allow_method
+                rule.append(allow_method_elm)
+            for expose_header in (
+                    a.strip()
+                    for a in wsgi_conf.get('cors_expose_headers',
+                                           '').split(',')
+                    if a.strip()):
+                expose_header_elm = Element('ExposeHeader')
+                expose_header_elm.text = expose_header
+                rule.append(expose_header_elm)
+            self.conf.cors_rules.append(rule)
 
         self.conf.log_s3api_command = config_true_value(
             wsgi_conf.get('log_s3api_command', False))
