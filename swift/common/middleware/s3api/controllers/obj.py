@@ -120,7 +120,7 @@ class ObjectController(Controller):
 
         cors_rule = None
         if req.headers.get('Origin'):
-            cors_rule = get_cors(self.app, req, req.method,
+            cors_rule = get_cors(self.app, self.conf, req, req.method,
                                  req.headers.get('Origin'))
         resp = req.get_response(self.app, query=query)
 
@@ -303,7 +303,7 @@ class ObjectController(Controller):
         if method not in CORS_ALLOWED_HTTP_METHOD:
             raise CORSInvalidAccessControlRequest(method=method)
 
-        rule = get_cors(self.app, req, method, origin)
+        rule = get_cors(self.app, self.conf, req, method, origin)
         # FIXME(mbo): we should raise also NoSuchCORSConfiguration
         if rule is None:
             raise CORSForbidden(method)
