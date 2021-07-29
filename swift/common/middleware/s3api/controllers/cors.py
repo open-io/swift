@@ -47,7 +47,7 @@ def match_cors(pattern, value):
     return re.match(regex, value) is not None
 
 
-def get_cors(app, req, method, origin):
+def get_cors(app, conf, req, method, origin):
     """
     Find a match between the origin and method, and the CORS rules of the
     bucket specified by the request.
@@ -56,12 +56,13 @@ def get_cors(app, req, method, origin):
     """
     sysmeta = req.get_container_info(app).get('sysmeta', {})
     body = sysmeta.get('s3api-cors')
-    if not body:
-        return None
-    data = fromstring(body, "CorsConfiguration")
-
-    # We have to iterate over each rule to find a match with origin.
-    rules = data.findall('CORSRule')
+    rules = list()
+    if body:
+        data = fromstring(body, "CorsConfiguration")
+        # We have to iterate over each rule to find a match with origin.
+        rules += data.findall('CORSRule')
+    # Add CORS rules from the configuration
+    rules += conf.cors_rules
     for rule in rules:
         item = rule.find('AllowedOrigin')
         if match_cors(item.text, origin):

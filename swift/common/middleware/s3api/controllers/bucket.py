@@ -380,7 +380,7 @@ class BucketController(Controller):
 
         origin = req.headers.get('Origin')
         if origin:
-            rule = get_cors(self.app, req, "GET", origin)
+            rule = get_cors(self.app, self.conf, req, "GET", origin)
             if rule:
                 cors_fill_headers(req, resp, rule)
 
@@ -451,7 +451,7 @@ class BucketController(Controller):
         if method not in CORS_ALLOWED_HTTP_METHOD:
             raise CORSInvalidAccessControlRequest(method=method)
 
-        rule = get_cors(self.app, req, method, origin)
+        rule = get_cors(self.app, self.conf, req, method, origin)
         # FIXME(mbo): we should raise also NoSuchCORSConfiguration
         if rule is None:
             raise CORSForbidden(method)
