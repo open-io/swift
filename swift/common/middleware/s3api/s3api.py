@@ -304,8 +304,7 @@ class S3ApiMiddleware(object):
             allow_origin_elm = Element('AllowedOrigin')
             allow_origin_elm.text = allow_origin
             rule.append(allow_origin_elm)
-            for allow_method in ('GET', 'HEAD', 'PUT', 'POST', 'DELETE',
-                                 'OPTIONS'):
+            for allow_method in ('GET', 'HEAD', 'PUT', 'POST', 'DELETE'):
                 allow_method_elm = Element('AllowedMethod')
                 allow_method_elm.text = allow_method
                 rule.append(allow_method_elm)

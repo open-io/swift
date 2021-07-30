@@ -77,5 +77,10 @@ curl -fsS "http://${BUCKET}.localhost:5000/" -H "Origin: http://openio.io" -X OP
 # check a denied CORS request
 curl -sS "http://${BUCKET}.localhost:5000/" -H "Origin: http://example.com" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
 
+# check a valid CORS request with presigned URL
+curl -fsS "$(${AWS} s3 presign s3://${BUCKET}/copy)" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization'
+
+# check a denied CORS request with presigned URL
+curl -sS "$(${AWS} s3 presign s3://${BUCKET}/copy)" -H "Origin: http://example.com" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
 
 echo "OK"
