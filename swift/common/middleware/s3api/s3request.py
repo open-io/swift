@@ -557,6 +557,9 @@ class S3Request(swob.Request):
                 'string_to_sign': self.string_to_sign,
                 'check_signature': self.check_signature,
             }
+            if env.get('REQUEST_METHOD') == 'OPTIONS':
+                self.environ['s3api.auth_details']['check_signature'] = \
+                    lambda *_: True
         else:
             self.string_to_sign = None
         self.account = None
