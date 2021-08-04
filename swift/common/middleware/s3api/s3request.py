@@ -754,6 +754,9 @@ class S3Request(swob.Request):
         Validate Expires in query parameters
         :raises: AccessDenied
         """
+        if self.method == 'OPTIONS':
+            return
+
         # Expires header is a float since epoch
         try:
             ex = S3Timestamp(float(self.params['Expires']))
@@ -775,6 +778,8 @@ class S3Request(swob.Request):
         :raises: RequestTimeTooSkewed
         """
         if self._is_anonymous:
+            return
+        if self.method == 'OPTIONS':
             return
 
         date_header = self.headers.get('Date')
