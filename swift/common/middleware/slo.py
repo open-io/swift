@@ -932,7 +932,11 @@ class SloGetContext(WSGIContext):
         return segments
 
     def get_or_head_response(self, req, resp_headers, resp_iter):
+        mf_read_start = time.monotonic()
         segments = self._get_manifest_read(resp_iter)
+        mf_read_time = time.monotonic() - mf_read_start
+        req.environ.setdefault('slo.time', {})
+        req.environ['slo.time']['manifest_read'] = mf_read_time
         slo_etag = None
         content_length = None
         response_headers = []

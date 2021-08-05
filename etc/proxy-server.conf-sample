@@ -1086,7 +1086,7 @@ use = egg:swift#proxy_logging
 #
 # Template used to format access logs. All words surrounded by curly brackets
 # will be substituted with the appropriate values
-# log_msg_template = {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index} {s3token_time[check_token]}
+# log_msg_template = {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index} {s3token_time[check_token]} {slo_time[manifest_read]}
 
 # Note: Put before both ratelimit and auth in the pipeline.
 [filter:bulk]
@@ -1150,6 +1150,9 @@ use = egg:swift#slo
 # clients may request that Swift send whitespace ahead of the final response
 # body. This whitespace will be yielded at most every yield_frequency seconds.
 # yield_frequency = 10
+#
+# slo publishes the following metrics:
+# - slo_time[manifest_read]: time to load and parse an SLO manifest
 
 # Note: Put after auth and staticweb in the pipeline.
 # If you don't put it in the pipeline, it will be inserted for you.
