@@ -244,6 +244,7 @@ class ProxyLoggingMiddleware(object):
             'wire_status_int': '200',
             'perfdata': '',
             's3token_time': defaultdict(lambda: '-'),
+            'slo_time': defaultdict(lambda: '-'),
         }
         try:
             self.log_formatter.format(self.log_msg_template, **replacements)
@@ -320,6 +321,8 @@ class ProxyLoggingMiddleware(object):
 
         s3token_time = defaultdict(lambda: '-')
         s3token_time.update(req.environ.get('s3token.time', {}))
+        slo_time = defaultdict(lambda: '-')
+        slo_time.update(req.environ.get('slo.time', {}))
 
         replacements = {
             # Time information
@@ -370,6 +373,7 @@ class ProxyLoggingMiddleware(object):
             'wire_status_int': wire_status_int or status_int,
             'perfdata': perfdata_to_str(req.environ.get('swift.perfdata')),
             's3token_time': s3token_time,
+            'slo_time': slo_time,
         }
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
@@ -451,6 +455,7 @@ class ProxyLoggingMiddleware(object):
                         break
             if add_perfata:
                 env.setdefault('swift.perfdata', dict())
+        env.setdefault('slo.time', {})
         env.setdefault('s3token.time', {})
 
         start_response_args = [None]
