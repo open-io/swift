@@ -316,6 +316,13 @@ class S3ApiMiddleware(object):
                 expose_header_elm = Element('ExposeHeader')
                 expose_header_elm.text = expose_header
                 rule.append(expose_header_elm)
+            # For only these origins, allow all headers requested in the
+            # request. The CORS specification does leave the door open
+            # for this, as mentioned in
+            # http://www.w3.org/TR/cors/#resource-preflight-requests
+            allowed_header_elm = Element('AllowedHeader')
+            allowed_header_elm.text = '*'
+            rule.append(allowed_header_elm)
             self.conf.cors_rules.append(rule)
 
         self.conf.log_s3api_command = config_true_value(
