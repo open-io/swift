@@ -83,4 +83,7 @@ curl -fsS "$(${AWS} s3 presign s3://${BUCKET}/copy)" -H "Origin: http://openio.i
 # check a denied CORS request with presigned URL
 curl -sS "$(${AWS} s3 presign s3://${BUCKET}/copy)" -H "Origin: http://example.com" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
 
+# check a valid CORS request (see whitelist in configuration file) with presigned URL
+curl -fsS "$(${AWS} s3 presign s3://${BUCKET}/copy)" -H "Origin: https://ovh.com" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization'
+
 echo "OK"
