@@ -21,8 +21,6 @@ import os.path
 import sys
 from optparse import OptionParser
 
-from eventlet.green import profile
-
 # Immediately change "wsgi" before importing the other modules
 # for this modification to be propagated everywhere
 from swift.common import oio_wsgi
@@ -86,11 +84,23 @@ if __name__ == '__main__':
     parser.add_option('--profile-output',
                       help=('Save profiling output to the specified file. '
                             'You can specify {pid} and {prog} in the file '
-                            'name.'))
+                            'name. If the file name starts with '
+                            '"callgrind.out", save to callgrind format '
+                            '(yappi only).'))
+    parser.add_option('--profiler',
+                      default='eventlet',
+                      help=('Which profiler to use: eventlet or yappi.'))
     conf_file, options = utils.parse_options(parser)
     if options.get('profile_output') is not None:
-        pr = profile.Profile()
-        pr.start()
+        if options.get('profiler') == 'yappi':
+            import yappi
+            yappi.set_context_backend('greenlet')
+            pr = yappi
+            pr.start(builtins=True)
+        else:
+            from eventlet.green import profile
+            pr = profile.Profile()
+            pr.start()
     else:
         pr = None
     res = wsgi.run_wsgi(conf_file, 'proxy-server',
@@ -101,7 +111,18 @@ if __name__ == '__main__':
         replacements = {'pid': os.getpid(),
                         'prog': os.path.basename(sys.argv[0])}
         output = options['profile_output'].format(**replacements)
-        pr.dump_stats(output)
+        if options.get('profiler') == 'yappi':
+            stats = pr.get_func_stats()
+            out_type = ('callgrind'
+                        if 'callgrind.out' in output
+                        else 'pstat')
+            stats.save(output, type=out_type)
+            print("Profiling results written to %s (format: %s)" % (
+                output, out_type))
+        else:
+            pr.dump_stats(output)
+            print("Profiling results written to %s (format: old pstat)" % (
+                output,))
 
     if options.get('objgraph'):
         run_objgraph(options.get('show_backrefs', list()))
