@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import re
+from functools import wraps
 
 from swift.common.utils import public
 
@@ -22,7 +23,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
-    MalformedXML, NoSuchCORSConfiguration, CORSInvalidRequest
+    MalformedXML, NoSuchCORSConfiguration, CORSInvalidRequest, ErrorResponse
 
 from swift.common.middleware.s3api.utils import sysmeta_header
 
@@ -232,3 +233,25 @@ class CorsController(Controller):
         resp = req._get_response(self.app, 'POST',
                                  req.container_name, None)
         return self.convert_response(req, resp, 202, HTTPNoContent)
+
+
+def fill_cors_headers(func):
+    @wraps(func)
+    def cors_fill_headers_wrapper(*args, **kwargs):
+        controller = args[0]
+        req = args[1]
+        origin = req.headers.get('Origin')
+        cors_rule = None
+        if origin:
+            cors_rule = get_cors(controller.app, controller.conf, req,
+                                 req.method, origin)
+        try:
+            resp = func(*args, **kwargs)
+            if cors_rule:
+                cors_fill_headers(req, resp, cors_rule)
+            return resp
+        except ErrorResponse as err_resp:
+            if cors_rule:
+                cors_fill_headers(req, err_resp, cors_rule)
+            raise
+    return cors_fill_headers_wrapper

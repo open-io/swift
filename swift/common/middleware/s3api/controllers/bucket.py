@@ -29,7 +29,8 @@ from swift.common.registry import get_swift_info
 from swift.common.middleware.s3api.controllers.base import Controller, \
     log_s3api_command
 from swift.common.middleware.s3api.controllers.cors import \
-    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors
+    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
+    fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -98,6 +99,7 @@ class BucketController(Controller):
             raise ServiceUnavailable()
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:ListBucket")
     def HEAD(self, req):
         """
@@ -106,7 +108,6 @@ class BucketController(Controller):
         self.set_s3api_command(req, 'head-bucket')
 
         resp = req.get_response(self.app)
-
         return HTTPOk(headers=resp.headers)
 
     def _parse_request_options(self, req, max_keys):
@@ -337,6 +338,7 @@ class BucketController(Controller):
                                  fetch_owner)
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:ListBucket")
     def GET(self, req):
         """
@@ -377,16 +379,10 @@ class BucketController(Controller):
 
         body = tostring(elem)
         resp = HTTPOk(body=body, content_type='application/xml')
-
-        origin = req.headers.get('Origin')
-        if origin:
-            rule = get_cors(self.app, self.conf, req, "GET", origin)
-            if rule:
-                cors_fill_headers(req, resp, rule)
-
         return resp
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:CreateBucket")
     def PUT(self, req):
         """
@@ -416,10 +412,10 @@ class BucketController(Controller):
 
         resp.status = HTTP_OK
         resp.location = '/' + req.container_name
-
         return resp
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:DeleteBucket")
     def DELETE(self, req):
         """

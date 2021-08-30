@@ -28,7 +28,8 @@ from swift.common.middleware.versioned_writes.object_versioning import \
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.controllers.base import Controller
 from swift.common.middleware.s3api.controllers.cors import \
-    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors
+    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
+    fill_cors_headers
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -119,10 +120,6 @@ class ObjectController(Controller):
                 # Versioning has never been enabled
                 raise NoSuchVersion(object_name, version_id)
 
-        cors_rule = None
-        if req.headers.get('Origin'):
-            cors_rule = get_cors(self.app, self.conf, req, req.method,
-                                 req.headers.get('Origin'))
         resp = req.get_response(self.app, query=query)
 
         if req.method == 'HEAD':
@@ -136,12 +133,10 @@ class ObjectController(Controller):
                     'content-encoding'):
             if 'response-' + key in req.params:
                 resp.headers[key] = req.params['response-' + key]
-
-        if cors_rule is not None:
-            cors_fill_headers(req, resp, cors_rule)
         return resp
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
@@ -158,6 +153,7 @@ class ObjectController(Controller):
         return resp
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
@@ -168,6 +164,7 @@ class ObjectController(Controller):
         return self.GETorHEAD(req)
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:PutObject")
     def PUT(self, req):
         """
@@ -249,6 +246,7 @@ class ObjectController(Controller):
             container_info.get('sysmeta', {}).get('versions-enabled', False))
 
     @public
+    @fill_cors_headers
     @check_iam_access("s3:DeleteObject")
     def DELETE(self, req):
         """
