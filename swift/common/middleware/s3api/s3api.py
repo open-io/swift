@@ -157,7 +157,8 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
     InvalidSubresource
 from swift.common.middleware.s3api.s3request import get_request_class
 from swift.common.middleware.s3api.s3response import ErrorResponse, \
-    InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented
+    InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
+    InvalidRequest
 from swift.common.utils import get_logger, register_swift_info, \
     config_true_value, config_positive_int_value, split_path, \
     closing_if_possible
@@ -250,6 +251,8 @@ class S3ApiMiddleware(object):
         self.conf = Config()
 
         # Set default values if they are not configured
+        self.conf.s3_only = config_true_value(
+            conf.get('s3_only', False))
         self.conf.allow_no_owner = config_true_value(
             conf.get('allow_no_owner', False))
         self.conf.location = conf.get('location', 'us-east-1')
@@ -332,7 +335,10 @@ class S3ApiMiddleware(object):
             env['s3api.bucket'] = req.container_name
             resp = self.handle_request(req)
         except NotS3Request:
-            resp = self.app
+            if self.conf.s3_only and env.get('PATH_INFO') != '/info':
+                resp = InvalidRequest(reason='Not S3 request')
+            else:
+                resp = self.app
         except InvalidSubresource as e:
             self.logger.debug(e.cause)
         except ErrorResponse as err_resp:

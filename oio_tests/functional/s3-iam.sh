@@ -117,7 +117,7 @@ test_read_objects() {
   ${AWSA1ADM} s3 cp s3://${U1_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_u1_bucket"
 
   # Anonymous users can read "public-read" objects
-  curl -fI "http://localhost:5000/${SHARED_BUCKET}/public-magic"
+  curl -fI "http://${SHARED_BUCKET}.localhost:5000/public-magic"
 }
 
 test_delete_objects() {
