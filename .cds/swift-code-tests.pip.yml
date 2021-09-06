@@ -1,0 +1,20 @@
+version: v1.0
+name: swift-code-tests
+jobs:
+  - job: Run swift code quality tests
+    steps:
+
+      - name: Checkout application
+        checkout: '{{ .cds.workspace }}'
+
+      - name: Install dependencies
+        script:
+          - apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt)
+
+      - name: Run coding style tests
+        script:
+          - tox -e pep8
+
+    requirements:
+        #- model: Ubuntu-20.04-VM-b2-07
+        - model: ubuntu-focal

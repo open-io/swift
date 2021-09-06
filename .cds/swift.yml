@@ -6,6 +6,17 @@ workflow:
     pipeline: swift-root
     application: swift
 
+  test:
+    pipeline: swift-code-tests
+    application: swift
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+    depends_on:
+      - root
+
   mirror:
     pipeline: swift-mirror
     application: swift
