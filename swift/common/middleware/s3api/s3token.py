@@ -74,6 +74,16 @@ from swift.common.utils import config_true_value, split_path, get_logger, \
 from swift.common.wsgi import ConfigFileError
 
 
+# OVH swift_endpoint_filter hack
+try:
+    from swift_endpoint_filter.middleware \
+        import get_regions_per_type_from_catalog
+except ImportError:
+    # Declare fake function
+    def get_regions_per_type_from_catalog(*args, **kw):
+        return None
+# /OVH
+
 PROTOCOL_NAME = 'S3 Token Authentication'
 
 # Headers to purge if they came from (or may have come from) the client
@@ -316,7 +326,7 @@ class S3Token(object):
             memcache_client = cache_from_env(environ)
         cached_auth_data = None
         environ.setdefault('s3token.time', {})
-
+        regions_per_type = None
         if memcache_client:
             start = time.monotonic()
             cached_auth_data = memcache_client.get(memcache_token_key)
@@ -324,9 +334,10 @@ class S3Token(object):
                 time.monotonic() - start
             if cached_auth_data:
                 if len(cached_auth_data) == 4:
-                    # Old versions of swift may have cached token, too,
-                    # but we don't need it
-                    headers, _token, tenant, secret = cached_auth_data
+                    # OVH: store regions_per_type in cached_auth_data
+                    # for endpoint_filter.
+                    (headers, regions_per_type,
+                     tenant, secret) = cached_auth_data
                 else:
                     headers, tenant, secret = cached_auth_data
 
@@ -377,6 +388,10 @@ class S3Token(object):
                     raise ValueError
                 environ['s3token.time']['check_token'] = \
                     resp.elapsed.total_seconds()
+                # OVH: Try to extract regions per type from catalog
+                regions_per_type = get_regions_per_type_from_catalog(
+                    token.get('catalog'))
+                # /OVH
                 if memcache_client:
                     user_id = headers.get('X-User-Id')
                     if not user_id:
@@ -394,7 +409,9 @@ class S3Token(object):
                             ks_resp_end - start
                         memcache_client.set(
                             memcache_token_key,
-                            (headers, tenant, cred_ref.secret),
+                            # OVH: Add regions_per_type in memcached
+                            (headers, regions_per_type,
+                             tenant, cred_ref.secret),
                             time=duration)
                         environ['s3token.time']['set_cache'] = \
                             time.monotonic() - ks_resp_end
@@ -424,6 +441,10 @@ class S3Token(object):
                     self._logger.debug(error, resp.status_code, resp.content)
                     return self._deny_request('InvalidURI')(
                         environ, start_response)
+
+        # OVH: Put regions_per_type in env for swift_endpoint_filter
+        req.environ['keystone.regions_per_type'] = regions_per_type
+        # /OVH
 
         req.headers.update(headers)
         tenant_to_connect = force_tenant or tenant['id']
