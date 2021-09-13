@@ -38,7 +38,7 @@ from swift.common.request_helpers import is_sys_or_user_meta, get_param, \
 from swift.proxy.controllers.container import ContainerController \
     as SwiftContainerController
 from swift.proxy.controllers.base import clear_info_cache, \
-    delay_denial, cors_validation, set_info_cache
+    delay_denial, cors_validation, get_account_info, set_info_cache
 
 from oio.common import exceptions
 
@@ -343,15 +343,14 @@ class ContainerController(SwiftContainerController):
                         (len(self.container_name),
                          constraints.MAX_CONTAINER_NAME_LENGTH)
             return resp
-        account_partition, accounts, container_count = \
-            self.account_info(self.account_name, req)
 
-        if not accounts and self.app.account_autocreate:
+        account_info = get_account_info(req.environ, self.app)
+        if not account_info and self.app.account_autocreate:
             self.autocreate_account(req, self.account_name)
-            account_partition, accounts, container_count = \
-                self.account_info(self.account_name, req)
-        if not accounts:
+            account_info = get_account_info(req.environ, self.app)
+        if not account_info:
             return HTTPNotFound(request=req)
+        container_count = account_info['container_count']
         if self.app.max_containers_per_account > 0 and \
                 container_count >= self.app.max_containers_per_account and \
                 self.account_name not in self.app.max_containers_whitelist:
@@ -365,8 +364,7 @@ class ContainerController(SwiftContainerController):
                 return resp
 
         headers = self.generate_request_headers(req, transfer=True)
-        clear_info_cache(self.app, req.environ, self.account_name,
-                         self.container_name)
+        clear_info_cache(self.app, req.environ, self.account_name)
         resp = self.get_container_create_resp(req, headers)
         return resp
 
