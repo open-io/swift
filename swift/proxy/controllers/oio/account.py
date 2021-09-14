@@ -25,7 +25,8 @@ from swift.common.utils import public, Timestamp, json
 from swift.common.constraints import check_metadata
 from swift.common import constraints
 from swift.common.swob import HTTPBadRequest, HTTPMethodNotAllowed
-from swift.common.request_helpers import get_param, is_sys_or_user_meta
+from swift.common.request_helpers import get_param, get_user_meta_prefix, \
+    is_sys_or_user_meta
 from swift.common.swob import HTTPNoContent, HTTPOk, HTTPPreconditionFailed, \
     HTTPNotFound, HTTPCreated, HTTPAccepted
 from swift.proxy.controllers.account import AccountController \
@@ -37,6 +38,9 @@ from oio.common import exceptions
 
 def get_response_headers(info):
     resp_headers = {
+        # Using a sysmeta prefix allows this value to pass trough layers
+        # without doing modifications.
+        'X-Account-Sysmeta-Bucket-Count': info.get('buckets', '0'),
         'X-Account-Container-Count': info['containers'],
         'X-Account-Object-Count': info['objects'],
         'X-Account-Bytes-Used': info['bytes'],
@@ -45,7 +49,7 @@ def get_response_headers(info):
 
     for k, v in info['metadata'].items():
         if v != '':
-            resp_headers[k] = v
+            resp_headers[get_user_meta_prefix('account') + k] = v
 
     return resp_headers
 

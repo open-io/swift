@@ -37,7 +37,7 @@ from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
     HTTP_TOO_MANY_REQUESTS, HTTP_RATE_LIMITED, is_success
 
 from swift.common.constraints import check_utf8, valid_api_version
-from swift.proxy.controllers.base import get_container_info
+from swift.proxy.controllers.base import get_account_info, get_container_info
 from swift.common.request_helpers import check_path_header
 
 from swift.common.middleware.s3api.controllers import ServiceController, \
@@ -1535,6 +1535,17 @@ class S3Request(swob.Request):
                 raise InvalidArgument(param, self.params[param], err_msg)
 
         return value
+
+    def get_account_info(self, app):
+        """
+        Get a dictionary of information about the account, including
+        the container count, total object count and total size.
+
+        :returns: a dictionary of account info from
+                  swift.controllers.base.get_account_info
+        """
+        sw_req = self.to_swift_req('HEAD', None, None)
+        return get_account_info(sw_req.environ, app, swift_source='S3')
 
     def get_container_info(self, app):
         """

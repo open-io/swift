@@ -604,6 +604,12 @@ use = egg:swift#s3api
 # these conventions in all regions except the US Standard region.
 # dns_compliant_bucket_names = True
 #
+# If set to a positive value, trying to create a bucket when the account
+# already has at least this maximum buckets will result in a 400 Bad Request.
+# This limit can be changed for each account by setting the "max_buckets"
+# user metadata.
+# max_buckets_per_account = 100
+#
 # Set the default maximum number of objects returned in the GET Bucket
 # response.
 # max_bucket_listing = 1000
