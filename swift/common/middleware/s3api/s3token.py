@@ -387,7 +387,8 @@ class S3Token(object):
                 environ['s3token.time']['check_token'] = \
                     resp.elapsed.total_seconds()
                 # OVH: Try to extract regions per type from catalog
-                regions_per_type = get_regions_per_type_from_catalog(token.get('catalog'))
+                regions_per_type = get_regions_per_type_from_catalog(
+                    token.get('token', {}).get('catalog'))
                 # /OVH
                 if memcache_client:
                     user_id = headers.get('X-User-Id')
