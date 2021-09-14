@@ -76,8 +76,8 @@ from swift.common.wsgi import ConfigFileError
 
 # OVH swift_endpoint_filter hack
 try:
-    from swift_endpoint_filter.middleware \
-        import get_regions_per_type_from_catalog
+    from swift_endpoint_filter.middleware import \
+        get_regions_per_type_from_catalog
 except ImportError:
     # Declare fake function
     def get_regions_per_type_from_catalog(*args, **kw):
@@ -336,8 +336,8 @@ class S3Token(object):
                 if len(cached_auth_data) == 4:
                     # OVH: store regions_per_type in cached_auth_data
                     # for endpoint_filter.
-                    (headers, regions_per_type,
-                     tenant, secret) = cached_auth_data
+                    headers, regions_per_type, tenant, secret = \
+                        cached_auth_data
                 else:
                     headers, tenant, secret = cached_auth_data
 
@@ -390,7 +390,7 @@ class S3Token(object):
                     resp.elapsed.total_seconds()
                 # OVH: Try to extract regions per type from catalog
                 regions_per_type = get_regions_per_type_from_catalog(
-                    token.get('catalog'))
+                    token.get('token', {}).get('catalog'))
                 # /OVH
                 if memcache_client:
                     user_id = headers.get('X-User-Id')
