@@ -23,7 +23,8 @@ from swift.common import swob
 from swift.common.http import HTTP_OK
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
-from swift.common.utils import json, public, config_true_value, Timestamp
+from swift.common.utils import json, public, config_true_value, Timestamp, \
+    config_auto_int_value
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -38,7 +39,8 @@ from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
-    CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing
+    CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
+    TooManyBuckets
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
@@ -381,6 +383,23 @@ class BucketController(Controller):
         resp = HTTPOk(body=body, content_type='application/xml')
         return resp
 
+    def check_bucket_limit(self, req):
+        """
+        Raise TooManyBuckets is the bucket limit for the account
+        has been reached.
+        """
+        acct_info = req.get_account_info(self.app)
+        # The current number of buckets of the account,
+        # computed by the backend (system metadata)
+        bucket_count = config_auto_int_value(
+            acct_info['sysmeta'].get('bucket-count'), 0)
+        # The optional account limit, set by an administrator (user metadata)
+        max_buckets = config_auto_int_value(
+            acct_info['meta'].get('max_buckets'),
+            self.conf.max_buckets_per_account)
+        if bucket_count >= max_buckets:
+            raise TooManyBuckets
+
     @public
     @fill_cors_headers
     @check_iam_access("s3:CreateBucket")
@@ -408,6 +427,7 @@ class BucketController(Controller):
                 # s3api cannot support multiple regions currently.
                 raise InvalidLocationConstraint()
 
+        self.check_bucket_limit(req)
         resp = req.get_response(self.app)
 
         resp.status = HTTP_OK
