@@ -24,6 +24,7 @@ import uuid
 from swift.common import utils
 
 MULTIUPLOAD_SUFFIX = '+segments'
+VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 
 
 def sysmeta_prefix(resource):
@@ -187,3 +188,19 @@ class Config(dict):
                     raise
         else:
             dict.__setitem__(self, key, value)
+
+
+def convert_response(req, resp, success_code, response_class):
+    """
+    Convert a successful response into another one with a different code.
+
+    This is required because the S3 protocol does not expect the same
+    response codes as the ones returned by the swift backend.
+    """
+    if resp.status_int == success_code:
+        headers = {}
+        if req.object_name and VERSION_ID_HEADER in resp.sw_headers:
+            headers['x-amz-version-id'] = \
+                resp.sw_headers[VERSION_ID_HEADER]
+        return response_class(headers=headers)
+    return resp
