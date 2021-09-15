@@ -25,9 +25,8 @@ from swift.common.middleware.s3api.etree import fromstring, \
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
     MalformedXML, NoSuchCORSConfiguration, CORSInvalidRequest, ErrorResponse
 
-from swift.common.middleware.s3api.utils import sysmeta_header
-
-VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
+from swift.common.middleware.s3api.utils import convert_response, \
+    sysmeta_header
 
 MAX_CORS_BODY_SIZE = 10240
 
@@ -166,22 +165,6 @@ class CorsController(Controller):
 
     """
 
-    @staticmethod
-    def convert_response(req, resp, success_code, response_class):
-        """
-        Convert a successful response into another one with a different code.
-
-        This is required because the S3 protocol does not expect the same
-        response codes as the ones returned by the swift backend.
-        """
-        if resp.status_int == success_code:
-            headers = dict()
-            if req.object_name:
-                headers['x-amz-version-id'] = \
-                    resp.sw_headers[VERSION_ID_HEADER]
-            return response_class(headers=headers)
-        return resp
-
     @public
     @bucket_operation
     @check_container_existence
@@ -219,7 +202,7 @@ class CorsController(Controller):
         req.headers[BUCKET_CORS_HEADER] = xml
         resp = req._get_response(self.app, 'POST',
                                  req.container_name, None)
-        return self.convert_response(req, resp, 204, HTTPOk)
+        return convert_response(req, resp, 204, HTTPOk)
 
     @public
     @bucket_operation
@@ -232,7 +215,7 @@ class CorsController(Controller):
         req.headers[BUCKET_CORS_HEADER] = ''
         resp = req._get_response(self.app, 'POST',
                                  req.container_name, None)
-        return self.convert_response(req, resp, 202, HTTPNoContent)
+        return convert_response(req, resp, 202, HTTPNoContent)
 
 
 def fill_cors_headers(func):
