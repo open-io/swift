@@ -9,10 +9,13 @@ function install_deps() {
     return
   fi
   echo "travis_fold:start:install_deps"
-  sudo apt-get install -y --force-yes \
-    apache2 apache2-dev libapache2-mod-wsgi \
+  sudo apt-get install -y \
+    --allow-unauthenticated --allow-downgrades \
+    --allow-remove-essential --allow-change-held-packages \
+    apache2 apache2-dev libapache2-mod-wsgi-py3 \
     beanstalkd \
     bison \
+    cmake \
     curl libcurl4-gnutls-dev \
     flex \
     libapreq2-dev \
@@ -21,12 +24,15 @@ function install_deps() {
     libevent-dev \
     libglib2.0-dev \
     libjson-c-dev \
+    libleveldb-dev \
     liblzo2-dev \
     libsqlite3-dev \
     libzmq3-dev \
     libzookeeper-mt-dev \
     openio-gridinit asn1c \
-    python-all-dev python-virtualenv
+    python3-all-dev python3-virtualenv
+  sudo systemctl stop apache2.service
+  sudo systemctl disable apache2.service
   echo "travis_fold:end:install_deps"
 }
 

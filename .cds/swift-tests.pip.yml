@@ -1,0 +1,60 @@
+version: v.10
+name: swift-tests
+jobs:
+  - job: Run test
+    steps:
+
+      - name: Checkout application
+        checkout: '{{ .cds.workspace }}'
+
+      - name: Install dependencies
+        script: |+
+          #!/bin/bash
+          set -x
+          export DEBIAN_FRONTEND=noninteractive
+          curl http://mirror2.openio.io/pub/repo/openio/APT-GPG-KEY-OPENIO-0 | apt-key add -
+          apt-add-repository "deb http://mirror2.openio.io/pub/repo/openio/sds/20.04/ubuntu/ bionic/"
+          apt-add-repository ppa:longsleep/golang-backports
+          apt-get install -y $(tr '\n' ' ' < .cds/deps-ubuntu-bionic.txt)
+          systemctl stop redis.service
+          systemctl disable redis.service
+          virtualenv -p /usr/bin/python3 $HOME/swiftenv
+          . $HOME/swiftenv/bin/activate
+          test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
+          git submodule update --init --remote
+          ( grep -v -e "PyECLib" -e "requests" -e "six" third_party/oio-sds/all-requirements.txt ; grep -v -e "eventlet" -e "lxml" -e "oio" -e "xattr" requirements.txt ) | sort > deps-requirements.txt
+          pip install --upgrade -r deps-requirements.txt
+          cd third_party/oio-sds && python setup.py install && cd ../..
+          python setup.py develop
+          pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
+          go get gopkg.in/ini.v1 golang.org/x/sys/unix
+
+      - name: Run unit tests
+        script:
+          - pgrep rsyslogd || rsyslogd &
+          - sysctl -w kernel.core_pattern='/tmp/core.%p.%E'
+          - ulimit -c unlimited
+          - ulimit -n 8192
+          - . $HOME/swiftenv/bin/activate
+          - ./oio_tests/run_tests.sh '{{.cds.env.TEST_SUITE}}'
+
+      - name: Save coverage information
+        always_executed: true
+        script:
+          - . $HOME/swiftenv/bin/activate
+          - coverage combine
+          - mv .coverage .coverage.{{.cds.env.TEST_SUITE}}
+          - worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.{{.cds.env.TEST_SUITE}}'
+
+      - optional: true
+        name: Save tests report
+        script:
+          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.{{.cds.env.TEST_SUITE}}.xml'"
+          - "[ ! -f 'tests_report.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.{{.cds.env.TEST_SUITE}}.xml'"
+
+      - optional: true
+        always_executed: true
+        jUnitReport: '{{.cds.workspace}}/tests_report.*.xml'
+
+    requirements:
+      - model: Ubuntu-18.04-VM-b2-15

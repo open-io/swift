@@ -1,7 +1,13 @@
 [run]
 branch = True
 omit = /usr*,setup.py,*egg*,.venv/*,.tox/*,test/*
+source = swift,oio_tests,proxy
 
 [report]
 show_missing = True
 ignore_errors = True
+
+[paths]
+source =
+    ./
+    /tmp/*/run/
