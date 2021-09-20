@@ -1,0 +1,45 @@
+version: v1.0
+name: swift-tests-reports
+jobs:
+  - job: Collect coverage
+    steps:
+
+      - name: Checkout application
+        checkout: '{{.cds.workspace}}'
+
+      - name: Install dependencies
+        script:
+          - apt install -y python3-virtualenv virtualenv lcov
+          - virtualenv -p /usr/bin/python3 $HOME/oiovenv
+          - . $HOME/oiovenv/bin/activate
+          - pip install --upgrade pip virtualenv coverage
+
+      - artifactDownload:
+          path: '{{.cds.workspace}}'
+          pattern: 'coverage.*'
+          tag: '{{.cds.version}}'
+
+      - name: Aggregate coverage statistics
+        script:
+          - . $HOME/oiovenv/bin/activate
+          - cd {{.cds.workspace}}
+          - coverage combine
+          - coverage report --skip-empty --ignore-errors > coverage-report-py.txt
+          - worker upload --tag='{{.cds.version}}' {{.cds.workspace}}/coverage-report-py.txt
+          - coverage xml --skip-empty --ignore-errors -o coverage-py.xml
+          - coverage html --skip-empty --ignore-errors -d coverage_html
+
+      - coverage:
+          format: cobertura
+          path: '{{.cds.workspace}}/coverage-py.xml'
+
+      - serveStaticFiles:
+          name: Coverage
+          path: coverage_html/*
+
+      - artifactDownload:
+          path: '{{.cds.workspace}}'
+          pattern: 'tests_report.*.xml'
+          tag: '{{.cds.version}}'
+
+      - jUnitReport: '{{.cds.workspace}}/tests_report.*.xml'

@@ -34,6 +34,68 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
+  tests-unit:
+    pipeline: swift-tests
+    application: swift
+    environment: swift-tests-unit-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
+  tests-s3:
+    pipeline: swift-tests
+    application: swift
+    environment: swift-tests-s3-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
+  tests-s3-basic:
+    pipeline: swift-tests
+    application: swift
+    environment: swift-tests-s3-basic-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
+  tests-iam:
+    pipeline: swift-tests
+    application: swift
+    environment: swift-tests-iam-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
+  tests-reports:
+    pipeline: swift-tests-reports
+    application: swift
+    depends_on:
+      - tests-unit
+      - tests-s3
+      - tests-s3-basic
+      - tests-iam
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
 metadata:
   default_tags: git.branch,git.author,git.tag
 
