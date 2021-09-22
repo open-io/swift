@@ -215,6 +215,9 @@ class SigV4Mixin(object):
         :raises: AuthorizationQueryParametersError
         :raises: AccessDenined
         """
+        if self._is_anonymous:
+            return
+
         err = None
         try:
             expires = int(self.params['X-Amz-Expires'])
@@ -551,9 +554,6 @@ class S3Request(swob.Request):
                 'string_to_sign': self.string_to_sign,
                 'check_signature': self.check_signature,
             }
-            if env.get('REQUEST_METHOD') == 'OPTIONS':
-                self.environ['s3api.auth_details']['check_signature'] = \
-                    lambda *_: True
         else:
             self.string_to_sign = None
         self.account = None
@@ -608,19 +608,21 @@ class S3Request(swob.Request):
 
     @property
     def _is_header_auth(self):
-        return 'Authorization' in self.headers
+        return self.method != 'OPTIONS' and 'Authorization' in self.headers
 
     @property
     def _is_query_auth(self):
-        return ('AWSAccessKeyId' in self.params or
-                'X-Amz-Credential' in self.params)
+        return (self.method != 'OPTIONS' and
+                ('AWSAccessKeyId' in self.params or
+                 'X-Amz-Credential' in self.params))
 
     @property
     def _is_anonymous(self):
-        return (not self._is_header_auth and
-                'Signature' not in self.params and
-                'Expires' not in self.params and
-                'X-Amz-Credential' not in self.params)
+        return (self.method == 'OPTIONS' or
+                (not self._is_header_auth and
+                 'Signature' not in self.params and
+                 'Expires' not in self.params and
+                 'X-Amz-Credential' not in self.params))
 
     def _parse_host(self):
         if not self.conf.storage_domains:
@@ -748,7 +750,7 @@ class S3Request(swob.Request):
         Validate Expires in query parameters
         :raises: AccessDenied
         """
-        if self.method == 'OPTIONS':
+        if self._is_anonymous:
             return
 
         # Expires header is a float since epoch
@@ -772,8 +774,6 @@ class S3Request(swob.Request):
         :raises: RequestTimeTooSkewed
         """
         if self._is_anonymous:
-            return
-        if self.method == 'OPTIONS':
             return
 
         date_header = self.headers.get('Date')
