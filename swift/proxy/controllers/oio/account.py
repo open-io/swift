@@ -25,8 +25,7 @@ from swift.common.utils import public, Timestamp, json
 from swift.common.constraints import check_metadata
 from swift.common import constraints
 from swift.common.swob import HTTPBadRequest, HTTPMethodNotAllowed
-from swift.common.request_helpers import get_param, get_user_meta_prefix, \
-    is_sys_or_user_meta
+from swift.common.request_helpers import get_param, is_sys_or_user_meta
 from swift.common.swob import HTTPNoContent, HTTPOk, HTTPPreconditionFailed, \
     HTTPNotFound, HTTPCreated, HTTPAccepted
 from swift.proxy.controllers.account import AccountController \
@@ -49,9 +48,32 @@ def get_response_headers(info):
 
     for k, v in info['metadata'].items():
         if v != '':
-            resp_headers[get_user_meta_prefix('account') + k] = v
+            resp_headers[k] = v
 
     return resp_headers
+
+
+def get_metadata_from_headers(headers):
+    """
+    Get account metadata from request headers.
+    Keeps the header prefix in dictionary keys.
+
+    :returns: a dictionary with account metadata
+    """
+    metadata = {key: value
+                for key, value in headers.items()
+                if is_sys_or_user_meta('account', key)}
+    return metadata
+
+
+def split_set_and_del_metadata(metadata):
+    """
+    From one metadata dict, generate one with metadata
+    to be set, and a list with metadata keys to remove.
+    """
+    to_set = {k: v for k, v in metadata.items() if v not in ('', None)}
+    to_del = [k for k, v in metadata.items() if v in ('', None)]
+    return to_set, to_del
 
 
 def account_listing_bucket_response(account, req, response_content_type,
@@ -269,14 +291,12 @@ class AccountController(SwiftAccountController):
         oio_headers = {REQID_HEADER: self.trans_id}
         created = self.app.storage.account_create(
             self.account_name, headers=oio_headers)
-        metadata = {}
-        metadata.update((key, value)
-                        for key, value in req.headers.items()
-                        if is_sys_or_user_meta('account', key))
-
-        if metadata:
-            self.app.storage.account_set_properties(
-                self.account_name, metadata, headers=oio_headers)
+        to_set, to_del = split_set_and_del_metadata(
+            get_metadata_from_headers(headers))
+        if to_set or to_del:
+            self.app.storage.account.account_update(
+                self.account_name, metadata=to_set, to_delete=to_del,
+                headers=oio_headers)
 
         if created:
             resp = HTTPCreated(request=req)
@@ -306,26 +326,24 @@ class AccountController(SwiftAccountController):
         return resp
 
     def get_account_post_resp(self, req, headers):
-        metadata = {}
-        metadata.update((key, value)
-                        for key, value in req.headers.items()
-                        if is_sys_or_user_meta('account', key))
-        headers[REQID_HEADER] = self.trans_id
+        to_set, to_del = split_set_and_del_metadata(
+            get_metadata_from_headers(headers))
+        oio_headers = {REQID_HEADER: self.trans_id}
         try:
-            self.app.storage.account_set_properties(
-                account=self.account_name, properties=metadata,
-                headers=headers)
-            return HTTPNoContent(request=req)
+            self.app.storage.account.account_update(
+                self.account_name, metadata=to_set, to_delete=to_del,
+                headers=oio_headers)
+            resp = HTTPNoContent(request=req)
         except (exceptions.NotFound, exceptions.NoSuchAccount):
             if self.app.account_autocreate:
                 self.autocreate_account(req, self.account_name)
-                if metadata:
-                    self.app.storage.account_set_properties(
-                        self.account_name, metadata, headers=headers)
+                if to_set or to_del:
+                    self.app.storage.account.account_update(
+                        self.account_name, metadata=to_set, to_delete=to_del,
+                        headers=oio_headers)
                 resp = HTTPNoContent(request=req)
             else:
                 resp = HTTPNotFound(request=req)
-        self.add_acls_from_sys_metadata(resp)
         return resp
 
     @public
