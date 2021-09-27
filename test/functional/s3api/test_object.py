@@ -59,7 +59,7 @@ class TestS3ApiObject(S3ApiBase):
         self.assertCommonResponseHeaders(headers, etag)
 
     def test_object(self):
-        obj = 'object name with %-sign'
+        obj = 'object name with %-sign 🙂'
         content = b'abc123'
         etag = md5(content).hexdigest()
 
