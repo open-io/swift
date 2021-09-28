@@ -713,16 +713,14 @@ class S3Request(swob.Request):
             # Virtual-hosted style anonymous request
             return True
 
-        src = self.environ['PATH_INFO'].lstrip('/').split('/', 2)[0]
-        if not src:
-            # Maybe a virtual-hosted style CORS request
-            return self.method == 'OPTIONS'
-        elif valid_api_version(src) or src in ('auth', 'info'):
+        src = self.environ['PATH_INFO'].lstrip('/').split('/', 1)[0]
+        if valid_api_version(src) or src in (None, 'auth', 'info'):
             # Not an S3 request
             return False
 
-        # Path-style anonymous request
-        return self.conf.allow_anonymous_path_requests
+        # Path-style anonymous request or CORS request
+        return (self.conf.allow_anonymous_path_requests
+                or self.method == 'OPTIONS')
 
     def _parse_auth_info(self):
         """Extract the access key identifier and signature.
