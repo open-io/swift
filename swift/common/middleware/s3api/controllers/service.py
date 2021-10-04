@@ -14,13 +14,14 @@
 # limitations under the License.
 
 from swift.common.swob import bytes_to_wsgi
-from swift.common.utils import json, public
+from swift.common.utils import json, public, last_modified_date_to_timestamp
 
 from swift.common.middleware.s3api.controllers.base import Controller
 from swift.common.middleware.s3api.etree import Element, SubElement, tostring
 from swift.common.middleware.s3api.s3response import HTTPOk, AccessDenied, \
     NoSuchBucket
-from swift.common.middleware.s3api.utils import validate_bucket_name
+from swift.common.middleware.s3api.utils import S3Timestamp, \
+    validate_bucket_name
 
 
 class ServiceController(Controller):
@@ -53,10 +54,18 @@ class ServiceController(Controller):
 
         buckets = SubElement(elem, 'Buckets')
         for c in containers:
+            creation_date = '2009-02-03T16:45:09.000Z'
+            if 'last_modified' in c:
+                ts = last_modified_date_to_timestamp(c['last_modified'])
+                creation_date = S3Timestamp(ts).s3xmlformat
+
             if self.conf.s3_acl and self.conf.check_bucket_owner:
                 container = bytes_to_wsgi(c['name'].encode('utf8'))
                 try:
-                    req.get_response(self.app, 'HEAD', container)
+                    resp = req.get_response(self.app, 'HEAD', container)
+                    if 'X-Timestamp' in resp.sw_headers:
+                        creation_date = S3Timestamp(
+                            resp.sw_headers['X-Timestamp']).s3xmlformat
                 except AccessDenied:
                     continue
                 except NoSuchBucket:
@@ -64,8 +73,7 @@ class ServiceController(Controller):
 
             bucket = SubElement(buckets, 'Bucket')
             SubElement(bucket, 'Name').text = c['name']
-            SubElement(bucket, 'CreationDate').text = \
-                '2009-02-03T16:45:09.000Z'
+            SubElement(bucket, 'CreationDate').text = creation_date
 
         body = tostring(elem)
 
