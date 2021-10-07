@@ -1358,6 +1358,10 @@ use = egg:swift#kmip_keymaster
 
 [filter:encryption]
 use = egg:swift#encryption
+# Use a different checksum algorithm for the cyphered object data. We need to
+# keep computing the plaintext's md5 to comply with the protocol, but the
+# ciphertext's checksum can be anything else supported by the backend.
+#ciphertext_hash_algo = blake3
 
 # By default all PUT or POST'ed object data and/or metadata will be encrypted.
 # Encryption of new data and/or metadata may be disabled by setting

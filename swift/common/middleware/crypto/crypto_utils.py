@@ -15,9 +15,11 @@
 import base64
 import binascii
 import collections
+import hashlib
 import json
 import os
 
+from blake3 import blake3
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import six
@@ -31,6 +33,10 @@ from swift.common.wsgi import WSGIContext
 from cgi import parse_header
 
 CRYPTO_KEY_CALLBACK = 'swift.callback.fetch_crypto_keys'
+CUSTOM_HASHER = {
+    'blake3': blake3,
+    # 'xxhash': xxhash3_128
+}
 
 
 class Crypto(object):
@@ -46,6 +52,8 @@ class Crypto(object):
         self.logger = get_logger(conf, log_route="crypto")
         # memoize backend to avoid repeated iteration over entry points
         self.backend = default_backend()
+        self.ciphertext_hash_algo = (conf.get('ciphertext_hash_algo', 'md5')
+                                     if conf else 'md5')
 
     def create_encryption_ctxt(self, key, iv):
         """
@@ -302,3 +310,14 @@ def decode_secret(b64_secret):
     if len(binary_secret) != Crypto.key_length:
         raise ValueError
     return binary_secret
+
+
+def get_hasher(algorithm='md5'):
+    """
+    Same hashlib.new, but supports other algorithms like 'blake3'.
+
+    :raises ValueError: if the algorithm is not supported.
+    """
+    if algorithm in CUSTOM_HASHER:
+        return CUSTOM_HASHER[algorithm]()
+    return hashlib.new(algorithm)
