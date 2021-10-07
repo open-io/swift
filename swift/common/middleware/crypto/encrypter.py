@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from swift.common.constraints import check_metadata
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
-    dump_crypto_meta, append_crypto_meta, Crypto
+    dump_crypto_meta, append_crypto_meta, get_hasher, Crypto
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     strip_user_meta_prefix, is_user_meta, update_etag_is_at_header, \
     get_container_update_override_key
@@ -76,7 +76,7 @@ class EncInputWrapper(object):
         self.body_crypto_ctxt = None
         self.keys = keys
         self.plaintext_md5 = None
-        self.ciphertext_md5 = None
+        self.ciphertext_hash = None
         self.logger = logger
         self.install_footers_callback(req)
 
@@ -93,6 +93,7 @@ class EncInputWrapper(object):
                 body_key, self.body_crypto_meta.get('iv'))
             self.plaintext_md5 = md5(usedforsecurity=False)
             self.ciphertext_md5 = md5(usedforsecurity=False)
+            self.ciphertext_hash = get_hasher(self.crypto.ciphertext_hash_algo)
 
     def install_footers_callback(self, req):
         # the proxy controller will call back for footer metadata after
@@ -122,7 +123,7 @@ class EncInputWrapper(object):
                     raise HTTPUnprocessableEntity(request=Request(self.env))
 
                 # override any previous notion of etag with the ciphertext etag
-                footers['Etag'] = self.ciphertext_md5.hexdigest()
+                footers['Etag'] = self.ciphertext_hash.hexdigest()
 
                 # Encrypt the plaintext etag using the object key and persist
                 # as sysmeta along with the crypto parameters that were used.
@@ -194,7 +195,7 @@ class EncInputWrapper(object):
             self.plaintext_md5.update(chunk)
             # Encrypt one chunk at a time
             ciphertext = self.body_crypto_ctxt.update(chunk)
-            self.ciphertext_md5.update(ciphertext)
+            self.ciphertext_hash.update(ciphertext)
             return ciphertext
 
         return chunk
@@ -249,6 +250,8 @@ class EncrypterObjContext(CryptoWSGIContext):
 
         enc_input_proxy = EncInputWrapper(self.crypto, keys, req, self.logger)
         req.environ['wsgi.input'] = enc_input_proxy
+        req.environ.setdefault('oio.query', {})['object_checksum_algo'] = \
+            self.crypto.ciphertext_hash_algo
 
         resp = self._app_call(req.environ)
 
@@ -260,7 +263,7 @@ class EncrypterObjContext(CryptoWSGIContext):
         if (is_success(self._get_status_int()) and
                 enc_input_proxy.plaintext_md5):
             plaintext_etag = enc_input_proxy.plaintext_md5.hexdigest()
-            ciphertext_etag = enc_input_proxy.ciphertext_md5.hexdigest()
+            ciphertext_etag = enc_input_proxy.ciphertext_hash.hexdigest()
             mod_resp_headers = [
                 (h, v if (h.lower() != 'etag' or
                           normalize_etag(v) != ciphertext_etag)

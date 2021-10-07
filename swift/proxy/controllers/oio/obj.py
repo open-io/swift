@@ -650,7 +650,7 @@ class ObjectController(BaseObjectController):
         return _chunks, _size, checksum, {}
 
     def _store_object(self, req, data_source, headers):
-        kwargs = {}
+        kwargs = req.environ.get('oio.query', {})
         content_type = req.headers.get('content-type', 'octet/stream')
         policy = None
         container_info = self.container_info(self.account_name,
