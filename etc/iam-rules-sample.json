@@ -55,16 +55,16 @@
             },
             {
                 "Sid": "NavToUserFolder",
-                "Action": ["s3:ListBucket"],
+                "Action": "s3:ListBucket",
                 "Effect": "Allow",
-                "Resource": ["arn:aws:s3:::companybucket"],
+                "Resource": "arn:aws:s3:::companybucket",
                 "Condition": {"StringEquals":{"s3:prefix":["", "home/", "home/user1/"]}}
             },
             {
                 "Sid": "UserFolder",
-                "Action": ["s3:ListBucket"],
+                "Action": "s3:ListBucket",
                 "Effect": "Allow",
-                "Resource": ["arn:aws:s3:::companybucket"],
+                "Resource": "arn:aws:s3:::companybucket",
                 "Condition": {"StringLike":{"s3:prefix":["home/user1/*"]}}
             },
             {
