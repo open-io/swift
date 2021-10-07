@@ -6,7 +6,7 @@ workflow:
     pipeline: swift-root
     application: swift
 
-  test:
+  test-code-quality:
     pipeline: swift-code-tests
     application: swift
     conditions:

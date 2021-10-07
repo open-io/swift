@@ -263,8 +263,11 @@ class IamRulesMatcher(object):
             if statement['Effect'].lower() != effect:
                 continue
 
-            # Check Action
-            for rule_action in statement['Action']:
+            # Check Action. Can be a string or a list of strings.
+            rule_actions = ([statement['Action']]
+                            if isinstance(statement['Action'], str)
+                            else statement['Action'])
+            for rule_action in rule_actions:
                 if rule_action == action:
                     # Found an exact match
                     break
@@ -278,7 +281,11 @@ class IamRulesMatcher(object):
                                   sid, action)
                 continue
 
-            for resource_str in statement['Resource']:
+            # Match resources. Can be a string or a list of strings.
+            resources = ([statement['Resource']]
+                         if isinstance(statement['Resource'], str)
+                         else statement['Resource'])
+            for resource_str in resources:
                 rule_res = IamResource(resource_str)
 
                 # check wildcards before everything else
