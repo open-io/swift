@@ -17,6 +17,8 @@ import time
 
 from swift.common.utils import config_true_value, parse_connection_string
 
+from oio.account.bucket_client import BucketClient
+from oio.common.exceptions import ClientException
 from oio.common.redis_conn import RedisConnection
 
 
@@ -66,11 +68,64 @@ class DummyBucketDb(object):
         self._bucket_db[bucket] = (owner, None)
         return True
 
-    def release(self, bucket):
+    def release(self, bucket, owner):
         """
         Remove the bucket from the database.
         """
         self._bucket_db.pop(bucket, None)
+
+
+class OioBucketDb(object):
+    """
+    Keep a list of buckets with their associated account using oio.
+    """
+
+    def __init__(self, namespace=None, proxy_url=None, logger=None, **kwargs):
+        self.logger = logger
+        self.bucket_client = BucketClient(
+            {'namespace': namespace}, proxy_endpoint=proxy_url,
+            logger=self.logger, **kwargs)
+
+    def get_owner(self, bucket):
+        try:
+            return self.bucket_client.bucket_get_owner(bucket)
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to fetch owner for bucket %s: %s',
+                    bucket, exc)
+            return None
+
+    def set_owner(self, bucket, owner):
+        try:
+            self.bucket_client.bucket_set_owner(bucket, owner)
+            return True
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to set owner %s for bucket %s: %s',
+                    owner, bucket, exc)
+            return False
+
+    def reserve(self, bucket, owner):
+        try:
+            self.bucket_client.bucket_reserve(bucket, owner)
+            return True
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to reserve bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            return False
+
+    def release(self, bucket, owner):
+        try:
+            self.bucket_client.bucket_release(bucket, owner)
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to release bucket %s with owner %s: %s',
+                    bucket, owner, exc)
 
 
 class RedisBucketDb(RedisConnection):
@@ -122,7 +177,7 @@ class RedisBucketDb(RedisConnection):
                             ex=int(timeout), nx=True)
         return res is True
 
-    def release(self, bucket):
+    def release(self, bucket, owner):
         """
         Remove the bucket from the database.
         """
@@ -153,9 +208,9 @@ class BucketDbWrapper(object):
             self.cache[bucket] = owner
         return res
 
-    def release(self, bucket, **kwargs):
+    def release(self, bucket, owner, **kwargs):
         self.cache.pop(bucket, None)
-        return self.bucket_db.release(bucket=bucket, **kwargs)
+        return self.bucket_db.release(bucket=bucket, owner=owner, **kwargs)
 
     def reserve(self, bucket, owner, **kwargs):
         res = self.bucket_db.reserve(bucket=bucket, owner=owner, **kwargs)
@@ -164,7 +219,7 @@ class BucketDbWrapper(object):
         return res
 
 
-def get_bucket_db(conf):
+def get_bucket_db(conf, logger=None):
     """
     If `bucket_db_connection` is set in `conf`, get an instance of the
     appropriate bucket database class (RedisBucketDb or DummyBucketDb).
@@ -184,6 +239,10 @@ def get_bucket_db(conf):
                 db_kwargs['host'] = netloc
         elif scheme == 'dummy':
             klass = DummyBucketDb
+        elif scheme == 'fdb':
+            klass = OioBucketDb
+            db_kwargs['namespace'] = conf.get('sds_namespace')
+            db_kwargs['proxy_url'] = conf.get('sds_proxy_url')
         else:
             raise ValueError('bucket_db: unknown scheme: %r' % scheme)
     else:
@@ -196,5 +255,5 @@ def get_bucket_db(conf):
             else:
                 klass = DummyBucketDb
     if klass:
-        return klass(**db_kwargs)
+        return klass(logger=logger, **db_kwargs)
     return None
