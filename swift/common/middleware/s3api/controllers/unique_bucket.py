@@ -45,7 +45,7 @@ class UniqueBucketController(BucketController):
             resp = super(UniqueBucketController, self).PUT(req)
         except Exception:
             # Container creation failed, remove reservation.
-            req.bucket_db.release(req.container_name)
+            req.bucket_db.release(req.container_name, req.account)
             raise
 
         # Container creation succeeded, confirm reservation.
@@ -69,11 +69,11 @@ class UniqueBucketController(BucketController):
             if ct_owner == req.account:
                 # The bucket used to be ours, but for some reason
                 # it has not been released.
-                req.bucket_db.release(req.container_name)
+                req.bucket_db.release(req.container_name, req.account)
             raise
 
         if resp.is_success:
             # Container deletion succeeded, reset owner.
-            req.bucket_db.release(req.container_name)
+            req.bucket_db.release(req.container_name, req.account)
 
         return resp

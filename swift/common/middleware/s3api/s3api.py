@@ -340,7 +340,7 @@ class S3ApiMiddleware(object):
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)
-        self.bucket_db = get_bucket_db(wsgi_conf)
+        self.bucket_db = get_bucket_db(wsgi_conf, logger=self.logger)
 
     def is_s3_cors_preflight(self, env):
         if env['REQUEST_METHOD'] != 'OPTIONS' or not env.get('HTTP_ORIGIN'):
