@@ -324,7 +324,7 @@ class S3ApiMiddleware(object):
             conf, log_route=conf.get('log_name', 's3api'))
         self.slo_enabled = self.conf.allow_multipart_uploads
         self.check_pipeline(self.conf)
-        self.bucket_db = get_bucket_db(conf)
+        self.bucket_db = get_bucket_db(conf, logger=self.logger)
 
     def __call__(self, env, start_response):
         try:

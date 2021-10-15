@@ -64,10 +64,13 @@ storage_domain = localhost
 s3_acl = true
 check_bucket_owner = true
 # min_segment_size = 8
-bucket_db_connection = redis://127.0.0.1:6379
+#bucket_db_connection = redis://127.0.0.1:6379
+bucket_db_connection = fdb://172.17.0.2:4500
 allow_anonymous_path_requests = true
 s3_only = true
 landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
+#sds_namespace = OPENIO
+#sds_proxy_url = http://127.0.0.1:6000
 
 [filter:tempauth]
 use = egg:swift#tempauth

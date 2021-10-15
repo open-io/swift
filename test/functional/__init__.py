@@ -461,6 +461,8 @@ def _load_s3api(proxy_conf_file, swift_conf_file, **kwargs):
             "s3api tempauth")
         conf.set(section, 'pipeline', pipeline)
         conf.set('filter:s3api', 's3_acl', 'true')
+        conf.set('filter:s3api', 'sds_namespace', 'OPENIO')
+        conf.set('filter:s3api', 'sds_proxy_url', 'http://127.0.0.1:6000')
 
         conf.set('filter:versioned_writes', 'allow_object_versioning', 'true')
     except NoSectionError as err:
