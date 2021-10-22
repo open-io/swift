@@ -24,7 +24,7 @@ from eventlet import Timeout
 
 from oio.common import exceptions as exc
 from oio.common import green as oiogreen
-from oio.common.http import CustomHttpConnection
+from oio.common.http_eventlet import CustomHttpConnection
 from swift.proxy.controllers.base import get_info as _real_get_info
 from swift.common import swob
 from swift.common.ring import FakeRing
