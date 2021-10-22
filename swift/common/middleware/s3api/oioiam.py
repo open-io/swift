@@ -16,7 +16,9 @@
 # limitations under the License.
 
 from oio.account.iam import RedisIamDb
+from oio.account.iam_client import IamClient
 from oio.common.utils import parse_conn_str
+
 from swift.common.middleware.s3api.iam import IamMiddleware, \
     StaticIamMiddleware
 
@@ -53,6 +55,32 @@ class RedisIamMiddleware(IamMiddleware, RedisIamDb):
         return self.load_merged_user_policies(account, user)
 
 
+class OioIamMiddleware(IamMiddleware):
+    """
+    Middleware loading IAM policies from an OpenIO SDS cluster.
+
+    There is one hash per account.
+    Each field of the hash holds one IAM policy document for one user.
+    It is possible to set several documents per user.
+    """
+
+    def __init__(self, app, conf):
+        super(OioIamMiddleware, self).__init__(app, conf)
+        iam_conf = {}
+        namespace = conf.get('sds_namespace')
+        if namespace:
+            iam_conf['namespace'] = namespace
+        self.iam_client = IamClient(
+            iam_conf, proxy_endpoint=conf.get('sds_proxy_url'),
+            logger=self.logger)
+
+    def load_rules_for_user(self, account, user):
+        if not (account and user):
+            # No user policy if there is no user
+            return None
+        return self.iam_client.load_merged_user_policies(account, user)
+
+
 def filter_factory(global_conf, **local_config):
     conf = global_conf.copy()
     conf.update(local_config)
@@ -75,6 +103,8 @@ def filter_factory(global_conf, **local_config):
             conf['sentinel_hosts'] = netloc
         else:
             conf['host'] = netloc
+    elif scheme == 'fdb':
+        klass = OioIamMiddleware
     elif scheme == 'file':
         klass = StaticIamMiddleware
     else:
