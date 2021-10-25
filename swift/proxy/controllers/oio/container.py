@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import json
-from xml.etree.cElementTree import Element, SubElement, tostring
 
 from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
@@ -23,7 +22,6 @@ from swift.common.utils import public, Timestamp, \
     config_true_value, override_bytes_from_content_type
 from swift.common.constraints import check_metadata
 from swift.common import constraints
-from swift.common.middleware.listing_formats import get_listing_content_type
 
 from swift.common.middleware.versioned_writes.object_versioning import \
     CLIENT_VERSIONS_ENABLED, SYSMETA_VERSIONS_CONT
@@ -140,7 +138,6 @@ class ContainerController(SwiftContainerController):
                     body='Maximum limit is %d'
                          % constraints.CONTAINER_LISTING_LIMIT)
 
-        out_content_type = get_listing_content_type(req)
         if path is not None:
             prefix = path
             if path:
@@ -160,13 +157,10 @@ class ContainerController(SwiftContainerController):
             headers=oio_headers, cache=oio_cache, perfdata=perfdata)
 
         resp_headers = self.get_metadata_resp_headers(result)
-        resp = self.create_listing(
-            req, out_content_type, resp_headers, result,
-            self.container_name, **opts)
+        resp = self.create_listing(req, resp_headers, result, **opts)
         return resp
 
-    def create_listing(self, req, out_content_type, resp_headers,
-                       result, container, **kwargs):
+    def create_listing(self, req, resp_headers, result, **kwargs):
         container_list = result['objects']
         for p in result.get('prefixes', []):
             record = {'name': p,
@@ -174,41 +168,13 @@ class ContainerController(SwiftContainerController):
             container_list.append(record)
         container_list.sort(key=lambda x: x['name'])
         ret = Response(request=req, headers=resp_headers,
-                       content_type=out_content_type, charset='utf-8')
+                       content_type='application/json', charset='utf-8')
         versions = kwargs.get('versions', False)
         slo = kwargs.get('slo', False)
-        if out_content_type == 'application/json':
-            ret.body = json.dumps(
-                [self.update_data_record(r, versions, slo)
-                 for r in container_list]).encode('utf-8')
-            req.environ['swift.format_listing'] = False
-        elif out_content_type.endswith('/xml'):
-            doc = Element('container', name=container.decode('utf-8'))
-            for obj in container_list:
-                record = self.update_data_record(obj, versions, slo)
-                if 'subdir' in record:
-                    name = record['subdir'].decode('utf-8')
-                    sub = SubElement(doc, 'subdir', name=name)
-                    SubElement(sub, 'name').text = name
-                else:
-                    obj_element = SubElement(doc, 'object')
-                    for field in ["name", "hash", "bytes", "content_type",
-                                  "last_modified"]:
-                        SubElement(obj_element, field).text = str(
-                            record.pop(field)).decode('utf-8')
-                    for field in sorted(record):
-                        SubElement(obj_element, field).text = str(
-                            record[field]).decode('utf-8')
-            ret.body = tostring(doc, encoding='UTF-8').replace(
-                "<?xml version='1.0' encoding='UTF-8'?>",
-                '<?xml version="1.0" encoding="UTF-8"?>', 1)
-            req.environ['swift.format_listing'] = False
-        else:
-            if not container_list:
-                return HTTPNoContent(request=req, headers=resp_headers)
-            ret.body = ('\n'.join(rec['name']
-                        for rec in container_list) + '\n').encode('utf-8')
-
+        ret.body = json.dumps(
+            [self.update_data_record(r, versions, slo)
+             for r in container_list]).encode('utf-8')
+        req.environ['swift.format_listing'] = False
         return ret
 
     def update_data_record(self, record, versions=False, slo=False):
@@ -257,8 +223,6 @@ class ContainerController(SwiftContainerController):
 
     def get_container_head_resp(self, req):
         headers = dict()
-        out_content_type = get_listing_content_type(req)
-        headers['Content-Type'] = out_content_type
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')

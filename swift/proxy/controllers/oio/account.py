@@ -14,10 +14,6 @@
 # limitations under the License.
 
 import time
-from xml.sax import saxutils
-
-from swift.common.middleware.listing_formats import \
-    get_listing_content_type
 
 from swift.common.oio_utils import handle_oio_timeout, handle_service_busy, \
     REQID_HEADER
@@ -76,14 +72,7 @@ def split_set_and_del_metadata(metadata):
     return to_set, to_del
 
 
-def account_listing_bucket_response(account, req, response_content_type,
-                                    listing=None):
-    if response_content_type != 'application/json':
-        # AWS S3 is always called with format=json
-        # check method GET in ServiceController
-        # (common/middleware/s3api/controllers/service.py)
-        return HTTPPreconditionFailed(body='Invalid content type')
-
+def account_listing_bucket_response(req, listing=None):
     data = []
     for entry in listing:
         data.append({'name': entry['name'], 'count': entry['objects'],
@@ -91,13 +80,12 @@ def account_listing_bucket_response(account, req, response_content_type,
                      'last_modified': Timestamp(entry['mtime']).isoformat})
     account_list = json.dumps(data)
     ret = HTTPOk(body=account_list, request=req, headers={})
-    ret.content_type = response_content_type
+    ret.content_type = 'application/json'
     ret.charset = 'utf-8'
     return ret
 
 
-def account_listing_response(account, req, response_content_type,
-                             info=None, listing=None):
+def account_listing_response(req, info=None, listing=None):
     now = time.time()
     if info is None:
         info = {'containers': 0,
@@ -109,42 +97,17 @@ def account_listing_response(account, req, response_content_type,
         listing = []
 
     resp_headers = get_response_headers(info)
-
-    if response_content_type == 'application/json':
-        data = []
-        for (name, object_count, bytes_used, is_subdir, mtime) in listing:
-            if is_subdir:
-                data.append({'subdir': name})
-            else:
-                data.append({'name': name, 'count': object_count,
-                             'bytes': bytes_used,
-                             'last_modified': Timestamp(mtime).isoformat})
-        account_list = json.dumps(data)
-    elif response_content_type.endswith('/xml'):
-        output_list = ['<?xml version="1.0" encoding="UTF-8"?>',
-                       '<account name=%s>' % saxutils.quoteattr(account)]
-        for (name, object_count, bytes_used, is_subdir, mtime) in listing:
-            if is_subdir:
-                output_list.append(
-                    '<subdir name=%s />' % saxutils.quoteattr(name))
-            else:
-                item = '<container><name>%s</name><count>%s</count>' \
-                       '<bytes>%s</bytes><last_modified>%s</last_modified>' \
-                       '</container>' % \
-                       (saxutils.escape(name), object_count, bytes_used,
-                        Timestamp(mtime).isoformat)
-                output_list.append(item)
-        output_list.append('</account>')
-        account_list = '\n'.join(output_list)
-    else:
-        if not listing:
-            resp = HTTPNoContent(request=req, headers=resp_headers)
-            resp.content_type = response_content_type
-            resp.charset = 'utf-8'
-            return resp
-        account_list = '\n'.join(r[0] for r in listing) + '\n'
+    data = []
+    for (name, object_count, bytes_used, is_subdir, mtime) in listing:
+        if is_subdir:
+            data.append({'subdir': name})
+        else:
+            data.append({'name': name, 'count': object_count,
+                         'bytes': bytes_used,
+                         'last_modified': Timestamp(mtime).isoformat})
+    account_list = json.dumps(data)
     ret = HTTPOk(body=account_list, request=req, headers=resp_headers)
-    ret.content_type = response_content_type
+    ret.content_type = 'application/json'
     ret.charset = 'utf-8'
     return ret
 
@@ -160,8 +123,7 @@ def handle_account_not_found_autocreate(fnc):
             resp = fnc(self, req, *args, **kwargs)
         except (exceptions.NotFound, exceptions.NoSuchAccount):
             if self.app.account_autocreate:
-                resp = account_listing_response(self.account_name, req,
-                                                get_listing_content_type(req))
+                resp = account_listing_response(req)
             else:
                 resp = HTTPNotFound(request=req)
         return resp
@@ -217,18 +179,14 @@ class AccountController(SwiftAccountController):
                 end_marker=end_marker, prefix=prefix,
                 delimiter=delimiter, headers=oio_headers)
             listing = info.pop('listing')
-            return account_listing_bucket_response(
-                self.account_name, req, get_listing_content_type(req),
-                listing=listing)
+            return account_listing_bucket_response(req, listing=listing)
 
         info = self.app.storage.account.container_list(
             self.account_name, limit=limit, marker=marker,
             end_marker=end_marker, prefix=prefix,
             delimiter=delimiter, headers=oio_headers)
         listing = info.pop('listing')
-        return account_listing_response(
-            self.account_name, req, get_listing_content_type(req),
-            info=info, listing=listing)
+        return account_listing_response(req, info=info, listing=listing)
 
     @public
     @handle_account_not_found_autocreate
@@ -258,9 +216,7 @@ class AccountController(SwiftAccountController):
         oio_headers = {REQID_HEADER: self.trans_id}
         info = self.app.storage.account_show(
             self.account_name, headers=oio_headers)
-        return account_listing_response(self.account_name, req,
-                                        get_listing_content_type(req),
-                                        info=info)
+        return account_listing_response(req, info=info)
 
     @public
     @handle_oio_timeout
