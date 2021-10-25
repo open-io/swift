@@ -374,11 +374,15 @@ class ObjectController(BaseObjectController):
         return resp
 
     def load_object_metadata(self, headers):
-        metadata = {}
-        metadata.update(
-            (k.lower(), v) for k, v in headers.items()
+        """
+        Load object metadata from response headers.
+        Also load some well-known headers like x-static-large-object.
+        """
+        metadata = {
+            k.lower(): v for k, v in headers.items()
             if is_sys_or_user_meta('object', k) or
-            is_object_transient_sysmeta(k))
+            is_object_transient_sysmeta(k)
+        }
         for header_key in self.allowed_headers:
             if header_key in headers:
                 headers_lower = header_key.lower()
@@ -699,16 +703,10 @@ class ObjectController(BaseObjectController):
                 mime_type=content_type, policy=policy, headers=oio_headers,
                 etag=req.headers.get('etag', '').strip('"'),
                 properties=metadata, container_properties=ct_props,
+                properties_callback=(
+                    lambda: self.load_object_metadata(self._get_footers(req))),
                 cache=oio_cache, perfdata=perfdata,
                 **kwargs)
-            # TODO(FVE): when oio-sds supports it, do that in a callback
-            # passed to object_create (or whatever upload method supports it)
-            footer_md = self.load_object_metadata(self._get_footers(req))
-            if footer_md:
-                self.app.storage.object_set_properties(
-                    self.account_name, self.container_name, self.object_name,
-                    version=_meta.get('version', None), properties=footer_md,
-                    headers=oio_headers, cache=oio_cache, perfdata=perfdata)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
         except exceptions.PreconditionFailed:
