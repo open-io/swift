@@ -9,6 +9,7 @@ jobs:
 
       - name: Install dependencies
         script:
+          - apt update
           - apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt)
 
       - name: Run coding style tests
