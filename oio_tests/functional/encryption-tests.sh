@@ -4,7 +4,7 @@
 
 export OIO_NS="${OIO_NS:-OPENIO}"
 # We suppose the gateway is using tempauth and the user is "demo:demo"
-export OIO_ACCOUNT="${OIO_ACCOUNT:-AUTH_demo}"
+export OIO_ACCOUNT="AUTH_demo"
 
 AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
 BUCKET=bucket-enc-$RANDOM
@@ -45,12 +45,13 @@ echo "$OBJ_1_CHECKSUM obj_1" | md5sum -c -
 echo "Downloading same object with openio CLI"
 openio object save "$BUCKET" "obj_1" --file "./obj_1.openio"
 
-echo "Checking it is different (because it is cyphered)"
-[ "$OBJ_1_CHECKSUM" != "$(md5sum ./obj_1.openio | cut -d ' ' -f 1)" ]
+DL_OBJ_CHECKSUM=$(md5sum ./obj_1.openio | cut -d ' ' -f 1)
+echo "Checking it is different (because it is cyphered) $OBJ_1_CHECKSUM vs $DL_OBJ_CHECKSUM"
+[ "$OBJ_1_CHECKSUM" != "$DL_OBJ_CHECKSUM" ]
 
 echo "Checking its hash"
 OBJ_1_HASH=$(openio object show -f value -c hash "$BUCKET" "obj_1")
-[ "${OBJ_1_HASH,,}" == "$(md5sum ./obj_1.openio | cut -d ' ' -f 1)" ]
+[ "${OBJ_1_HASH,,}" == "$(oio-blake3sum ./obj_1.openio | cut -d ' ' -f 1)" ]
 
 echo "Removing it"
 ${AWS} s3 rm "s3://$BUCKET/obj_1"

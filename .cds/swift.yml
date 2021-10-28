@@ -82,6 +82,18 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
+  tests-encryption:
+    pipeline: swift-tests
+    application: swift
+    environment: swift-tests-encryption-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
   tests-reports:
     pipeline: swift-tests-reports
     application: swift
@@ -90,6 +102,7 @@ workflow:
       - tests-s3
       - tests-s3-basic
       - tests-iam
+      - tests-encryption
     conditions:
       check:
         - variable: cds.triggered_by.username
