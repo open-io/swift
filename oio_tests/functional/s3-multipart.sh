@@ -84,6 +84,25 @@ ETAG=$(echo $DATA | jq -r .ETag)
 
 [ "$ETAG" == '"c9975699ef630d1f3dfc7224b16d1a25-11"' ]
 
+echo "Check the If-Match feature"
+OBJ_META=$(${AWS} s3api get-object --bucket ${BUCKET} --key obj --if-match c9975699ef630d1f3dfc7224b16d1a25-11 obj)
+ETAG=$(jq -r ".ETag|tostring" <<< "$OBJ_META")
+[ "$ETAG" == '"c9975699ef630d1f3dfc7224b16d1a25-11"' ]
+diff "${MULTI_FILE}" obj
+# Should return an error code 412 if we pass invalid etags
+# - Correct hash but wrong number of parts
+if ${AWS} s3api get-object --bucket ${BUCKET} --key obj --if-match c9975699ef630d1f3dfc7224b16d1a25-12 obj; then
+    false
+fi
+# - Correct hash but no number of parts
+if ${AWS} s3api get-object --bucket ${BUCKET} --key obj --if-match c9975699ef630d1f3dfc7224b16d1a25 obj; then
+    false
+fi
+# - Invalid hash but correct number of parts
+if ${AWS} s3api get-object --bucket ${BUCKET} --key obj --if-match c9975699ef630d1f3dfc7224b16d1a20-11 obj; then
+    false
+fi
+
 echo
 echo "Cleanup"
 echo "-------"
