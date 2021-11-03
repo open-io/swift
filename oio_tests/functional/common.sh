@@ -29,7 +29,7 @@ function install_deps() {
     libsqlite3-dev \
     libzmq3-dev \
     libzookeeper-mt-dev \
-    openio-gridinit asn1c \
+    asn1c \
     python3-all-dev python3-virtualenv
   sudo systemctl stop apache2.service
   sudo systemctl disable apache2.service
@@ -65,7 +65,7 @@ function run_sds() {
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
     -f third_party/oio-sds/etc/bootstrap-option-cache.yml
-  openio cluster wait || (openio cluster list --stats; gridinit_cmd -S ~/.oio/sds/run/gridinit.sock status2; sudo tail -n 100 /var/log/syslog; return 1)
+  openio cluster wait || (openio cluster list --stats; openioctl.sh status2; sudo tail -n 100 /var/log/syslog; return 1)
 }
 
 function configure_aws() {
