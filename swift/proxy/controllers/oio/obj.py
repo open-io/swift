@@ -34,7 +34,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPNotFound, \
     HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
     HTTPNoContent, Response, HTTPInternalServerError, multi_range_iterator, \
-    HTTPServiceUnavailable
+    HTTPServiceUnavailable, HTTPException
 from swift.common.request_helpers import is_sys_or_user_meta, \
     is_object_transient_sysmeta
 from swift.common.wsgi import make_subrequest
@@ -737,6 +737,9 @@ class ObjectController(BaseObjectController):
                 _('ERROR Exception transferring data %s'),
                 {'path': req.path})
             raise HTTPInternalServerError(request=req)
+        except HTTPException:
+            # This can happen when the data source raises an exception
+            raise
         except Exception:
             self.app.logger.exception(
                 _('ERROR Exception transferring data %s'),
