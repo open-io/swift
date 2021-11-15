@@ -28,7 +28,7 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.oio_utils import RedisDb
 from swift.common.swob import Request, HTTPInternalServerError
 from swift.common.utils import get_logger, MD5_OF_EMPTY_STRING, \
-    parse_connection_string
+    parse_connection_string, config_true_value
 from swift.common.wsgi import loadcontext, PipelineWrapper
 
 MIDDLEWARE_NAME = 'ephemeral_objects'
@@ -59,7 +59,8 @@ class EphemeralObjects(object):
     request environment.
     """
 
-    def __init__(self, app, conf, conn_str=None, logger=None, **_kwargs):
+    def __init__(self, app, conf, conn_str=None, logger=None,
+                 read_only=False, **_kwargs):
         self.app = app
         self.logger = logger or get_logger(conf, log_route='ephemeral_objects')
 
@@ -75,6 +76,7 @@ class EphemeralObjects(object):
         else:
             raise ValueError('ephemeral_objects: unknown scheme: %r' % scheme)
         self.conn = klass(**db_kwargs)
+        self.read_only = read_only
 
     def check_pipeline(self, conf):
         """
@@ -129,6 +131,12 @@ class EphemeralObjects(object):
         """
         Build the list of in-progress MPUs.
         """
+        # FIXME(or not): we should theoretically merge the ephemeral and
+        # non-ephemeral listings. We make the bet that this feature is
+        # rarely used.
+        if self.read_only:
+            return self.app(env, start_response)
+
         prefix = prefix[0] if prefix else ''
 
         # TODO(mbo) manage recursive parameter, it not passed
@@ -224,11 +232,13 @@ class EphemeralObjects(object):
             if res is not None:
                 oheaders = json.loads(res) if res else {}
                 start_response("200 OK", oheaders.items())
-            else:
+                return [b'']
+            elif not self.read_only:
                 start_response("404 Not Found", [])
-            return [b'']
+                return [b'']
+            # else: continue on the regular backend
 
-        if req.method == 'PUT':
+        elif req.method == 'PUT' and not self.read_only:
             hdrs = {k: v for k, v in req.headers.items()}
             hdrs['last_modified'] = time.strftime(
                 "%Y-%m-%dT%H:%M:%S.000000", time.gmtime())
@@ -241,19 +251,24 @@ class EphemeralObjects(object):
             # The new uploadId are only managed on memory backend
             return [b'']
 
-        if req.method == 'DELETE':
+        elif req.method == 'DELETE':
             is_available = self.conn.hexists(hkey, path)
             # not sure if it is needed as abort-multipart-upload
             # begins with a test on uploadId validity
             if not is_available:
-                start_response("404 Not Found", [])
-                return [b'']
-            self._remove_entry((lkey, hkey), path)
+                if not self.read_only:
+                    start_response("404 Not Found", [])
+                    return [b'']
+                # else: continue on the regular backend
+            else:
+                self._remove_entry((lkey, hkey), path)
 
-            oheaders = {'Content-Length': 0,
-                        'Etag': MD5_OF_EMPTY_STRING}
-            start_response("204 No Content", oheaders.items())
-            return [b'']
+                oheaders = {'Content-Length': 0,
+                            'Etag': MD5_OF_EMPTY_STRING}
+                start_response("204 No Content", oheaders.items())
+                return [b'']
+
+        return self.app(req.environ, start_response)
 
     def __call__(self, env, start_response):
         req = Request(env)
@@ -295,8 +310,9 @@ def filter_factory(global_conf, **local_config):
     conf = global_conf.copy()
     conf.update(local_config)
     conn_str = conf.get('connection')
+    read_only = config_true_value(local_config.get('read_only', False))
 
     def factory(app):
         return EphemeralObjects(
-            app, conf, conn_str=conn_str)
+            app, conf, conn_str=conn_str, read_only=read_only)
     return factory
