@@ -1394,6 +1394,10 @@ use = egg:swift#ephemeral_objects
 # redis+sentinel schemes are accepted (see IAM middleware for examples).
 connection = redis://127.0.0.1:6379
 
+# When true, do not store new ephemeral objects to the alternative backend,
+# but still try to read or delete them.
+#read_only = False
+
 # Drop-in replacement for the memcache middleware, which also caches
 # object and container metadata (oio-sds backend only).
 #[filter:cache]
