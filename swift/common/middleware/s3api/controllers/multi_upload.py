@@ -893,6 +893,7 @@ class UploadController(Controller):
                 if item and item['bytes'] < self.conf.min_segment_size]
 
         req.environ['swift.callback.slo_manifest_hook'] = size_checker
+        req.environ['swift.crypto.override'] = True
         start_time = time.time()
 
         def response_iter():
