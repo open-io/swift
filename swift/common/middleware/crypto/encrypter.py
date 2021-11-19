@@ -20,7 +20,8 @@ from contextlib import contextmanager
 from swift.common.constraints import check_metadata
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
-    dump_crypto_meta, append_crypto_meta, get_hasher, Crypto
+    dump_crypto_meta, append_crypto_meta, get_hasher, Crypto, \
+    CRYPTO_KEY_CALLBACK, MISSING_KEY_MSG
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     strip_user_meta_prefix, is_user_meta, update_etag_is_at_header, \
     get_container_update_override_key
@@ -376,6 +377,26 @@ class Encrypter(object):
             is_object_request = False
         if not is_object_request:
             return self.app(env, start_response)
+
+        if self.crypto.ssec_mode:
+            fetch_crypto_keys = env.get(CRYPTO_KEY_CALLBACK)
+            if fetch_crypto_keys is not None:
+                try:
+                    fetch_crypto_keys()
+                except HTTPException as exc:
+                    if MISSING_KEY_MSG.encode('utf-8') in exc.body:
+                        if req.method in ('PUT', 'POST'):
+                            # No key, just upload without encryption
+                            env['swift.crypto.override'] = True
+                            return self.app(env, start_response)
+                        # else:
+                        #   let the thing fail later,
+                        #   if a key is required for decoding
+                    else:
+                        raise
+                except Exception:
+                    # Let the parent class handle other exceptions
+                    pass
 
         if req.method in ('GET', 'HEAD'):
             handler = EncrypterObjContext(self, self.logger).handle_get_or_head

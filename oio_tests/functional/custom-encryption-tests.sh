@@ -88,7 +88,7 @@ echo "Checking it is different (because it is cyphered)"
 
 echo "Checking its hash"
 OBJ_1_HASH=$(openio object show -f value -c hash "$BUCKET" "obj_1_cyphered")
-[ "${OBJ_1_HASH,,}" == "$(md5sum ./obj_1_cyphered.openio | cut -d ' ' -f 1)" ]
+[ "${OBJ_1_HASH,,}" == "$(oio-blake3sum ./obj_1_cyphered.openio | cut -d ' ' -f 1)" ]
 
 echo "Removing obj_1 and obj_1_cyphered"
 ${AWS} s3 rm "s3://$BUCKET/obj_1"

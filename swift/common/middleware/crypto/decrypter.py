@@ -25,11 +25,12 @@ from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     get_sys_meta_prefix, get_user_meta_prefix, \
     get_container_update_override_key
-from swift.common.swob import Request, HTTPException, \
+from swift.common.swob import Request, HTTPException, HTTPForbidden, \
     HTTPInternalServerError, wsgi_to_bytes, bytes_to_wsgi
 from swift.common.utils import get_logger, config_true_value, \
     parse_content_range, closing_if_possible, parse_content_type, \
     FileLikeIter, multipart_byteranges_to_document_iters
+from swift.proxy.controllers.base import get_object_info
 
 DECRYPT_CHUNK_SIZE = 65536
 
@@ -215,7 +216,8 @@ class DecrypterObjContext(BaseDecrypterContext):
             # response
             etag_header = 'X-Object-Sysmeta-Crypto-Etag'
             encrypted_etag = self._response_header_value(etag_header)
-            if encrypted_etag:
+            decrypted_etag = None
+            if encrypted_etag and 'object' in put_keys:
                 decrypted_etag = self._decrypt_header(
                     etag_header, encrypted_etag, put_keys['object'],
                     required=True)
@@ -223,10 +225,15 @@ class DecrypterObjContext(BaseDecrypterContext):
 
             etag_header = get_container_update_override_key('etag')
             encrypted_etag = self._response_header_value(etag_header)
-            if encrypted_etag:
-                decrypted_etag = self._decrypt_header(
+            if encrypted_etag and 'container' in put_keys:
+                decrypted_etag_ct = self._decrypt_header(
                     etag_header, encrypted_etag, put_keys['container'])
-                mod_hdr_pairs.append((etag_header, decrypted_etag))
+                if decrypted_etag and decrypted_etag_ct != decrypted_etag:
+                    self.app.logger.debug('Failed ETag verification')
+                    raise HTTPForbidden('Invalid key')
+                mod_hdr_pairs.append((etag_header, decrypted_etag_ct))
+                if self.crypto.ssec_mode:
+                    mod_hdr_pairs.append(('Etag', decrypted_etag_ct))
 
         # Decrypt all user metadata. Encrypted user metadata values are stored
         # in the x-object-transient-sysmeta-crypto-meta- namespace. Those are
@@ -235,12 +242,15 @@ class DecrypterObjContext(BaseDecrypterContext):
         # if it does then they will be overwritten by any decrypted headers
         # that map to the same x-object-meta- header names i.e. decrypted
         # headers win over unexpected, unencrypted headers.
-        if post_keys:
-            mod_hdr_pairs.extend(self.decrypt_user_metadata(post_keys))
+        try:
+            if post_keys:
+                mod_hdr_pairs.extend(self.decrypt_user_metadata(post_keys))
 
-        mod_hdr_names = {h.lower() for h, v in mod_hdr_pairs}
-        mod_hdr_pairs.extend([(h, v) for h, v in self._response_headers
-                              if h.lower() not in mod_hdr_names])
+            mod_hdr_names = {h.lower() for h, v in mod_hdr_pairs}
+            mod_hdr_pairs.extend([(h, v) for h, v in self._response_headers
+                                  if h.lower() not in mod_hdr_names])
+        except KeyError:
+            self.app.logger.debug('Not able to decrypt user metadata')
         return mod_hdr_pairs
 
     def multipart_response_iter(self, resp, boundary, body_key, crypto_meta):
@@ -301,6 +311,32 @@ class DecrypterObjContext(BaseDecrypterContext):
                 raise HTTPInternalServerError(
                     body='Error decrypting object', content_type='text/plain')
         return crypto_meta
+
+    def get_decryption_keys(self, req, crypto_meta=None):
+        if config_true_value(req.environ.get('swift.crypto.override')):
+            self.logger.debug('No decryption is necessary because of override')
+            return None
+
+        if self.crypto.ssec_mode:
+            info = get_object_info(req.environ, self.app,
+                                   swift_source='DCRYPT')
+            if 'crypto-etag' not in info['sysmeta']:
+                # object is not cyphered
+                return None
+
+        key_id = crypto_meta.get('key_id') if crypto_meta else None
+        try:
+            return self.get_keys(req.environ, key_id=key_id)
+        except HTTPException:
+            if req.method == 'HEAD':
+                try:
+                    return self.get_keys(req.environ,
+                                         required=['container'],
+                                         key_id=key_id)
+                except HTTPException:
+                    pass
+                return None
+            raise
 
     def handle(self, req, start_response):
         app_resp = self._app_call(req.environ)
