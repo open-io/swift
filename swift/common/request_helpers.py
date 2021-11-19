@@ -22,6 +22,7 @@ from swob in here without creating circular imports.
 
 import hashlib
 import itertools
+import re
 import sys
 import time
 
@@ -752,13 +753,18 @@ class SafeSegmentedIterable(SegmentedIterable):
     into SegmentError.
     """
 
+    _InvalidKey = re.compile(r'got 403 \(Invalid key\) while retrieving',
+                             re.IGNORECASE)
+    _BadCryptoReq = re.compile(r'got 400 \(.*Encryption.*\) while retrieving',
+                               re.IGNORECASE)
+
     def validate_first_segment(self):
         try:
             return super(SafeSegmentedIterable, self).validate_first_segment()
         except SegmentError as err:
-            if 'got 403 while retrieving' in err.args[0]:
+            if self.__class__._InvalidKey.search(err.args[0]):
                 raise HTTPForbidden(request=self.req)
-            elif 'got 400 while retrieving' in err.args[0]:
+            elif self.__class__._BadCryptoReq.search(err.args[0]):
                 raise HTTPBadRequest(request=self.req)
             else:
                 raise

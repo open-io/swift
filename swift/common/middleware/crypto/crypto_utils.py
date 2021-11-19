@@ -27,8 +27,9 @@ from six.moves.urllib import parse as urlparse
 
 from swift import gettext_ as _
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
-from swift.common.swob import HTTPInternalServerError
-from swift.common.utils import get_logger, strict_b64decode
+from swift.common.swob import HTTPException, HTTPInternalServerError, \
+    header_to_environ_key
+from swift.common.utils import get_logger, strict_b64decode, config_true_value
 from swift.common.wsgi import WSGIContext
 from cgi import parse_header
 
@@ -54,6 +55,8 @@ class Crypto(object):
         self.backend = default_backend()
         self.ciphertext_hash_algo = (conf.get('ciphertext_hash_algo', 'md5')
                                      if conf else 'md5')
+        self.ssec_mode = config_true_value(conf.get('ssec_mode', 'false')
+                                           if conf else False)
 
     def create_encryption_ctxt(self, key, iv):
         """
@@ -180,6 +183,9 @@ class CryptoWSGIContext(WSGIContext):
             self.logger.error('get_keys(): unknown key id: %s', err)
             raise
         except Exception as err:  # noqa
+            if (self.crypto.ssec_mode and isinstance(err, HTTPException)
+                    and err.status_int == 400):
+                raise
             self.logger.exception('get_keys(): from callback: %s', err)
             raise HTTPInternalServerError(
                 "Unable to retrieve encryption keys.")
@@ -321,3 +327,37 @@ def get_hasher(algorithm='md5'):
     if algorithm in CUSTOM_HASHER:
         return CUSTOM_HASHER[algorithm]()
     return hashlib.new(algorithm)
+
+
+def ssec_header(key, namespace=None):
+    """
+    Generate the header name for the specified key.
+
+    :param namespace: some headers are "namespaced", for example those
+        relative to object copy. Specify this to access these headers.
+        Example: namespace='copy-source'
+    """
+    if namespace:
+        if not namespace.endswith('-'):
+            namespace += '-'
+    else:
+        namespace = ''
+    return 'X-Amz-%sServer-Side-Encryption-Customer-%s' % (
+        namespace.title(), key.title())
+
+
+SSEC_ALGO_HEADER = ssec_header('Algorithm')
+SSEC_KEY_HEADER = ssec_header('Key')
+SSEC_KEY_MD5_HEADER = ssec_header('Key-Md5')
+SSEC_SRC_ALGO_HEADER = ssec_header('Algorithm', namespace='Copy-Source-')
+SSEC_SRC_KEY_HEADER = ssec_header('Key', namespace='Copy-Source-')
+SSEC_SRC_KEY_MD5_HEADER = ssec_header('Key-Md5', namespace='Copy-Source-')
+
+SSEC_ALGO_ENV_KEY = header_to_environ_key(SSEC_ALGO_HEADER)
+SSEC_KEY_ENV_KEY = header_to_environ_key(SSEC_KEY_HEADER)
+SSEC_KEY_MD5_ENV_KEY = header_to_environ_key(SSEC_KEY_MD5_HEADER)
+SSEC_SRC_ALGO_ENV_KEY = header_to_environ_key(SSEC_SRC_ALGO_HEADER)
+SSEC_SRC_KEY_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_HEADER)
+SSEC_SRC_KEY_MD5_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_MD5_HEADER)
+
+MISSING_KEY_MSG = 'Missing %s header' % SSEC_KEY_HEADER
