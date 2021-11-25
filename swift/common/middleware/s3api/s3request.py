@@ -56,9 +56,8 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     MalformedXML, InvalidRequest, RequestTimeout, InvalidBucketName, \
     BadDigest, AuthorizationHeaderMalformed, SlowDown, \
     AuthorizationQueryParametersError, ServiceUnavailable, \
-    NoSuchVersion
-from swift.common.middleware.s3api.exception import NotS3Request, \
-    BadSwiftRequest
+    NoSuchVersion, BadRequest
+from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import utf8encode, \
     S3Timestamp, mktime, MULTIUPLOAD_SUFFIX
 from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
@@ -1483,7 +1482,7 @@ class S3Request(swob.Request):
                 raise err_resp()
 
         if status == HTTP_BAD_REQUEST:
-            raise BadSwiftRequest(err_msg.decode('utf8'))
+            raise BadRequest(err_msg.decode('utf8'))
         if status == HTTP_UNAUTHORIZED:
             raise SignatureDoesNotMatch(
                 **self.signature_does_not_match_kwargs())
