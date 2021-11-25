@@ -92,7 +92,6 @@ class EncInputWrapper(object):
             self.body_crypto_ctxt = self.crypto.create_encryption_ctxt(
                 body_key, self.body_crypto_meta.get('iv'))
             self.plaintext_md5 = md5(usedforsecurity=False)
-            self.ciphertext_md5 = md5(usedforsecurity=False)
             self.ciphertext_hash = get_hasher(self.crypto.ciphertext_hash_algo)
 
     def install_footers_callback(self, req):

@@ -87,7 +87,6 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange
-from swift.common.middleware.s3api.exception import BadSwiftRequest
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import unique_id, \
     MULTIUPLOAD_SUFFIX, S3Timestamp, sysmeta_header
@@ -941,8 +940,8 @@ class UploadController(Controller):
                                 status=body['Response Status'],
                                 msg='\n'.join(': '.join(err)
                                               for err in body['Errors']))
-                except BadSwiftRequest as e:
-                    msg = str(e)
+                except ErrorResponse as e:
+                    msg = str(e._msg)
                     if too_small_message in msg:
                         raise EntityTooSmall(msg)
                     elif ', Etag Mismatch' in msg:
