@@ -42,7 +42,6 @@ from swift.common.middleware.s3api.s3response import \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
     TooManyBuckets
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX
-from swift.common.request_helpers import get_user_meta_prefix
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
@@ -395,9 +394,8 @@ class BucketController(Controller):
         bucket_count = config_auto_int_value(
             acct_info['sysmeta'].get('bucket-count'), 0)
         # The optional account limit, set by an administrator (user metadata)
-        max_buckets_key = get_user_meta_prefix('account') + 'max-buckets'
         max_buckets = config_auto_int_value(
-            acct_info['meta'].get(max_buckets_key),
+            acct_info['meta'].get('max-buckets'),
             self.conf.max_buckets_per_account)
         if bucket_count >= max_buckets:
             raise TooManyBuckets
