@@ -31,6 +31,11 @@ jobs:
           pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
           go get gopkg.in/ini.v1 golang.org/x/sys/unix
           rabbitmq-plugins enable rabbitmq_management
+          wget -q https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb
+          wget -q https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-server_${FDB_VERSION}-1_amd64.deb
+          dpkg -i foundationdb-clients_6.3.23-1_amd64.deb foundationdb-server_6.3.23-1_amd64.deb
+          systemctl stop foundationdb.service
+          systemctl disable foundationdb.service
 
       - name: Run oio unit tests
         script:
