@@ -23,7 +23,7 @@ if [ "$RET" -ne "0" ]; then
 fi
 
 # IAM, with rules in a Redis database
-CONN_STR="redis://127.0.0.1:6379"
+CONN_STR="fdb://127.0.0.1:6379"
 for USER in $(jq -r --raw-output 'keys | .[]' $RULES_FILE)
 do
   RULE="$(jq -c ".\"$USER\"" $RULES_FILE)"
