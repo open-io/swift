@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <include href="common.rng"/>
+  <start>
+    <element name="IntelligentTieringConfiguration">
+      <interleave>
+        <element name="Id">
+          <data type="string"/>
+        </element>
+        <optional>
+          <element name="Filter">
+            <ref name="Filter"/>
+          </element>
+        </optional>
+        <element name="Status">
+          <choice>
+            <value>Enabled</value>
+            <value>Disabled</value>
+          </choice>
+        </element>
+        <oneOrMore>
+          <element name="Tiering">
+            <interleave>
+              <element name="AccessTier">
+                <choice>
+                  <value>ARCHIVE_ACCESS</value>
+                  <value>DEEP_ARCHIVE_ACCESS</value>
+                  <data type="string"/>
+                </choice>
+              </element>
+              <element name="Days">
+                <data type="positiveInteger"/>
+              </element>
+            </interleave>
+          </element>
+        </oneOrMore>
+      </interleave>
+    </element>
+  </start>
+</grammar>
