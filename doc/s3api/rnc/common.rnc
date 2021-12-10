@@ -24,3 +24,15 @@ AccessControlList =
       "READ" | "WRITE" | "READ_ACP" | "WRITE_ACP" | "FULL_CONTROL"
     }
   }*
+
+Filter =
+  element Prefix { xsd:string } |
+  element Tag { Tag } |
+  element And {
+      element Prefix { xsd:string }? &
+      element Tag { Tag }+
+  }
+
+Tag =
+  element Key { xsd:string } &
+  element Value { xsd:string }
