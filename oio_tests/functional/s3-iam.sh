@@ -11,7 +11,8 @@ AWSA2U1="aws --profile a2u1 --endpoint-url http://localhost:5000"
 
 COMPANY_BUCKET="companybucket"
 SHARED_BUCKET="sharedbucket"
-U1_BUCKET="user1bucket"
+A1U1_BUCKET="user1bucket"
+A2U1_BUCKET="user1mybucket"
 
 TEMPDIR=$(mktemp -td s3-iam-XXXXXX)
 BIGFILE="$TEMPDIR/bigfile"
@@ -21,18 +22,27 @@ set -e
 set -x
 
 test_create_bucket() {
-  # user1 cannot create buckets
-  OUT=$(${AWSA1U1} s3 mb s3://$U1_BUCKET 2>&1 | tail -n 1)
+  # user1 (demo) cannot create buckets
+  OUT=$(${AWSA1U1} s3 mb s3://$A1U1_BUCKET 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
   # admin can create buckets
-  ${AWSA1ADM} s3 mb s3://$U1_BUCKET
+  ${AWSA1ADM} s3 mb s3://$A1U1_BUCKET
   ${AWSA1ADM} s3 mb s3://$SHARED_BUCKET
   ${AWSA1ADM} s3 mb s3://$COMPANY_BUCKET
+
+  # Check that an IAM authorization bypasses the rights of the user
+  # (tempauth group / keystone role).
+  # user1 (account2) can create bucket with prefix user1
+  ${AWSA2U1} s3 mb "s3://${A2U1_BUCKET}"
+  ACL=$(${AWSA2U1} s3api get-bucket-acl --bucket "${A2U1_BUCKET}")
+  echo $ACL | jq -r .Owner | grep "account2:user1"
+  echo $ACL | jq -r .Grants | grep "account2:user1"
+  echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
 }
 
 test_create_objects() {
-  # user1 cannot create any object in the shared bucket...
+  # user1 (demo) cannot create any object in the shared bucket...
   OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
@@ -47,18 +57,29 @@ test_create_objects() {
   # Create an object to test public-read access later
   ${AWSA1ADM} s3 cp --acl public-read /etc/magic s3://${SHARED_BUCKET}/public-magic
 
-  # user1 can create any object in its own bucket
-  ${AWSA1U1} s3 cp /etc/magic s3://${U1_BUCKET}/magic
-  ${AWSA1U1} s3 cp /etc/magic s3://${U1_BUCKET}/not_so_magic
-  ${AWSA1U1} s3 cp "${BIGFILE}" s3://${U1_BUCKET}/bigfiles/bigfile
+  # user1 (demo) can create any object in its own bucket
+  ${AWSA1U1} s3 cp /etc/magic s3://${A1U1_BUCKET}/magic
+  ${AWSA1U1} s3 cp /etc/magic s3://${A1U1_BUCKET}/not_so_magic
+  ${AWSA1U1} s3 cp "${BIGFILE}" s3://${A1U1_BUCKET}/bigfiles/bigfile
 
-  # user1 can create objects in his company's bucket,
+  # user1 (demo) can create objects in his company's bucket,
   # but only in a specific folder.
   OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
   OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user2/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
   ${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user1/magic
+  ACL=$(${AWSA1U1} s3api get-object-acl --bucket "${COMPANY_BUCKET}" --key home/user1/magic)
+  echo $ACL | jq -r .Owner | grep "demo:user1"
+  echo $ACL | jq -r .Grants | grep "demo:user1"
+  echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
+
+  # user1 (account2) can create objects in its own bucket
+  ${AWSA2U1} s3 cp /etc/magic s3://${A2U1_BUCKET}/magic
+  ACL=$(${AWSA2U1} s3api get-object-acl --bucket "${A2U1_BUCKET}" --key magic)
+  echo $ACL | jq -r .Owner | grep "account2:user1"
+  echo $ACL | jq -r .Grants | grep "account2:user1"
+  echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
 }
 
 test_multipart_ops() {
@@ -100,21 +121,24 @@ test_multipart_ops() {
 }
 
 test_read_objects() {
-  # user1 can read any object from the shared bucket
+  # user1 (demo) can read any object from the shared bucket
   ${AWSA1U1} s3 ls s3://${SHARED_BUCKET}/
   ${AWSA1U1} s3 cp s3://${SHARED_BUCKET}/magic "$TEMPDIR/magic"
   ${AWSA1U1} s3 cp s3://${SHARED_BUCKET}/user1_magic "$TEMPDIR/user1_magic"
   ${AWSA1U1} s3 cp s3://${SHARED_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_shared_bucket"
 
-  # user1 can list objects from his folder in the company bucket,
+  # user1 (demo) can list objects from his folder in the company bucket,
   # but not from other folders
   OUT=$(${AWSA1U1} s3 ls s3://${COMPANY_BUCKET}/home/user2/ 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
   ${AWSA1U1} s3 ls s3://${COMPANY_BUCKET}/home/user1/
 
+  # user1 (account2) can read any object from its own bucket
+  ${AWSA2U1} s3 cp s3://${A2U1_BUCKET}/magic "$TEMPDIR/magic"
+
   # admin can read objects from any bucket
-  ${AWSA1ADM} s3 cp s3://${U1_BUCKET}/magic "$TEMPDIR/magic"
-  ${AWSA1ADM} s3 cp s3://${U1_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_u1_bucket"
+  ${AWSA1ADM} s3 cp s3://${A1U1_BUCKET}/magic "$TEMPDIR/magic"
+  ${AWSA1ADM} s3 cp s3://${A1U1_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_A1u1_bucket"
 
   # Anonymous users can read "public-read" objects
   curl -fI "http://${SHARED_BUCKET}.localhost:5000/public-magic"
@@ -122,33 +146,39 @@ test_read_objects() {
 
 test_delete_objects() {
   # user1 can delete objects from its own bucket
-  ${AWSA1U1} s3 rm s3://${U1_BUCKET}/magic
-  ${AWSA1U1} s3 rm s3://${U1_BUCKET}/bigfiles/bigfile
+  ${AWSA1U1} s3 rm s3://${A1U1_BUCKET}/magic
+  ${AWSA1U1} s3 rm s3://${A1U1_BUCKET}/bigfiles/bigfile
 
-  # user1 cannot delete objects from the shared bucket...
+  # user1 (demo) cannot delete objects from the shared bucket...
   OUT=$(${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
   # except objects prefixed by its user name.
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic
 
-  # user1 can delete objects from its folder in his company's bucket
+  # user1 (demo) can delete objects from its folder in his company's bucket
   ${AWSA1U1} s3 rm s3://${COMPANY_BUCKET}/home/user1/magic
+
+  # user1 (account2) can delete objects from its own bucket
+  ${AWSA2U1} s3 rm s3://${A2U1_BUCKET}/magic
 
   # admin can delete objects from any bucket
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/magic
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/public-magic
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/user1_bigfile
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/bigfiles/bigfile
-  ${AWSA1ADM} s3 rm s3://${U1_BUCKET}/not_so_magic
+  ${AWSA1ADM} s3 rm s3://${A1U1_BUCKET}/not_so_magic
 }
 
 test_delete_buckets() {
   # user1 cannot delete buckets
-  OUT=$(${AWSA1U1} s3 rb s3://$U1_BUCKET 2>&1 | tail -n 1)
+  OUT=$(${AWSA1U1} s3 rb s3://$A1U1_BUCKET 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
+  # user1 (account2) can delete its own bucket
+  ${AWSA2U1} s3 rb s3://${A2U1_BUCKET}
+
   # admin can delete any bucket
-  ${AWSA1ADM} s3 rb s3://$U1_BUCKET
+  ${AWSA1ADM} s3 rb s3://$A1U1_BUCKET
   ${AWSA1ADM} s3 rb s3://$SHARED_BUCKET
   ${AWSA1ADM} s3 rb s3://$COMPANY_BUCKET
 }
