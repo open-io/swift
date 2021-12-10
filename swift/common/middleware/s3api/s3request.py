@@ -63,10 +63,7 @@ from swift.common.middleware.s3api.utils import utf8encode, \
 from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
 from swift.common.middleware.s3api.utils import sysmeta_header, \
     validate_bucket_name
-from swift.common.middleware.s3api.acl_utils import handle_acl_header, \
-    ACL_EXPLICIT_ALLOW
-from swift.common.middleware.s3api.iam import iam_explicit_allow, \
-    iam_is_enabled
+from swift.common.middleware.s3api.acl_utils import handle_acl_header
 
 
 # List of sub-resources that must be maintained as part of the HMAC
@@ -211,7 +208,7 @@ class SigV4Mixin(object):
         Validate X-Amz-Expires in query parameter
         :raises: AccessDenied
         :raises: AuthorizationQueryParametersError
-        :raises: AccessDenined
+        :raises: AccessDenied
         """
         if self._is_anonymous:
             return
@@ -1691,20 +1688,8 @@ class S3AclRequest(S3Request):
         if not self.acl_handler:
             # we should set acl_handler all time before calling get_response
             raise Exception('get_response called before set_acl_handler')
-        try:
-            resp = self.acl_handler.handle_acl(
-                app, method, container, obj, headers)
-            self.environ[ACL_EXPLICIT_ALLOW] = True
-        except AccessDenied:
-            # If IAM is disabled and ACLs say no -> deny.
-            # If IAM is enabled, already checked and False -> deny.
-            # If IAM is enabled, but explicit_allow is None -> let the
-            # request handling continue, it will be checked later.
-            if not iam_is_enabled(self.environ) or \
-                    iam_explicit_allow(self.environ) is False:
-                raise
-            resp = None
-            self.environ[ACL_EXPLICIT_ALLOW] = False
+        resp = self.acl_handler.handle_acl(
+            app, method, container, obj, headers)
 
         # possible to skip recalling get_response_acl if resp is not
         # None (e.g. HEAD)
