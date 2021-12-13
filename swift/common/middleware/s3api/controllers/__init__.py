@@ -26,6 +26,8 @@ from swift.common.middleware.s3api.controllers.multi_delete import \
     MultiObjectDeleteController
 from swift.common.middleware.s3api.controllers.multi_upload import \
     UploadController, PartController, UploadsController
+from swift.common.middleware.s3api.controllers.intelligent_tiering import \
+    IntelligentTieringController
 from swift.common.middleware.s3api.controllers.lifecycle import \
     LifecycleController
 from swift.common.middleware.s3api.controllers.location import \
@@ -53,6 +55,7 @@ __all__ = [
     'PartController',
     'UploadsController',
     'UploadController',
+    'IntelligentTieringController',
     'LifecycleController',
     'LocationController',
     'LoggingStatusController',

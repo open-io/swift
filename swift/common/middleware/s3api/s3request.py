@@ -46,7 +46,7 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     UploadController, UploadsController, VersioningController, \
     UnsupportedController, S3AclController, BucketController, \
     TaggingController, UniqueBucketController, CorsController, \
-    LifecycleController
+    LifecycleController, IntelligentTieringController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
@@ -1077,6 +1077,8 @@ class S3Request(swob.Request):
             return CorsController
         if 'delete' in self.params:
             return MultiObjectDeleteController
+        if 'intelligent-tiering' in self.params:
+            return IntelligentTieringController
         if 'lifecycle' in self.params:
             return LifecycleController
         if 'location' in self.params:

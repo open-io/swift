@@ -736,6 +736,12 @@ class TooManyBuckets(ErrorResponse):
     _msg = 'You have attempted to create more buckets than allowed.'
 
 
+class TooManyConfigurations(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'You are attempting to create a new configuration but have ' \
+           'already reached the 1,000-configuration limit.'
+
+
 class UnexpectedContent(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'This request does not support content.'
