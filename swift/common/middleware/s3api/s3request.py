@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2020 OpenStack Foundation.
+# Copyright (c) 2014-2021 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     MalformedXML, InvalidRequest, RequestTimeout, InvalidBucketName, \
     BadDigest, AuthorizationHeaderMalformed, SlowDown, \
     AuthorizationQueryParametersError, ServiceUnavailable, \
-    NoSuchVersion, BadRequest
+    NoSuchVersion, BadRequest, OperationAborted
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import utf8encode, \
     S3Timestamp, mktime, MULTIUPLOAD_SUFFIX
@@ -1390,6 +1390,7 @@ class S3Request(swob.Request):
                     HTTP_REQUEST_ENTITY_TOO_LARGE: EntityTooLarge,
                     HTTP_LENGTH_REQUIRED: MissingContentLength,
                     HTTP_REQUEST_TIMEOUT: RequestTimeout,
+                    HTTP_CONFLICT: OperationAborted,
                     HTTP_PRECONDITION_FAILED: PreconditionFailed,
                 },
                 'POST': {
