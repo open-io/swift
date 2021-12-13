@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2020 OpenStack Foundation
+# Copyright (c) 2014-2021 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -528,6 +528,9 @@ class TestS3ApiObj(S3ApiTestCase):
         code = self._test_method_error('PUT', '/bucket/object',
                                        swob.HTTPUnprocessableEntity)
         self.assertEqual(code, 'BadDigest')
+        code = self._test_method_error('PUT', '/bucket/object',
+                                       swob.HTTPConflict)
+        self.assertEqual(code, 'OperationAborted')
         code = self._test_method_error('PUT', '/bucket/object',
                                        swob.HTTPLengthRequired)
         self.assertEqual(code, 'MissingContentLength')
