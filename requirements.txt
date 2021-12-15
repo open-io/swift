@@ -23,3 +23,4 @@ cryptography>=2.0.2                     # BSD/Apache-2.0
 # ipaddress>=1.0.16;python_version<'3.3'  # PSF
 blake3
 oio
+pika
