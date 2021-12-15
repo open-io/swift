@@ -51,7 +51,7 @@ TIERING_HEADER = header_name_from_id('myid')
 
 def tiering_callback_ok(req, conf):
     """To be used as an always OK tiering callback."""
-    return True
+    return {}
 
 
 def tiering_callback_invalid_state(req, conf):
