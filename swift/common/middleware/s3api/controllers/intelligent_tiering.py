@@ -93,7 +93,7 @@ class IntelligentTieringController(Controller):
             raise S3NotImplemented(
                 "Intelligent tiering is not enabled on this gateway.")
         # This can raise exceptions too
-        tiering_callback(req, tiering_dict)
+        return tiering_callback(req, tiering_dict)
 
     @public
     @bucket_operation()
@@ -116,7 +116,12 @@ class IntelligentTieringController(Controller):
                 "ListBucketIntelligentTieringConfigurations "
                 "is not implemented yet.")
 
-        return HTTPOk(body=body, content_type='application/xml')
+        # May raise exceptions
+        result = self.apply_tiering(req, None)
+
+        resp = HTTPOk(body=body, content_type='application/xml')
+        resp.headers['X-Bucket-Status'] = result.get('bucket_status')
+        return resp
 
     @public
     @bucket_operation()
@@ -156,6 +161,10 @@ class IntelligentTieringController(Controller):
         tiering_id = req.params.get('id')
         if not tiering_id:
             raise BadRequest("Missing parameter: id")
+
+        # May raise exceptions
+        self.apply_tiering(req, None)
+
         # FIXME(FVE): x-delete-container-sysmeta...
         req.headers[header_name_from_id(tiering_id)] = ""
         subreq = req.to_swift_req('POST', req.container_name, None,

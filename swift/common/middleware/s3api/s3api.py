@@ -342,7 +342,9 @@ class S3ApiMiddleware(object):
             resp = self.handle_request(req)
         except NotS3Request:
             path_info = env.get('PATH_INFO')
-            if self.conf.s3_only and path_info != '/info':
+            internal_req = env.get('REMOTE_USER') == '.wsgi.pre_authed' \
+                and env.get('swift.authorize_override') is True
+            if self.conf.s3_only and path_info != '/info' and not internal_req:
                 if path_info == '/':
                     env['swift.leave_relative_location'] = False
                     resp = Redirect(location=self.conf.landing_page)
