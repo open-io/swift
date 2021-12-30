@@ -83,6 +83,11 @@ from six.moves import range, http_client
 from six.moves.urllib.parse import quote as _quote, unquote
 from six.moves.urllib.parse import parse_qs, urlparse
 
+if six.PY2:
+    from functools32 import lru_cache
+else:
+    from functools import lru_cache
+
 from swift import gettext_ as _
 import swift.common.exceptions
 from swift.common.http import is_server_error
@@ -4101,6 +4106,7 @@ class LRUCache(object):
     def __call__(self, f):
 
         class LRUCacheWrapped(object):
+            # pylint: disable=no-self-argument
 
             @functools.wraps(f)
             def __call__(im_self, *key):
@@ -4142,6 +4148,33 @@ class LRUCache(object):
                 return '<%s %r>' % (im_self.__class__.__name__, f)
 
         return LRUCacheWrapped()
+
+
+def tlru_cache(maxtime=30, maxsize=1000):
+    """
+    Least-recently-used cache decorator with time-based cache invalidation.
+
+    Due to the technique used, an entry can expire before the TTL,
+    but never after.
+    """
+    if maxtime <= 0:
+        maxtime = float('inf')
+
+    def tlru_cache_decorator(func):
+        @lru_cache(maxsize=maxsize)
+        def salted_func(__salt, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        @functools.wraps(func)
+        def tlru_cache_wrapper(*args, **kwargs):
+            # Generate an extra argument, which will be the same for
+            # maxtime seconds. After maxtime seconds, the argument changes,
+            # and thus triggers a cache miss.
+            return salted_func(int(time.time() / maxtime), *args, **kwargs)
+
+        return tlru_cache_wrapper
+
+    return tlru_cache_decorator
 
 
 class Spliterator(object):
