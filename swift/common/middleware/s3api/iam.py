@@ -19,7 +19,7 @@ from functools import wraps
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.exception import IAMException
 from swift.common.middleware.s3api.s3response import AccessDenied
-from swift.common.utils import config_auto_int_value, get_logger, LRUCache
+from swift.common.utils import config_auto_int_value, get_logger, tlru_cache
 
 
 ARN_AWS_PREFIX = "arn:aws:"
@@ -406,8 +406,8 @@ class IamMiddleware(object):
         self.connection = conf.get('connection')
         maxsize = config_auto_int_value(conf.get('cache_size'), 1000)
         maxtime = config_auto_int_value(conf.get('cache_ttl'), 30)
-        self._load_rules_matcher = LRUCache(maxsize=maxsize, maxtime=maxtime)(
-            self._build_rules_matcher)
+        self._load_rules_matcher = tlru_cache(
+            maxsize=maxsize, maxtime=maxtime)(self._build_rules_matcher)
 
     def __call__(self, env, start_response):
         # Put the rules callback in the request environment so middlewares
