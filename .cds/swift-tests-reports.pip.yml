@@ -34,10 +34,6 @@ jobs:
           format: cobertura
           path: '{{.cds.workspace}}/coverage-py.xml'
 
-      - serveStaticFiles:
-          name: Coverage
-          path: coverage_html/*
-
       - artifactDownload:
           path: '{{.cds.workspace}}'
           pattern: 'tests_report.*.xml'
