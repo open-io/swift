@@ -367,6 +367,9 @@ use = egg:swift#proxy
 # of chunks are reachable. When disabled (the default), just check the
 # object exist in the container.
 #check_state=false
+#
+# Account service is read-only, reject all changes.
+#account_read_only = False
 
 
 [filter:tempauth]
@@ -775,6 +778,9 @@ use = egg:swift#s3api
 #
 # Sentinel-enabled Redis cluster.
 #bucket_db_connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1&prefix=s3bucket%3A
+#
+# Bucket DB is read-only, reject all changes.
+#bucket_db_read_only = False
 
 # Allow path-style anonymous requests (bucket_db_enabled is required)
 #allow_anonymous_path_requests = false

@@ -340,6 +340,8 @@ class Application(object):
         self._override_options = self._load_per_policy_config(conf)
         self.sorts_by_timing = any(pc.sorting_method == 'timing'
                                    for pc in self._override_options.values())
+        self.account_read_only = config_true_value(
+            conf.get('account_read_only', False))
 
         register_swift_info(
             version=swift_version,

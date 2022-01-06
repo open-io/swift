@@ -16,7 +16,7 @@
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers import BucketController
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
-    BucketAlreadyOwnedByYou, NoSuchBucket
+    BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable
 
 
 class UniqueBucketController(BucketController):
@@ -30,6 +30,9 @@ class UniqueBucketController(BucketController):
         Handle PUT Bucket request
         """
         self.set_s3api_command(req, 'create-bucket')
+
+        if self.conf.bucket_db_read_only:
+            raise ServiceUnavailable('Bucket DB is read-only')
 
         # We are about to create a container, reserve its name.
         can_create = req.bucket_db.reserve(req.container_name, req.account)
@@ -55,6 +58,9 @@ class UniqueBucketController(BucketController):
         Handle DELETE Bucket request
         """
         self.set_s3api_command(req, 'delete-bucket')
+
+        if self.conf.bucket_db_read_only:
+            raise ServiceUnavailable('Bucket DB is read-only')
 
         try:
             resp = super(UniqueBucketController, self).DELETE(req)

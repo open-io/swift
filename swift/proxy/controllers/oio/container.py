@@ -29,7 +29,7 @@ from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.swob import Response, HTTPBadRequest, HTTPNotFound, \
     HTTPNoContent, HTTPConflict, HTTPPreconditionFailed, HTTPForbidden, \
-    HTTPCreated
+    HTTPCreated, HTTPServiceUnavailable
 from swift.common.http import is_success, HTTP_ACCEPTED
 from swift.common.request_helpers import is_sys_or_user_meta, get_param, \
     get_reserved_name
@@ -294,6 +294,10 @@ class ContainerController(SwiftContainerController):
     @handle_service_busy
     def PUT(self, req):
         """HTTP PUT request handler."""
+        if self.app.account_read_only:
+            raise HTTPServiceUnavailable(
+                body='Account service is read-only', request=req)
+
         error_response = \
             self.clean_acls(req) or check_metadata(req, 'container')
         if error_response:
@@ -402,6 +406,10 @@ class ContainerController(SwiftContainerController):
     @handle_service_busy
     def DELETE(self, req):
         """HTTP DELETE request handler."""
+        if self.app.account_read_only:
+            raise HTTPServiceUnavailable(
+                body='Account service is read-only', request=req)
+
         account_partition, accounts, container_count = \
             self.account_info(self.account_name, req)
         if not accounts:
