@@ -20,7 +20,8 @@ from swift.common.oio_utils import handle_oio_timeout, handle_service_busy, \
 from swift.common.utils import public, Timestamp, json
 from swift.common.constraints import check_metadata
 from swift.common import constraints
-from swift.common.swob import HTTPBadRequest, HTTPMethodNotAllowed
+from swift.common.swob import HTTPBadRequest, HTTPMethodNotAllowed, \
+    HTTPServiceUnavailable
 from swift.common.request_helpers import get_param, is_sys_or_user_meta
 from swift.common.swob import HTTPNoContent, HTTPOk, HTTPPreconditionFailed, \
     HTTPNotFound, HTTPCreated, HTTPAccepted
@@ -223,6 +224,10 @@ class AccountController(SwiftAccountController):
     @handle_service_busy
     def PUT(self, req):
         """HTTP PUT request handler."""
+        if self.app.account_read_only:
+            raise HTTPServiceUnavailable(
+                body='Account service is read-only', request=req)
+
         if not self.app.allow_account_management:
             return HTTPMethodNotAllowed(
                 request=req,
@@ -265,6 +270,10 @@ class AccountController(SwiftAccountController):
     @handle_service_busy
     def POST(self, req):
         """HTTP POST request handler."""
+        if self.app.account_read_only:
+            raise HTTPServiceUnavailable(
+                body='Account service is read-only', request=req)
+
         if len(self.account_name) > constraints.MAX_ACCOUNT_NAME_LENGTH:
             resp = HTTPBadRequest(request=req)
             resp.body = ('Account name length of %d longer than %d' %
@@ -307,6 +316,10 @@ class AccountController(SwiftAccountController):
     @handle_service_busy
     def DELETE(self, req):
         """HTTP DELETE request handler."""
+        if self.app.account_read_only:
+            raise HTTPServiceUnavailable(
+                body='Account service is read-only', request=req)
+
         if req.query_string:
             return HTTPBadRequest(request=req)
         if not self.app.allow_account_management:

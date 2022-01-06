@@ -287,6 +287,8 @@ class S3ApiMiddleware(object):
             conf.get('log_s3api_command', False))
         self.conf.allow_anonymous_path_requests = config_true_value(
             conf.get('allow_anonymous_path_requests', False))
+        self.conf.bucket_db_read_only = config_true_value(
+            conf.get('bucket_db_read_only', False))
         self.conf.cors_rules = list()
         for allow_origin in (
                 a.strip()
