@@ -19,8 +19,8 @@ import unittest
 from unittest.mock import patch
 from sys import version_info
 
-from swift.common.middleware.intelligent_tiering import BUCKET_STATE_NONE, \
-    BUCKET_STATE_ARCHIVING, BUCKET_STATE_DELETING, BUCKET_STATE_FILLED, \
+from swift.common.middleware.intelligent_tiering import \
+    BUCKET_STATE_DELETING, BUCKET_STATE_LOCKED, BUCKET_STATE_NONE, \
     BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_STATE_RESTORING, \
     BUCKET_ALLOWED_TRANSITIONS, IntelligentTieringMiddleware
 from swift.common.middleware.s3api.s3response import BadRequest, \
@@ -32,14 +32,22 @@ MOCK_FAKE_REQ_CONT_INFO = 'test.unit.common.middleware.' \
     'test_intelligent_tiering.FakeReq.get_container_info'
 MOCK_RABBIT_SEND_MESSAGE = 'swift.common.middleware.intelligent_tiering.' \
     'RabbitMQClient._send_message'
+MOCK_GET_ARCHIVING_STATUS = 'swift.common.middleware.intelligent_tiering.' \
+    'IntelligentTieringMiddleware._get_archiving_status'
 MOCK_SET_ARCHIVING_STATUS = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._set_archiving_status'
+MOCK_IAM_GENERATE_RULES = 'swift.common.middleware.intelligent_tiering.' \
+    'IntelligentTieringMiddleware._iam_generate_rules'
+MOCK_FAKE_FUNCTION = 'test.unit.common.middleware.test_intelligent_tiering.' \
+    'TestIAMIntelligentTiering._fake_function'
 
 
 class FakeReq(object):
-    def __init__(self, method, account=None, container_name=None, env=None, ):
+    def __init__(self, method, account=None, user_id=None, container_name=None,
+                 env=None):
         self.method = method
         self.account = account
+        self.user_id = user_id
         self.container_name = container_name
         self.environ = env or {}
 
@@ -71,7 +79,8 @@ class TestIntelligentTiering(unittest.TestCase):
             'Tierings': [{'AccessTier': 'ToSet', 'Days': 999}]
         }
 
-        self.req = FakeReq('PUT', self.ACCOUNT, self.CONTAINER_NAME)
+        self.req = FakeReq('PUT', account=self.ACCOUNT,
+                           container_name=self.CONTAINER_NAME)
         self.expected_rabbit_args = None
         self.expected_set_status_args = None
         self.return_value_get_bucket_status = None
@@ -130,21 +139,10 @@ class TestIntelligentTiering(unittest.TestCase):
 
         # Test with Status=None
         self.expected_set_status_args = (self.req, BUCKET_STATE_NONE,
-                                         BUCKET_STATE_ARCHIVING)
+                                         BUCKET_STATE_LOCKED)
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ok(mocked_set_status, mocked_rabbit)
-
-        # Test with Status=Filled
-        self.expected_set_status_args = (self.req, BUCKET_STATE_FILLED,
-                                         BUCKET_STATE_ARCHIVING)
-        self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_FILLED}
-        }
-        # reset values
-        mocked_rabbit.call_count = 0
-        mocked_set_status.call_count = 0
         self._test_callback_ok(mocked_set_status, mocked_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
@@ -153,7 +151,7 @@ class TestIntelligentTiering(unittest.TestCase):
                                            mocked_rabbit):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
-            if state in (BUCKET_STATE_NONE, BUCKET_STATE_FILLED):
+            if state == BUCKET_STATE_NONE:
                 continue
 
             # All other states are supposed to fail
@@ -169,7 +167,7 @@ class TestIntelligentTiering(unittest.TestCase):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         self.tiering_conf['Status'] = 'Disabled'
         self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_FILLED}
+            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
         self._test_callback_ko(mocked_set_status, mocked_rabbit)
 
@@ -181,7 +179,7 @@ class TestIntelligentTiering(unittest.TestCase):
         self.tiering_conf['Tierings'].append(
             {'AccessTier': 'OVH_RESTORE', 'Days': 999})
         self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_FILLED}
+            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
         self._test_callback_ko(mocked_set_status, mocked_rabbit)
 
@@ -191,13 +189,13 @@ class TestIntelligentTiering(unittest.TestCase):
                                         mocked_rabbit):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_FILLED}
+            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
         self._test_callback_ko(mocked_set_status, mocked_rabbit)
 
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'DEEP_ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_FILLED}
+            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
         self._test_callback_ko(mocked_set_status, mocked_rabbit)
 
@@ -266,13 +264,6 @@ class TestIntelligentTiering(unittest.TestCase):
         }
         self._test_callback_ko(mocked_set_status, mocked_rabbit)
 
-        self.tiering_conf['Tierings'][0]['AccessTier'] = \
-            'DEEP_ARCHIVE_ACCESS'
-        self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_FILLED}
-        }
-        self._test_callback_ko(mocked_set_status, mocked_rabbit)
-
     ###
     # DELETE
     ###
@@ -319,3 +310,52 @@ class TestIntelligentTiering(unittest.TestCase):
             }
             self._test_callback_ko(mocked_set_status, mocked_rabbit,
                                    use_tiering_conf=False)
+
+
+# pylint: disable=protected-access
+class TestIAMIntelligentTiering(unittest.TestCase):
+
+    CONTAINER_NAME = 'test-tiering'
+
+    def setUp(self):
+        self.fake_swift = FakeSwift()
+        fake_conf = {"rabbitmq_url": "fake-url"}
+        self.logger = debug_logger('test-intelligent-tiering-middleware')
+        self.app = IntelligentTieringMiddleware(
+            self.fake_swift, fake_conf, logger=self.logger)
+
+    def test_iam_status_none(self):
+        status = BUCKET_STATE_NONE
+        rules = self.app._iam_generate_rules(status, self.CONTAINER_NAME)
+        expected_rules = {
+            'Statement': [{
+                'Sid': 'IntelligentTieringBucket',
+                'Action': ['s3:DeleteBucket'],
+                'Effect': 'Deny',
+                'Resource': ['arn:aws:s3:::' + self.CONTAINER_NAME]
+            }, {
+                'Sid': 'IntelligentTieringObjects',
+                'Action': ['s3:GetObject', 's3:DeleteObject'],
+                'Effect': 'Deny',
+                'Resource': ['arn:aws:s3:::' + self.CONTAINER_NAME + '/*']
+            }]
+        }
+        self.assertDictEqual(expected_rules, rules)
+
+    def test_iam_status_locked(self):
+        status = BUCKET_STATE_LOCKED
+        rules = self.app._iam_generate_rules(status, self.CONTAINER_NAME)
+        expected_rules = {
+            'Statement': [{
+                'Sid': 'IntelligentTieringBucket',
+                'Action': ['s3:CreateBucket', 's3:DeleteBucket'],
+                'Effect': 'Deny',
+                'Resource': ['arn:aws:s3:::' + self.CONTAINER_NAME]
+            }, {
+                'Sid': 'IntelligentTieringObjects',
+                'Action': ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
+                'Effect': 'Deny',
+                'Resource': ['arn:aws:s3:::' + self.CONTAINER_NAME + '/*']
+            }]
+        }
+        self.assertDictEqual(expected_rules, rules)

@@ -17,6 +17,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, S3NotImplemented
 from swift.common.middleware.s3api.utils import convert_response, \
@@ -97,6 +98,7 @@ class IntelligentTieringController(Controller):
 
     @public
     @bucket_operation()
+    @check_iam_access("s3:GetIntelligentTieringConfiguration")
     def GET(self, req):
         """
         Handles GetBucketIntelligentTieringConfiguration
@@ -125,6 +127,7 @@ class IntelligentTieringController(Controller):
 
     @public
     @bucket_operation()
+    @check_iam_access("s3:PutIntelligentTieringConfiguration")
     def PUT(self, req):
         """
         Handles PutBucketIntelligentTieringConfiguration
@@ -154,6 +157,7 @@ class IntelligentTieringController(Controller):
 
     @public
     @bucket_operation()
+    @check_iam_access("s3:DeleteIntelligentTieringConfiguration")
     def DELETE(self, req):
         """
         Handles DeleteBucketIntelligentTieringConfiguration
