@@ -55,9 +55,13 @@ SUPPORTED_ACTIONS = {
     "s3:ListMultipartUploadParts": RT_OBJECT,
     "s3:ListBucketMultipartUploads": RT_BUCKET,
     "s3:PutObject": RT_OBJECT,
-    "s3:GetObject": RT_OBJECT
+    "s3:GetObject": RT_OBJECT,
+    "s3:GetIntelligentTieringConfiguration": RT_BUCKET,
+    "s3:PutIntelligentTieringConfiguration": RT_BUCKET,
+    "s3:DeleteIntelligentTieringConfiguration": RT_BUCKET
 }
 
+IAM_ACTION = 'swift.iam.action'
 IAM_EXPLICIT_ALLOW = 'swift.iam.explicit_allow'
 IAM_RULES_CALLBACK = 'swift.callback.fetch_iam_rules'
 
@@ -410,6 +414,11 @@ class IamMiddleware(object):
             maxsize=maxsize, maxtime=maxtime)(self._build_rules_matcher)
 
     def __call__(self, env, start_response):
+        callback = env.get(IAM_RULES_CALLBACK, None)
+        if callback:
+            self.logger.error('Another IAM callback is already set, '
+                              'please fix your pipeline. The old callback is '
+                              'overwritten.')
         # Put the rules callback in the request environment so middlewares
         # further in the pipeline can call it when needed.
         env[IAM_RULES_CALLBACK] = self.rules_callback

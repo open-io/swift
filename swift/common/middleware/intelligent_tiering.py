@@ -14,13 +14,16 @@
 # limitations under the License.
 
 
+from functools import partial
 import json
 import pika
 from pika.exchange_type import ExchangeType
 
-from swift.common.middleware.s3api.iam import IAM_RULES_CALLBACK
-from swift.common.middleware.s3api.s3response import BadRequest, \
-    InvalidBucketState, S3NotImplemented, ServiceUnavailable, UnexpectedContent
+from swift.common.middleware.s3api.iam import ARN_S3_PREFIX, \
+    IAM_RULES_CALLBACK, IamRulesMatcher
+from swift.common.middleware.s3api.s3response import UnexpectedContent, \
+    BadRequest, InvalidBucketState, NoSuchBucket, S3NotImplemented, \
+    ServiceUnavailable
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.swob import HTTPMethodNotAllowed, wsgi_quote
 from swift.common.utils import get_logger
@@ -38,8 +41,7 @@ RABBITMQ_MSG_DELETION = 'delete'
 # Theses states are used here and in <pca-automation> repository.
 # Any change must be done in both places.
 BUCKET_STATE_NONE = 'None'
-BUCKET_STATE_CREATED = 'Created'
-BUCKET_STATE_FILLED = 'Filled'
+BUCKET_STATE_LOCKED = 'Locked'
 BUCKET_STATE_ARCHIVING = 'Archiving'
 BUCKET_STATE_DRAINING = 'Draining'
 BUCKET_STATE_ARCHIVED = 'Archived'
@@ -50,25 +52,60 @@ BUCKET_STATE_FLUSHED = 'Flushed'
 
 # Key is current state - values are allowed transitions
 BUCKET_ALLOWED_TRANSITIONS = {
-    BUCKET_STATE_NONE: (BUCKET_STATE_ARCHIVING),
-    BUCKET_STATE_CREATED: (BUCKET_STATE_FILLED),
-    BUCKET_STATE_FILLED: (BUCKET_STATE_ARCHIVING),
+    # On PutBucketIntelligentTieringConfiguration ARCHIVE request by user
+    # RabbitMQ message: archiving
+    BUCKET_STATE_NONE: (BUCKET_STATE_LOCKED),
+    # By PCA-automation after reading RabbitMQ message
+    BUCKET_STATE_LOCKED: (BUCKET_STATE_ARCHIVING),
+    # By PCA after storing all objects
     BUCKET_STATE_ARCHIVING: (BUCKET_STATE_DRAINING),
+    # By PCA when draining is over
     BUCKET_STATE_DRAINING: (BUCKET_STATE_ARCHIVED),
+    # On PutBucketIntelligentTieringConfiguration RESTORE request by user
+    # On DeleteBucketIntelligentTieringConfiguration request by user
+    # RabbitMQ message: restoring or deleting
     BUCKET_STATE_ARCHIVED: (BUCKET_STATE_RESTORING, BUCKET_STATE_DELETING),
+    # By PCA when restore is over
     BUCKET_STATE_RESTORING: (BUCKET_STATE_RESTORED),
-    BUCKET_STATE_RESTORED: (BUCKET_STATE_DELETING),
+    # On DeleteBucketIntelligentTieringConfiguration RESTORE request by user
+    # After x days, the bucket is not on disk anymore and only on tapes
+    # RabbitMQ message: deleting (only for deleting state)
+    BUCKET_STATE_RESTORED: (BUCKET_STATE_DELETING, BUCKET_STATE_ARCHIVED),
+    # By PCA when deleting is over
     BUCKET_STATE_DELETING: (BUCKET_STATE_FLUSHED),
-    BUCKET_STATE_FLUSHED: (BUCKET_STATE_FILLED),
+    # Bucket flushed and deleted, no further state
+    BUCKET_STATE_FLUSHED: (),
 }
 
-TIERING_ACTION_ARCHIVE = 'OVH_ARCHIVE'
-TIERING_ACTION_RESTORE = 'OVH_RESTORE'
+# Default authorized actions.
+# Written like in a conf (strings comma separated)
+DEFAULT_IAM_CREATE_BUCKET_ACTIONS = BUCKET_STATE_NONE
+DEFAULT_IAM_DELETE_BUCKET_ACTIONS = BUCKET_STATE_FLUSHED
+DEFAULT_IAM_PUT_OBJECT_ACTIONS = BUCKET_STATE_NONE
+DEFAULT_IAM_GET_OBJECT_ACTIONS = BUCKET_STATE_RESTORED
+DEFAULT_IAM_DELETE_OBJECT_ACTIONS = None
 
-TIERING_ACTIONS = [TIERING_ACTION_ARCHIVE, TIERING_ACTION_RESTORE]
+# AccessTier definitions
+TIERING_ACTION_TIER_ARCHIVE = 'OVH_ARCHIVE'
+TIERING_ACTION_TIER_RESTORE = 'OVH_RESTORE'
+
+TIERING_TIER_ACTIONS = [TIERING_ACTION_TIER_ARCHIVE,
+                        TIERING_ACTION_TIER_RESTORE]
+
+# Resource type: object
+RT_OBJECT = 'Object'
+# Resource type: bucket
+RT_BUCKET = 'Bucket'
+
+TIERING_IAM_SUPPORTED_ACTIONS = {
+    's3:CreateBucket': RT_BUCKET,
+    's3:DeleteBucket': RT_BUCKET,
+    's3:PutObject': RT_OBJECT,
+    's3:GetObject': RT_OBJECT,
+    's3:DeleteObject': RT_OBJECT
+}
 
 TIERING_CALLBACK = 'swift.callback.tiering.apply'
-IAM_CALLBACK = IAM_RULES_CALLBACK + '.tiering'
 
 
 class RabbitMQClient(object):
@@ -154,10 +191,23 @@ class IntelligentTieringMiddleware(object):
     the archiving status (at bucket level) and send messages to RabbitMQ.
     """
 
+    def _add_iam_states(self, conf_name, default, action):
+        conf_states = self.conf.get(conf_name, default)
+        if conf_states:
+            for state in conf_states.split(','):
+                if state not in BUCKET_ALLOWED_TRANSITIONS:
+                    raise ValueError('Bucket state %s unknown' % state)
+            self.iam_rules[action] = conf_states.split(',')
+        else:
+            self.iam_rules[action] = []
+
     def __init__(self, app, conf, logger=None):
         self.app = app
         self.logger = logger or get_logger(conf,
                                            log_route='intelligent_tiering')
+        self.conf = conf
+
+        # RabbitMQ
         rabbitmq_url = conf.get('rabbitmq_url')
         if not rabbitmq_url:
             raise ValueError('rabbitmq_url is missing')
@@ -173,12 +223,33 @@ class IntelligentTieringMiddleware(object):
                                               rabbitmq_auto_delete,
                                               logger=self.logger)
 
+        # Intelligent Tiering IAM rules
+        self.iam_rules = {}
+        self._add_iam_states('it_iam_create_bucket_actions',
+                             DEFAULT_IAM_CREATE_BUCKET_ACTIONS,
+                             's3:CreateBucket')
+        self._add_iam_states('it_iam_delete_bucket_actions',
+                             DEFAULT_IAM_DELETE_BUCKET_ACTIONS,
+                             's3:DeleteBucket')
+        self._add_iam_states('it_iam_put_object_actions',
+                             DEFAULT_IAM_PUT_OBJECT_ACTIONS,
+                             's3:PutObject')
+        self._add_iam_states('it_iam_get_object_actions',
+                             DEFAULT_IAM_GET_OBJECT_ACTIONS,
+                             's3:GetObject')
+        self._add_iam_states('it_iam_delete_object_actions',
+                             DEFAULT_IAM_DELETE_OBJECT_ACTIONS,
+                             's3:DeleteObject')
+
+        self.logger.debug('Intelligent tiering IAM rules loaded: %s',
+                          self.iam_rules)
+
     def __call__(self, env, msg):
         env[TIERING_CALLBACK] = self.tiering_callback
 
-        # TODO: Store existing IAM callback and replace it
-        # env[IAM_CALLBACK] = env[IAM_RULES_CALLBACK]
-        # env[IAM_RULES_CALLBACK] = self.iam_callback
+        # Store existing IAM callback and replace it
+        env[IAM_RULES_CALLBACK] = partial(self.iam_callback,
+                                          env.get(IAM_RULES_CALLBACK, None))
 
         return self.app(env, msg)
 
@@ -203,7 +274,10 @@ class IntelligentTieringMiddleware(object):
                                      resp.status)
 
     def _get_archiving_status(self, req):
-        info = req.get_container_info(self.app)
+        try:
+            info = req.get_container_info(self.app)
+        except NoSuchBucket:
+            return BUCKET_STATE_NONE
         archiving_status = info.get('sysmeta').get('s3api-archiving-status')
         if not archiving_status:
             archiving_status = BUCKET_STATE_NONE
@@ -218,12 +292,13 @@ class IntelligentTieringMiddleware(object):
             raise BadRequest('Only 1 Tiering element is supported')
 
         action = tiering_conf['Tierings'][0]['AccessTier']
-        if action not in TIERING_ACTIONS:
-            raise BadRequest('AccessTier must be one of %s' % TIERING_ACTIONS)
+        if action not in TIERING_TIER_ACTIONS:
+            raise BadRequest('AccessTier must be one of %s' %
+                             TIERING_TIER_ACTIONS)
 
         # ARCHIVE
-        if action == TIERING_ACTION_ARCHIVE:
-            new_status = BUCKET_STATE_ARCHIVING
+        if action == TIERING_ACTION_TIER_ARCHIVE:
+            new_status = BUCKET_STATE_LOCKED
             if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
                 self.rabbitmq_client.start_archiving(req.account,
                                                      req.container_name)
@@ -233,7 +308,7 @@ class IntelligentTieringMiddleware(object):
                                  current_status)
 
         # RESTORE
-        elif action == TIERING_ACTION_RESTORE:
+        elif action == TIERING_ACTION_TIER_RESTORE:
             new_status = BUCKET_STATE_RESTORING
             if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
                 self.rabbitmq_client.start_restoring(req.account,
@@ -277,9 +352,87 @@ class IntelligentTieringMiddleware(object):
         result = {'bucket_status': bucket_status}
         return result
 
-    def iam_callback(self, req):
-        # TODO : Do our job, then call `env[IAM_CALLBACK]`
-        pass
+    def _iam_generate_rules(self, bucket_status, container_name):
+        rules = {'Statement': []}
+
+        denied_bucket_actions = []
+        denied_object_actions = []
+        for action in TIERING_IAM_SUPPORTED_ACTIONS:
+            if bucket_status not in self.iam_rules[action]:
+                if TIERING_IAM_SUPPORTED_ACTIONS[action] == RT_OBJECT:
+                    denied_object_actions.append(action)
+                else:
+                    denied_bucket_actions.append(action)
+
+        if denied_bucket_actions:
+            rule = {
+                'Sid': 'IntelligentTieringBucket',
+                'Action': denied_bucket_actions,
+                'Effect': 'Deny',
+                'Resource': [ARN_S3_PREFIX + container_name]
+            }
+            rules['Statement'].append(rule)
+
+        if denied_object_actions:
+            rule = {
+                'Sid': 'IntelligentTieringObjects',
+                'Action': denied_object_actions,
+                'Effect': 'Deny',
+                'Resource': [ARN_S3_PREFIX + container_name + '/*']
+            }
+            rules['Statement'].append(rule)
+
+        return rules
+
+    @staticmethod
+    def _iam_generate_allow_rule(container_name):
+        rules = {'Statement': []}
+        rules['Statement'].append({
+            'Sid': 'IntelligentTieringAllowEverything',
+            'Action': 's3:*',
+            'Effect': 'Allow',
+            'Resource': [ARN_S3_PREFIX + container_name,
+                         ARN_S3_PREFIX + container_name + '/*']
+        })
+        return rules
+
+    @staticmethod
+    # pylint: disable=protected-access
+    def _add_or_replace_rule_in_matcher(matcher, rules_to_add):
+        """
+        <matcher._rules['Statement']> is a list of dict (1 dict == 1 rule)
+        The goal is to replace in this list the rules provided
+        in <rules_to_add>.
+        """
+        matcher_rules = matcher._rules['Statement']
+        for rule in rules_to_add['Statement']:
+            # Recreate the list without this specific rule
+            matcher_rules = [mrule for mrule in matcher_rules
+                             if mrule['Sid'] != rule['Sid']]
+            matcher_rules.append(rule)
+        matcher._rules['Statement'] = matcher_rules
+
+    def iam_callback(self, tiering_callback, req):
+        """
+        Generate Intelligent Tiering IAM rules.
+        Then call the IAM callback from IAM middleware and add those generated
+        rules.
+        """
+        bucket_status = self._get_archiving_status(req)
+        it_rules = self._iam_generate_rules(bucket_status, req.container_name)
+
+        matcher = None
+        if tiering_callback:
+            matcher = tiering_callback(req)
+
+        if matcher:
+            self._add_or_replace_rule_in_matcher(matcher, it_rules)
+        else:
+            matcher = IamRulesMatcher(it_rules, logger=self.logger)
+            allow_rules = self._iam_generate_allow_rule(req.container_name)
+            self._add_or_replace_rule_in_matcher(matcher, allow_rules)
+
+        return matcher
 
 
 def filter_factory(global_conf, **local_config):
