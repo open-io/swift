@@ -46,10 +46,10 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
-  tests-s3:
-    pipeline: swift-tests
+  oio-tests-unit:
+    pipeline: swift-oio-tests
     application: swift
-    environment: swift-tests-s3-env
+    environment: swift-oio-tests-unit-env
     depends_on:
       - root
     conditions:
@@ -58,10 +58,10 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
-  tests-s3-basic:
-    pipeline: swift-tests
+  oio-tests-s3:
+    pipeline: swift-oio-tests
     application: swift
-    environment: swift-tests-s3-basic-env
+    environment: swift-oio-tests-s3-env
     depends_on:
       - root
     conditions:
@@ -70,10 +70,10 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
-  tests-iam:
-    pipeline: swift-tests
+  oio-tests-s3-basic:
+    pipeline: swift-oio-tests
     application: swift
-    environment: swift-tests-iam-env
+    environment: swift-oio-tests-s3-basic-env
     depends_on:
       - root
     conditions:
@@ -82,10 +82,22 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
-  tests-encryption:
-    pipeline: swift-tests
+  oio-tests-iam:
+    pipeline: swift-oio-tests
     application: swift
-    environment: swift-tests-encryption-env
+    environment: swift-oio-tests-iam-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
+  oio-tests-encryption:
+    pipeline: swift-oio-tests
+    application: swift
+    environment: swift-oio-tests-encryption-env
     depends_on:
       - root
     conditions:
@@ -99,10 +111,11 @@ workflow:
     application: swift
     depends_on:
       - tests-unit
-      - tests-s3
-      - tests-s3-basic
-      - tests-iam
-      - tests-encryption
+      - oio-tests-unit
+      - oio-tests-s3
+      - oio-tests-s3-basic
+      - oio-tests-iam
+      - oio-tests-encryption
     conditions:
       check:
         - variable: cds.triggered_by.username
