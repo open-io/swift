@@ -1,7 +1,7 @@
 version: v.10
-name: swift-tests
+name: swift-oio-tests
 jobs:
-  - job: Run tests
+  - job: Run oio tests
     steps:
 
       - name: Checkout application
@@ -28,29 +28,30 @@ jobs:
           cd third_party/oio-sds && python setup.py install && cd ../..
           python setup.py develop
           pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
+          go get gopkg.in/ini.v1 golang.org/x/sys/unix
 
-      - name: Run unit tests
+      - name: Run oio unit tests
         script:
           - pgrep rsyslogd || rsyslogd &
           - sysctl -w kernel.core_pattern='/tmp/core.%p.%E'
           - ulimit -c unlimited
           - ulimit -n 8192
           - . $HOME/swiftenv/bin/activate
-          - ./test/unit/run_unit_tests.sh
+          - ./oio_tests/run_tests.sh '{{.cds.env.TEST_SUITE}}'
 
       - name: Save coverage information
         always_executed: true
         script:
           - . $HOME/swiftenv/bin/activate
           - coverage combine
-          - mv .coverage .coverage.{{.cds.env.TEST_SUITE}}
-          - worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.{{.cds.env.TEST_SUITE}}'
+          - mv .coverage .coverage.oio.{{.cds.env.TEST_SUITE}}
+          - worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.oio.{{.cds.env.TEST_SUITE}}'
 
       - optional: true
         name: Save tests report
         script:
-          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.{{.cds.env.TEST_SUITE}}.xml'"
-          - "[ ! -f 'tests_report.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.{{.cds.env.TEST_SUITE}}.xml'"
+          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.oio.{{.cds.env.TEST_SUITE}}.xml'"
+          - "[ ! -f 'tests_report.oio.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.oio.{{.cds.env.TEST_SUITE}}.xml'"
 
       - optional: true
         always_executed: true
