@@ -61,10 +61,14 @@ function compile_sds() {
 
 function run_sds() {
   export G_DEBUG_LEVEL=D PATH="$PATH:/tmp/oio/bin" LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/tmp/oio/lib"
+  args=""
+  if [ -n "${REMOTE_ACCOUNT}" ]; then
+    args="${args} -f third_party/oio-sds/etc/bootstrap-option-remote-account.yml"
+  fi
   oio-reset.sh -v -v -N "$OIO_NS" \
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
-    -f third_party/oio-sds/etc/bootstrap-option-cache.yml
+    -f third_party/oio-sds/etc/bootstrap-option-cache.yml ${args}
   openio cluster wait || (openio cluster list --stats; openioctl.sh status2; sudo tail -n 100 /var/log/syslog; return 1)
 }
 
