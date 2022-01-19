@@ -94,6 +94,18 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
+  oio-tests-intelligent-tiering:
+    pipeline: swift-oio-tests
+    application: swift
+    environment: swift-oio-tests-intelligent-tiering-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+
   oio-tests-encryption:
     pipeline: swift-oio-tests
     application: swift
@@ -115,6 +127,7 @@ workflow:
       - oio-tests-s3
       - oio-tests-s3-basic
       - oio-tests-iam
+      - oio-tests-intelligent-tiering
       - oio-tests-encryption
     conditions:
       check:

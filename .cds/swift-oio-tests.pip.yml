@@ -16,7 +16,8 @@ jobs:
           apt-add-repository "deb http://mirror2.openio.io/pub/repo/openio/sds/20.04/ubuntu/ bionic/"
           apt-add-repository ppa:longsleep/golang-backports
           apt update
-          apt-get install -y $(tr '\n' ' ' < .cds/deps-ubuntu-bionic.txt)
+          # rabbitmq-server is not is the list as only necessary for oio-tests
+          apt-get install -y rabbitmq-server $(tr '\n' ' ' < .cds/deps-ubuntu-bionic.txt)
           systemctl stop redis.service
           systemctl disable redis.service
           virtualenv -p /usr/bin/python3 $HOME/swiftenv
@@ -29,6 +30,7 @@ jobs:
           python setup.py develop
           pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
           go get gopkg.in/ini.v1 golang.org/x/sys/unix
+          rabbitmq-plugins enable rabbitmq_management
 
       - name: Run oio unit tests
         script:
