@@ -27,7 +27,7 @@ from oio.blob.client import BlobClient
 
 class FakeStorageAPI(ObjectStorageApi):
     def __init__(self, *args, **kwargs):
-        self.account = Mock(AccountClient)
+        self._account_client = Mock(AccountClient)
         self.container = Mock(ContainerClient, perfdata=None)
         self.__dict__.update(kwargs)
         self._blob_client = Mock(BlobClient)
