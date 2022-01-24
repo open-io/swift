@@ -726,6 +726,9 @@ use = egg:swift#s3api
 # Accept only S3 requests
 #s3_only = false
 
+# Landing page used when a client requests the endpoint without being authenticated
+landing_page = https://aws.amazon.com/s3/
+
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials
 # provided in the request header. Please put s3token between s3api

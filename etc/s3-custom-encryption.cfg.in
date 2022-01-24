@@ -67,6 +67,7 @@ check_bucket_owner = true
 bucket_db_connection = redis://127.0.0.1:6379
 allow_anonymous_path_requests = true
 s3_only = true
+landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
 
 [filter:tempauth]
 use = egg:swift#tempauth
