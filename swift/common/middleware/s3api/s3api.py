@@ -159,7 +159,7 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
 from swift.common.middleware.s3api.s3request import get_request_class
 from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
-    InvalidRequest
+    InvalidRequest, Redirect
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, list_from_csv
 from swift.common.middleware.s3api.utils import Config
@@ -302,6 +302,8 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('allow_anonymous_path_requests', False))
         self.conf.bucket_db_read_only = config_true_value(
             wsgi_conf.get('bucket_db_read_only', False))
+        self.conf.landing_page = wsgi_conf.get(
+            'landing_page', 'https://aws.amazon.com/s3/')
         self.conf.cors_rules = list()
         for allow_origin in (
                 a.strip()
@@ -392,8 +394,13 @@ class S3ApiMiddleware(object):
             env['s3api.bucket'] = req.container_name
             resp = self.handle_request(req)
         except NotS3Request:
-            if self.conf.s3_only and env.get('PATH_INFO') != '/info':
-                resp = InvalidRequest(reason='Not S3 request')
+            path_info = env.get('PATH_INFO')
+            if self.conf.s3_only and path_info != '/info':
+                if path_info == '/':
+                    env['swift.leave_relative_location'] = False
+                    resp = Redirect(location=self.conf.landing_page)
+                else:
+                    resp = InvalidRequest(reason='Not S3 request')
             else:
                 resp = self.app
         except InvalidSubresource as e:

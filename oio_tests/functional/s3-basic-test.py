@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from datetime import datetime
 import json
+import requests
 import subprocess
 import time
 
@@ -88,5 +89,13 @@ def run_last_modified_test():
     run_aws("s3api", "delete-bucket", "--bucket", BUCKET)
 
 
+def test_landing_page():
+    resp = requests.get('http://localhost:5000', allow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers['location'] \
+        == 'https://www.ovhcloud.com/fr/public-cloud/object-storage/'
+
+
 if __name__ == "__main__":
     run_last_modified_test()
+    test_landing_page()
