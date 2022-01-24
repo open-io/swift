@@ -709,7 +709,7 @@ class S3Request(swob.Request):
             return True
 
         src = self.environ['PATH_INFO'].lstrip('/').split('/', 1)[0]
-        if valid_api_version(src) or src in (None, 'auth', 'info'):
+        if valid_api_version(src) or src in ('', 'auth', 'info'):
             # Not an S3 request
             return False
 
@@ -1137,12 +1137,22 @@ class S3Request(swob.Request):
         env = self.environ.copy()
         env['swift.infocache'] = self.environ.setdefault('swift.infocache', {})
 
-        if container and self.bucket_db:
-            ct_owner = self.bucket_db.get_owner(container)
-            account = ct_owner if ct_owner else None
-        else:
-            account = None
-
+        account = None
+        if container:
+            # Anonymous requests do not know in advance the account used.
+            if self._is_anonymous:
+                if self.bucket_db:
+                    ct_owner = self.bucket_db.get_owner(container)
+                    account = ct_owner if ct_owner else None
+                if account is None:
+                    raise NoSuchBucket(container)
+            # ACL/IAM rules allows access to containers (buckets)
+            # that are not in the same account.
+            # To properly access the bucket, the owner account must be used.
+            elif self.bucket_db:
+                ct_owner = self.bucket_db.get_owner(container)
+                account = ct_owner if ct_owner else None
+        # Otherwise, use the account used by the request
         if account is None:
             if self.account is None:
                 account = self.access_key
@@ -1487,8 +1497,11 @@ class S3Request(swob.Request):
         if status == HTTP_BAD_REQUEST:
             raise BadRequest(err_msg.decode('utf8'))
         if status == HTTP_UNAUTHORIZED:
-            raise SignatureDoesNotMatch(
-                **self.signature_does_not_match_kwargs())
+            if self._is_anonymous:
+                raise AccessDenied()
+            else:
+                raise SignatureDoesNotMatch(
+                    **self.signature_does_not_match_kwargs())
         if status == HTTP_FORBIDDEN:
             raise AccessDenied()
         if status == HTTP_SERVICE_UNAVAILABLE:
