@@ -103,7 +103,8 @@ use = egg:swift#ssec_keymaster
 #keymaster_config_path =
 
 # echo "Next-Gen Object Storage & Serverless Computing" | base64
-encryption_root_secret = TmV4dC1HZW4gT2JqZWN0IFN0b3JhZ2UgJiBTZXJ2ZXJsZXNzIENvbXB1dGluZwo=
+encryption_root_secret_0 = TmV4dC1HZW4gT2JqZWN0IFN0b3JhZ2UgJiBTZXJ2ZXJsZXNzIENvbXB1dGluZwo=
+active_root_secret_id = 0
 
 [filter:encryption]
 use = egg:swift#encryption
