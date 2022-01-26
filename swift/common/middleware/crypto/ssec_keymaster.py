@@ -101,8 +101,14 @@ class SsecKeyMasterContext(KeyMasterContext):
         account_path = os.path.join(os.sep, self.account)
 
         if self.container:
+            if key_id:
+                secret_id = key_id.get('secret_id',
+                                       self.keymaster.active_secret_id)
+            else:
+                secret_id = self.keymaster.active_secret_id
             path = os.path.join(account_path, self.container)
-            self._keys['container'] = self.keymaster.create_key(path, None)
+            self._keys['container'] = self.keymaster.create_key(
+                path, secret_id=secret_id)
 
             if self.obj:
                 try:
