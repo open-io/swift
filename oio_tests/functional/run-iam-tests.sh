@@ -28,7 +28,7 @@ for USER in $(jq -r --raw-output 'keys | .[]' $RULES_FILE)
 do
   RULE="$(jq -c ".\"$USER\"" $RULES_FILE)"
   ACCOUNT="AUTH_$(echo "$USER" | cut -d ':' -f 1)"
-  openio-admin iam put-user-policy --connection "$CONN_STR" --policy-name "default" "$ACCOUNT" "$USER" "$RULE"
+  openio-admin iam put-user-policy --policy-name "default" "$ACCOUNT" "$USER" "$RULE"
 done
 
 sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-iam.cfg.in > etc/s3-iam.cfg
