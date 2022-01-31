@@ -49,7 +49,7 @@ class HeaderKeyDict(header_key_dict.HeaderKeyDict):
         return s
 
 
-def translate_swift_to_s3(key, val):
+def translate_swift_to_s3(key, val, storage_policy_to_class=None):
     _key = swob.bytes_to_wsgi(swob.wsgi_to_bytes(key).lower())
 
     def translate_meta_key(_key):
@@ -76,6 +76,11 @@ def translate_swift_to_s3(key, val):
         return 'x-amz-version-id', val
     elif _key == 'x-copied-from-version-id':
         return 'x-amz-copy-source-version-id', val
+    elif _key == 'x-object-sysmeta-storage-policy':
+        storage_class = 'STANDARD'
+        if storage_policy_to_class:
+            storage_class = storage_policy_to_class(val)
+        return 'x-amz-storage-class', storage_class
     elif _key == 'x-backend-content-type' and \
             val == DELETE_MARKER_CONTENT_TYPE:
         return 'x-amz-delete-marker', 'true'
@@ -113,7 +118,7 @@ class S3Response(S3ResponseBase, swob.Response):
     headers instead of Swift's HeaderKeyDict.  This also translates Swift
     specific headers to S3 headers.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, storage_policy_to_class=None, **kwargs):
         swob.Response.__init__(self, *args, **kwargs)
 
         s3_sysmeta_headers = swob.HeaderKeyDict()
@@ -152,7 +157,8 @@ class S3Response(S3ResponseBase, swob.Response):
 
         # Handle swift headers
         for key, val in sw_headers.items():
-            s3_pair = translate_swift_to_s3(key, val)
+            s3_pair = translate_swift_to_s3(
+                key, val, storage_policy_to_class=storage_policy_to_class)
             if s3_pair is None:
                 continue
             headers[s3_pair[0]] = s3_pair[1]
@@ -185,7 +191,7 @@ class S3Response(S3ResponseBase, swob.Response):
         self.sysmeta_headers = s3_sysmeta_headers
 
     @classmethod
-    def from_swift_resp(cls, sw_resp):
+    def from_swift_resp(cls, sw_resp, storage_policy_to_class=None):
         """
         Create a new S3 response object based on the given Swift response.
         """
@@ -198,7 +204,8 @@ class S3Response(S3ResponseBase, swob.Response):
 
         resp = cls(status=sw_resp.status, headers=sw_resp.headers,
                    request=sw_resp.request, body=body, app_iter=app_iter,
-                   conditional_response=sw_resp.conditional_response)
+                   conditional_response=sw_resp.conditional_response,
+                   storage_policy_to_class=storage_policy_to_class)
         resp.environ.update(sw_resp.environ)
 
         return resp

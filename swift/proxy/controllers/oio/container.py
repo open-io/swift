@@ -193,13 +193,17 @@ class ContainerController(SwiftContainerController):
         response = {'name': record['name'],
                     'bytes': record['size'],
                     'last_modified': Timestamp(record['mtime']).isoformat,
-                    'content_type': record.get(
-                        'mime_type', 'application/octet-stream'),
                     'is_latest': record.get('is_latest', True)}
         if hash_:
             response['hash'] = hash_
         if record.get('deleted', False):
             response['content_type'] = DELETE_MARKER_CONTENT_TYPE
+        else:
+            response['content_type'] = record.get(
+                'mime_type', 'application/octet-stream')
+        storage_policy = record.get('policy')
+        if storage_policy:
+            response['storage_policy'] = storage_policy
         if versions:
             response['version'] = record.get('version', 'null')
         if slo:

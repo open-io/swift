@@ -694,6 +694,9 @@ use = egg:swift#s3api
 # you don't expect.
 # s3_acl = false
 #
+# Specify a (comma-separated) list of storage classes for your Swift cluster.
+# storage_classes =
+#
 # Specify a (comma-separated) list of host names for your Swift cluster.
 # This enables virtual-hosted style requests.
 # storage_domain =
@@ -789,7 +792,7 @@ use = egg:swift#s3api
 #s3_only = false
 
 # Landing page used when a client requests the endpoint without being authenticated
-landing_page = https://aws.amazon.com/s3/
+#landing_page = https://aws.amazon.com/s3/
 
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials

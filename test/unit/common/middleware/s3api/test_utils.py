@@ -146,6 +146,7 @@ class TestConfig(unittest.TestCase):
         # deliberately brittle so new defaults will need to be added to test
         conf = utils.Config()
         self._assert_defaults(conf)
+        del conf.storage_classes
         del conf.storage_domains
         del conf.location
         del conf.force_swift_request_proxy_log

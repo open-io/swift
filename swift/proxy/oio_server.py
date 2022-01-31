@@ -23,7 +23,7 @@ from swift.proxy.controllers.oio.account import AccountController
 from swift.proxy.controllers.oio.container import ContainerController
 from swift.proxy.controllers.oio.obj import ObjectControllerRouter
 from swift.proxy.server import Application as SwiftApplication
-from swift.common.utils import config_true_value
+from swift.common.utils import config_true_value, parse_auto_storage_policies
 
 from oio import ObjectStorageApi
 
@@ -64,23 +64,8 @@ class Application(SwiftApplication):
             self.disallowed_sections.append(
                 'object_versioning.is_valid_version_id')
 
-        self.oio_stgpol = []
-        if 'auto_storage_policies' in conf:
-            for elem in conf['auto_storage_policies'].split(','):
-                if ':' in elem:
-                    name, offset = elem.split(':')
-                    self.oio_stgpol.append((name, int(offset)))
-                else:
-                    self.oio_stgpol.append((elem, -1))
-            self.oio_stgpol.sort(key=lambda x: x[1])
-            previous_offset = None
-            for _, offset in self.oio_stgpol:
-                if previous_offset is not None and previous_offset == offset:
-                    self.logger.warn(
-                        'Several storage policies use the same offset: %s',
-                        str(self.oio_stgpol))
-                    break
-                previous_offset = offset
+        self.auto_storage_policies = parse_auto_storage_policies(
+            conf.get('auto_storage_policies'))
 
         policies = []
         if 'oio_storage_policies' in conf:

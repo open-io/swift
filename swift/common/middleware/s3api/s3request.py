@@ -539,6 +539,7 @@ class S3Request(swob.Request):
         self.access_key, self.signature = self._parse_auth_info()
         self.bucket_in_host = self._parse_host()
         self.container_name, self.object_name = self._parse_uri()
+        self.storage_class = self._get_storage_class()
         self._validate_headers()
         if not self._is_anonymous:
             # Lock in string-to-sign now, before we start messing
@@ -739,6 +740,19 @@ class S3Request(swob.Request):
             # s3api regard this as not s3 request
             raise NotS3Request()
 
+    def _get_storage_class(self):
+        storage_class = None
+        if self.object_name and self.method in ('PUT', 'POST'):
+            # Use the storage class sent by the client
+            storage_class = self.headers.get('x-amz-storage-class')
+            # Otherwise, use STANDARD by default
+            if not storage_class:
+                storage_class = 'STANDARD'
+            # Finally, verify that the storage class is supported
+            if storage_class not in self.conf.storage_classes:
+                raise InvalidStorageClass()
+        return storage_class
+
     def _validate_expire_param(self):
         """
         Validate Expires in query parameters
@@ -834,11 +848,6 @@ class S3Request(swob.Request):
                 err_msg = 'Unknown metadata directive.'
                 raise InvalidArgument('x-amz-metadata-directive', value,
                                       err_msg)
-
-        if 'x-amz-storage-class' in self.headers:
-            # Only STANDARD is supported now.
-            if self.headers['x-amz-storage-class'] != 'STANDARD':
-                raise InvalidStorageClass()
 
         if 'x-amz-mfa' in self.headers:
             raise S3NotImplemented('MFA Delete is not supported.')
@@ -1272,6 +1281,11 @@ class S3Request(swob.Request):
         return swob.Request.blank(quote(path), environ=env, body=body,
                                   headers=headers)
 
+    def storage_policy_to_class(self, storage_policy, default='STANDARD'):
+        if not storage_policy:
+            return default
+        return self.conf.storage_class_by_policy.get(storage_policy, default)
+
     def _swift_success_codes(self, method, container, obj):
         """
         Returns a list of expected success codes from Swift.
@@ -1475,7 +1489,8 @@ class S3Request(swob.Request):
                 if k.lower().startswith('x-backend-'):
                     self.headers.setdefault(k, v)
 
-        resp = S3Response.from_swift_resp(sw_resp)
+        resp = S3Response.from_swift_resp(
+            sw_resp, storage_policy_to_class=self.storage_policy_to_class)
         status = resp.status_int  # pylint: disable-msg=E1101
 
         if not self.user_id:

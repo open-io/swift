@@ -208,11 +208,20 @@ class PartController(Controller):
         part_number = self.parse_part_number(req)
 
         upload_id = get_param(req, 'uploadId')
-        _get_upload_info(req, self.app, upload_id)
+        resp = _get_upload_info(req, self.app, upload_id)
 
         req.container_name += MULTIUPLOAD_SUFFIX
         req.object_name = '%s/%s/%d' % (req.object_name, upload_id,
                                         part_number)
+
+        # Use the same storage class for the parts
+        storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
+        req.headers['X-Amz-Storage-Class'] = storage_class
+        req.storage_class = storage_class
+        auto_storage_policies = self.conf.auto_storage_policies.get(
+            req.storage_class)
+        if auto_storage_policies:
+            req.environ['swift.auto_storage_policies'] = auto_storage_policies
 
         req_timestamp = S3Timestamp.now()
         req.headers['X-Timestamp'] = req_timestamp.internal
@@ -441,6 +450,7 @@ class UploadsController(Controller):
         def object_to_upload(object_info):
             obj, upid = object_info['name'].rsplit('/', 1)
             obj_dict = {'key': obj,
+                        'storage_policy': object_info.get('storage_policy'),
                         'upload_id': upid,
                         'last_modified': object_info['last_modified']}
             return obj_dict
@@ -515,7 +525,8 @@ class UploadsController(Controller):
             owner_elem = SubElement(upload_elem, 'Owner')
             SubElement(owner_elem, 'ID').text = req.user_id
             SubElement(owner_elem, 'DisplayName').text = req.user_id
-            SubElement(upload_elem, 'StorageClass').text = 'STANDARD'
+            SubElement(upload_elem, 'StorageClass').text = \
+                req.storage_policy_to_class(u['storage_policy'])
             SubElement(upload_elem, 'Initiated').text = \
                 u['last_modified'][:-3] + 'Z'
 
@@ -631,7 +642,9 @@ class UploadController(Controller):
             raise InvalidArgument('encoding-type', encoding_type, err_msg)
 
         upload_id = get_param(req, 'uploadId')
-        _get_upload_info(req, self.app, upload_id)
+        resp = _get_upload_info(req, self.app, upload_id)
+
+        storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
 
         maxparts = req.get_validated_param(
             'max-parts', DEFAULT_MAX_PARTS_LISTING,
@@ -699,7 +712,7 @@ class UploadController(Controller):
         SubElement(owner_elem, 'ID').text = req.user_id
         SubElement(owner_elem, 'DisplayName').text = req.user_id
 
-        SubElement(result_elem, 'StorageClass').text = 'STANDARD'
+        SubElement(result_elem, 'StorageClass').text = storage_class
         SubElement(result_elem, 'PartNumberMarker').text = str(part_num_marker)
         SubElement(result_elem, 'NextPartNumberMarker').text = str(last_part)
         SubElement(result_elem, 'MaxParts').text = str(maxparts)
@@ -785,6 +798,16 @@ class UploadController(Controller):
 
         upload_id = get_param(req, 'uploadId')
         resp = _get_upload_info(req, self.app, upload_id)
+
+        # Use the same storage class for the manifest
+        storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
+        req.headers['X-Amz-Storage-Class'] = storage_class
+        req.storage_class = storage_class
+        auto_storage_policies = self.conf.auto_storage_policies.get(
+            req.storage_class)
+        if auto_storage_policies:
+            req.environ['swift.auto_storage_policies'] = auto_storage_policies
+
         version_id = None
         headers = {'Accept': 'application/json',
                    sysmeta_header('object', 'upload-id'): upload_id}

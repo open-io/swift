@@ -161,7 +161,8 @@ from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
     InvalidRequest, Redirect
 from swift.common.utils import get_logger, config_true_value, \
-    config_positive_int_value, split_path, closing_if_possible, list_from_csv
+    config_positive_int_value, split_path, closing_if_possible, \
+    list_from_csv, parse_auto_storage_policies
 from swift.common.middleware.s3api.utils import Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.registry import register_swift_info, \
@@ -272,6 +273,10 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('multi_delete_concurrency', 2))
         self.conf.s3_acl = config_true_value(
             wsgi_conf.get('s3_acl', False))
+        self.conf.storage_classes = list_from_csv(wsgi_conf.get(
+            'storage_classes', 'STANDARD'))
+        if not self.conf.storage_classes:
+            raise ValueError('Missing storage classes list')
         self.conf.storage_domains = list_from_csv(
             wsgi_conf.get('storage_domain', ''))
         self.conf.auth_pipeline_check = config_true_value(
@@ -304,11 +309,31 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('bucket_db_read_only', False))
         self.conf.landing_page = wsgi_conf.get(
             'landing_page', 'https://aws.amazon.com/s3/')
+        self.conf.auto_storage_policies = {}
+        self.conf.storage_class_by_policy = {}
+        for storage_class in self.conf.storage_classes:
+            auto_storage_policies = parse_auto_storage_policies(
+                wsgi_conf.get('auto_storage_policies_%s' % storage_class))
+            if auto_storage_policies:
+                self.conf.auto_storage_policies[storage_class] = \
+                    auto_storage_policies
+                for storage_policy, _ in auto_storage_policies:
+                    _storage_class = self.conf.storage_class_by_policy.get(
+                        storage_policy)
+                    if _storage_class is None:
+                        self.conf.storage_class_by_policy[storage_policy] = \
+                            storage_class
+                    elif _storage_class != storage_class:
+                        raise ValueError(
+                            'Storage policy (%s) used for multiple storage '
+                            'classes (%s, %s)' %
+                            (storage_policy, _storage_class, storage_class))
         self.conf.cors_rules = list()
-        for allow_origin in (
-                a.strip()
-                for a in wsgi_conf.get('cors_allow_origin', '').split(',')
-                if a.strip()):
+        cors_allow_origin = list_from_csv(wsgi_conf.get(
+            'cors_allow_origin', ''))
+        cors_expose_headers = list_from_csv(wsgi_conf.get(
+            'cors_expose_headers', ''))
+        for allow_origin in cors_allow_origin:
             rule = Element('CORSRule')
             allow_origin_elm = Element('AllowedOrigin')
             allow_origin_elm.text = allow_origin
@@ -317,11 +342,7 @@ class S3ApiMiddleware(object):
                 allow_method_elm = Element('AllowedMethod')
                 allow_method_elm.text = allow_method
                 rule.append(allow_method_elm)
-            for expose_header in (
-                    a.strip()
-                    for a in wsgi_conf.get('cors_expose_headers',
-                                           '').split(',')
-                    if a.strip()):
+            for expose_header in cors_expose_headers:
                 expose_header_elm = Element('ExposeHeader')
                 expose_header_elm.text = expose_header
                 rule.append(expose_header_elm)
@@ -392,6 +413,11 @@ class S3ApiMiddleware(object):
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
             env['s3api.bucket'] = req.container_name
+            if req.storage_class:
+                auto_storage_policies = self.conf.auto_storage_policies.get(
+                    req.storage_class)
+                if auto_storage_policies:
+                    env['swift.auto_storage_policies'] = auto_storage_policies
             resp = self.handle_request(req)
         except NotS3Request:
             path_info = env.get('PATH_INFO')

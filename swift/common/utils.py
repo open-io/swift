@@ -6597,3 +6597,27 @@ def parse_connection_string(conn_str):
     scheme, netloc, _, _, query, _ = urlparse(conn_str)
     kwargs = {k: ','.join(v) for k, v in parse_qs(query).items()}
     return scheme, netloc, kwargs
+
+
+def parse_auto_storage_policies(auto_storage_policies_str):
+    auto_storage_policies = []
+    if not auto_storage_policies_str:
+        return auto_storage_policies
+    for storage_policy in list_from_csv(auto_storage_policies_str):
+        if ':' in storage_policy:
+            name, offset = storage_policy.split(':')
+            name = name.strip()
+            if not name:
+                raise ValueError('Offset without storage policy')
+            auto_storage_policies.append((name, int(offset)))
+        else:
+            auto_storage_policies.append((storage_policy, -1))
+    auto_storage_policies.sort(key=lambda x: x[1])
+    previous_offset = None
+    for _name, offset in auto_storage_policies:
+        if previous_offset is not None and previous_offset == offset:
+            raise ValueError(
+                'Several storage policies use the same offset: %s',
+                str(auto_storage_policies))
+        previous_offset = offset
+    return auto_storage_policies

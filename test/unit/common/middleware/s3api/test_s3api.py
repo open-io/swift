@@ -127,12 +127,15 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             's3_only': False,
             'cors_preflight_allow_origin': [],
             'ratelimit_as_client_error': False,
+            'auto_storage_policies': {},
+            'storage_class_by_policy': {},
         })
         s3api = S3ApiMiddleware(None, {})
         self.assertEqual(expected, s3api.conf)
 
         # check all non-defaults are loaded
         conf = {
+            'storage_classes': 'STANDARD,GLACIER',
             'storage_domain': 'somewhere,some.other.where',
             'location': 'us-west-1',
             'force_swift_request_proxy_log': True,
@@ -159,10 +162,16 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             's3_only': True,
             'cors_preflight_allow_origin': 'foo.example.com,bar.example.com',
             'ratelimit_as_client_error': True,
+            'auto_storage_policies_STANDARD': 'EC',
         }
         s3api = S3ApiMiddleware(None, conf)
         conf['cors_preflight_allow_origin'] = \
             conf['cors_preflight_allow_origin'].split(',')
+        conf.pop('storage_classes')
+        conf['storage_classes'] = ['STANDARD', 'GLACIER']
+        conf.pop('auto_storage_policies_STANDARD')
+        conf['auto_storage_policies'] = {'STANDARD': [('EC', -1)]}
+        conf['storage_class_by_policy'] = {'EC': 'STANDARD'}
         conf['storage_domains'] = conf.pop('storage_domain').split(',')
         expected_cors_rules = []
         for allow_origin in conf.pop('cors_allow_origin').split(','):
@@ -765,8 +774,8 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_invalid_storage_class(self):
-        req = Request.blank('/',
-                            environ={'REQUEST_METHOD': 'GET',
+        req = Request.blank('/bucket/object',
+                            environ={'REQUEST_METHOD': 'PUT',
                                      'HTTP_AUTHORIZATION': 'AWS X:Y:Z',
                                      'HTTP_X_AMZ_STORAGE_CLASS': 'INVALID'},
                             headers={'Date': self.get_date_header()})

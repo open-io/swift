@@ -328,7 +328,8 @@ class BucketController(Controller):
             SubElement(owner, 'ID').text = req.user_id
             SubElement(owner, 'DisplayName').text = req.user_id
         if contents.tag != 'DeleteMarker':
-            SubElement(contents, 'StorageClass').text = 'STANDARD'
+            SubElement(contents, 'StorageClass').text = \
+                req.storage_policy_to_class(o.get('storage_policy'))
 
     def _add_objects_to_result(self, req, elem, objects, encoding_type,
                                listing_type, fetch_owner):

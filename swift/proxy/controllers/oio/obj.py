@@ -345,6 +345,9 @@ class ObjectController(BaseObjectController):
         else:
             resp.headers['Content-Type'] = metadata.get(
                 'mime_type', 'application/octet-stream')
+        storage_policy = metadata.get('policy')
+        if storage_policy:
+            resp.headers['x-object-sysmeta-storage-policy'] = storage_policy
         properties = metadata.get('properties')
         if properties:
             for k, v in properties.items():
@@ -532,11 +535,14 @@ class ObjectController(BaseObjectController):
         headers = self.generate_request_headers(req, additional=req.headers)
         return headers
 
-    def _get_auto_policy_from_size(self, content_length):
+    def _get_storage_policy_from_size(self, content_length,
+                                      auto_storage_policies=None):
         # The default storage policy has an offset of -1
         # so should always be chosen
+        if not auto_storage_policies:
+            auto_storage_policies = self.app.auto_storage_policies
         policy = None
-        for (name, offset) in self.app.oio_stgpol:
+        for (name, offset) in auto_storage_policies:
             if offset > content_length:
                 break
             policy = name
@@ -672,7 +678,11 @@ class ObjectController(BaseObjectController):
                 policy = self.app.POLICIES.get_by_index(policy_index).name
             else:
                 content_length = int(req.headers.get('content-length', -1))
-                policy = self._get_auto_policy_from_size(content_length)
+                auto_storage_policies = req.environ.get(
+                    'swift.auto_storage_policies')
+                policy = self._get_storage_policy_from_size(
+                    content_length,
+                    auto_storage_policies=auto_storage_policies)
 
         ct_props = {'properties': {}, 'system': {}}
         metadata = self.load_object_metadata(headers)
