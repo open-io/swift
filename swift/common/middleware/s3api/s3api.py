@@ -277,8 +277,22 @@ class S3ApiMiddleware(object):
             'storage_classes', 'STANDARD'))
         if not self.conf.storage_classes:
             raise ValueError('Missing storage classes list')
-        self.conf.storage_domains = list_from_csv(
+        storage_domains = list_from_csv(
             wsgi_conf.get('storage_domain', ''))
+        self.conf.storage_domains = {}
+        for storage_domain in storage_domains:
+            if ':' in storage_domain:
+                storage_domain, storage_class = storage_domain.split(':', 1)
+                storage_domain = storage_domain.strip()
+                if not storage_domain:
+                    continue
+                storage_class = storage_class.strip()
+                if storage_class not in self.conf.storage_classes:
+                    raise ValueError(
+                        'Unknown storage class: %s' % storage_class)
+            else:
+                storage_class = None
+            self.conf.storage_domains[storage_domain] = storage_class
         self.conf.auth_pipeline_check = config_true_value(
             wsgi_conf.get('auth_pipeline_check', True))
         self.conf.max_upload_part_num = config_positive_int_value(

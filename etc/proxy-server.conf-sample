@@ -699,6 +699,9 @@ use = egg:swift#s3api
 #
 # Specify a (comma-separated) list of host names for your Swift cluster.
 # This enables virtual-hosted style requests.
+# It is possible to force a storage class (must be contained in the
+# 'storage_classes' parameter) for a storage domain using the following format:
+# [STORAGE_DOMAIN]:[STORAGE_CLASS]
 # storage_domain =
 #
 # Enable pipeline order check for SLO, s3token, authtoken, keystoneauth

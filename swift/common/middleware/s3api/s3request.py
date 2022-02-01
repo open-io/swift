@@ -536,8 +536,8 @@ class S3Request(swob.Request):
         self.conf = conf or Config()
         self.location = self.conf.location
         self._timestamp = None
+        self.storage_domain, self.bucket_in_host = self._parse_host()
         self.access_key, self.signature = self._parse_auth_info()
-        self.bucket_in_host = self._parse_host()
         self.container_name, self.object_name = self._parse_uri()
         self.storage_class = self._get_storage_class()
         self._validate_headers()
@@ -623,26 +623,30 @@ class S3Request(swob.Request):
 
     def _parse_host(self):
         if not self.conf.storage_domains:
-            return None
+            return None, None
 
         if 'HTTP_HOST' in self.environ:
             given_domain = self.environ['HTTP_HOST']
         elif 'SERVER_NAME' in self.environ:
             given_domain = self.environ['SERVER_NAME']
         else:
-            return None
+            return None, None
         port = ''
         if ':' in given_domain:
             given_domain, port = given_domain.rsplit(':', 1)
 
         for storage_domain in self.conf.storage_domains:
-            if not storage_domain.startswith('.'):
-                storage_domain = '.' + storage_domain
-
+            storage_domain = storage_domain.lstrip('.')
             if given_domain.endswith(storage_domain):
-                return given_domain[:-len(storage_domain)]
+                if len(given_domain) == len(storage_domain):
+                    # No bucket in host
+                    return storage_domain, None
+                bucket_name = given_domain[:-len(storage_domain)]
+                if bucket_name[-1] == '.':
+                    # Bucket in host
+                    return storage_domain, bucket_name[:-1]
 
-        return None
+        return None, None
 
     def _parse_uri(self):
         # NB: returns WSGI strings
@@ -706,7 +710,7 @@ class S3Request(swob.Request):
         if not self._is_anonymous:
             return False
 
-        if self._parse_host():
+        if self.bucket_in_host:
             # Virtual-hosted style anonymous request
             return True
 
@@ -743,8 +747,15 @@ class S3Request(swob.Request):
     def _get_storage_class(self):
         storage_class = None
         if self.object_name and self.method in ('PUT', 'POST'):
-            # Use the storage class sent by the client
-            storage_class = self.headers.get('x-amz-storage-class')
+            # Use the storage domain's storage class
+            storage_class = self.conf.storage_domains.get(self.storage_domain)
+            storage_class_hdr = self.headers.get('x-amz-storage-class')
+            if storage_class:
+                if storage_class_hdr and storage_class != storage_class_hdr:
+                    raise InvalidStorageClass()
+            else:
+                # Otherwise, use the storage class sent by the client
+                storage_class = storage_class_hdr
             # Otherwise, use STANDARD by default
             if not storage_class:
                 storage_class = 'STANDARD'

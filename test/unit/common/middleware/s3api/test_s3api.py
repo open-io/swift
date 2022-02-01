@@ -136,7 +136,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         # check all non-defaults are loaded
         conf = {
             'storage_classes': 'STANDARD,GLACIER',
-            'storage_domain': 'somewhere,some.other.where',
+            'storage_domain': 'somewhere:STANDARD,some.other.where',
             'location': 'us-west-1',
             'force_swift_request_proxy_log': True,
             'dns_compliant_bucket_names': False,
@@ -169,10 +169,14 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             conf['cors_preflight_allow_origin'].split(',')
         conf.pop('storage_classes')
         conf['storage_classes'] = ['STANDARD', 'GLACIER']
+        conf.pop('storage_domain')
+        conf['storage_domains'] = {
+            'somewhere': 'STANDARD',
+            'some.other.where': None
+        }
         conf.pop('auto_storage_policies_STANDARD')
         conf['auto_storage_policies'] = {'STANDARD': [('EC', -1)]}
         conf['storage_class_by_policy'] = {'EC': 'STANDARD'}
-        conf['storage_domains'] = conf.pop('storage_domain').split(',')
         expected_cors_rules = []
         for allow_origin in conf.pop('cors_allow_origin').split(','):
             rule = Element('CORSRule')
