@@ -8,6 +8,8 @@ eventlet_debug = true
 sds_default_account = AUTH_demo
 
 cors_allow_origin = https://ovh.com
+sds_namespace = OPENIO
+sds_proxy_url = http://127.0.0.1:6000
 
 [pipeline:main]
 pipeline = catch_errors cache listing_formats s3api tempauth proxy-logging copy slo versioned_writes symlink keymaster encryption proxy-server
@@ -16,8 +18,6 @@ pipeline = catch_errors cache listing_formats s3api tempauth proxy-logging copy 
 use = egg:swift#oio_proxy
 allow_account_management = true
 account_autocreate = true
-sds_namespace = OPENIO
-sds_proxy_url = http://127.0.0.1:6000
 log_name = OIO,NS,oioswift,1
 sds_connection_timeout=5
 sds_read_timeout=20
