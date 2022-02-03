@@ -90,7 +90,7 @@ test_intelligent_tiering() {
     # TODO: When RabbitMQ version >= 3.7, add <ackmode=ack_requeue_false>
     # to consume the message
     OUT=$(rabbitmqadmin get queue=pca --format=long)
-    echo $OUT | grep "payload: {\"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\"}"
+    echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\"}"
   fi
 
   # user1 cannot create anymore (Intelligent-tiering deny)
@@ -109,7 +109,7 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U1} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 10)
   echo "$OUT" | grep "user1_magic"
 
-  # user1 can get the bucket intelligent-tiering-configuration 
+  # user1 can get the bucket intelligent-tiering-configuration
   # and the bucket status
   OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid --debug 2>&1)
