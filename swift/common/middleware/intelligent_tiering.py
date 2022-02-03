@@ -26,7 +26,7 @@ from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     ServiceUnavailable
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.swob import HTTPMethodNotAllowed, wsgi_quote
-from swift.common.utils import get_logger
+from swift.common.utils import config_true_value, get_logger
 from swift.common.wsgi import make_pre_authed_request
 
 
@@ -214,9 +214,10 @@ class IntelligentTieringMiddleware(object):
         rabbitmq_queue = conf.get('rabbitmq_queue', RABBITMQ_QUEUE_NAME)
         rabbitmq_exchange = conf.get('rabbitmq_exchange',
                                      RABBITMQ_EXCHANGE_NAME)
-        rabbitmq_durable = conf.get('rabbitmq_durable', RABBITMQ_DURABLE)
-        rabbitmq_auto_delete = conf.get('rabbitmq_auto_delete',
-                                        RABBITMQ_AUTO_DELETE)
+        rabbitmq_durable = config_true_value(
+            conf.get('rabbitmq_durable', RABBITMQ_DURABLE))
+        rabbitmq_auto_delete = config_true_value(
+            conf.get('rabbitmq_auto_delete', RABBITMQ_AUTO_DELETE))
 
         self.rabbitmq_client = RabbitMQClient(rabbitmq_url, rabbitmq_exchange,
                                               rabbitmq_queue, rabbitmq_durable,
