@@ -114,8 +114,9 @@ class RabbitMQClient(object):
     """
 
     def __init__(self, url, exchange, queue, rabbitmq_durable,
-                 rabbitmq_auto_delete, logger=None):
+                 rabbitmq_auto_delete, namespace, logger=None):
         self.logger = logger
+        self.namespace = namespace
         self.url = url
         self.queue = queue
         self.exchange = exchange
@@ -156,7 +157,8 @@ class RabbitMQClient(object):
         connection, channel = None, None
         try:
             connection, channel = self._connect()
-            data = {"account": account,
+            data = {"namespace": self.namespace,
+                    "account": account,
                     "bucket": bucket,
                     "action": action}
             channel.basic_publish(exchange=self.exchange,
@@ -218,10 +220,11 @@ class IntelligentTieringMiddleware(object):
             conf.get('rabbitmq_durable', RABBITMQ_DURABLE))
         rabbitmq_auto_delete = config_true_value(
             conf.get('rabbitmq_auto_delete', RABBITMQ_AUTO_DELETE))
+        namespace = conf['sds_namespace']  # Mandatory, raises KeyError
 
         self.rabbitmq_client = RabbitMQClient(rabbitmq_url, rabbitmq_exchange,
                                               rabbitmq_queue, rabbitmq_durable,
-                                              rabbitmq_auto_delete,
+                                              rabbitmq_auto_delete, namespace,
                                               logger=self.logger)
 
         # Intelligent Tiering IAM rules

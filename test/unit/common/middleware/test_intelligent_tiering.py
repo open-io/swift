@@ -62,7 +62,7 @@ class TestIntelligentTiering(unittest.TestCase):
 
     def setUp(self):
         self.fake_swift = FakeSwift()
-        fake_conf = {"rabbitmq_url": "fake-url"}
+        fake_conf = {"rabbitmq_url": "fake-url", "sds_namespace": "OPENIO"}
         self.logger = debug_logger('test-intelligent-tiering-middleware')
         self.app = IntelligentTieringMiddleware(
             self.fake_swift, fake_conf, logger=self.logger)
@@ -319,7 +319,7 @@ class TestIAMIntelligentTiering(unittest.TestCase):
 
     def setUp(self):
         self.fake_swift = FakeSwift()
-        fake_conf = {"rabbitmq_url": "fake-url"}
+        fake_conf = {"rabbitmq_url": "fake-url", "sds_namespace": "OPENIO"}
         self.logger = debug_logger('test-intelligent-tiering-middleware')
         self.app = IntelligentTieringMiddleware(
             self.fake_swift, fake_conf, logger=self.logger)
