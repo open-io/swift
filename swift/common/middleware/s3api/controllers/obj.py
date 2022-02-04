@@ -28,7 +28,8 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
-from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.base import Controller, \
+    check_bucket_storage_domain
 from swift.common.middleware.s3api.controllers.cors import \
     CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
     fill_cors_headers
@@ -144,6 +145,7 @@ class ObjectController(Controller):
         return resp
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
@@ -161,6 +163,7 @@ class ObjectController(Controller):
         return resp
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:GetObject")
     def GET(self, req):
@@ -172,6 +175,7 @@ class ObjectController(Controller):
         return self.GETorHEAD(req)
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:PutObject")
     def PUT(self, req):
@@ -254,6 +258,7 @@ class ObjectController(Controller):
             container_info.get('sysmeta', {}).get('versions-enabled', False))
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:DeleteObject")
     def DELETE(self, req):
@@ -304,6 +309,7 @@ class ObjectController(Controller):
         return resp
 
     @public
+    @check_bucket_storage_domain
     def OPTIONS(self, req):
         origin = req.headers.get('Origin')
         if not origin:

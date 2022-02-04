@@ -17,7 +17,7 @@ from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation
+    bucket_operation, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import Element, tostring, \
     fromstring, XMLSyntaxError, DocumentInvalid, SubElement
 from swift.common.middleware.s3api.s3response import HTTPOk, \
@@ -37,6 +37,7 @@ class VersioningController(Controller):
     """
     @public
     @bucket_operation
+    @check_bucket_storage_domain
     def GET(self, req):
         """
         Handles GET Bucket versioning.
@@ -56,6 +57,7 @@ class VersioningController(Controller):
 
     @public
     @bucket_operation
+    @check_bucket_storage_domain
     def PUT(self, req):
         """
         Handles PUT Bucket versioning.

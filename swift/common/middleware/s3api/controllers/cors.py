@@ -19,7 +19,8 @@ from functools import wraps
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_container_existence, log_s3api_command
+    bucket_operation, check_container_existence, log_s3api_command, \
+    check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
@@ -168,6 +169,7 @@ class CorsController(Controller):
     @public
     @bucket_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @log_s3api_command('get-bucket-cors')
     def GET(self, req):  # pylint: disable=invalid-name
         """
@@ -182,6 +184,7 @@ class CorsController(Controller):
     @public
     @bucket_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @log_s3api_command('put-bucket-cors')
     def PUT(self, req):  # pylint: disable=invalid-name
         """
@@ -205,6 +208,7 @@ class CorsController(Controller):
         return convert_response(req, resp, 204, HTTPOk)
 
     @public
+    @check_bucket_storage_domain
     @bucket_operation
     @check_container_existence
     @log_s3api_command('delete-bucket-cors')

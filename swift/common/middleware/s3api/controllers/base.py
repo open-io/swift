@@ -16,7 +16,7 @@
 import functools
 
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
-    InvalidRequest
+    InvalidRequest, BadStorageDomain
 from swift.common.middleware.s3api.utils import camel_to_snake
 
 
@@ -72,6 +72,23 @@ def check_container_existence(func):
         return func(self, req)
 
     return check_container
+
+
+def check_bucket_storage_domain(func):
+    """
+    A decorator to ensure the bucket's storage domain.
+    """
+    @functools.wraps(func)
+    def _check_bucket_storage_domain(self, req):
+        if self.conf.check_bucket_storage_domain:
+            info = req.get_container_info(self.app)
+            storage_domain = info.get('sysmeta', {}).get(
+                's3api-storage-domain', self.conf.default_storage_domain)
+            if req.storage_domain != storage_domain:
+                raise BadStorageDomain()
+        return func(self, req)
+
+    return _check_bucket_storage_domain
 
 
 def log_s3api_command(cmd_name):

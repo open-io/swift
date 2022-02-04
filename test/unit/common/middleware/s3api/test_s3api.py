@@ -113,6 +113,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'auth_pipeline_check': True,
             'bucket_db_read_only': False,
             'check_bucket_owner': False,
+            'check_bucket_storage_domain': False,
             'cors_rules': [],
             'landing_page': 'https://aws.amazon.com/s3/',
             'log_s3api_command': False,
@@ -127,6 +128,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             's3_only': False,
             'cors_preflight_allow_origin': [],
             'ratelimit_as_client_error': False,
+            'default_storage_domain': None,
             'auto_storage_policies': {},
             'storage_class_by_policy': {},
         })
@@ -147,6 +149,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'auth_pipeline_check': False,
             'bucket_db_read_only': True,
             'check_bucket_owner': True,
+            'check_bucket_storage_domain': True,
             'cors_allow_origin': 'somewhere.com,some.other.where.io',
             'landing_page':
                 'https://docs.openstack.org/swift/latest/s3_compat.html',
@@ -174,6 +177,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'somewhere': 'STANDARD',
             'some.other.where': None
         }
+        conf['default_storage_domain'] = 'somewhere'
         conf.pop('auto_storage_policies_STANDARD')
         conf['auto_storage_policies'] = {'STANDARD': [('EC', -1)]}
         conf['storage_class_by_policy'] = {'EC': 'STANDARD'}

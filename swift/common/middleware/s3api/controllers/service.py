@@ -21,7 +21,7 @@ from swift.common.middleware.s3api.etree import Element, SubElement, tostring
 from swift.common.middleware.s3api.s3response import HTTPOk, AccessDenied, \
     NoSuchBucket
 from swift.common.middleware.s3api.utils import S3Timestamp, \
-    validate_bucket_name
+    validate_bucket_name, sysmeta_header
 
 
 class ServiceController(Controller):
@@ -52,6 +52,11 @@ class ServiceController(Controller):
         SubElement(owner, 'ID').text = req.user_id
         SubElement(owner, 'DisplayName').text = req.user_id
 
+        check_each_bucket = (
+            (self.conf.s3_acl and self.conf.check_bucket_owner)
+            or self.conf.check_bucket_storage_domain
+        )
+
         buckets = SubElement(elem, 'Buckets')
         for c in containers:
             creation_date = '2009-02-03T16:45:09.000Z'
@@ -59,10 +64,18 @@ class ServiceController(Controller):
                 ts = last_modified_date_to_timestamp(c['last_modified'])
                 creation_date = S3Timestamp(ts).s3xmlformat
 
-            if self.conf.s3_acl and self.conf.check_bucket_owner:
+            if check_each_bucket:
                 container = bytes_to_wsgi(c['name'].encode('utf8'))
                 try:
                     resp = req.get_response(self.app, 'HEAD', container)
+
+                    if self.conf.check_bucket_storage_domain:
+                        storage_domain = resp.sysmeta_headers.get(
+                            sysmeta_header('container', 'storage-domain'),
+                            self.conf.default_storage_domain)
+                        if req.storage_domain != storage_domain:
+                            continue
+
                     if 'X-Timestamp' in resp.sw_headers:
                         creation_date = S3Timestamp(
                             resp.sw_headers['X-Timestamp']).s3xmlformat

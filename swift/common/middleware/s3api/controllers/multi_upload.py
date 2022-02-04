@@ -79,7 +79,8 @@ from swift.common.request_helpers import get_container_update_override_key, \
 from six.moves.urllib.parse import quote, urlparse
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, object_operation, check_container_existence
+    bucket_operation, object_operation, check_container_existence, \
+    check_bucket_storage_domain
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
@@ -190,6 +191,7 @@ class PartController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access('s3:PutObject')
     def PUT(self, req):
         """
@@ -273,6 +275,7 @@ class PartController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
@@ -285,6 +288,7 @@ class PartController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
@@ -379,6 +383,7 @@ class UploadsController(Controller):
                       err_msg="Key is not expected for the GET method "
                               "?uploads subresource")
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access('s3:ListBucketMultipartUploads')
     def GET(self, req):
         """
@@ -541,6 +546,7 @@ class UploadsController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access('s3:PutObject')
     def POST(self, req):
         """
@@ -622,6 +628,7 @@ class UploadController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access('s3:ListMultipartUploadParts')
     def GET(self, req):
         """
@@ -737,6 +744,7 @@ class UploadController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access('s3:AbortMultipartUpload')
     def DELETE(self, req):
         """
@@ -789,6 +797,7 @@ class UploadController(Controller):
     @public
     @object_operation
     @check_container_existence
+    @check_bucket_storage_domain
     @check_iam_access('s3:PutObject')
     def POST(self, req):
         """

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation
+    bucket_operation, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -97,7 +97,8 @@ class IntelligentTieringController(Controller):
         return tiering_callback(req, tiering_dict)
 
     @public
-    @bucket_operation()
+    @bucket_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:GetIntelligentTieringConfiguration")
     def GET(self, req):
         """
@@ -130,7 +131,8 @@ class IntelligentTieringController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @public
-    @bucket_operation()
+    @bucket_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:PutIntelligentTieringConfiguration")
     def PUT(self, req):
         """
@@ -166,7 +168,8 @@ class IntelligentTieringController(Controller):
                                 204, HTTPOk)
 
     @public
-    @bucket_operation()
+    @bucket_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:DeleteIntelligentTieringConfiguration")
     def DELETE(self, req):
         """

@@ -23,7 +23,7 @@ import random
 import json
 import os
 
-ENDPOINT = os.getenv("USE_ENDPOINT", "http://127.0.0.1:5000")
+ENDPOINT = os.getenv("USE_ENDPOINT", "http://localhost:5000")
 AWS = ["aws", "--endpoint", ENDPOINT]
 
 RANDOM_CHARS = string.ascii_lowercase + string.digits

@@ -15,7 +15,8 @@
 
 from swift.common.utils import public
 
-from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.base import Controller, \
+    check_bucket_storage_domain
 from swift.common.middleware.s3api.s3response import HTTPOk
 from swift.common.middleware.s3api.etree import tostring
 
@@ -32,6 +33,7 @@ class S3AclController(Controller):
     Those APIs are logged as ACL operations in the S3 server log.
     """
     @public
+    @check_bucket_storage_domain
     def GET(self, req):
         """
         Handles GET Bucket acl and GET Object acl.
@@ -51,6 +53,7 @@ class S3AclController(Controller):
         return resp
 
     @public
+    @check_bucket_storage_domain
     def PUT(self, req):
         """
         Handles PUT Bucket acl and PUT Object acl.

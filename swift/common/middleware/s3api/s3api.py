@@ -277,6 +277,12 @@ class S3ApiMiddleware(object):
             'storage_classes', 'STANDARD'))
         if not self.conf.storage_classes:
             raise ValueError('Missing storage classes list')
+        self.conf.check_bucket_storage_domain = config_true_value(
+            wsgi_conf.get('check_bucket_storage_domain', False))
+        # Used only if "check_bucket_storage_domain" is enabled.
+        # As some buckets were created without this information,
+        # they will use the first storage domain defined in the conf file.
+        self.conf.default_storage_domain = None
         storage_domains = list_from_csv(
             wsgi_conf.get('storage_domain', ''))
         self.conf.storage_domains = {}
@@ -293,6 +299,8 @@ class S3ApiMiddleware(object):
             else:
                 storage_class = None
             self.conf.storage_domains[storage_domain] = storage_class
+            if not self.conf.default_storage_domain:
+                self.conf.default_storage_domain = storage_domain
         self.conf.auth_pipeline_check = config_true_value(
             wsgi_conf.get('auth_pipeline_check', True))
         self.conf.max_upload_part_num = config_positive_int_value(

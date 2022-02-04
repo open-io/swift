@@ -18,7 +18,8 @@ from swift.common.middleware.acl import parse_acl, referrer_allowed
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.exception import ACLError
-from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.base import Controller, \
+    check_bucket_storage_domain
 from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
     MalformedACLError, UnexpectedContent, MissingSecurityHeader
 from swift.common.middleware.s3api.etree import Element, SubElement, tostring
@@ -85,6 +86,7 @@ class AclController(Controller):
     Those APIs are logged as ACL operations in the S3 server log.
     """
     @public
+    @check_bucket_storage_domain
     def GET(self, req):
         """
         Handles GET Bucket acl and GET Object acl.
@@ -99,6 +101,7 @@ class AclController(Controller):
         return get_acl(req.user_id, resp.headers)
 
     @public
+    @check_bucket_storage_domain
     def PUT(self, req):
         """
         Handles PUT Bucket acl and PUT Object acl.

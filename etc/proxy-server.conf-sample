@@ -704,6 +704,12 @@ use = egg:swift#s3api
 # [STORAGE_DOMAIN]:[STORAGE_CLASS]
 # storage_domain =
 #
+# When this parameter is enabled, a bucket can only be used from within
+# a storage domain. For buckets created while the parameter was disabled,
+# they will only be usable on the first storage domain specified
+# in the 'storage_domains' parameter.
+# check_bucket_storage_domain = False
+#
 # Enable pipeline order check for SLO, s3token, authtoken, keystoneauth
 # according to standard s3api/Swift construction using either tempauth or
 # keystoneauth. If the order is incorrect, it raises an exception to stop

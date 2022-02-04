@@ -19,7 +19,7 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.utils import close_if_possible, public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_container_existence
+    check_container_existence, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
@@ -74,6 +74,7 @@ class TaggingController(Controller):
 
     @public
     @check_container_existence
+    @check_bucket_storage_domain
     def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket and Object tagging.
@@ -108,6 +109,7 @@ class TaggingController(Controller):
 
     @public
     @check_container_existence
+    @check_bucket_storage_domain
     def PUT(self, req):  # pylint: disable=invalid-name
         """
         Handles PUT Bucket and Object tagging.
@@ -140,6 +142,7 @@ class TaggingController(Controller):
 
     @public
     @check_container_existence
+    @check_bucket_storage_domain
     def DELETE(self, req):  # pylint: disable=invalid-name
         """
         Handles DELETE Bucket and Object tagging.

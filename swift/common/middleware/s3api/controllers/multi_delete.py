@@ -23,7 +23,7 @@ from swift.common.utils import public, StreamingPile
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation
+    bucket_operation, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.s3response import HTTPOk, \
@@ -49,6 +49,7 @@ class MultiObjectDeleteController(Controller):
 
     @public
     @bucket_operation
+    @check_bucket_storage_domain
     def POST(self, req):
         """
         Handles Delete Multiple Objects.

@@ -15,6 +15,8 @@
 
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers import BucketController
+from swift.common.middleware.s3api.controllers.base import \
+    check_bucket_storage_domain
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
     BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable
 
@@ -53,6 +55,7 @@ class UniqueBucketController(BucketController):
         return resp
 
     @public
+    @check_bucket_storage_domain
     def DELETE(self, req):
         """
         Handle DELETE Bucket request

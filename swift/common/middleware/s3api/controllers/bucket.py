@@ -28,7 +28,7 @@ from swift.common.utils import json, public, config_true_value, Timestamp, \
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    log_s3api_command
+    log_s3api_command, check_bucket_storage_domain
 from swift.common.middleware.s3api.controllers.cors import \
     CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
     fill_cors_headers
@@ -40,8 +40,9 @@ from swift.common.middleware.s3api.s3response import \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    TooManyBuckets
-from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX
+    TooManyBuckets, BadStorageDomain
+from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
+    sysmeta_header
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
@@ -101,6 +102,7 @@ class BucketController(Controller):
             raise ServiceUnavailable()
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:ListBucket")
     def HEAD(self, req):
@@ -341,6 +343,7 @@ class BucketController(Controller):
                                  fetch_owner)
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:ListBucket")
     def GET(self, req):
@@ -428,6 +431,11 @@ class BucketController(Controller):
                 raise InvalidLocationConstraint()
 
         self.check_bucket_limit(req)
+        if self.conf.check_bucket_storage_domain:
+            if not req.storage_domain:
+                raise BadStorageDomain()
+            req.headers[sysmeta_header('container', 'storage-domain')] = \
+                req.storage_domain
         resp = req.get_response(self.app)
 
         resp.status = HTTP_OK
@@ -435,6 +443,7 @@ class BucketController(Controller):
         return resp
 
     @public
+    @check_bucket_storage_domain
     @fill_cors_headers
     @check_iam_access("s3:DeleteBucket")
     def DELETE(self, req):
@@ -457,6 +466,7 @@ class BucketController(Controller):
         raise S3NotImplemented()
 
     @public
+    @check_bucket_storage_domain
     @log_s3api_command('options')
     def OPTIONS(self, req):
         origin = req.headers.get('Origin')
