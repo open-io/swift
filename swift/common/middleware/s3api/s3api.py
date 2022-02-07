@@ -399,8 +399,12 @@ class S3ApiMiddleware(object):
                 and env.get('swift.authorize_override') is True
             if self.conf.s3_only and path_info != '/info' and not internal_req:
                 if path_info == '/':
-                    env['swift.leave_relative_location'] = False
-                    resp = Redirect(location=self.conf.landing_page)
+                    method = env.get('REQUEST_METHOD')
+                    if method == 'GET':
+                        env['swift.leave_relative_location'] = False
+                        resp = Redirect(location=self.conf.landing_page)
+                    else:
+                        resp = MethodNotAllowed(method, 'SERVICE')
                 else:
                     resp = InvalidRequest(reason='Not S3 request')
             else:

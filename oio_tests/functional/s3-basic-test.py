@@ -95,6 +95,9 @@ def test_landing_page():
     assert resp.headers['location'] \
         == 'https://www.ovhcloud.com/fr/public-cloud/object-storage/'
 
+    resp = requests.post('http://localhost:5000', allow_redirects=False)
+    assert resp.status_code == 405
+
 
 if __name__ == "__main__":
     run_last_modified_test()
