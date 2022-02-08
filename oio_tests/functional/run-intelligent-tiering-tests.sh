@@ -25,6 +25,8 @@ if [ "$RET" -ne "0" ]; then
   exit $RET
 fi
 
+configure_aws virtual
+
 # Intelligent Tiering without IAM in the pipeline
 export WITH_IAM=false
 RULES_FILE="$PWD/etc/iam-rules-sample.json"
