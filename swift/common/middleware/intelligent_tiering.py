@@ -278,7 +278,13 @@ class IntelligentTieringMiddleware(object):
 
     def _get_archiving_status(self, req):
         try:
-            info = req.get_container_info(self.app)
+            # Extract oio_cache and remove it from req if exists
+            oio_cache = req.environ.pop('oio.cache', None)
+            info = req.get_container_info(self.app, read_caches=False)
+            # Put oio_cache again if exists (further request may benefit
+            # of the cache)
+            if oio_cache == {} and oio_cache.memcache:
+                req.environ['oio.cache'] = oio_cache
         except NoSuchBucket:
             return BUCKET_STATE_NONE
         archiving_status = info.get('sysmeta').get('s3api-archiving-status')
