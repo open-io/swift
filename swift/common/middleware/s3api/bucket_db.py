@@ -239,7 +239,10 @@ def get_bucket_db(conf, logger=None):
                 db_kwargs['host'] = netloc
         elif scheme == 'dummy':
             klass = DummyBucketDb
-        elif scheme == 'fdb':
+        elif scheme in ('oio', 'fdb'):
+            if scheme == 'fdb' and logger is not None:
+                logger.warning(
+                    "bucket_db: deprecated scheme 'fdb', please use 'oio'")
             klass = OioBucketDb
             db_kwargs['namespace'] = conf.get('sds_namespace')
             db_kwargs['proxy_url'] = conf.get('sds_proxy_url')

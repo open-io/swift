@@ -103,7 +103,12 @@ def filter_factory(global_conf, **local_config):
             conf['sentinel_hosts'] = netloc
         else:
             conf['host'] = netloc
+    elif scheme == 'oio':
+        klass = OioIamMiddleware
     elif scheme == 'fdb':
+        from sys import stderr
+        print("Warning: iam: deprecated scheme 'fdb', please use 'oio'",
+              file=stderr)
         klass = OioIamMiddleware
     elif scheme == 'file':
         klass = StaticIamMiddleware
