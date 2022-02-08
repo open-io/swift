@@ -1253,6 +1253,16 @@ class S3Request(swob.Request):
             params.append('version-id=' + copy_from_version_id)
         env['QUERY_STRING'] = '&'.join(params)
 
+        if self.bucket_in_host:
+            # Delete the bucket name in the hostname
+            bucket_prefix = self.bucket_in_host + '.'
+            http_host = env.get('HTTP_HOST', None)
+            if http_host and http_host.startswith(bucket_prefix):
+                env['HTTP_HOST'] = http_host[len(bucket_prefix):]
+            server_name = env.get('SERVER_NAME', None)
+            if server_name and server_name.startswith(bucket_prefix):
+                env['SERVER_NAME'] = server_name[len(bucket_prefix):]
+
         return swob.Request.blank(quote(path), environ=env, body=body,
                                   headers=headers)
 

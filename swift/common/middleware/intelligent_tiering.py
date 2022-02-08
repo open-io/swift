@@ -25,7 +25,7 @@ from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     BadRequest, InvalidBucketState, NoSuchBucket, S3NotImplemented, \
     ServiceUnavailable
 from swift.common.middleware.s3api.utils import sysmeta_header
-from swift.common.swob import HTTPMethodNotAllowed, wsgi_quote
+from swift.common.swob import HTTPMethodNotAllowed
 from swift.common.utils import config_true_value, get_logger
 from swift.common.wsgi import make_pre_authed_request
 
@@ -266,14 +266,13 @@ class IntelligentTieringMiddleware(object):
             raise InvalidBucketState('Transition now allowed: from %s to %s' %
                                      (old_status, new_status))
 
-        path = wsgi_quote(f'/v1/{req.account}/{req.container_name}')
-        sub_req = make_pre_authed_request(req.environ, 'POST',
-                                          path=path)
-        sub_req.environ['QUERY_STRING'] = ''
+        sw_req = req.to_swift_req('POST', req.container_name, None)
+        sub_req = make_pre_authed_request(
+            sw_req.environ, sw_req.method, path=sw_req.path)
         sub_req.headers[
             sysmeta_header('container', 'archiving-status')] = new_status
         resp = sub_req.get_response(self.app)
-        if resp.status != "204 No Content":
+        if resp.status_int != 204:
             raise ServiceUnavailable('Failed to set status, status=%s' %
                                      resp.status)
 

@@ -73,6 +73,8 @@ function run_sds() {
 }
 
 function configure_aws() {
+  addressing_style=${1:-path}
+
   # CREATE AWS CONFIGURATION
   mkdir -p "$HOME/.aws"
   cat <<EOF >"$HOME/.aws/credentials"
@@ -101,6 +103,7 @@ s3 =
     max_queue_size = 100
     multipart_threshold = 15MB
     multipart_chunksize = 5MB
+    addressing_style = $addressing_style
 
 [profile user1]
 s3 =
@@ -109,6 +112,7 @@ s3 =
     max_queue_size = 100
     multipart_threshold = 15MB
     multipart_chunksize = 5MB
+    addressing_style = $addressing_style
 
 [profile a2adm]
 s3 =
@@ -117,6 +121,7 @@ s3 =
     max_queue_size = 100
     multipart_threshold = 15MB
     multipart_chunksize = 5MB
+    addressing_style = $addressing_style
 
 [profile a2u1]
 s3 =
@@ -125,6 +130,7 @@ s3 =
     max_queue_size = 100
     multipart_threshold = 15MB
     multipart_chunksize = 5MB
+    addressing_style = $addressing_style
 EOF
 }
 
