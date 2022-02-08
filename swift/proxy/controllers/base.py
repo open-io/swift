@@ -414,7 +414,7 @@ def get_object_info(env, app, path=None, swift_source=None):
     return info
 
 
-def get_container_info(env, app, swift_source=None):
+def get_container_info(env, app, swift_source=None, read_caches=True):
     """
     Get the info structure for a container, based on env and app.
     This is useful to middlewares.
@@ -435,8 +435,10 @@ def get_container_info(env, app, swift_source=None):
     account = wsgi_to_str(wsgi_account)
     container = wsgi_to_str(wsgi_container)
 
-    # Check in environment cache and in memcache (in that order)
-    info = _get_info_from_caches(app, env, account, container)
+    info = None
+    if read_caches:
+        # Check in environment cache and in memcache (in that order)
+        info = _get_info_from_caches(app, env, account, container)
 
     if not info:
         # Cache miss; go HEAD the container and populate the caches
@@ -463,11 +465,12 @@ def get_container_info(env, app, swift_source=None):
         req.headers['X-Backend-Allow-Reserved-Names'] = 'true'
         resp = req.get_response(app)
         drain_and_close(resp)
-        # Check in infocache to see if the proxy (or anyone else) already
-        # populated the cache for us. If they did, just use what's there.
-        #
-        # See similar comment in get_account_info() for justification.
-        info = _get_info_from_infocache(env, account, container)
+        if read_caches:
+            # Check in infocache to see if the proxy (or anyone else) already
+            # populated the cache for us. If they did, just use what's there.
+            #
+            # See similar comment in get_account_info() for justification.
+            info = _get_info_from_infocache(env, account, container)
         if info is None:
             info = set_info_cache(app, env, account, container, resp)
 

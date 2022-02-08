@@ -1579,7 +1579,7 @@ class S3Request(swob.Request):
         sw_req = self.to_swift_req('HEAD', None, None)
         return get_account_info(sw_req.environ, app, swift_source='S3')
 
-    def get_container_info(self, app):
+    def get_container_info(self, app, read_caches=True):
         """
         get_container_info will return a result dict of get_container_info
         from the backend Swift.
@@ -1604,7 +1604,8 @@ class S3Request(swob.Request):
             _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
                                             2, 3, True)
         sw_req = self.to_swift_req(app, self.container_name, None)
-        info = get_container_info(sw_req.environ, app, swift_source='S3')
+        info = get_container_info(sw_req.environ, app, swift_source='S3',
+                                  read_caches=read_caches)
         if is_success(info['status']):
             return info
         elif info['status'] == 404:
