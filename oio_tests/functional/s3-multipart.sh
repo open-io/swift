@@ -4,23 +4,79 @@ export OIO_NS="${1:-OPENIO}"
 export OIO_ACCOUNT="${2:-AUTH_demo}"
 
 AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
-BUCKET="bucket-$RANDOM"
 
 set -e
+#set -x
 
+
+test_mpu_abort__no_parts() {
+  BUCKET="bucket-$RANDOM"
+  echo "Testing the abortion of a multipart object"
+  echo "------------------------------------------"
+  echo
+  echo "Creating bucket ${BUCKET}"
+  echo
+  ${AWS} s3 mb "s3://$BUCKET"
+
+  UPLOAD_ID=$(${AWS} s3api create-multipart-upload --bucket ${BUCKET} --key first | jq -r .UploadId)
+  ${AWS} s3api abort-multipart-upload --bucket ${BUCKET} --key first --upload-id "${UPLOAD_ID}" 2>&1 | tail -n 1
+
+  echo "Counting segments with openio CLI (should be 0)"
+  SEGS=$(openio object list ${BUCKET}+segments -f value)
+  [ -z "$SEGS" ]
+
+  ${AWS} s3 rb "s3://$BUCKET"
+  echo "OK"
+}
+
+test_mpu_abort__with_parts() {
+  BUCKET="bucket-$RANDOM"
+  MULTI_FILE=$(mktemp -t multipart_XXXXXX.dat)
+  dd if=/dev/zero of="${MULTI_FILE}" count=6 bs=1M
+
+  echo
+  echo "Testing the abortion of a multipart object with existing parts"
+  echo "--------------------------------------------------------------"
+  echo
+  echo "Creating bucket ${BUCKET}"
+  ${AWS} s3 mb "s3://$BUCKET"
+
+  echo "Creating multipart 'second' with 2 parts"
+  UPLOAD_ID=$(${AWS} s3api create-multipart-upload --bucket ${BUCKET} --key second | jq -r .UploadId)
+  ${AWS} s3api upload-part --bucket ${BUCKET} --key second --part-number 1 --upload-id "${UPLOAD_ID}" \
+    --body "${MULTI_FILE}"
+  ${AWS} s3api upload-part --bucket ${BUCKET} --key second --part-number 2 --upload-id "${UPLOAD_ID}" \
+    --body "${MULTI_FILE}"
+  echo "Counting segments with openio CLI (should be 3)"
+  SEGS=$(openio object list ${BUCKET}+segments -f value)
+  [ -n "$SEGS" ]
+  SEG_COUNT=$(echo "${SEGS}" | wc -l)
+  [ "$SEG_COUNT" -eq 3 ]
+
+  echo "Aborting multipart 'second'"
+  ${AWS} s3api abort-multipart-upload --bucket ${BUCKET} --key second --upload-id "${UPLOAD_ID}" 2>&1 | tail -n 1
+  echo "Counting segments with openio CLI (should be 0)"
+  SEGS=$(openio object list ${BUCKET}+segments -f value)
+  [ -z "$SEGS" ]
+
+  ${AWS} s3 rb "s3://$BUCKET"
+  rm "$MULTI_FILE"
+  echo "OK"
+}
 
 test_mpu_overwrite() {
+  BUCKET="bucket-$RANDOM"
   SMALL_FILE="/etc/resolv.conf"
   MULTI_FILE=$(mktemp -t multipart_XXXXXX.dat)
   dd if=/dev/zero of="${MULTI_FILE}" count=21 bs=1M
-
-  echo "Creating bucket ${BUCKET}"
-  ${AWS} s3 mb "s3://$BUCKET"
 
   echo
   echo "Testing the deletion of parts when a multipart object is overwritten"
   echo "--------------------------------------------------------------------"
   echo
+  echo "Creating bucket ${BUCKET}"
+  echo
+  ${AWS} s3 mb "s3://$BUCKET"
   echo "Uploading a multipart object in bucket ${BUCKET}"
   ${AWS} s3 cp "$MULTI_FILE" "s3://$BUCKET/obj"
 
@@ -112,6 +168,9 @@ test_mpu_overwrite() {
   ${AWS} s3 rb "s3://$BUCKET"
   rm "$MULTI_FILE"
   rm obj
+  echo "OK"
 }
 
+test_mpu_abort__no_parts
+test_mpu_abort__with_parts
 test_mpu_overwrite
