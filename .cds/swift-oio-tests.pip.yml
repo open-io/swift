@@ -37,7 +37,7 @@ jobs:
           systemctl stop foundationdb.service
           systemctl disable foundationdb.service
 
-      - name: Run oio unit tests
+      - name: Run oio functional tests
         script:
           - pgrep rsyslogd || rsyslogd &
           - sysctl -w kernel.core_pattern='/tmp/core.%p.%E'
