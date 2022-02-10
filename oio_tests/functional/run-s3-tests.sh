@@ -23,7 +23,6 @@ run_functional_test s3-default.cfg \
     s3-versioning.py \
     s3-multipart.sh \
     s3-mpu.py \
-    s3-ephemeral-objects.py \
     s3-s3cmd.sh
 
 # TODO(FVE): gridinit_cmd stop

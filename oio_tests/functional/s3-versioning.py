@@ -15,50 +15,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import json
-import os
-import random
-import string
-import subprocess
+import tempfile
 import unittest
 
-
-AWS = ["aws", "--endpoint-url", "http://localhost:5000", "s3api"]
-
-
-def random_str(size):
-    return ''.join(random.choice(string.ascii_letters) for _ in range(size))
+from oio_tests.functional.common import random_str, run_awscli_s3api
 
 
-def run_s3api(*params):
-    cmd = AWS + list(params)
-    print(*cmd)
-    out = subprocess.check_output(cmd)
-    try:
-        data = out.decode('utf8')
-        return json.loads(data) if data else data
-    except Exception:
-        return out
+class TestS3Versioning(unittest.TestCase):
 
-
-class TestVersioning(unittest.TestCase):
     def setUp(self):
-        self.bucket = random_str(10).lower()
-        run_s3api("create-bucket", "--bucket", self.bucket)
-        run_s3api("put-bucket-versioning", "--bucket", self.bucket,
-                  "--versioning-configuration", "Status=Enabled")
+        self.bucket = random_str(10)
+        run_awscli_s3api("create-bucket", bucket=self.bucket)
+        run_awscli_s3api(
+            "put-bucket-versioning",
+            "--versioning-configuration", "Status=Enabled",
+            bucket=self.bucket)
 
     def tearDown(self):
         # TODO(mbo)
         # add cleanup
-        # run_s3api("create-bucket", "--bucket", self.bucket)
+        # run_awscli_s3api("delete-bucket", bucket=self.bucket)
         pass
 
     def _create_simple_object(self, key):
-        data = run_s3api("put-object", "--bucket", self.bucket,
-                         "--key", key)
+        data = run_awscli_s3api("put-object", bucket=self.bucket, key=key)
         self.assertIn("VersionId", data)
         return data['VersionId']
 
@@ -80,8 +61,10 @@ class TestVersioning(unittest.TestCase):
             version = self._create_simple_object(key)
             uploaded.append({"Key": key, "VersionId": version})
         payload = {"Objects": uploaded, "Quiet": False}
-        res = run_s3api("delete-objects", "--bucket", self.bucket,
-                        "--delete", json.dumps(payload))
+        res = run_awscli_s3api(
+            "delete-objects",
+            "--delete", json.dumps(payload),
+            bucket=self.bucket)
         deleted_keys = {k['Key'] for k in res['Deleted']}
         self.assertEqual(deleted_keys, set(keys))
 
@@ -90,25 +73,28 @@ class TestVersioning(unittest.TestCase):
         mpu_size = 5242880
         full_data = b"*" * size * 5
 
-        data = run_s3api("create-multipart-upload",
-                         "--bucket", self.bucket, "--key", key)
+        data = run_awscli_s3api("create-multipart-upload",
+                                bucket=self.bucket, key=key)
         upload_id = data['UploadId']
 
         mpu_parts = []
         for idx, start in enumerate(range(0, size, mpu_size), start=1):
             raw = full_data[start:start + mpu_size]
-            open("/tmp/part", "wb").write(raw)
-            data = run_s3api("upload-part", "--bucket", self.bucket,
-                             "--key", key, "--part-number", str(idx),
-                             "--upload-id", upload_id, "--body", "/tmp/part")
-            os.unlink("/tmp/part")
+            with tempfile.NamedTemporaryFile() as file:
+                file.write(raw)
+                data = run_awscli_s3api(
+                    "upload-part",
+                    "--part-number", str(idx),
+                    "--upload-id", upload_id,
+                    "--body", file.name,
+                    bucket=self.bucket, key=key)
             mpu_parts.append({"ETag": data['ETag'], "PartNumber": idx})
 
-        data = run_s3api("complete-multipart-upload",
-                         "--bucket", self.bucket, "--key", key,
-                         "--upload-id", upload_id,
-                         "--multipart-upload",
-                         json.dumps({"Parts": mpu_parts}))
+        data = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload", json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket, key=key)
 
         self.assertIn("VersionId", data)
         return data['VersionId']
@@ -125,32 +111,37 @@ class TestVersioning(unittest.TestCase):
         self._run_versioning_test(key, versions=[version2, version1])
 
     def _run_versioning_test(self, key, versions):
-        data = run_s3api("list-object-versions", "--bucket", self.bucket)
+        data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
         self.assertEqual(len(data.get('Versions', [])), len(versions))
         self.assertEqual(len(data.get('DeleteMarkers', [])), 0)
         self.assertListEqual(versions, [entry['VersionId']
                                         for entry in data['Versions']])
         for version in versions:
-            run_s3api("get-object", "--bucket", self.bucket, "--key", key,
-                      "--version-id", version, "/tmp/out")
+            run_awscli_s3api(
+                "get-object",
+                "--version-id", version,
+                "/tmp/out",
+                bucket=self.bucket, key=key)
 
-        data = run_s3api("delete-object", "--bucket", self.bucket,
-                         "--key", key)
-        data = run_s3api("list-object-versions", "--bucket", self.bucket)
+        data = run_awscli_s3api("delete-object", bucket=self.bucket, key=key)
+        data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
         self.assertEqual(len(data.get('Versions', [])), len(versions))
         self.assertEqual(len(data.get('DeleteMarkers', [])), 1)
         self.assertListEqual(versions, [entry['VersionId']
                                         for entry in data['Versions']])
         for version in versions:
-            run_s3api("get-object", "--bucket", self.bucket, "--key", key,
-                      "--version-id", version, "/tmp/out")
+            run_awscli_s3api(
+                "get-object",
+                "--version-id", version,
+                "/tmp/out",
+                bucket=self.bucket, key=key)
 
         for entry in data['Versions'] + data['DeleteMarkers']:
-            run_s3api("delete-object",
-                      "--bucket", self.bucket,
-                      "--key", entry['Key'],
-                      "--version-id", entry['VersionId'])
-        data = run_s3api("list-object-versions", "--bucket", self.bucket)
+            run_awscli_s3api(
+                "delete-object",
+                "--version-id", entry['VersionId'],
+                bucket=self.bucket, key=entry['Key'])
+        data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
         self.assertFalse(data)
 
 

@@ -14,91 +14,80 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-from __future__ import print_function
-
 from datetime import datetime
-import json
 import requests
-import subprocess
 import time
+import unittest
 
-
-AWS = ["aws", "--endpoint-url", "http://localhost:5000"]
-BUCKET = "test-%d" % int(time.time())
+from oio_tests.functional.common import random_str, run_awscli_s3, \
+    run_awscli_s3api
 
 
 def parse_iso8601(val):
-    d = datetime.strptime(val, "%Y-%m-%dT%H:%M:%S.%fZ")
-    return d
+    return datetime.strptime(val, "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()
 
 
 def parse_rfc822(val):
-    d = datetime.strptime(val, "%a, %d %b %Y %H:%M:%S %Z")
-    return d
+    return datetime.strptime(val, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
 
 
-def run_aws(*params):
-    print(*params)
-    cmd = AWS + list(params)
-    out = subprocess.check_output(cmd)
-    try:
-        return out.decode('utf8')
-    except Exception:
-        return out
+class TestS3BasicTest(unittest.TestCase):
 
+    def test_last_modified(self):
+        bucket = random_str(10)
+        key = "file"
 
-def run_last_modified_test():
-    run_aws("s3", "mb", "s3://%s" % BUCKET)
+        run_awscli_s3("mb", bucket=bucket)
+        run_awscli_s3api("put-object", bucket=bucket, key=key)
 
-    run_aws("s3api", "put-object", "--bucket", BUCKET, "--key", "file")
+        # retrieve LastModified from header (RFC822)
+        data = run_awscli_s3api("head-object", bucket=bucket, key=key)
+        create_from_hdr = parse_rfc822(data['LastModified'])
 
-    # retrieve LastModified from header (RFC822)
-    out = json.loads(run_aws("s3api", "head-object", "--bucket", BUCKET,
-                             "--key", "file"))
-    create_from_hdr = parse_rfc822(out['LastModified'])
+        # retrieve LastModifier from listing
+        data = run_awscli_s3api("list-objects", bucket=bucket)
+        create_from_lst = parse_iso8601(data['Contents'][0]['LastModified'])
 
-    # retrieve LastModifier from listing
-    out = json.loads(run_aws("s3api", "list-objects", "--bucket", BUCKET))
-    create_from_lst = parse_iso8601(out['Contents'][0]['LastModified'])
+        self.assertEqual(
+            create_from_hdr, create_from_lst,
+            msg="Timestamp should be equal between head-object and object-list"
+        )
 
-    assert create_from_lst == create_from_hdr, \
-        "Timestamp should be equal between head-object and object-list"
+        # a little wait to avoid reusing same timestamp
+        time.sleep(1)
 
-    # a little wait to avoid reusing same timestamp
-    time.sleep(1)
+        # update object
+        run_awscli_s3api("put-object", bucket=bucket, key=key)
 
-    # update object
-    run_aws("s3api", "put-object", "--bucket", BUCKET, "--key", "file")
+        # retrieve LastModified from header (RFC822)
+        data = run_awscli_s3api("head-object", bucket=bucket, key=key)
+        update_from_hdr = parse_rfc822(data['LastModified'])
 
-    # retrieve LastModified from header (RFC822)
-    out = json.loads(run_aws("s3api", "head-object", "--bucket", BUCKET,
-                             "--key", "file"))
-    update_from_hdr = parse_rfc822(out['LastModified'])
+        # retrieve LastModifier from listing
+        data = run_awscli_s3api("list-objects", bucket=bucket)
+        update_from_lst = parse_iso8601(data['Contents'][0]['LastModified'])
 
-    # retrieve LastModifier from listing
-    out = json.loads(run_aws("s3api", "list-objects", "--bucket", BUCKET))
-    update_from_lst = parse_iso8601(out['Contents'][0]['LastModified'])
+        self.assertGreater(
+            update_from_lst, create_from_lst,
+            msg="Timestamp should be updated after pushing new data to object")
+        self.assertEqual(
+            update_from_hdr, update_from_lst,
+            msg="Timestamp should be equal between head-object and object-list"
+        )
 
-    assert update_from_lst != create_from_lst, \
-        "Timestamp should be updated after pushing new data to object"
-    assert update_from_lst == update_from_hdr, \
-        "Timestamp should be equal between head-object and object-list"
+        run_awscli_s3api("delete-object", bucket=bucket, key=key)
+        run_awscli_s3api("delete-bucket", bucket=bucket)
 
-    run_aws("s3api", "delete-object", "--bucket", BUCKET, "--key", "file")
-    run_aws("s3api", "delete-bucket", "--bucket", BUCKET)
-
-
-def test_landing_page():
-    resp = requests.get('http://localhost:5000', allow_redirects=False)
-    assert resp.status_code == 307
-    assert resp.headers['location'] \
-        == 'https://www.ovhcloud.com/fr/public-cloud/object-storage/'
+    def test_landing_page(self):
+        resp = requests.get('http://localhost:5000', allow_redirects=False)
+        self.assertEqual(307, resp.status_code)
+        self.assertEqual(
+            'https://www.ovhcloud.com/fr/public-cloud/object-storage/',
+            resp.headers['location'])
 
     resp = requests.post('http://localhost:5000', allow_redirects=False)
     assert resp.status_code == 405
 
 
 if __name__ == "__main__":
-    run_last_modified_test()
-    test_landing_page()
+    unittest.main(verbosity=2)

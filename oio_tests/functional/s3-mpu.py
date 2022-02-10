@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 # Copyright (c) 2020 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,159 +12,301 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 # implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.from __future__ import print_function
+# limitations under the License.
 
-
-from __future__ import print_function
-import subprocess
-import string
-import random
 import json
-import os
+import tempfile
+import unittest
 
-ENDPOINT = os.getenv("USE_ENDPOINT", "http://localhost:5000")
-AWS = ["aws", "--endpoint", ENDPOINT]
-
-RANDOM_CHARS = string.ascii_lowercase + string.digits
-RANDOM_UTF8_CHARS = (RANDOM_CHARS + string.punctuation + 'âäçéèêëïîôöùûüÿæœ' +
-                     'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ' + '🐛🐍💻💩👉🚪😂❤️🤣👍😭🙏😘🥰😍😊')
+from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
+    run_awscli_s3, run_awscli_s3api, CliError
 
 
-def random_str(size, chars=RANDOM_CHARS):
-    return ''.join(random.choice(chars) for _ in range(size))
+ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
 
 
-def run_aws(*params, **kwargs):
-    cmd = AWS + list(params)
-    print(*cmd)
-    out = subprocess.check_output(cmd)
-    data = out.decode('utf8')
-    return json.loads(data) if data else data
+class TestS3Mpu(unittest.TestCase):
 
+    def setUp(self):
+        self.bucket = random_str(10)
+        data = run_awscli_s3api("create-bucket", bucket=self.bucket)
+        self.assertEqual('/%s' % self.bucket, data['Location'])
 
-def run_test(bucket, path):
-    """
-    It will create a bucket, upload an object with MPU:
-    - check upload in progress (with or without prefix)
-    - check parts of current upload
-    - copy an object by using copy of MPU
-    """
-    size = 10 * 1024 * 1024
-    mpu_size = 524288 * 10
+    def tearDown(self):
+        try:
+            run_awscli_s3('rb', '--force', bucket=self.bucket)
+        except CliError as exc:
+            if 'NoSuchBucket' not in str(exc):
+                raise
 
-    print("******")
-    print("bucket:", bucket)
-    print("object:", path)
-    print("size:", size)
-    print("MPU chunksize:", mpu_size)
+    def _create_multipart_upload(self, path, *params):
+        data = run_awscli_s3api(
+            "create-multipart-upload", *params,
+            bucket=self.bucket, key=path)
+        self.assertIn('UploadId', data)
+        return data
 
-    # create bucket
-    data = run_aws("s3api", "create-bucket", "--bucket", bucket)
-    assert data['Location'] == '/%s' % bucket
+    def test_nonascii_key(self):
+        path = "éè/éè"
+        data = self._create_multipart_upload(path)
+        self.assertEqual(path, data['Key'])
 
-    run_aws("s3api", "get-bucket-acl", "--bucket", bucket)
+    def test_create_abort_mpu(self):
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", bucket=self.bucket)
+        self.assertEqual('', listing)
+        path = random_str(10)
+        data = self._create_multipart_upload(path)
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", bucket=self.bucket)
+        self.assertEqual(1, len(listing['Uploads']))
+        self.assertEqual(path, listing['Uploads'][0]['Key'])
 
-    full_data = b"*" * size
+        run_awscli_s3api(
+            "abort-multipart-upload",
+            "--upload-id", data['UploadId'],
+            bucket=self.bucket, key=path)
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", bucket=self.bucket)
+        self.assertEqual('', listing)
 
-    # create MPU
-    data = run_aws("s3api", "create-multipart-upload",
-                   "--bucket", bucket, "--key", path)
-    upload_id = data['UploadId']
+    def test_complete_mpu_with_headers(self):
+        path = random_str(10)
+        content_type = random_str(10)
+        data = self._create_multipart_upload(path,
+                                             "--content-type", content_type,
+                                             "--acl", "public-read")
+        upload_id = data['UploadId']
 
-    # list uploads in progress
-    data = run_aws("s3api", "list-multipart-uploads", "--bucket", bucket)
-    assert len(data.get('Uploads', [])) == 1, \
-        "Found more than current upload: %s" % data
+        mpu_parts = []
+        part = run_awscli_s3api(
+            "upload-part",
+            "--part-number", "1",
+            "--upload-id", upload_id,
+            "--body", "/etc/magic",
+            bucket=self.bucket, key=path)
+        mpu_parts.append({"ETag": part['ETag'], "PartNumber": 1})
 
-    # list uploads in progress with bucket prefix
-    data = run_aws("s3api", "list-multipart-uploads",
-                   "--bucket", bucket, "--prefix", path)
-    assert len(data.get('Uploads', [])) == 1
+        final = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload",
+            json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket, key=path)
+        self.assertEqual(final['Key'], path)
 
-    # list MPU of upload: should be empty
-    data = run_aws("s3api", "list-parts", "--bucket", bucket,
-                   "--key", path, "--upload-id", upload_id)
-    assert len(data.get('Parts', [])) == 0
+        data = run_awscli_s3api(
+            "get-object-acl", bucket=self.bucket, key=path)
+        res = [entry for entry in data['Grants']
+               if entry['Grantee'].get('URI') == ALL_USERS]
+        self.assertEqual('READ', res[0]['Permission'])
 
-    mpu_parts = []
-    for idx, start in enumerate(range(0, size, mpu_size), start=1):
-        raw = full_data[start:start + mpu_size]
-        open("/tmp/part", "wb").write(raw)
-        data = run_aws("s3api", "upload-part", "--bucket", bucket,
-                       "--key", path, "--part-number", str(idx),
-                       "--upload-id", upload_id, "--body", "/tmp/part")
-        os.unlink("/tmp/part")
-        print("UPLOAD", json.dumps(data))
-        mpu_parts.append({"ETag": data['ETag'], "PartNumber": idx})
+        data = run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+        self.assertEqual(content_type, data['ContentType'])
 
-    # list MPU
-    data = run_aws("s3api", "list-parts", "--bucket", bucket, "--key", path,
-                   "--upload-id", upload_id)
-    assert len(data.get('Parts', [])) == 2
+    def test_list_mpus_with_params(self):
+        self._create_multipart_upload("sub/" + random_str(10))
+        self._create_multipart_upload("sub/" + random_str(10))
+        self._create_multipart_upload("other_" + random_str(10))
 
-    # list uploads in progress
-    data = run_aws("s3api", "list-multipart-uploads", "--bucket", bucket)
-    assert len(data.get('Uploads', [])) == 1
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", bucket=self.bucket)
+        self.assertEqual(3, len(listing['Uploads']))
 
-    # list uploads in progress with bucket prefix
-    data = run_aws("s3api", "list-multipart-uploads", "--bucket", bucket,
-                   "--prefix", path)
-    assert len(data.get('Uploads', [])) == 1
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", "--prefix", "sub", bucket=self.bucket)
+        self.assertEqual(2, len(listing['Uploads']))
 
-    # complete MPU
-    data = run_aws("s3api", "complete-multipart-upload", "--bucket", bucket,
-                   "--key", path, "--upload-id", upload_id,
-                   "--multipart-upload", json.dumps({"Parts": mpu_parts}))
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", "--delimiter", "/", bucket=self.bucket)
+        self.assertEqual(1, len(listing['Uploads']))
+        self.assertEqual(1, len(listing['CommonPrefixes']))
 
-    print("MPU COMPLETE", data)
-    assert data['Key'] == path
-    assert data['ETag'].endswith('-2"')
+        listing = run_awscli_s3api(
+            "list-multipart-uploads",
+            "--prefix", "su",
+            "--delimiter", "/",
+            bucket=self.bucket)
+        self.assertEqual(1, len(listing['CommonPrefixes']))
+        self.assertEqual(0, len(listing.get('Uploads', [])))
 
-    data = run_aws("s3api", "head-object", "--bucket", bucket, "--key", path)
-    assert data['ContentLength'] == size
+        listing = run_awscli_s3api(
+            "list-multipart-uploads", "--delimiter", "_", bucket=self.bucket)
+        self.assertEqual(2, len(listing['Uploads']))
+        self.assertEqual(1, len(listing['CommonPrefixes']))
 
-    data = run_aws("s3api", "head-object", "--bucket", bucket, "--key", path,
-                   "--part-number", "1")
-    assert data.get('ContentLength', -1) == mpu_size
+    def test_list_parts_for_mpu(self):
+        path = random_str(10)
+        data = self._create_multipart_upload(path)
 
-    # create a new object MPU by copying previous object as part of new object
-    path2 = u"dédéŝ/copie"
-    data = run_aws("s3api", "create-multipart-upload", "--bucket", bucket,
-                   "--key", path2)
-    upload_id = data['UploadId']
+        for idx in range(1, 11):
+            run_awscli_s3api(
+                "upload-part",
+                "--part-number", str(idx),
+                "--upload-id", data['UploadId'],
+                "--body", "/etc/magic",
+                bucket=self.bucket, key=path)
+        listing = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", data['UploadId'],
+            bucket=self.bucket, key=path)
+        self.assertEqual(10, len(listing['Parts']))
+        listing = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", data['UploadId'],
+            "--page-size", "5",
+            bucket=self.bucket, key=path)
+        # TODO(all) this issue is not linked to MpuOptim
+        # see OBSTO-81
+        # self.assertEqual(10, len(listing['Parts']))
 
-    src = "%s/%s" % (bucket, path)
-    copy_mpu_parts = []
-    for idx in (1, 2):
-        data = run_aws("s3api", "upload-part-copy", "--bucket", bucket,
-                       "--key", path2, "--copy-source", src,
-                       "--part-number", str(idx), "--upload-id", upload_id)
-        copy_mpu_parts.append({"ETag": data['CopyPartResult']['ETag'],
-                               "PartNumber": idx})
+        parts = set()
+        listing = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", data['UploadId'],
+            "--max-item", "5",
+            bucket=self.bucket, key=path)
+        self.assertEqual(5, len(listing['Parts']))
+        for part in listing['Parts']:
+            parts.add(part['PartNumber'])
+        token = listing['NextToken']
 
-    # complete MPU
-    data = run_aws("s3api", "complete-multipart-upload", "--bucket", bucket,
-                   "--key", path2, "--upload-id", upload_id,
-                   "--multipart-upload", json.dumps({"Parts": copy_mpu_parts}))
-    print(data, copy_mpu_parts)
-    assert data['Key'] == path2
-    assert data['ETag'].endswith('-2"')
+        listing = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", data['UploadId'],
+            "--max-item", "5",
+            "--starting-token", token,
+            bucket=self.bucket, key=path)
+        self.assertEqual(5, len(listing['Parts']))
+        for part in listing['Parts']:
+            parts.add(part['PartNumber'])
+        self.assertEqual(10, len(parts))
 
-    data = run_aws("s3api", "head-object", "--bucket", bucket, "--key", path2)
-    assert data['ContentLength'] == size * 2
+    def _test_mpu(self, path):
+        """
+        It will create a bucket, upload an object with MPU:
+        - check upload in progress (with or without prefix)
+        - check parts of current upload
+        - copy an object by using copy of MPU
+        """
+        size = 10 * 1024 * 1024
+        mpu_size = 524288 * 10
 
-    data = run_aws("s3api", "head-object", "--bucket", bucket, "--key", path2,
-                   "--part-number", "1")
-    assert data.get('ContentLength', -1) == size
+        # create MPU
+        data = run_awscli_s3api(
+            "create-multipart-upload", bucket=self.bucket, key=path)
+        upload_id = data['UploadId']
 
+        # list uploads in progress
+        data = run_awscli_s3api("list-multipart-uploads", bucket=self.bucket)
+        self.assertEqual(1, len(data.get('Uploads', [])),
+                         msg="Found more than current upload: %s" % data)
 
-def main():
-    run_test(random_str(10),
-             "docker/registry/v2/repositories/hello/_uploads/333633b0-503f-4b2a-9b43-e56ec6445ef3/data")  # noqa
-    run_test(random_str(10),
-             "CBB_DESKTOP-1LC5CCV/C:/Bombay/Logs/titi:/12121212/titi")
-    run_test(random_str(10), random_str(32, chars=RANDOM_UTF8_CHARS))
+        # list uploads in progress with bucket prefix
+        data = run_awscli_s3api(
+            "list-multipart-uploads", "--prefix", path, bucket=self.bucket)
+        self.assertEqual(1, len(data.get('Uploads', [])))
+
+        # list MPU of upload: should be empty
+        data = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", upload_id,
+            bucket=self.bucket, key=path)
+        self.assertEqual(0, len(data.get('Parts', [])))
+
+        full_data = b"*" * size
+        mpu_parts = []
+        for idx, start in enumerate(range(0, size, mpu_size), start=1):
+            raw = full_data[start:start + mpu_size]
+            with tempfile.NamedTemporaryFile() as file:
+                file.write(raw)
+                file.flush()
+                data = run_awscli_s3api(
+                    "upload-part",
+                    "--part-number", str(idx),
+                    "--upload-id", upload_id,
+                    "--body", file.name,
+                    bucket=self.bucket, key=path)
+            mpu_parts.append({"ETag": data['ETag'], "PartNumber": idx})
+
+        # list MPU
+        data = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", upload_id,
+            bucket=self.bucket, key=path)
+        self.assertEqual(2, len(data.get('Parts', [])))
+
+        # list uploads in progress
+        data = run_awscli_s3api("list-multipart-uploads", bucket=self.bucket)
+        self.assertEqual(1, len(data.get('Uploads', [])))
+
+        # list uploads in progress with bucket prefix
+        data = run_awscli_s3api(
+            "list-multipart-uploads", "--prefix", path, bucket=self.bucket)
+        self.assertEqual(1, len(data.get('Uploads', [])))
+
+        # complete MPU
+        data = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload", json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket, key=path)
+        self.assertEqual(path, data['Key'])
+        self.assertTrue(data['ETag'].endswith('-2"'))
+
+        data = run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+        self.assertEqual(size, data['ContentLength'])
+
+        data = run_awscli_s3api(
+            "head-object",
+            "--part-number", "1",
+            bucket=self.bucket, key=path)
+        self.assertEqual(mpu_size, data.get('ContentLength', -1))
+
+        # create a new object MPU by copying previous object
+        # as part of new object
+        path2 = u"dédéŝ/copie"
+        data = run_awscli_s3api(
+            "create-multipart-upload", bucket=self.bucket, key=path2)
+        upload_id = data['UploadId']
+
+        src = "%s/%s" % (self.bucket, path)
+        copy_mpu_parts = []
+        for idx in (1, 2):
+            data = run_awscli_s3api(
+                "upload-part-copy",
+                "--copy-source", src,
+                "--part-number", str(idx),
+                "--upload-id", upload_id,
+                bucket=self.bucket, key=path2)
+            copy_mpu_parts.append({"ETag": data['CopyPartResult']['ETag'],
+                                  "PartNumber": idx})
+
+        # complete MPU
+        data = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload", json.dumps({"Parts": copy_mpu_parts}),
+            bucket=self.bucket, key=path2)
+        self.assertEqual(path2, data['Key'])
+        self.assertTrue(data['ETag'].endswith('-2"'))
+
+        data = run_awscli_s3api("head-object", bucket=self.bucket, key=path2)
+        self.assertEqual(size * 2, data['ContentLength'])
+
+        data = run_awscli_s3api(
+            "head-object", "--part-number", "1", bucket=self.bucket, key=path2)
+        self.assertEqual(size, data.get('ContentLength', -1))
+
+    def test_mpu_with_docker(self):
+        self._test_mpu("docker/registry/v2/repositories/hello/_uploads/333633b0-503f-4b2a-9b43-e56ec6445ef3/data")  # noqa
+
+    def test_mpu_with_cloudberry(self):
+        self._test_mpu("CBB_DESKTOP-1LC5CCV/C:/Bombay/Logs/titi:/12121212/titi")  # noqa
+
+    def test_mpu_with_random_chars(self):
+        self._test_mpu(random_str(32, chars=RANDOM_UTF8_CHARS))
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)
