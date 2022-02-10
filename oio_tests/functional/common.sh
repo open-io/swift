@@ -160,6 +160,13 @@ verbosity = WARNING
 EOF
 }
 
+function configure_hosts() {
+  cat <<EOF >> "/etc/hosts"
+127.0.0.1	standard.ia
+EOF
+  cat "/etc/hosts"
+}
+
 function configure_oioswift() {
     sed -i "s/%USER%/$(id -un)/g" "$1"
 }

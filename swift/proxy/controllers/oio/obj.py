@@ -384,6 +384,10 @@ class ObjectController(BaseObjectController):
             if is_sys_or_user_meta('object', k) or
             is_object_transient_sysmeta(k)
         }
+        # FIXME(adu): When copying an S3 object, these properties are added
+        # and skew the true values. They should be removed as soon as possible.
+        metadata.pop('x-object-sysmeta-storage-policy', None)
+        metadata.pop('x-object-sysmeta-version-id', None)
         for header_key in self.allowed_headers:
             if header_key in headers:
                 headers_lower = header_key.lower()

@@ -9,6 +9,7 @@ compile_sds || exit 1
 run_sds || exit 1
 configure_aws
 configure_s3cmd
+configure_hosts
 
 RET=0
 
@@ -23,6 +24,7 @@ run_functional_test s3-default.cfg \
     s3-versioning.py \
     s3-multipart.sh \
     s3-mpu.py \
+    s3-storage-class.py \
     s3-s3cmd.sh
 
 # TODO(FVE): gridinit_cmd stop

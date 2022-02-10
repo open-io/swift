@@ -24,6 +24,7 @@ import subprocess
 RANDOM_CHARS = string.ascii_lowercase + string.digits
 RANDOM_UTF8_CHARS = (RANDOM_CHARS + string.punctuation + 'âäçéèêëïîôöùûüÿæœ' +
                      'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ' + '🐛🐍💻💩👉🚪😂❤️🤣👍😭🙏😘🥰😍😊')
+STANDARD_IA_DOMAIN = 'standard.ia'
 
 
 def random_str(size, chars=RANDOM_CHARS):
