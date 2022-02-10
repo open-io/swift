@@ -312,7 +312,16 @@ class EncrypterObjContext(CryptoWSGIContext):
         masked = False
         old_etags = req.headers.get(header_name)
         if old_etags:
-            all_keys = self.get_multiple_keys(req.environ)
+            try:
+                all_keys = self.get_multiple_keys(req.environ)
+            except HTTPException:
+                if self.crypto.ssec_mode:
+                    # In SSE-C mode, if the customer does not provide the key:
+                    # - either the object is not encrypted: no problem
+                    # - or it is encrypted and we will just fail ETag matching
+                    all_keys = []
+                else:
+                    raise
             new_etags = []
             for etag in Match(old_etags).tags:
                 if etag == '*':
