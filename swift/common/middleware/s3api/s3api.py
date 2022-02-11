@@ -435,6 +435,9 @@ class S3ApiMiddleware(object):
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
             env['s3api.bucket'] = req.container_name
+            if req.object_name:
+                env['s3api.storage_policy_to_class'] = \
+                    req.storage_policy_to_class
             if req.storage_class:
                 auto_storage_policies = self.conf.auto_storage_policies.get(
                     req.storage_class)
