@@ -118,6 +118,19 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
+  ceph-s3tests:
+    pipeline: swift-oio-tests
+    application: swift
+    environment: ceph-s3tests-env
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: ne
+          value: "cds.scheduler"
+    optional: true
+
   tests-reports:
     pipeline: swift-tests-reports
     application: swift
