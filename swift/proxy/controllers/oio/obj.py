@@ -340,7 +340,7 @@ class ObjectController(BaseObjectController):
         resp = Response(request=req, conditional_response=True,
                         conditional_etag=conditional_etag)
 
-        if config_true_value(metadata['deleted']):
+        if config_true_value(metadata.get('deleted')):
             resp.headers['Content-Type'] = DELETE_MARKER_CONTENT_TYPE
         else:
             resp.headers['Content-Type'] = metadata.get(
@@ -616,7 +616,7 @@ class ObjectController(BaseObjectController):
             self.app.logger.increment('client_disconnects')
             raise HTTPClientDisconnect(request=req)
         except exceptions.EtagMismatch:
-            return HTTPUnprocessableEntity(request=req)
+            raise HTTPUnprocessableEntity(request=req)
         except (exceptions.ServiceBusy, exceptions.OioTimeout,
                 exceptions.DeadlineReached):
             raise
@@ -637,6 +637,10 @@ class ObjectController(BaseObjectController):
             raise HTTPInternalServerError(request=req)
 
         resp = HTTPCreated(request=req, etag=link_meta['hash'])
+        # Some middleware uses the object information after the response
+        set_object_info_cache(
+            self.app, req.environ, self.account_name, self.container_name,
+            self.object_name, self.make_object_response(req, link_meta))
         return resp
 
     def _get_footers(self, req):
@@ -709,7 +713,7 @@ class ObjectController(BaseObjectController):
             # container statistics to make bucket statistics.
             ct_props['system'][BUCKET_NAME_PROP] = bucket_name
         try:
-            _chunks, _size, checksum, _meta = self._object_create(
+            _chunks, size, checksum, meta = self._object_create(
                 self.account_name, self.container_name,
                 obj_name=self.object_name, file_or_path=data_source,
                 mime_type=content_type, policy=policy, headers=oio_headers,
@@ -735,7 +739,7 @@ class ObjectController(BaseObjectController):
             self.app.logger.increment('client_disconnects')
             raise HTTPClientDisconnect(request=req)
         except exceptions.EtagMismatch:
-            return HTTPUnprocessableEntity(request=req)
+            raise HTTPUnprocessableEntity(request=req)
         except (exceptions.ServiceBusy, exceptions.OioTimeout,
                 exceptions.DeadlineReached):
             raise
@@ -758,18 +762,23 @@ class ObjectController(BaseObjectController):
                 {'path': req.path})
             raise HTTPInternalServerError(request=req)
 
-        last_modified = int(_meta.get('mtime', math.ceil(time.time())))
+        last_modified = int(meta.get('mtime', math.ceil(time.time())))
 
         # FIXME(FVE): if \x10 character in object name, decode version
         # number and set it in the response headers, instead of the oio
         # version number.
-        version_id = _meta.get('version', 'null')
+        version_id = meta.get('version', 'null')
         resp = HTTPCreated(
             request=req, etag=checksum,
             last_modified=last_modified,
             headers={
                 'x-object-sysmeta-version-id': version_id
             })
+        # Some middleware uses the object information after the response
+        meta.update({'hash': checksum, 'length': size})
+        set_object_info_cache(
+            self.app, req.environ, self.account_name, self.container_name,
+            self.object_name, self.make_object_response(req, meta))
         return resp
 
     def _update_content_type(self, req):
