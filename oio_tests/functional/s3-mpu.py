@@ -26,10 +26,12 @@ import os
 ENDPOINT = os.getenv("USE_ENDPOINT", "http://127.0.0.1:5000")
 AWS = ["aws", "--endpoint", ENDPOINT]
 
-random_chars = string.ascii_lowercase + string.digits
+RANDOM_CHARS = string.ascii_lowercase + string.digits
+RANDOM_UTF8_CHARS = (RANDOM_CHARS + string.punctuation + 'âäçéèêëïîôöùûüÿæœ' +
+                     'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ' + '🐛🐍💻💩👉🚪😂❤️🤣👍😭🙏😘🥰😍😊')
 
 
-def random_str(size, chars=random_chars):
+def random_str(size, chars=RANDOM_CHARS):
     return ''.join(random.choice(chars) for _ in range(size))
 
 
@@ -162,7 +164,7 @@ def main():
              "docker/registry/v2/repositories/hello/_uploads/333633b0-503f-4b2a-9b43-e56ec6445ef3/data")  # noqa
     run_test(random_str(10),
              "CBB_DESKTOP-1LC5CCV/C:/Bombay/Logs/titi:/12121212/titi")
-    run_test(random_str(10), random_str(10))
+    run_test(random_str(10), random_str(32, chars=RANDOM_UTF8_CHARS))
 
 
 if __name__ == "__main__":
