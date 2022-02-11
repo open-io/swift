@@ -13,24 +13,29 @@ function install_deps() {
     --allow-unauthenticated --allow-downgrades \
     --allow-remove-essential --allow-change-held-packages \
     apache2 apache2-dev libapache2-mod-wsgi-py3 \
+    asn1c \
     beanstalkd \
     bison \
     cmake \
     curl libcurl4-gnutls-dev \
+    debianutils \
     flex \
     libapreq2-dev \
     libattr1-dev \
     liberasurecode-dev \
     libevent-dev \
+    libffi-dev \
     libglib2.0-dev \
     libjson-c-dev \
     libleveldb-dev \
     liblzo2-dev \
     libsqlite3-dev \
+    libxml2-dev \
+    libxslt1-dev \
     libzmq3-dev \
     libzookeeper-mt-dev \
-    asn1c \
-    python3-all-dev python3-virtualenv
+    python3-all-dev python3-pip python3-virtualenv \
+    zlib1g-dev
   sudo systemctl stop apache2.service
   sudo systemctl disable apache2.service
   echo "travis_fold:end:install_deps"
@@ -49,9 +54,6 @@ function compile_sds() {
     -DSTACK_PROTECTOR=1 \
     -DZK_LIBDIR="/usr/lib" \
     -DZK_INCDIR="/usr/include/zookeeper" \
-    -DAPACHE2_LIBDIR="/usr/lib/apache2" \
-    -DAPACHE2_INCDIR="/usr/include/apache2" \
-    -DAPACHE2_MODDIR="/tmp/oio/lib/apache2/module" \
     .
   make all install
   export PATH="$PATH:/tmp/oio/bin" LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/tmp/oio/lib"
@@ -97,6 +99,7 @@ EOF
 
   cat <<EOF >"$HOME/.aws/config"
 [default]
+region = RegionOne
 s3 =
     signature_version = s3
     max_concurrent_requests = 10
@@ -106,6 +109,7 @@ s3 =
     addressing_style = $addressing_style
 
 [profile user1]
+region = RegionOne
 s3 =
     signature_version = s3
     max_concurrent_requests = 10
@@ -115,6 +119,7 @@ s3 =
     addressing_style = $addressing_style
 
 [profile a2adm]
+region = RegionOne
 s3 =
     signature_version = s3
     max_concurrent_requests = 10
@@ -124,6 +129,7 @@ s3 =
     addressing_style = $addressing_style
 
 [profile a2u1]
+region = RegionOne
 s3 =
     signature_version = s3
     max_concurrent_requests = 10
@@ -181,7 +187,12 @@ function run_functional_test() {
     local test_suites=$(for suite in $*; do echo "oio_tests/functional/${suite}"; done)
     configure_oioswift $conf
 
-    coverage run -p bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
+    if [ -n "$NO_COVERAGE" ]
+    then
+      ./bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
+    else
+      coverage run -p bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
+    fi
     export GW_CONF=$(readlink -e $conf)
     sleep 1
     PID=$(jobs -p)

@@ -63,6 +63,7 @@ log_s3api_command = True
 storage_domain = localhost
 s3_acl = true
 check_bucket_owner = true
+max_buckets_per_account = 500
 # min_segment_size = 8
 bucket_db_connection = redis://127.0.0.1:6379
 allow_anonymous_path_requests = false
@@ -73,6 +74,7 @@ landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
 use = egg:swift#tempauth
 log_level = DEBUG
 user_demo_demo = DEMO_PASS .admin
+user_demo_user1 = USER_PASS
 
 user_tester2_tester2 = TESTER2 .admin
 
