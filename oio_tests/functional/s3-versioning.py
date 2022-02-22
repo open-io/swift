@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # Copyright (c) 2020 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,6 +73,18 @@ class TestVersioning(unittest.TestCase):
         version2 = self._create_simple_object(key)
         self._run_versioning_test(key, versions=[version2, version1])
 
+    def test_multi_delete_utf8(self):
+        uploaded = []
+        keys = ("business/bar🍹", "business/café☕", "business/real estate🏡")
+        for key in keys:
+            version = self._create_simple_object(key)
+            uploaded.append({"Key": key, "VersionId": version})
+        payload = {"Objects": uploaded, "Quiet": False}
+        res = run_s3api("delete-objects", "--bucket", self.bucket,
+                        "--delete", json.dumps(payload))
+        deleted_keys = {k['Key'] for k in res['Deleted']}
+        self.assertEqual(deleted_keys, set(keys))
+
     def _create_mpu_object(self, key):
         size = 4 * 1024 * 1024
         mpu_size = 5242880
@@ -142,4 +155,4 @@ class TestVersioning(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
