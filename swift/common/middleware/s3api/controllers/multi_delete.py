@@ -17,6 +17,7 @@ import copy
 import json
 
 from swift.common.constraints import MAX_OBJECT_NAME_LENGTH
+from swift.common.swob import str_to_wsgi
 from swift.common.utils import public, StreamingPile, get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -113,7 +114,7 @@ class MultiObjectDeleteController(Controller):
         def do_delete(base_req, key, version):
             req = copy.copy(base_req)
             req.environ = copy.copy(base_req.environ)
-            req.object_name = key
+            req.object_name = str_to_wsgi(key)
             if version:
                 req.params = {'version-id': version, 'symlink': 'get'}
 
