@@ -3,8 +3,13 @@ name: swift-build
 jobs:
   - job: Compile ubuntu/20.04 package
     steps:
-      - name: Checkout application
-        checkout: '{{ .cds.workspace }}'
+      - gitClone:
+          branch: '{{ .git.branch }}'
+          commit: '{{ .git.hash }}'
+          depth: "false"
+          directory: '{{ .cds.workspace }}'
+          privateKey: proj-ssh-openio
+          url: '{{ .git.url }}'
 
       - name: Clone external-packages
         script:
@@ -18,6 +23,7 @@ jobs:
           trap 'worker upload --tag=focal package-20.04.log' EXIT
           cat $0
           set -x
+          set -e
           # to be able to access other repositories from stash
           eval $(worker key install --env-git proj-ssh-openio)
           export REPO_URL="https://{{ .cds.proj.drive_mirrors_objectstorage_openio_user }}:{{ .cds.proj.drive_mirrors_objectstorage_openio_password }}@{{ .cds.proj.drive_mirrors_hostname }}"

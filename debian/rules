@@ -15,17 +15,12 @@ export LD_LIBRARY_PATH=${LIBRARY_PATH}
 
 override_dh_virtualenv:
 	echo "Name: swift" > PKG-INFO
-	echo "Version: $(VERSION)" >> PKG-INFO
-
-	# reflect the repo / branch that is set on debian/requirements.txt
-	# please update both in case of change in repo url or branch
-	git archive --remote=ssh://git@stash.ovh.net:7999/openio/oio-sds master all-requirements.txt --format tar | tar -xO >> debian/requirements.txt
-
 	dh_virtualenv \
 	  --python ${PYTHON_PATH}/bin/python \
 	  --install-suffix ${PACKAGE} \
 	  --use-system-packages \
 	  --builtin-venv \
+	  --upgrade-pip \
 	  --preinstall wheel \
 	  --requirements debian/requirements.txt \
 	  --index-url https://20211021-21h42m17s-pypi.snap.mirrors.ovh.net/simple/
