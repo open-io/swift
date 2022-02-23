@@ -4,7 +4,7 @@ start =
   element IntelligentTieringConfiguration {
     element Id { xsd:string } &
     element Filter { Filter }? &
-    element Status { "Enabled" | "Disabled" } &
+    element Status { "Enabled" | "Disabled" | xsd:string } &
     element Tiering {
       element AccessTier { "ARCHIVE_ACCESS" | "DEEP_ARCHIVE_ACCESS" | xsd:string } &
       element Days { xsd:positiveInteger }
