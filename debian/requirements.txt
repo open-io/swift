@@ -5,5 +5,3 @@ git+ssh://git@stash.ovh.net:7999/cloudstoragepcs/swift-endpoint-filter@master#eg
 keystonemiddleware
 
 git+ssh://git@stash.ovh.net:7999/openio/oio-sds@master#egg=oio
-# this file is amended by debian/rules by fetching all-requirements.txt from oio-sds repository.
-# If you change the repo url or the branch, please update debian/rules also
