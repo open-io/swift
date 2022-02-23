@@ -16,7 +16,7 @@
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation
 from swift.common.middleware.s3api.etree import fromstring, \
-    DocumentInvalid, XMLSyntaxError
+    DocumentInvalid, XMLSyntaxError, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, S3NotImplemented
@@ -121,9 +121,13 @@ class IntelligentTieringController(Controller):
         # May raise exceptions
         result = self.apply_tiering(req, None)
 
-        resp = HTTPOk(body=body, content_type='application/xml')
-        resp.headers['X-Bucket-Status'] = result.get('bucket_status')
-        return resp
+        # Patch the returned body with the bucket status
+        tiering_conf_xml = fromstring(body.encode('utf-8'))
+        for elem in tiering_conf_xml.iter("Status"):
+            elem.text = result.get('bucket_status')
+        body = tostring(tiering_conf_xml)
+
+        return HTTPOk(body=body, content_type='application/xml')
 
     @public
     @bucket_operation()

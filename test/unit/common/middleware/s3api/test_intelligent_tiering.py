@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from swift.common.middleware.s3api.etree import fromstring, tostring
 
 from test.unit.common.middleware.s3api import S3ApiTestCase
 from swift.common.swob import Request, HTTPNoContent, HTTPNotFound
@@ -51,7 +52,7 @@ TIERING_HEADER = header_name_from_id('myid')
 
 def tiering_callback_ok(req, conf):
     """To be used as an always OK tiering callback."""
-    return {}
+    return {"bucket_status": "Enabled"}
 
 
 def tiering_callback_invalid_state(req, conf):
@@ -183,7 +184,9 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         status, _headers, body = self.call_s3api(req)
 
         self.assertEqual('200 OK', status)
-        self.assertEqual(TIERING_XML, body)
+        # The GET method patch the tiering-conf from the metadata.
+        # Expected XML is also patched in order to have the same formatting.
+        self.assertEqual(tostring(fromstring(TIERING_XML)), body)
 
         calls = self.swift.calls_with_headers
         self.assertEqual(2, len(calls))  # HEAD account, HEAD container
