@@ -16,6 +16,7 @@
           <choice>
             <value>Enabled</value>
             <value>Disabled</value>
+            <data type="string"/>
           </choice>
         </element>
         <oneOrMore>
