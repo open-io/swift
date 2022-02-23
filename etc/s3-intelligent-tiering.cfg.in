@@ -103,7 +103,7 @@ use = egg:swift#symlink
 use = egg:swift#intelligent_tiering
 # URL: amqp://username:password@host:port[/vitual_host]
 rabbitmq_url = amqp://guest:guest@localhost:5672
-rabbitmq_exchange = swift
+rabbitmq_exchange = pca
 rabbitmq_queue = pca
 # Use durable exchange and queue
 rabbitmq_durable = True
