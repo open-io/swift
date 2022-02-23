@@ -113,7 +113,7 @@ test_intelligent_tiering() {
   # and the bucket status
   OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid --debug 2>&1)
-  echo $OUT | grep "'X-Bucket-Status': 'Locked'"
+  echo $OUT | grep "\"Status\": \"Locked\""
   echo $OUT | grep "\"AccessTier\": \"OVH_ARCHIVE\""
 }
 
