@@ -21,13 +21,11 @@ jobs:
           systemctl disable redis.service
           virtualenv -p /usr/bin/python3 $HOME/swiftenv
           . $HOME/swiftenv/bin/activate
+          pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
           git submodule update --init --remote
-          ( grep -v -e "PyECLib" -e "requests" -e "six" third_party/oio-sds/all-requirements.txt ; grep -v -e "eventlet" -e "lxml" -e "oio" -e "xattr" requirements.txt ) | sort > deps-requirements.txt
-          pip install --upgrade -r deps-requirements.txt
-          cd third_party/oio-sds && python setup.py install && cd ../..
-          python setup.py develop
-          pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
+          cd third_party/oio-sds && pip install -e . && cd ../..
+          pip install -e .
 
       - name: Run unit tests
         script:
