@@ -31,7 +31,7 @@ from swift.common.wsgi import make_pre_authed_request
 
 
 RABBITMQ_QUEUE_NAME = 'pca'
-RABBITMQ_EXCHANGE_NAME = 'swift'
+RABBITMQ_EXCHANGE_NAME = 'pca'
 RABBITMQ_DURABLE = True
 RABBITMQ_AUTO_DELETE = False
 RABBITMQ_MSG_ARCHIVING = 'archive'
