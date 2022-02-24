@@ -1517,6 +1517,8 @@ class S3Request(swob.Request):
             raise AccessDenied()
         if status == HTTP_SERVICE_UNAVAILABLE:
             raise ServiceUnavailable()
+        if status == HTTP_CLIENT_CLOSED_REQUEST:
+            raise RequestTimeout(reason='Client Closed Request')
         if status in (HTTP_RATE_LIMITED, HTTP_TOO_MANY_REQUESTS):
             if self.conf.ratelimit_as_client_error:
                 raise SlowDown(status='429 Slow Down')
