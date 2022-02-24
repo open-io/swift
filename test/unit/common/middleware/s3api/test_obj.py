@@ -539,6 +539,9 @@ class TestS3ApiObj(S3ApiTestCase):
                                        swob.HTTPPreconditionFailed)
         self.assertEqual(code, 'PreconditionFailed')
         code = self._test_method_error('PUT', '/bucket/object',
+                                       swob.HTTPClientDisconnect)
+        self.assertEqual(code, 'RequestTimeout')
+        code = self._test_method_error('PUT', '/bucket/object',
                                        swob.HTTPServiceUnavailable)
         self.assertEqual(code, 'ServiceUnavailable')
         code = self._test_method_error('PUT', '/bucket/object',
