@@ -7,6 +7,7 @@ coverage run -p $(which nosetests) -v \
     --with-xunit --xunit-file=tests_report.xml \
     test/unit/common/middleware/s3api/test_intelligent_tiering.py \
     test/unit/common/middleware/s3api/test_multi_delete.py \
+    test/unit/common/middleware/s3api/test_obj.py \
     test/unit/common/middleware/test_intelligent_tiering.py
 
 # TODO: fix all failed tests and run them all
