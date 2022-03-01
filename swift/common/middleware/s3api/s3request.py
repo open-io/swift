@@ -1140,10 +1140,14 @@ class S3Request(swob.Request):
 
         account = None
         if container:
+            if container.endswith(MULTIUPLOAD_SUFFIX):
+                bucket = container[:-len(MULTIUPLOAD_SUFFIX)]
+            else:
+                bucket = container
             # Anonymous requests do not know in advance the account used.
             if self._is_anonymous:
                 if self.bucket_db:
-                    ct_owner = self.bucket_db.get_owner(container)
+                    ct_owner = self.bucket_db.get_owner(bucket)
                     account = ct_owner if ct_owner else None
                 if account is None:
                     raise NoSuchBucket(container)
@@ -1151,7 +1155,7 @@ class S3Request(swob.Request):
             # that are not in the same account.
             # To properly access the bucket, the owner account must be used.
             elif self.bucket_db:
-                ct_owner = self.bucket_db.get_owner(container)
+                ct_owner = self.bucket_db.get_owner(bucket)
                 account = ct_owner if ct_owner else None
         # Otherwise, use the account used by the request
         if account is None:
