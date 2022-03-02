@@ -39,4 +39,8 @@ jobs:
           pattern: 'tests_report.*.xml'
           tag: '{{.cds.version}}'
 
+      - name: Filter tests reports
+        script:
+          - rm -f tests_report.ceph*.xml
+
       - jUnitReport: '{{.cds.workspace}}/tests_report.*.xml'
