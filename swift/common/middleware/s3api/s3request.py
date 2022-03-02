@@ -1574,6 +1574,27 @@ class S3Request(swob.Request):
 
         return value
 
+    def _authenticate(self, app):
+        """
+        authenticate method will run pre-authenticate request and retrieve
+        account information.
+        Note that it currently supports only keystone and tempauth.
+        (no support for the third party authentication middleware)
+        """
+        sw_req = self.to_swift_req('TEST', None, None, body='')
+        # don't show log message of this request
+        sw_req.environ['swift.proxy_access_log_made'] = True
+
+        sw_resp = sw_req.get_response(app)
+
+        if not self._is_allowed_anonymous_request() \
+                and not sw_req.remote_user:
+            raise SignatureDoesNotMatch(
+                **self.signature_does_not_match_kwargs())
+
+        _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
+                                        2, 3, True)
+
     def get_account_info(self, app):
         """
         Get a dictionary of information about the account, including
@@ -1582,6 +1603,8 @@ class S3Request(swob.Request):
         :returns: a dictionary of account info from
                   swift.controllers.base.get_account_info
         """
+        if not self.is_authenticated:
+            self._authenticate(app)
         sw_req = self.to_swift_req('HEAD', None, None)
         return get_account_info(sw_req.environ, app, swift_source='S3')
 
@@ -1596,19 +1619,7 @@ class S3Request(swob.Request):
         :raises: InternalError when the request failed without 404
         """
         if not self.is_authenticated:
-            sw_req = self.to_swift_req('TEST', None, None, body='')
-            # don't show log message of this request
-            sw_req.environ['swift.proxy_access_log_made'] = True
-
-            sw_resp = sw_req.get_response(app)
-
-            if not self._is_allowed_anonymous_request() \
-                    and not sw_req.remote_user:
-                raise SignatureDoesNotMatch(
-                    **self.signature_does_not_match_kwargs())
-
-            _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
-                                            2, 3, True)
+            self._authenticate(app)
         sw_req = self.to_swift_req(app, self.container_name, None)
         info = get_container_info(sw_req.environ, app, swift_source='S3',
                                   read_caches=read_caches)
