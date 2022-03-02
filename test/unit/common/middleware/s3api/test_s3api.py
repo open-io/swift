@@ -41,7 +41,7 @@ from test.unit.common.middleware.s3api.helpers import FakeSwift
 from test.unit.common.middleware.s3api.test_s3token import \
     GOOD_RESPONSE_V2, GOOD_RESPONSE_V3
 from swift.common.middleware.s3api.s3request import SigV4Request, S3Request
-from swift.common.middleware.s3api.etree import fromstring
+from swift.common.middleware.s3api.etree import Element, fromstring, tostring
 from swift.common.middleware.s3api.s3api import filter_factory, \
     S3ApiMiddleware
 from swift.common.middleware.s3api.s3token import S3Token
@@ -109,15 +109,22 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         # check all defaults
         expected = dict(Config())
         expected.update({
+            'allow_anonymous_path_requests': False,
             'auth_pipeline_check': True,
+            'bucket_db_read_only': False,
             'check_bucket_owner': False,
+            'cors_rules': [],
+            'landing_page': 'https://aws.amazon.com/s3/',
+            'log_s3api_command': False,
             'max_bucket_listing': 1000,
+            'max_buckets_per_account': 100,
             'max_multi_delete_objects': 1000,
             'max_parts_listing': 1000,
             'max_upload_part_num': 1000,
             'min_segment_size': 5242880,
             'multi_delete_concurrency': 2,
             's3_acl': False,
+            's3_only': False,
             'cors_preflight_allow_origin': [],
             'ratelimit_as_client_error': False,
         })
@@ -133,15 +140,23 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'allow_multipart_uploads': False,
             'allow_no_owner': True,
             'allowable_clock_skew': 300,
+            'allow_anonymous_path_requests': True,
             'auth_pipeline_check': False,
+            'bucket_db_read_only': True,
             'check_bucket_owner': True,
+            'cors_allow_origin': 'somewhere.com,some.other.where.io',
+            'landing_page':
+                'https://docs.openstack.org/swift/latest/s3_compat.html',
+            'log_s3api_command': True,
             'max_bucket_listing': 500,
+            'max_buckets_per_account': 1000,
             'max_multi_delete_objects': 600,
             'max_parts_listing': 70,
             'max_upload_part_num': 800,
             'min_segment_size': 1000000,
             'multi_delete_concurrency': 1,
             's3_acl': True,
+            's3_only': True,
             'cors_preflight_allow_origin': 'foo.example.com,bar.example.com',
             'ratelimit_as_client_error': True,
         }
@@ -149,6 +164,25 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         conf['cors_preflight_allow_origin'] = \
             conf['cors_preflight_allow_origin'].split(',')
         conf['storage_domains'] = conf.pop('storage_domain').split(',')
+        expected_cors_rules = []
+        for allow_origin in conf.pop('cors_allow_origin').split(','):
+            rule = Element('CORSRule')
+            allow_origin_elm = Element('AllowedOrigin')
+            allow_origin_elm.text = allow_origin
+            rule.append(allow_origin_elm)
+            for allow_method in ('GET', 'HEAD', 'PUT', 'POST', 'DELETE'):
+                allow_method_elm = Element('AllowedMethod')
+                allow_method_elm.text = allow_method
+                rule.append(allow_method_elm)
+            allowed_header_elm = Element('AllowedHeader')
+            allowed_header_elm.text = '*'
+            rule.append(allowed_header_elm)
+            expected_cors_rules.append(rule)
+        cors_rules = s3api.conf.pop('cors_rules')
+        self.assertEqual(2, len(cors_rules))
+        for expected_cors_rule, cors_rule in zip(
+                expected_cors_rules, cors_rules):
+            self.assertEqual(tostring(expected_cors_rule), tostring(cors_rule))
         self.assertEqual(conf, s3api.conf)
 
         # test allow_origin list with a '*' fails.
@@ -184,6 +218,8 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         check_bad_positive_ints(allowable_clock_skew=0)
         check_bad_positive_ints(max_bucket_listing=-100)
         check_bad_positive_ints(max_bucket_listing=0)
+        check_bad_positive_ints(max_buckets_per_account=-100)
+        check_bad_positive_ints(max_buckets_per_account=0)
         check_bad_positive_ints(max_multi_delete_objects=-100)
         check_bad_positive_ints(max_multi_delete_objects=0)
         check_bad_positive_ints(max_parts_listing=-100)
