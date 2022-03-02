@@ -54,8 +54,9 @@ jobs:
       - optional: true
         name: Save tests report
         script:
-          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.oio.{{.cds.env.TEST_SUITE}}.xml'"
-          - "[ ! -f 'tests_report.oio.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.oio.{{.cds.env.TEST_SUITE}}.xml'"
+          - '[ "{{.cds.env.TEST_SUITE}}" = "ceph-s3tests" -a -f tests_report.xml ] && mv tests_report.xml "tests_report.ceph.s3tests.xml"'
+          - '[ ! -f tests_report.xml ] || mv tests_report.xml "tests_report.oio.{{.cds.env.TEST_SUITE}}.xml"'
+          - '[ ! -f tests_report.*.xml ] || worker upload --tag="{{.cds.version}}" tests_report.*.xml'
 
       - optional: true
         always_executed: true

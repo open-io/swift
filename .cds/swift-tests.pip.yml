@@ -47,8 +47,8 @@ jobs:
       - optional: true
         name: Save tests report
         script:
-          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.{{.cds.env.TEST_SUITE}}.xml'"
-          - "[ ! -f 'tests_report.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.{{.cds.env.TEST_SUITE}}.xml'"
+          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'"
+          - "[ ! -f 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'"
 
       - optional: true
         always_executed: true
