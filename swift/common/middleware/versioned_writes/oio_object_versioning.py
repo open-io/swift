@@ -449,8 +449,7 @@ class OioContainerContext(ContainerContext):
         # NB: no end_marker support (yet)
         versions_req.params = {
             k: params.get(k, '')
-            for k in ('prefix', 'marker', 'limit', 'delimiter', 'reverse',
-                      'format')}
+            for k in ('prefix', 'marker', 'limit', 'delimiter', 'reverse')}
         versions_resp = versions_req.get_response(self.app)
 
         if versions_resp.status_int == HTTP_NOT_FOUND:

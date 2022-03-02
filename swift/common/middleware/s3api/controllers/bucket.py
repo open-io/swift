@@ -361,7 +361,6 @@ class BucketController(Controller):
         else:
             self.set_s3api_command(req, 'list-objects')
 
-        query['format'] = 'json'
         resp = req.get_response(self.app, query=query)
 
         objects = json.loads(resp.body)

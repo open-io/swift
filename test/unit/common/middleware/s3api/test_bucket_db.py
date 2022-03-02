@@ -163,7 +163,7 @@ class TestSwift3BucketDb(S3ApiTestCase):
               "hash": "0000",
               "bytes": 0}]).encode('utf-8')
         self.swift.register('GET',
-                            '/v1/AUTH_test/bucket?format=json&limit=1001',
+                            '/v1/AUTH_test/bucket?limit=1001',
                             swob.HTTPOk, {}, expected_body)
         # Then do a call with 'test2' account, that should be changed
         # to 'test' by the middleware (because the bucket 'bucket' belongs
