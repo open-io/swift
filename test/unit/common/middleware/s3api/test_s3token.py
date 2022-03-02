@@ -603,7 +603,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
 
         self.assertTrue(MOCK_REQUEST.called)
         tenant = GOOD_RESPONSE_V2['access']['token']['tenant']
-        expected_cache = (expected_headers, tenant, 'secret')
+        expected_cache = (expected_headers, None, tenant, 'secret')
         cache.set.assert_called_once_with('s3secret/access', expected_cache,
                                           time=20)
 
