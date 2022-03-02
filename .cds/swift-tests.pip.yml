@@ -45,6 +45,7 @@ jobs:
           - worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.{{.cds.env.TEST_SUITE}}'
 
       - optional: true
+        always_executed: true
         name: Save tests report
         script:
           - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'"
