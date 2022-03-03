@@ -48,7 +48,6 @@ import ctypes.util
 from optparse import OptionParser
 import traceback
 import warnings
-from getpass import getuser
 
 from tempfile import gettempdir, mkstemp, NamedTemporaryFile
 import glob
@@ -2580,9 +2579,8 @@ def drop_privileges(user):
     if os.geteuid() == 0:
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         os.setgroups(groups)
-    current_user = getuser()
-    if user != current_user:
-        user = pwd.getpwnam(user)
+    user = pwd.getpwnam(user)
+    if os.getegid() != user[3] or os.geteuid() != user[2]:
         os.setgid(user[3])
         os.setuid(user[2])
         os.environ['HOME'] = user[5]

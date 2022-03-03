@@ -2558,7 +2558,30 @@ log_name = %(yarr)s'''
         self.assertEqual(conf, expected)
 
     def test_drop_privileges(self):
-        required_func_calls = ('setgroups', 'setgid', 'setuid')
+        try:
+            required_func_calls = ('setgroups', 'setgid', 'setuid')
+            mock_os = MockOs(called_funcs=required_func_calls)
+            user = 'man'
+            user_data = pwd.getpwnam(user)
+            self.assertFalse(mock_os.called_funcs)  # sanity check
+            # over-ride os with mock
+            with mock.patch('swift.common.utils.os', mock_os):
+                # exercise the code
+                utils.drop_privileges(user)
+
+            for func in required_func_calls:
+                self.assertIn(func, mock_os.called_funcs)
+            self.assertEqual(user_data[5], mock_os.environ['HOME'])
+            groups = {g.gr_gid for g in grp.getgrall() if user in g.gr_mem}
+            self.assertEqual(groups, set(mock_os.called_funcs['setgroups'][0]))
+            self.assertEqual(user_data[3], mock_os.called_funcs['setgid'][0])
+            self.assertEqual(user_data[2], mock_os.called_funcs['setuid'][0])
+        finally:
+            utils.drop_privileges(getuser())
+
+    def test_drop_privileges_with_current_user(self):
+        required_func_calls = ('setgroups',)
+        not_required_func_calls = ('setgid', 'setuid')
         mock_os = MockOs(called_funcs=required_func_calls)
         user = getuser()
         user_data = pwd.getpwnam(user)
@@ -2570,14 +2593,36 @@ log_name = %(yarr)s'''
 
         for func in required_func_calls:
             self.assertIn(func, mock_os.called_funcs)
+        for func in not_required_func_calls:
+            self.assertNotIn(func, mock_os.called_funcs)
         self.assertEqual(user_data[5], mock_os.environ['HOME'])
         groups = {g.gr_gid for g in grp.getgrall() if user in g.gr_mem}
         self.assertEqual(groups, set(mock_os.called_funcs['setgroups'][0]))
-        self.assertEqual(user_data[3], mock_os.called_funcs['setgid'][0])
-        self.assertEqual(user_data[2], mock_os.called_funcs['setuid'][0])
 
     def test_drop_privileges_no_setgroups(self):
-        required_func_calls = ('geteuid', 'setgid', 'setuid')
+        try:
+            required_func_calls = ('geteuid', 'setgid', 'setuid')
+            mock_os = MockOs(called_funcs=required_func_calls)
+            user = 'man'
+            user_data = pwd.getpwnam(user)
+            self.assertFalse(mock_os.called_funcs)  # sanity check
+            # over-ride os with mock
+            with mock.patch('swift.common.utils.os', mock_os):
+                # exercise the code
+                utils.drop_privileges(user)
+
+            for func in required_func_calls:
+                self.assertIn(func, mock_os.called_funcs)
+            self.assertNotIn('setgroups', mock_os.called_funcs)
+            self.assertEqual(user_data[5], mock_os.environ['HOME'])
+            self.assertEqual(user_data[3], mock_os.called_funcs['setgid'][0])
+            self.assertEqual(user_data[2], mock_os.called_funcs['setuid'][0])
+        finally:
+            utils.drop_privileges(getuser())
+
+    def test_drop_privileges_no_setgroups_with_current_user(self):
+        required_func_calls = ('geteuid',)
+        not_required_func_calls = ('setgroups', 'setgid', 'setuid')
         mock_os = MockOs(called_funcs=required_func_calls)
         user = getuser()
         user_data = pwd.getpwnam(user)
@@ -2589,10 +2634,9 @@ log_name = %(yarr)s'''
 
         for func in required_func_calls:
             self.assertIn(func, mock_os.called_funcs)
-        self.assertNotIn('setgroups', mock_os.called_funcs)
+        for func in not_required_func_calls:
+            self.assertNotIn(func, mock_os.called_funcs)
         self.assertEqual(user_data[5], mock_os.environ['HOME'])
-        self.assertEqual(user_data[3], mock_os.called_funcs['setgid'][0])
-        self.assertEqual(user_data[2], mock_os.called_funcs['setuid'][0])
 
     def test_clean_up_daemon_hygene(self):
         required_func_calls = ('chdir', 'umask')
