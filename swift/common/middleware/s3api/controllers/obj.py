@@ -267,7 +267,6 @@ class ObjectController(Controller):
         """
         version_id = version_id_param(req)
         self.set_s3api_command(req, 'delete-object')
-
         if version_id not in ('null', None):
             container_info = req.get_container_info(self.app)
             if not container_info.get(

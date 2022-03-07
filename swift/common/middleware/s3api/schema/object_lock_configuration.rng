@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <include href="common.rng"/>
+  <start>
+    <element name="ObjectLockConfiguration">
+      <interleave>
+        <element name="ObjectLockEnabled">
+          <choice>
+            <value>Enabled</value>
+            <value>Disabled</value>
+            <data type="string"/>
+          </choice>
+        </element>
+        <element name="Rule">
+          <element name="DefaultRetention">
+            <interleave>
+              <element name="Mode">
+                <data type="string"/>
+              </element>
+              <zeroOrMore>
+                <element name="Days">
+                  <data type="int"/>
+                </element>
+              </zeroOrMore>
+               <zeroOrMore>
+                <element name="Years">
+                  <data type="int"/>
+                </element>
+              </zeroOrMore>
+            </interleave>
+          </element>
+        </element>
+      </interleave>
+    </element>
+  </start>
+</grammar>

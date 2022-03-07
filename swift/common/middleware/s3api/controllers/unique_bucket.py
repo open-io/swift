@@ -19,6 +19,7 @@ from swift.common.middleware.s3api.controllers.base import \
     check_bucket_storage_domain
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
     BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable, InternalError
+from swift.common.middleware.s3api.utils import sysmeta_header
 
 
 class UniqueBucketController(BucketController):
@@ -32,7 +33,11 @@ class UniqueBucketController(BucketController):
         Handle PUT Bucket request
         """
         self.set_s3api_command(req, 'create-bucket')
-
+        if 'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED' in req.environ:
+            req.headers[sysmeta_header(
+                'bucket',
+                'bucket-object-lock-enabled')] =\
+                req.environ['HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED']
         if self.conf.bucket_db_read_only:
             raise ServiceUnavailable('Bucket DB is read-only')
 
@@ -44,7 +49,11 @@ class UniqueBucketController(BucketController):
                 raise BucketAlreadyOwnedByYou(req.container_name)
             raise BucketAlreadyExists(req.container_name)
         try:
+            if 'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED' in req.environ:
+                self.set_s3api_command(req, 'put-bucket-versioning')
+                req.headers['X-Versions-Enabled'] = 'true'
             resp = super(UniqueBucketController, self).PUT(req)
+
         except Exception:
             # Container creation failed, remove reservation
             req.bucket_db.release(req.container_name, req.account)

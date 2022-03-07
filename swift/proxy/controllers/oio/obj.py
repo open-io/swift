@@ -848,5 +848,9 @@ class ObjectController(BaseObjectController):
         except exceptions.NoSuchObject:
             # Swift doesn't consider this case as an error
             pass
+        except Exception as exc:
+            if 'retain until object' in str(exc) or  \
+                'locked bucket' in str(exc):
+                return HTTPNotFound(request=req)
         resp = HTTPNoContent(request=req)
         return resp

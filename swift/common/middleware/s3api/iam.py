@@ -48,6 +48,7 @@ RT_BUCKET = "Bucket"
 SUPPORTED_ACTIONS = {
     "s3:AbortMultipartUpload": (RT_OBJECT, ),
     "s3:CreateBucket": (RT_BUCKET, ),
+    "s3:BypassGovernanceRetention": (RT_OBJECT, ),
     "s3:DeleteBucket": (RT_BUCKET, ),
     "s3:DeleteBucketTagging": (RT_BUCKET, ),
     "s3:DeleteIntelligentTieringConfiguration": (RT_BUCKET, ),
@@ -78,6 +79,12 @@ SUPPORTED_ACTIONS = {
     "s3:PutObject": (RT_OBJECT, ),
     "s3:PutObjectAcl": (RT_OBJECT, ),
     "s3:PutObjectTagging": (RT_OBJECT, ),
+    "s3:GetObjectLockConfiguration": (RT_BUCKET, ),
+    "s3:PutObjectLockConfiguration": (RT_BUCKET, ),
+    "s3:GetObjectRetention": (RT_OBJECT, ),
+    "s3:PutObjectRetention": (RT_OBJECT, ),
+    "s3:GetObjectLegalHold": (RT_OBJECT, ),
+    "s3:PutObjectLegalHold": (RT_OBJECT, ),
 }
 
 IAM_ACTION = 'swift.iam.action'
