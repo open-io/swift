@@ -23,6 +23,8 @@ from swift.common.swob import Range, content_range_header_value, \
 from swift.common.utils import public, list_from_csv, config_true_value
 from swift.common.registry import get_swift_info
 
+from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
+    SSEC_KEY_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
@@ -36,7 +38,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError, HTTPOk, CORSForbidden, \
-    CORSInvalidAccessControlRequest, CORSOriginMissing
+    CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest
 
 
 def version_id_param(req):
@@ -124,6 +126,12 @@ class ObjectController(Controller):
 
         if req.method == 'HEAD':
             resp.app_iter = None
+            # HEAD requests without keys on encrypted objects are allowed for
+            # internal usage (e.g. ACLs). But we should deny them when they
+            # come from the outside.
+            if (config_true_value(resp.sw_headers.get('X-Object-Is-Encrypted'))
+                    and SSEC_KEY_HEADER not in req.headers):
+                raise BadRequest(MISSING_KEY_MSG)
 
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)

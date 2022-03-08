@@ -363,6 +363,10 @@ class DecrypterObjContext(BaseDecrypterContext):
             return app_resp
 
         mod_resp_headers = self.decrypt_resp_headers(put_keys, post_keys)
+        # Some middlewares need to know the object is encrypted with a
+        # customer-provided key.
+        if self.crypto.ssec_mode:
+            mod_resp_headers.append(('X-Object-Is-Encrypted', True))
 
         if put_crypto_meta and req.method == 'GET' and \
                 is_success(self._get_status_int()):
