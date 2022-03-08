@@ -135,7 +135,7 @@ class BucketController(Controller):
                 'version-id-marker'))
             if 'key-marker' in req.params:
                 query['marker'] = swob.wsgi_to_str(req.params['key-marker'])
-                if version_marker is not None:
+                if version_marker:
                     if version_marker != 'null':
                         try:
                             Timestamp(version_marker)
