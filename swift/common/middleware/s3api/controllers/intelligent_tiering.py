@@ -136,6 +136,12 @@ class IntelligentTieringController(Controller):
         """
         Handles PutBucketIntelligentTieringConfiguration
         """
+        # Raises NoSuchBucket if bucket does not exist.
+        info = req.get_container_info(self.app)
+        # At least 1 object must be in the bucket to archive it.
+        if not info or info['object_count'] < 1:
+            raise BadRequest("Bucket is empty")
+
         tiering_id = req.params.get('id')
         body = req.xml(MAX_TIERING_BODY_SIZE)
         try:

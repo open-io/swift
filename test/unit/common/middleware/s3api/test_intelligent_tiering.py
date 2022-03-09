@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from unittest.mock import patch
 from swift.common.middleware.s3api.etree import fromstring, tostring
 
 from test.unit.common.middleware.s3api import S3ApiTestCase
@@ -22,7 +23,8 @@ from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
 from swift.common.middleware.s3api.controllers.intelligent_tiering \
     import TIERING_CALLBACK, header_name_from_id, xml_conf_to_dict
-from swift.common.middleware.s3api.s3response import InvalidBucketState
+from swift.common.middleware.s3api.s3response import InvalidBucketState, \
+    NoSuchBucket
 
 
 TIERING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -48,6 +50,8 @@ TIERING_XML_WITHOUT_ID = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 TIERING_HEADER = header_name_from_id('myid')
+MOCK_REQ_GET_CONT_INFO = 'swift.common.middleware.s3api.s3request.S3Request.' \
+    'get_container_info'
 
 
 def tiering_callback_ok(req, conf):
@@ -87,7 +91,8 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         conf = xml_conf_to_dict(TIERING_XML)
         self.assertEqual(expected, conf)
 
-    def test_PUT_missing_id_in_req(self):
+    @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 10})
+    def test_PUT_missing_id_in_req(self, _mock):
         req = Request.blank('/test-tiering?intelligent-tiering',
                             environ={'REQUEST_METHOD': 'PUT',
                                      TIERING_CALLBACK: tiering_callback_ok},
@@ -100,7 +105,8 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('400 Bad Request', status)
         self.assertEqual('BadRequest', self._get_error_code(body))
 
-    def test_PUT_missing_id_in_xml(self):
+    @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 10})
+    def test_PUT_missing_id_in_xml(self, _mock):
         req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
                             environ={'REQUEST_METHOD': 'PUT',
                                      TIERING_CALLBACK: tiering_callback_ok},
@@ -126,7 +132,8 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('400 Bad Request', status)
         self.assertEqual('BadRequest', self._get_error_code(body))
 
-    def test_PUT_inconsistent_no_tiering_callback(self):
+    @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 10})
+    def test_PUT_inconsistent_no_tiering_callback(self, _mock):
         req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
                             environ={'REQUEST_METHOD': 'PUT'},
                             body=TIERING_XML,
@@ -138,7 +145,8 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('501 Not Implemented', status)
         self.assertEqual('NotImplemented', self._get_error_code(body))
 
-    def test_PUT_ok(self):
+    @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 10})
+    def test_PUT_ok(self, _mock):
         self.swift.register('POST', '/v1/AUTH_test/test-tiering',
                             HTTPNoContent, {}, None)
         req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
@@ -158,7 +166,8 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual(TIERING_XML.decode('utf-8'),
                          calls[0].headers[TIERING_HEADER])
 
-    def test_PUT_invalid_bucket_state(self):
+    @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 10})
+    def test_PUT_invalid_bucket_state(self, _mock):
         req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
                             environ={'REQUEST_METHOD': 'PUT',
                                      TIERING_CALLBACK:
@@ -171,6 +180,39 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
 
         self.assertEqual('409 Conflict', status)
         self.assertEqual('InvalidBucketState', self._get_error_code(body))
+        calls = self.swift.calls_with_headers
+        self.assertEqual(0, len(calls))
+
+    @patch(MOCK_REQ_GET_CONT_INFO, side_effect=NoSuchBucket('bucket'))
+    def test_PUT_no_bucket(self, _mock):
+        req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     TIERING_CALLBACK: tiering_callback_ok},
+                            body=TIERING_XML,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _headers, body = self.call_s3api(req)
+
+        self.assertEqual('404 Not Found', status)
+        self.assertEqual('NoSuchBucket', self._get_error_code(body))
+        calls = self.swift.calls_with_headers
+        self.assertEqual(0, len(calls))
+
+    @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 0})
+    def test_PUT_empty_bucket(self, _mock):
+        req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     TIERING_CALLBACK: tiering_callback_ok},
+                            body=TIERING_XML,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _headers, body = self.call_s3api(req)
+
+        self.assertEqual('400 Bad Request', status)
+        self.assertEqual('BadRequest', self._get_error_code(body))
+        self.assertEqual('Bucket is empty', self._get_error_message(body))
         calls = self.swift.calls_with_headers
         self.assertEqual(0, len(calls))
 
