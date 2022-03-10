@@ -329,13 +329,8 @@ class TestIAMIntelligentTiering(unittest.TestCase):
         rules = self.app._iam_generate_rules(status, self.CONTAINER_NAME)
         expected_rules = {
             'Statement': [{
-                'Sid': 'IntelligentTieringBucket',
-                'Action': ['s3:DeleteBucket'],
-                'Effect': 'Deny',
-                'Resource': ['arn:aws:s3:::' + self.CONTAINER_NAME]
-            }, {
                 'Sid': 'IntelligentTieringObjects',
-                'Action': ['s3:GetObject', 's3:DeleteObject'],
+                'Action': ['s3:GetObject'],
                 'Effect': 'Deny',
                 'Resource': ['arn:aws:s3:::' + self.CONTAINER_NAME + '/*']
             }]

@@ -49,6 +49,7 @@ test_create_object_with_iam() {
 
   # but can create objects prefixed by its user name
   ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic
+  ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic2
 
   # admin can create any object in the shared bucket
   ${AWSA1ADM} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic
@@ -60,6 +61,7 @@ test_create_object_without_iam() {
 
   # and can create objects prefixed by its user name
   ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic
+  ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic2
 }
 
 test_intelligent_tiering() {
@@ -71,9 +73,8 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U1} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 10)
   echo "$OUT" | grep "user1_magic"
 
-  # user1 cannot delete any object in the bucket (Intelligent-tiering deny)
-  OUT=$(${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 can delete object in the bucket before archiving
+  ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic2
 
   # Ask for ARCHIVE operation
   ${AWSA1U1} s3api put-bucket-intelligent-tiering-configuration \

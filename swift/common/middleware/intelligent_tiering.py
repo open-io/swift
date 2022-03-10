@@ -80,10 +80,11 @@ BUCKET_ALLOWED_TRANSITIONS = {
 # Default authorized actions.
 # Written like in a conf (strings comma separated)
 DEFAULT_IAM_CREATE_BUCKET_ACTIONS = BUCKET_STATE_NONE
-DEFAULT_IAM_DELETE_BUCKET_ACTIONS = BUCKET_STATE_FLUSHED
+DEFAULT_IAM_DELETE_BUCKET_ACTIONS = BUCKET_STATE_NONE + ',' + \
+    BUCKET_STATE_FLUSHED
 DEFAULT_IAM_PUT_OBJECT_ACTIONS = BUCKET_STATE_NONE
 DEFAULT_IAM_GET_OBJECT_ACTIONS = BUCKET_STATE_RESTORED
-DEFAULT_IAM_DELETE_OBJECT_ACTIONS = None
+DEFAULT_IAM_DELETE_OBJECT_ACTIONS = BUCKET_STATE_NONE
 
 # AccessTier definitions
 TIERING_ACTION_TIER_ARCHIVE = 'OVH_ARCHIVE'
@@ -195,13 +196,13 @@ class IntelligentTieringMiddleware(object):
 
     def _add_iam_states(self, conf_name, default, action):
         conf_states = self.conf.get(conf_name, default)
+        self.iam_rules[action] = []
         if conf_states:
             for state in conf_states.split(','):
+                state = state.strip()
                 if state not in BUCKET_ALLOWED_TRANSITIONS:
                     raise ValueError('Bucket state %s unknown' % state)
-            self.iam_rules[action] = conf_states.split(',')
-        else:
-            self.iam_rules[action] = []
+                self.iam_rules[action].append(state)
 
     def __init__(self, app, conf, logger=None):
         self.app = app

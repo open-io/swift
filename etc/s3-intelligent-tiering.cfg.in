@@ -116,7 +116,7 @@ rabbitmq_auto_delete = False
 #   None, Locked, Archiving, Draining, Archived, Restoring, 
 #   Restored, Deleting, Flushed
 it_iam_create_bucket_actions = None
-it_iam_delete_bucket_actions = Flushed
+it_iam_delete_bucket_actions = None, Flushed
 it_iam_put_object_actions = None
 it_iam_get_object_actions = Restored
-it_iam_delete_object_actions =
+it_iam_delete_object_actions = None
