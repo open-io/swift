@@ -159,6 +159,8 @@ class S3Token(object):
         self._timeout = float(conf.get('http_timeout', '10.0'))
         if not (0 < self._timeout <= 60):
             raise ValueError('http_timeout must be between 0 and 60 seconds')
+        self._reseller_admin_role = conf.get('reseller_admin_role',
+                                             'ResellerAdmin').lower()
         self._reseller_prefix = append_underscore(
             conf.get('reseller_prefix', 'AUTH'))
         self._delay_auth_decision = config_true_value(
@@ -311,9 +313,17 @@ class S3Token(object):
         # have the reseller right it will just fail but since the
         # reseller account can connect to every account it is allowed
         # by the swift_auth middleware.
+        # NOTE(fvenneti): When s3_acl is enabled, the response from
+        # keystoneauth is ignored. Therefore we must check the user
+        # is ResellerAdmin here. This is done a few lines below.
         force_tenant = None
+        force_tenant_name = None
+        force_user_name = None
         if ':' in access:
-            access, force_tenant = access.split(':')
+            access, force_tenant = access.split(':', 1)
+            if ':' in force_tenant:
+                force_tenant, force_tenant_name, force_user_name = \
+                    force_tenant.split(':', 2)
 
         # Authenticate request.
         creds = {'credentials': {'access': access,
@@ -446,6 +456,13 @@ class S3Token(object):
         req.environ['keystone.regions_per_type'] = regions_per_type
         # /OVH
 
+        if force_tenant:
+            user_roles = (r.lower()
+                          for r in headers.get('X-Roles', '').split(','))
+            if self._reseller_admin_role not in user_roles:
+                return self._deny_request('AccessDenied')(
+                    environ, start_response)
+
         req.headers.update(headers)
         tenant_to_connect = force_tenant or tenant['id']
         if six.PY2 and isinstance(tenant_to_connect, six.text_type):
@@ -454,6 +471,11 @@ class S3Token(object):
         new_tenant_name = '%s%s' % (self._reseller_prefix, tenant_to_connect)
         environ['PATH_INFO'] = environ['PATH_INFO'].replace(account,
                                                             new_tenant_name)
+        if force_tenant_name and force_user_name:
+            self._logger.debug('Impersonating user %s:%s',
+                               force_tenant_name, force_user_name)
+            environ['HTTP_X_TENANT_NAME'] = force_tenant_name
+            environ['HTTP_X_USER_NAME'] = force_user_name
         if self._logger.isEnabledFor(logging.DEBUG):
             resp_times = '\t'.join('s3token_%s_float:%.6f' % (k, v)
                                    for k, v in environ['s3token.time'].items())

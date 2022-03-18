@@ -36,6 +36,7 @@ GOOD_RESPONSE_V2 = {'access': {
         'name': 'S3_USER',
         'id': 'USER_ID',
         'roles': [
+            {'name': 'ResellerAdmin'},
             {'name': 'swift-user'},
             {'name': '_member_'},
         ],
@@ -66,6 +67,7 @@ GOOD_RESPONSE_V3 = {'token': {
         'id': 'PROJECT_ID',
     },
     'roles': [
+        {'name': 'ResellerAdmin'},
         {'name': 'swift-user'},
         {'name': '_member_'},
     ],
@@ -206,7 +208,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         self.assertNotIn('X-Auth-Token', req.headers)
         expected_headers = {
             'X-Identity-Status': 'Confirmed',
-            'X-Roles': 'swift-user,_member_',
+            'X-Roles': 'ResellerAdmin,swift-user,_member_',
             'X-User-Id': 'USER_ID',
             'X-User-Name': 'S3_USER',
             'X-Tenant-Id': 'TENANT_ID',
@@ -319,8 +321,30 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
             'signature': u'signature',
             'string_to_sign': u'token',
         }
-        req.get_response(self.middleware)
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, 200)
         self._assert_authorized(req, account_path='/v1/AUTH_FORCED_TENANT_ID/')
+
+    def test_force_tenant_denial(self):
+        """
+        Check a user who is not ResellerAdmin cannot access another tenant.
+        """
+        resp_without_admin_role = copy.deepcopy(GOOD_RESPONSE_V2)
+        resp_without_admin_role['access']['user']['roles'] = \
+            resp_without_admin_role['access']['user']['roles'][1:]
+        self.requests_mock.post(self.TEST_URL,
+                                status_code=200,
+                                json=resp_without_admin_role)
+
+        req = Request.blank('/v1/AUTH_swiftint/c/o')
+        req.environ['s3api.auth_details'] = {
+            'access_key': u'access:FORCED_TENANT_ID',
+            'signature': u'signature',
+            'string_to_sign': u'token',
+        }
+        s3_denied_req = self.middleware._deny_request('AccessDenied')
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, s3_denied_req.status_int)
 
     @mock.patch.object(requests, 'post')
     def test_insecure(self, MOCK_REQUEST):
@@ -592,7 +616,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.get_response(self.middleware)
         expected_headers = {
             'X-Identity-Status': u'Confirmed',
-            'X-Roles': u'swift-user,_member_',
+            'X-Roles': u'ResellerAdmin,swift-user,_member_',
             'X-User-Id': u'USER_ID',
             'X-User-Name': u'S3_USER',
             'X-Tenant-Id': u'TENANT_ID',
@@ -803,17 +827,19 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
                                 json=GOOD_RESPONSE_V3)
 
     def _assert_authorized(self, req,
-                           account_path='/v1/AUTH_PROJECT_ID/'):
+                           account_path='/v1/AUTH_PROJECT_ID/',
+                           tenant_name='PROJECT_NAME',
+                           user_name='S3_USER'):
         self.assertTrue(req.path.startswith(account_path))
         expected_headers = {
             'X-Identity-Status': 'Confirmed',
-            'X-Roles': 'swift-user,_member_',
+            'X-Roles': 'ResellerAdmin,swift-user,_member_',
             'X-User-Id': 'USER_ID',
-            'X-User-Name': 'S3_USER',
+            'X-User-Name': user_name,
             'X-User-Domain-Id': 'default',
             'X-User-Domain-Name': 'Default',
             'X-Tenant-Id': 'PROJECT_ID',
-            'X-Tenant-Name': 'PROJECT_NAME',
+            'X-Tenant-Name': tenant_name,
             'X-Project-Id': 'PROJECT_ID',
             'X-Project-Name': 'PROJECT_NAME',
             'X-Project-Domain-Id': 'PROJECT_DOMAIN_ID',
@@ -902,8 +928,43 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
             'signature': u'signature',
             'string_to_sign': u'token',
         }
-        req.get_response(self.middleware)
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, 200)
         self._assert_authorized(req, account_path='/v1/AUTH_FORCED_TENANT_ID/')
+
+    def test_force_tenant_denial(self):
+        """
+        Check a user who is not ResellerAdmin cannot access another tenant.
+        """
+        resp_without_admin_role = copy.deepcopy(GOOD_RESPONSE_V3)
+        resp_without_admin_role['token']['roles'] = \
+            resp_without_admin_role['token']['roles'][1:]
+        self.requests_mock.post(self.TEST_URL,
+                                status_code=200,
+                                json=resp_without_admin_role)
+
+        req = Request.blank('/v1/AUTH_swiftint/c/o')
+        req.environ['s3api.auth_details'] = {
+            'access_key': u'access:FORCED_TENANT_ID',
+            'signature': u'signature',
+            'string_to_sign': u'token',
+        }
+        s3_denied_req = self.middleware._deny_request('AccessDenied')
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, s3_denied_req.status_int)
+
+    def test_impersonate_user(self):
+        req = Request.blank('/v1/AUTH_swiftint/c/o')
+        req.environ['s3api.auth_details'] = {
+            'access_key': u'access:FORCED_ID:FORCED_TENANT:FORCED_USER',
+            'signature': u'signature',
+            'string_to_sign': u'token',
+        }
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, 200)
+        self._assert_authorized(req, account_path='/v1/AUTH_FORCED_ID/',
+                                tenant_name='FORCED_TENANT',
+                                user_name='FORCED_USER')
 
     def _test_bad_reply_missing_parts(self, *parts):
         resp = copy.deepcopy(GOOD_RESPONSE_V3)

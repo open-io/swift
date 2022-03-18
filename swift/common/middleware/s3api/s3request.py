@@ -1602,10 +1602,8 @@ class S3Request(swob.Request):
 
     def _authenticate(self, app):
         """
-        authenticate method will run pre-authenticate request and retrieve
-        account information.
-        Note that it currently supports only keystone and tempauth.
-        (no support for the third party authentication middleware)
+        Simplified version of authenticate(), not doing anything with
+        user name, only decoding the account name.
         """
         sw_req = self.to_swift_req('TEST', None, None, body='')
         # don't show log message of this request

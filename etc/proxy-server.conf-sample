@@ -814,6 +814,10 @@ use = egg:swift#s3api
 # - s3token_time[set_cache]: save the secret in memcache
 use = egg:swift#s3token
 
+# This role is allowed to impersonate any user. We suggest to set the same
+# role as in keystoneauth.
+#reseller_admin_role = ResellerAdmin
+
 # Prefix that will be prepended to the tenant to form the account
 reseller_prefix = AUTH_
 
