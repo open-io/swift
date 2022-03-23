@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 OpenStack Foundation
+# Copyright (C) 2015-2022 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ def handle_service_busy(fnc):
         try:
             return fnc(self, req, *args, **kwargs)
         except (ServiceBusy, ServiceUnavailable) as err:
-            headers = dict()
+            headers = {}
             headers['Retry-After'] = '1'
             return HTTPServiceUnavailable(request=req, headers=headers,
                                           body=err.message)
@@ -62,7 +62,7 @@ def handle_not_allowed(fnc):
         try:
             return fnc(self, req, *args, **kwargs)
         except MethodNotAllowed as exc:
-            headers = dict()
+            headers = {}
             if 'worm' in exc.message.lower():
                 headers['Allow'] = 'GET, HEAD, PUT'
             else:
@@ -82,7 +82,7 @@ def handle_oio_timeout(fnc):
         try:
             return fnc(self, req, *args, **kwargs)
         except (DeadlineReached, OioTimeout) as exc:
-            headers = dict()
+            headers = {}
             # TODO(FVE): choose the value according to the timeout
             headers['Retry-After'] = '1'
             return HTTPServiceUnavailable(request=req, headers=headers,
@@ -139,15 +139,6 @@ class RedisDb(RedisConnection):
 
         self._script_zkeys = None
 
-        # The interface of the zadd() method has changed in redis-py 3.0.0,
-        # we have to check which version we are running, and create the zset
-        # wrapper accordingly.
-        import inspect
-        if 'mapping' not in inspect.getargspec(self.conn.zadd).args:
-            self.zset = self.zset_legacy
-        else:
-            self.zset = self.zset3
-
     @catch_service_errors
     def get(self, key):
         return self.conn.get(key)
@@ -161,14 +152,9 @@ class RedisDb(RedisConnection):
         return self.conn.hget(key, path)
 
     @catch_service_errors
-    def zset3(self, key, path):
+    def zset(self, key, path):
         """Wrapper for the zadd method."""
         return self.conn.zadd(key, {path: 1}, nx=True)
-
-    @catch_service_errors
-    def zset_legacy(self, key, path):
-        """Wrapper for the zadd method."""
-        return self.conn.zadd(key, 1, path)
 
     @catch_service_errors
     def hdel(self, key, hkey):
