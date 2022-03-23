@@ -95,10 +95,6 @@ use = egg:swift#symlink
 # response will be produced.
 # symloop_max = 2
 
-[filter:ephemeral_objects]
-use = egg:swift#ephemeral_objects
-connection = redis://127.0.0.1:6379
-
 [filter:keymaster]
 use = egg:swift#ssec_keymaster
 # Sets the path from which the keymaster config options should be read.

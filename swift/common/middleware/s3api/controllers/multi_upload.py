@@ -111,7 +111,6 @@ def _get_upload_info(req, app, upload_id):
     # for the upload marker. Until we get around to fixing that, just pop
     # it off for now...
     copy_source = req.headers.pop('X-Amz-Copy-Source', None)
-    req.environ['oio.ephemeral_object'] = True
     try:
         return req.get_response(app, 'HEAD', container=container, obj=obj)
     except NoSuchKey:
@@ -127,7 +126,6 @@ def _get_upload_info(req, app, upload_id):
         # ...making sure to restore any copy-source before returning
         if copy_source is not None:
             req.headers['X-Amz-Copy-Source'] = copy_source
-        req.environ['oio.ephemeral_object'] = False
 
 
 def _make_complete_body(req, s3_etag, yielded_anything):
@@ -601,7 +599,6 @@ class UploadsController(Controller):
 
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)
-        req.environ['oio.ephemeral_object'] = True
 
         req.get_response(self.app, 'PUT', seg_container, obj, body='')
 
@@ -760,9 +757,7 @@ class UploadController(Controller):
         # then it was completed and we return an error here.
         container = req.container_name + MULTIUPLOAD_SUFFIX
         obj = '%s/%s' % (req.object_name, upload_id)
-        req.environ['oio.ephemeral_object'] = True
         req.get_response(self.app, container=container, obj=obj)
-        req.environ['oio.ephemeral_object'] = False
 
         # The completed object was not found so this
         # must be a multipart upload abort.
@@ -987,7 +982,6 @@ class UploadController(Controller):
 
                 # clean up the multipart-upload record
                 obj = '%s/%s' % (req.object_name, upload_id)
-                req.environ['oio.ephemeral_object'] = True
                 try:
                     req.get_response(self.app, 'DELETE', container, obj)
                 except NoSuchKey:
