@@ -116,7 +116,7 @@ class TestS3Versioning(unittest.TestCase):
         version = self._create_mpu_object(key)
         self._run_versioning_test(key, versions=[version])
 
-    def test_two_mpu_object(self):
+    def test_two_mpu_objects(self):
         key = random_str(20)
         version1 = self._create_mpu_object(key)
         version2 = self._create_mpu_object(key)

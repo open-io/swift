@@ -131,7 +131,7 @@ class OioObjectContext(ObjectContext):
             raise HTTPBadRequest(
                 'version-aware operations require that the container is '
                 'versioned', request=req)
-        req.environ['oio.query'] = {'version': version}
+        req.environ.setdefault('oio.query', {})['version'] = version
         if version != 'null':
             try:
                 int(version)

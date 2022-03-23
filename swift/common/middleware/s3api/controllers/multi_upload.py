@@ -821,7 +821,7 @@ class UploadController(Controller):
                 headers['x-object-meta-' + _key[11:]] = val
             elif _key == 'x-amz-version-id':
                 # As heartbeat is enabled, the headers are sent before calling
-                # SLO, we will reuse version-id of the uploadId
+                # SLO, we will reuse the version-id of the MPU placeholder
                 version_id = val
         for key, val in resp.sysmeta_headers.items():
             _key = key.lower()
@@ -934,14 +934,14 @@ class UploadController(Controller):
 
             try:
                 try:
-                    # Force version-id to use version-id of the uploadId
-                    req.environ['oio.force-version'] = version_id
+                    # Reuse the same version-id as the MPU placeholder
+                    req.environ.setdefault('oio.query', {})['new_version'] = \
+                        version_id
                     put_resp = req.get_response(
                         self.app, 'PUT', body=json.dumps(manifest),
                         query={'multipart-manifest': 'put',
                                'heartbeat': 'on'},
                         headers=headers)
-                    req.environ.pop('oio.force-version')
                     if put_resp.status_int == 202:
                         body = []
                         put_resp.fix_conditional_response()
@@ -979,6 +979,8 @@ class UploadController(Controller):
                         raise InvalidPart(upload_id=upload_id)
                     else:
                         raise
+                finally:
+                    req.environ['oio.query'].pop('new_version')
 
                 # clean up the multipart-upload record
                 obj = '%s/%s' % (req.object_name, upload_id)

@@ -664,7 +664,7 @@ class ObjectController(BaseObjectController):
         return _chunks, _size, checksum, {}
 
     def _store_object(self, req, data_source, headers):
-        kwargs = req.environ.get('oio.query', {})
+        kwargs = req.environ.get('oio.query', {}).copy()
         content_type = req.headers.get('content-type', 'octet/stream')
         policy = None
         container_info = self.container_info(self.account_name,
@@ -701,10 +701,13 @@ class ObjectController(BaseObjectController):
         if SUPPORT_VERSIONING and headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
                 headers.get(FORCEVERSIONING_HEADER)
-        if req.environ.get('oio.force-version'):
-            # In a case of MPU, it contains version of the UploadId
-            # to be able to include version-id of MPU in S3 reponse
-            kwargs['version'] = req.environ.get('oio.force-version')
+        if 'new_version' in kwargs:
+            # In a case of a MPU, we want the manifest to have the same
+            # version-id as the original MPU placeholder. We cannot simply
+            # pass "version" in the environment because the same user request
+            # will trigger several (read) subrequests, hence the need for a
+            # second version field.
+            kwargs['version'] = kwargs.pop('new_version')
 
         bucket_name = req.environ.get('s3api.bucket')
         if bucket_name:
