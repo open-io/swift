@@ -17,11 +17,11 @@ workflow:
     depends_on:
       - root
 
-  mirror:
-    pipeline: swift-mirror
-    application: swift
-    depends_on:
-      - root
+#  mirror:
+#    pipeline: swift-mirror
+#    application: swift
+#    depends_on:
+#      - root
 
   build:
     pipeline: swift-build
