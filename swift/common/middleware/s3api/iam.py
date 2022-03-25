@@ -49,16 +49,20 @@ SUPPORTED_ACTIONS = {
     "s3:AbortMultipartUpload": RT_OBJECT,
     "s3:CreateBucket": RT_BUCKET,
     "s3:DeleteBucket": RT_BUCKET,
+    "s3:DeleteIntelligentTieringConfiguration": RT_BUCKET,
     "s3:DeleteObject": RT_OBJECT,
+    "s3:GetBucketAcl": RT_BUCKET,
     "s3:GetBucketLocation": RT_BUCKET,
-    "s3:ListBucket": RT_BUCKET,
-    "s3:ListMultipartUploadParts": RT_OBJECT,
-    "s3:ListBucketMultipartUploads": RT_BUCKET,
-    "s3:PutObject": RT_OBJECT,
-    "s3:GetObject": RT_OBJECT,
     "s3:GetIntelligentTieringConfiguration": RT_BUCKET,
+    "s3:GetObject": RT_OBJECT,
+    "s3:GetObjectAcl": RT_OBJECT,
+    "s3:ListBucket": RT_BUCKET,
+    "s3:ListBucketMultipartUploads": RT_BUCKET,
+    "s3:ListMultipartUploadParts": RT_OBJECT,
+    "s3:PutBucketAcl": RT_BUCKET,
     "s3:PutIntelligentTieringConfiguration": RT_BUCKET,
-    "s3:DeleteIntelligentTieringConfiguration": RT_BUCKET
+    "s3:PutObject": RT_OBJECT,
+    "s3:PutObjectAcl": RT_OBJECT,
 }
 
 IAM_ACTION = 'swift.iam.action'
@@ -323,10 +327,13 @@ class IamRulesMatcher(object):
         return self.do_explicit_check(RE_ALLOW, action, resource, req)
 
 
-def check_iam_access(action):
+def check_iam_access(object_action, bucket_action=None):
     """
-    Check the specified action is allowed for the current user
+    Check the specified object_action is allowed for the current user
     on the resource defined by the request.
+
+    If bucket_action is specified and the request is a bucket request,
+    check bucket_action instead.
     """
 
     def real_check_iam_access(func):
@@ -339,6 +346,11 @@ def check_iam_access(action):
             rules_cb = req.environ.get(IAM_RULES_CALLBACK)
             if rules_cb is None:
                 return func(*args, **kwargs)
+
+            if bucket_action and not req.is_object_request:
+                action = bucket_action
+            else:
+                action = object_action
 
             # Maybe ACLs authorized the request.
             acl_allow = req.environ.get(ACL_EXPLICIT_ALLOW)

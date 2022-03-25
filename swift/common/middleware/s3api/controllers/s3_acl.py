@@ -17,6 +17,7 @@ from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk
 from swift.common.middleware.s3api.etree import tostring
 
@@ -34,6 +35,7 @@ class S3AclController(Controller):
     """
     @public
     @check_bucket_storage_domain
+    @check_iam_access('s3:GetObjectAcl', 's3:GetBucketAcl')
     def GET(self, req):
         """
         Handles GET Bucket acl and GET Object acl.
@@ -54,6 +56,7 @@ class S3AclController(Controller):
 
     @public
     @check_bucket_storage_domain
+    @check_iam_access('s3:PutObjectAcl', 's3:PutBucketAcl')
     def PUT(self, req):
         """
         Handles PUT Bucket acl and PUT Object acl.
