@@ -26,6 +26,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, NoSuchKey, ErrorResponse, MalformedXML, \
     UserKeyMustBeSpecified, AccessDenied, MissingRequestBodyError
@@ -50,6 +51,7 @@ class MultiObjectDeleteController(Controller):
     @public
     @bucket_operation
     @check_bucket_storage_domain
+    @check_iam_access('s3:DeleteObject')
     def POST(self, req):
         """
         Handles Delete Multiple Objects.
