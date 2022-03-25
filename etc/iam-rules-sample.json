@@ -118,8 +118,10 @@
             {
                 "Sid": "SharedBucketAllObjects",
                 "Action": [
+                    "s3:GetBucketAcl",
                     "s3:GetObject",
-                    "s3:ListBucket"
+                    "s3:ListBucket",
+                    "s3:PutBucketAcl"
                 ],
                 "Effect": "Allow",
                 "Resource": [

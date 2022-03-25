@@ -41,6 +41,21 @@ test_create_bucket() {
   echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
 }
 
+test_bucket_acls() {
+  # user1 (demo) cannot set or read bucket ACLs
+  OUT=$(${AWSA1U1} s3api get-bucket-acl --bucket $A1U1_BUCKET 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+  OUT=$(${AWSA1U1} s3api put-bucket-acl --bucket $A1U1_BUCKET --acl public-read 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+
+  # user1 (account2) cannot read or set ACLs of a bucket of another account,
+  # even with PutBucketAcl permission
+  OUT=$(${AWSA2U1} s3api get-bucket-acl --bucket "$SHARED_BUCKET" 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+  OUT=$(${AWSA2U1} s3api put-bucket-acl --bucket "$SHARED_BUCKET" --acl public-read 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+}
+
 test_create_objects() {
   # user1 (demo) cannot create any object in the shared bucket...
   OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
@@ -184,6 +199,7 @@ test_delete_buckets() {
 }
 
 test_create_bucket
+test_bucket_acls
 test_create_objects
 test_multipart_ops
 test_read_objects
