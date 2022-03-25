@@ -21,6 +21,7 @@ from swift.common.utils import public
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_container_existence, log_s3api_command, \
     check_bucket_storage_domain
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
@@ -57,7 +58,7 @@ def get_cors(app, conf, req, method, origin):
     """
     sysmeta = req.get_container_info(app).get('sysmeta', {})
     body = sysmeta.get('s3api-cors')
-    rules = list()
+    rules = []
     if body:
         data = fromstring(body, "CorsConfiguration")
         # We have to iterate over each rule to find a match with origin.
@@ -171,6 +172,7 @@ class CorsController(Controller):
     @check_container_existence
     @check_bucket_storage_domain
     @log_s3api_command('get-bucket-cors')
+    @check_iam_access('s3:GetBucketCORS')
     def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket CORS.
@@ -186,6 +188,7 @@ class CorsController(Controller):
     @check_container_existence
     @check_bucket_storage_domain
     @log_s3api_command('put-bucket-cors')
+    @check_iam_access('s3:PutBucketCORS')
     def PUT(self, req):  # pylint: disable=invalid-name
         """
         Handles PUT Bucket CORS.
@@ -212,6 +215,7 @@ class CorsController(Controller):
     @bucket_operation
     @check_container_existence
     @log_s3api_command('delete-bucket-cors')
+    @check_iam_access('s3:PutBucketCORS')  # No specific permission for DELETE
     def DELETE(self, req):  # pylint: disable=invalid-name
         """
         Handles DELETE Bucket CORS.
