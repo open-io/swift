@@ -22,6 +22,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument
 from swift.common.middleware.s3api.utils import sysmeta_header
@@ -75,6 +76,7 @@ class TaggingController(Controller):
     @public
     @check_container_existence
     @check_bucket_storage_domain
+    @check_iam_access('s3:GetObjectTagging', 's3:GetBucketTagging')
     def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket and Object tagging.
@@ -86,7 +88,7 @@ class TaggingController(Controller):
 
         resp = req._get_response(self.app, 'HEAD',
                                  req.container_name, req.object_name)
-        headers = dict()
+        headers = {}
         if req.is_object_request:
             body = resp.sysmeta_headers.get(OBJECT_TAGGING_HEADER)
             # It seems that S3 returns x-amz-version-id,
@@ -110,6 +112,7 @@ class TaggingController(Controller):
     @public
     @check_container_existence
     @check_bucket_storage_domain
+    @check_iam_access('s3:PutObjectTagging', 's3:PutBucketTagging')
     def PUT(self, req):  # pylint: disable=invalid-name
         """
         Handles PUT Bucket and Object tagging.
@@ -133,7 +136,7 @@ class TaggingController(Controller):
         resp = req._get_response(self.app, 'POST',
                                  req.container_name, req.object_name)
         if resp.status_int == 202:
-            headers = dict()
+            headers = {}
             if req.object_name:
                 headers['x-amz-version-id'] = \
                     resp.sw_headers[VERSION_ID_HEADER]
@@ -143,6 +146,7 @@ class TaggingController(Controller):
     @public
     @check_container_existence
     @check_bucket_storage_domain
+    @check_iam_access('s3:DeleteObjectTagging', 's3:DeleteBucketTagging')
     def DELETE(self, req):  # pylint: disable=invalid-name
         """
         Handles DELETE Bucket and Object tagging.
@@ -160,7 +164,7 @@ class TaggingController(Controller):
         resp = req._get_response(self.app, 'POST',
                                  req.container_name, req.object_name)
         if resp.status_int == 202:
-            headers = dict()
+            headers = {}
             if req.object_name:
                 headers['x-amz-version-id'] = \
                     resp.sw_headers[VERSION_ID_HEADER]
