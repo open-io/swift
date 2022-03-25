@@ -55,6 +55,7 @@ SUPPORTED_ACTIONS = {
     "s3:GetBucketLocation": RT_BUCKET,
     "s3:GetBucketVersioning": RT_BUCKET,
     "s3:GetIntelligentTieringConfiguration": RT_BUCKET,
+    "s3:GetLifecycleConfiguration": RT_BUCKET,
     "s3:GetObject": RT_OBJECT,
     "s3:GetObjectAcl": RT_OBJECT,
     "s3:ListBucket": RT_BUCKET,
@@ -63,6 +64,7 @@ SUPPORTED_ACTIONS = {
     "s3:PutBucketAcl": RT_BUCKET,
     "s3:PutBucketVersioning": RT_BUCKET,
     "s3:PutIntelligentTieringConfiguration": RT_BUCKET,
+    "s3:PutLifecycleConfiguration": RT_BUCKET,
     "s3:PutObject": RT_OBJECT,
     "s3:PutObjectAcl": RT_OBJECT,
 }

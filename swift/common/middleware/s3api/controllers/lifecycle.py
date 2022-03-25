@@ -17,6 +17,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     MalformedXML, NoSuchLifecycleConfiguration
 from swift.common.middleware.s3api.utils import convert_response, \
@@ -41,6 +42,7 @@ class LifecycleController(Controller):
     @public
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
     @check_bucket_storage_domain
+    @check_iam_access('s3:GetLifecycleConfiguration')
     def GET(self, req):
         """
         Handles GET Bucket lifecycle.
@@ -55,6 +57,7 @@ class LifecycleController(Controller):
     @public
     @bucket_operation
     @check_bucket_storage_domain
+    @check_iam_access('s3:PutLifecycleConfiguration')
     def PUT(self, req):
         """
         Handles PUT Bucket lifecycle.
@@ -75,6 +78,8 @@ class LifecycleController(Controller):
     @public
     @bucket_operation
     @check_bucket_storage_domain
+    # No specific permission for DELETE
+    @check_iam_access('s3:PutLifecycleConfiguration')
     def DELETE(self, req):
         """
         Handles DELETE Bucket lifecycle.
