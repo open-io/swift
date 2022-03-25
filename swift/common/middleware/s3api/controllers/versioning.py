@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
@@ -38,6 +39,7 @@ class VersioningController(Controller):
     @public
     @bucket_operation
     @check_bucket_storage_domain
+    @check_iam_access('s3:GetBucketVersioning')
     def GET(self, req):
         """
         Handles GET Bucket versioning.
@@ -58,6 +60,7 @@ class VersioningController(Controller):
     @public
     @bucket_operation
     @check_bucket_storage_domain
+    @check_iam_access('s3:PutBucketVersioning')
     def PUT(self, req):
         """
         Handles PUT Bucket versioning.
