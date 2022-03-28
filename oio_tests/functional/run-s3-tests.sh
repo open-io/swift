@@ -21,7 +21,6 @@ RET=0
 run_functional_test s3-default.cfg \
     s3-presigned.py \
     s3-versioning.sh \
-    s3-versioning.py \
     s3-multipart.sh \
     s3-mpu.py \
     s3-storage-class.py \

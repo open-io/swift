@@ -46,37 +46,38 @@ RT_OBJECT = "Object"
 RT_BUCKET = "Bucket"
 
 SUPPORTED_ACTIONS = {
-    "s3:AbortMultipartUpload": RT_OBJECT,
-    "s3:CreateBucket": RT_BUCKET,
-    "s3:DeleteBucket": RT_BUCKET,
-    "s3:DeleteBucketTagging": RT_BUCKET,
-    "s3:DeleteIntelligentTieringConfiguration": RT_BUCKET,
-    "s3:DeleteObject": RT_OBJECT,
-    "s3:DeleteObjectTagging": RT_OBJECT,
-    "s3:GetBucketAcl": RT_BUCKET,
-    "s3:GetBucketCORS": RT_BUCKET,
-    "s3:GetBucketLocation": RT_BUCKET,
-    "s3:GetBucketLogging": RT_BUCKET,
-    "s3:GetBucketTagging": RT_BUCKET,
-    "s3:GetBucketVersioning": RT_BUCKET,
-    "s3:GetIntelligentTieringConfiguration": RT_BUCKET,
-    "s3:GetLifecycleConfiguration": RT_BUCKET,
-    "s3:GetObject": RT_OBJECT,
-    "s3:GetObjectAcl": RT_OBJECT,
-    "s3:GetObjectTagging": RT_OBJECT,
-    "s3:ListBucket": RT_BUCKET,
-    "s3:ListBucketMultipartUploads": RT_BUCKET,
-    "s3:ListMultipartUploadParts": RT_OBJECT,
-    "s3:PutBucketAcl": RT_BUCKET,
-    "s3:PutBucketCORS": RT_BUCKET,
-    "s3:PutBucketLogging": RT_BUCKET,
-    "s3:PutBucketTagging": RT_BUCKET,
-    "s3:PutBucketVersioning": RT_BUCKET,
-    "s3:PutIntelligentTieringConfiguration": RT_BUCKET,
-    "s3:PutLifecycleConfiguration": RT_BUCKET,
-    "s3:PutObject": RT_OBJECT,
-    "s3:PutObjectAcl": RT_OBJECT,
-    "s3:PutObjectTagging": RT_OBJECT,
+    "s3:AbortMultipartUpload": (RT_OBJECT, ),
+    "s3:CreateBucket": (RT_BUCKET, ),
+    "s3:DeleteBucket": (RT_BUCKET, ),
+    "s3:DeleteBucketTagging": (RT_BUCKET, ),
+    "s3:DeleteIntelligentTieringConfiguration": (RT_BUCKET, ),
+    # Regular delete (object) and multi-delete (bucket)
+    "s3:DeleteObject": (RT_BUCKET, RT_OBJECT),
+    "s3:DeleteObjectTagging": (RT_OBJECT, ),
+    "s3:GetBucketAcl": (RT_BUCKET, ),
+    "s3:GetBucketCORS": (RT_BUCKET, ),
+    "s3:GetBucketLocation": (RT_BUCKET, ),
+    "s3:GetBucketLogging": (RT_BUCKET, ),
+    "s3:GetBucketTagging": (RT_BUCKET, ),
+    "s3:GetBucketVersioning": (RT_BUCKET, ),
+    "s3:GetIntelligentTieringConfiguration": (RT_BUCKET, ),
+    "s3:GetLifecycleConfiguration": (RT_BUCKET, ),
+    "s3:GetObject": (RT_OBJECT, ),
+    "s3:GetObjectAcl": (RT_OBJECT, ),
+    "s3:GetObjectTagging": (RT_OBJECT, ),
+    "s3:ListBucket": (RT_BUCKET, ),
+    "s3:ListBucketMultipartUploads": (RT_BUCKET, ),
+    "s3:ListMultipartUploadParts": (RT_OBJECT, ),
+    "s3:PutBucketAcl": (RT_BUCKET, ),
+    "s3:PutBucketCORS": (RT_BUCKET, ),
+    "s3:PutBucketLogging": (RT_BUCKET, ),
+    "s3:PutBucketTagging": (RT_BUCKET, ),
+    "s3:PutBucketVersioning": (RT_BUCKET, ),
+    "s3:PutIntelligentTieringConfiguration": (RT_BUCKET, ),
+    "s3:PutLifecycleConfiguration": (RT_BUCKET, ),
+    "s3:PutObject": (RT_OBJECT, ),
+    "s3:PutObjectAcl": (RT_OBJECT, ),
+    "s3:PutObjectTagging": (RT_OBJECT, ),
 }
 
 IAM_ACTION = 'swift.iam.action'
@@ -196,7 +197,7 @@ class IamRulesMatcher(object):
         if action not in SUPPORTED_ACTIONS:
             raise IAMException("Unsupported action: %s" % action)
 
-        if resource.type != SUPPORTED_ACTIONS[action]:
+        if resource.type not in SUPPORTED_ACTIONS[action]:
             raise IAMException(
                 "Action %s does not apply on %s resources" %
                 (action, resource.type))
@@ -230,7 +231,7 @@ class IamRulesMatcher(object):
         :param statement: the statement dict using the condition
         :param req: the current request
         """
-        cond = statement.get('Condition') or dict()
+        cond = statement.get('Condition') or {}
         effect = statement['Effect'].lower()  # case insensitive comparison
         for opname, operands in cond.items():
             if IamConditionOp.get(opname, None) is None:
