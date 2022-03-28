@@ -86,8 +86,8 @@ class TaggingController(Controller):
         else:
             self.set_s3api_command(req, 'get-bucket-tagging')
 
-        resp = req._get_response(self.app, 'HEAD',
-                                 req.container_name, req.object_name)
+        resp = req.get_response(self.app, 'HEAD',
+                                req.container_name, req.object_name)
         headers = {}
         if req.is_object_request:
             body = resp.sysmeta_headers.get(OBJECT_TAGGING_HEADER)
@@ -133,8 +133,8 @@ class TaggingController(Controller):
             req.headers[OBJECT_TAGGING_HEADER] = body
         else:
             req.headers[BUCKET_TAGGING_HEADER] = body
-        resp = req._get_response(self.app, 'POST',
-                                 req.container_name, req.object_name)
+        resp = req.get_response(self.app, 'POST',
+                                req.container_name, req.object_name)
         if resp.status_int == 202:
             headers = {}
             if req.object_name:
@@ -161,8 +161,8 @@ class TaggingController(Controller):
             req.headers[OBJECT_TAGGING_HEADER] = ""
         else:
             req.headers[BUCKET_TAGGING_HEADER] = ""
-        resp = req._get_response(self.app, 'POST',
-                                 req.container_name, req.object_name)
+        resp = req.get_response(self.app, 'POST',
+                                req.container_name, req.object_name)
         if resp.status_int == 202:
             headers = {}
             if req.object_name:
