@@ -41,7 +41,7 @@ from swift.common.middleware.s3api.s3response import \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    BadEndpoint, VersionedBucketNotEmpty, PreconditionFailed, S3Response
+    BadEndpoint, VersionedBucketNotEmpty, S3Response
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     convert_response, sysmeta_header
 
@@ -457,9 +457,13 @@ class BucketController(Controller):
         object_lock_enabled = req.environ.get(
             'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED', 'False')
         if object_lock_enabled.lower() == 'true':
-            if not self.conf.get('enable_object_lock', False):
-                raise PreconditionFailed(
-                    'object lock configuration is not enabled')
+            if not self.conf.enable_object_lock:
+                raise S3NotImplemented()
+            if 'object_versioning' not in get_swift_info():
+                self.logger.info(
+                    'object_versioning is disabled so object lock '
+                    'will be disabled')
+                raise S3NotImplemented()
             req.headers[OBJECT_LOCK_ENABLED_HEADER] = object_lock_enabled
             req.headers['X-Versions-Enabled'] = 'true'
 

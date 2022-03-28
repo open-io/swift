@@ -130,6 +130,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'default_storage_domain': None,
             'auto_storage_policies': {},
             'storage_class_by_policy': {},
+            'enable_access_logging': True,
             'enable_object_lock': True,
             'enable_website': True,
         })
@@ -167,6 +168,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'cors_preflight_allow_origin': 'foo.example.com,bar.example.com',
             'ratelimit_as_client_error': True,
             'auto_storage_policies_STANDARD': 'EC',
+            'enable_access_logging': False,
             'enable_object_lock': False,
             'enable_website': False,
         }

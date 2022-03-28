@@ -166,7 +166,7 @@ from swift.common.utils import get_logger, config_true_value, \
     list_from_csv, parse_auto_storage_policies
 from swift.common.middleware.s3api.utils import Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
-from swift.common.registry import get_swift_info, register_swift_info, \
+from swift.common.registry import register_swift_info, \
     register_sensitive_header, register_sensitive_param
 
 
@@ -382,9 +382,10 @@ class S3ApiMiddleware(object):
         self.conf.log_s3api_command = config_true_value(
             wsgi_conf.get('log_s3api_command', False))
 
+        self.conf.enable_access_logging = config_true_value(
+            wsgi_conf.get('enable_access_logging', True))
         self.conf.enable_object_lock = config_true_value(
             wsgi_conf.get('enable_object_lock', True))
-
         self.conf.enable_website = config_true_value(
             wsgi_conf.get('enable_website', True))
 
@@ -392,11 +393,6 @@ class S3ApiMiddleware(object):
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)
         self.bucket_db = get_bucket_db(wsgi_conf, logger=self.logger)
-
-        if 'object_versioning' not in get_swift_info():
-            wsgi_conf['enable_object_lock'] = False
-            self.logger.info('object_versioning is disabled so object lock '
-                             'will be disabled')
 
     def is_s3_cors_preflight(self, env):
         if env['REQUEST_METHOD'] != 'OPTIONS' or not env.get('HTTP_ORIGIN'):

@@ -68,15 +68,30 @@ def encode_acl(resource, acl):
     header_value = {"Owner": acl.owner.id}
     grants = []
     for grant in acl.grants:
-        grant = {"Permission": grant.permission,
-                 "Grantee": str(grant.grantee)}
-        grants.append(grant)
+        grants.append(grant.to_dict())
     header_value.update({"Grant": grants})
     headers = {}
     key = sysmeta_header(resource, 'acl')
     headers[key] = json.dumps(header_value, separators=(',', ':'))
 
     return headers
+
+
+def decode_grants(encode_grants):
+    """
+    Decode dict to Grant instances.
+    """
+    grants = []
+    for grant in encode_grants:
+        grantee = None
+        for group in Group.__subclasses__():
+            if group.__name__ == grant['Grantee']:
+                grantee = group()
+        if not grantee:
+            grantee = User(grant['Grantee'])
+        permission = grant['Permission']
+        grants.append(Grant(grantee, permission))
+    return grants
 
 
 def decode_acl(resource, headers, allow_no_owner):
@@ -111,16 +126,7 @@ def decode_acl(resource, headers, allow_no_owner):
             id = encode_value['Owner']
             name = encode_value['Owner']
         if 'Grant' in encode_value:
-            for grant in encode_value['Grant']:
-                grantee = None
-                # pylint: disable-msg=E1101
-                for group in Group.__subclasses__():
-                    if group.__name__ == grant['Grantee']:
-                        grantee = group()
-                if not grantee:
-                    grantee = User(grant['Grantee'])
-                permission = grant['Permission']
-                grants.append(Grant(grantee, permission))
+            grants = decode_grants(encode_value['Grant'])
         return ACL(Owner(id, name), grants, True, allow_no_owner)
     except Exception as e:
         raise InvalidSubresource((resource, 'acl', value), e)
@@ -388,6 +394,9 @@ class Grant(object):
         SubElement(elem, 'Permission').text = self.permission
 
         return elem
+
+    def to_dict(self):
+        return {"Permission": self.permission, "Grantee": str(self.grantee)}
 
     def allow(self, grantee, permission):
         return permission == self.permission and grantee in self.grantee
