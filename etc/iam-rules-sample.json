@@ -45,7 +45,9 @@
                 "Sid": "SharedBucketAllObjects",
                 "Action": [
                     "s3:GetObject",
-                    "s3:ListBucket"
+                    "s3:ListBucket",
+                    "s3:GetIntelligentTieringConfiguration",
+                    "s3:PutIntelligentTieringConfiguration"
                 ],
                 "Effect": "Allow",
                 "Resource": [

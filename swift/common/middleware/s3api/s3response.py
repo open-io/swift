@@ -661,7 +661,7 @@ class NoSuchKey(ErrorResponse):
 
 class NoSuchLifecycleConfiguration(ErrorResponse):
     _status = '404 Not Found'
-    _msg = 'The lifecycle configuration does not exist. .'
+    _msg = 'The lifecycle configuration does not exist.'
 
 
 class NoSuchTagSet(ErrorResponse):

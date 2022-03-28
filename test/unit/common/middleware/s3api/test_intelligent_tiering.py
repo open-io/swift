@@ -161,10 +161,10 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('200 OK', status)
         self.assertFalse(body)  # empty -> False
         calls = self.swift.calls_with_headers
-        self.assertEqual(1, len(calls))
-        self.assertIn(TIERING_HEADER, calls[0].headers)
+        self.assertEqual(2, len(calls))  # HEAD container, PUT container
+        self.assertIn(TIERING_HEADER, calls[1].headers)
         self.assertEqual(TIERING_XML.decode('utf-8'),
-                         calls[0].headers[TIERING_HEADER])
+                         calls[1].headers[TIERING_HEADER])
 
     @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 10})
     def test_PUT_invalid_bucket_state(self, _mock):
@@ -181,7 +181,7 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('409 Conflict', status)
         self.assertEqual('InvalidBucketState', self._get_error_code(body))
         calls = self.swift.calls_with_headers
-        self.assertEqual(0, len(calls))
+        self.assertEqual(1, len(calls))  # HEAD container
 
     @patch(MOCK_REQ_GET_CONT_INFO, side_effect=NoSuchBucket('bucket'))
     def test_PUT_no_bucket(self, _mock):
@@ -197,7 +197,7 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('404 Not Found', status)
         self.assertEqual('NoSuchBucket', self._get_error_code(body))
         calls = self.swift.calls_with_headers
-        self.assertEqual(0, len(calls))
+        self.assertEqual(1, len(calls))  # HEAD container
 
     @patch(MOCK_REQ_GET_CONT_INFO, return_value={"object_count": 0})
     def test_PUT_empty_bucket(self, _mock):
@@ -214,7 +214,7 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('BadRequest', self._get_error_code(body))
         self.assertEqual('Bucket is empty', self._get_error_message(body))
         calls = self.swift.calls_with_headers
-        self.assertEqual(0, len(calls))
+        self.assertEqual(1, len(calls))  # HEAD container
 
     def test_GET_ok(self):
         req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
@@ -231,7 +231,7 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual(tostring(fromstring(TIERING_XML)), body)
 
         calls = self.swift.calls_with_headers
-        self.assertEqual(2, len(calls))  # HEAD account, HEAD container
+        self.assertEqual(1, len(calls))  # HEAD container
 
     def test_GET_not_found(self):
         req = Request.blank('/test-tiering?intelligent-tiering&id=nope',
@@ -248,7 +248,7 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertIn(b'No intelligent tiering conf', body)
 
         calls = self.swift.calls_with_headers
-        self.assertEqual(2, len(calls))  # HEAD account, HEAD container
+        self.assertEqual(1, len(calls))  # HEAD container
 
     def test_GET_no_id(self):
         req = Request.blank('/test-tiering?intelligent-tiering',

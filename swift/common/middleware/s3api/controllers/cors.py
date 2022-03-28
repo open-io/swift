@@ -177,8 +177,8 @@ class CorsController(Controller):
         """
         Handles GET Bucket CORS.
         """
-        sysmeta = req.get_container_info(self.app).get('sysmeta', {})
-        body = sysmeta.get('s3api-cors')
+        resp = req.get_response(self.app, method='HEAD')
+        body = resp.sysmeta_headers.get(BUCKET_CORS_HEADER)
         if not body:
             raise NoSuchCORSConfiguration
         return HTTPOk(body=body, content_type='application/xml')
@@ -206,8 +206,7 @@ class CorsController(Controller):
         check_cors_rule(data)
 
         req.headers[BUCKET_CORS_HEADER] = xml
-        resp = req._get_response(self.app, 'POST',
-                                 req.container_name, None)
+        resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 
     @public
@@ -221,8 +220,7 @@ class CorsController(Controller):
         Handles DELETE Bucket CORS.
         """
         req.headers[BUCKET_CORS_HEADER] = ''
-        resp = req._get_response(self.app, 'POST',
-                                 req.container_name, None)
+        resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 202, HTTPNoContent)
 
 

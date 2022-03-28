@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.utils import convert_response
 from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
@@ -46,12 +47,13 @@ class VersioningController(Controller):
         """
         self.set_s3api_command(req, 'get-bucket-versioning')
 
-        sysmeta = req.get_container_info(self.app).get('sysmeta', {})
+        resp = req.get_response(self.app, method='HEAD')
+        enabled = resp.sw_headers.get('X-Container-Sysmeta-Versions-Enabled')
 
         elem = Element('VersioningConfiguration')
-        if sysmeta.get('versions-enabled'):
+        if enabled:
             SubElement(elem, 'Status').text = (
-                'Enabled' if config_true_value(sysmeta['versions-enabled'])
+                'Enabled' if config_true_value(enabled)
                 else 'Suspended')
         body = tostring(elem)
 
@@ -86,6 +88,5 @@ class VersioningController(Controller):
         # Set up versioning
         # NB: object_versioning responsible for ensuring its container exists
         req.headers['X-Versions-Enabled'] = str(status == 'Enabled').lower()
-        req.get_response(self.app, 'POST')
-
-        return HTTPOk()
+        resp = req.get_response(self.app, method='POST')
+        return convert_response(req, resp, 204, HTTPOk)

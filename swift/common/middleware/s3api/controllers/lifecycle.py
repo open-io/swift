@@ -22,6 +22,7 @@ from swift.common.middleware.s3api.s3response import HTTPOk, \
     MalformedXML, NoSuchLifecycleConfiguration
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
+from swift.common.swob import HTTPNoContent
 from swift.common.utils import public
 
 
@@ -47,10 +48,10 @@ class LifecycleController(Controller):
         """
         Handles GET Bucket lifecycle.
         """
-        info = req.get_container_info(self.app)
-        body = info['sysmeta'].get('s3api-lifecycle')
+        resp = req.get_response(self.app, method='HEAD')
+        body = resp.sysmeta_headers.get(LIFECYCLE_HEADER)
         if not body:
-            raise NoSuchLifecycleConfiguration()
+            raise NoSuchLifecycleConfiguration
 
         return HTTPOk(body=body, content_type='application/xml')
 
@@ -62,18 +63,16 @@ class LifecycleController(Controller):
         """
         Handles PUT Bucket lifecycle.
         """
-        body = req.xml(MAX_LIFECYCLE_BODY_SIZE)
+        xml = req.xml(MAX_LIFECYCLE_BODY_SIZE)
         try:
             # Just validate the body
-            fromstring(body, 'LifecycleConfiguration')
+            fromstring(xml, 'LifecycleConfiguration')
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
-        req.headers[LIFECYCLE_HEADER] = body
-        subreq = req.to_swift_req('POST', req.container_name, None,
-                                  headers=req.headers)
-        return convert_response(req, subreq.get_response(self.app),
-                                204, HTTPOk)
+        req.headers[LIFECYCLE_HEADER] = xml
+        resp = req.get_response(self.app, method='POST')
+        return convert_response(req, resp, 204, HTTPOk)
 
     @public
     @bucket_operation
@@ -84,7 +83,6 @@ class LifecycleController(Controller):
         """
         Handles DELETE Bucket lifecycle.
         """
-        req.headers[LIFECYCLE_HEADER] = ""
-        subreq = req.to_swift_req('POST', req.container_name, None,
-                                  headers=req.headers)
-        return subreq.get_response(self.app)
+        req.headers[LIFECYCLE_HEADER] = ''
+        resp = req.get_response(self.app, method='POST')
+        return convert_response(req, resp, 202, HTTPNoContent)

@@ -30,7 +30,7 @@ MAX_TIERING_BODY_SIZE = 64 * 1024  # Arbitrary
 MAX_TIERING_ID_SIZE = 64  # Arbitrary
 
 TIERING_CALLBACK = 'swift.callback.tiering.apply'
-TIERING_META_PREFIX = 's3api-intelligent-tiering-'
+TIERING_HEADER_PREFIX = sysmeta_header('bucket', 'intelligent-tiering-')
 
 
 def header_name_from_id(tiering_id):
@@ -39,14 +39,6 @@ def header_name_from_id(tiering_id):
     tiering configuration document.
     """
     return sysmeta_header('container', 'intelligent-tiering-' + tiering_id)
-
-
-def filter_tiering_meta(meta):
-    """
-    Extract the tiering-related metadata from the specified dictionary.
-    """
-    return {k: v for k, v in meta.items()
-            if k.startswith(TIERING_META_PREFIX)}
 
 
 def xml_conf_to_dict(tiering_conf_xml):
@@ -105,11 +97,11 @@ class IntelligentTieringController(Controller):
         Handles GetBucketIntelligentTieringConfiguration
         and ListBucketIntelligentTieringConfigurations
         """
-        info = req.get_container_info(self.app)
-        tiering_meta = filter_tiering_meta(info['sysmeta'])
+        resp = req.get_response(self.app, method='HEAD')
         tiering_id = req.params.get('id')
         if tiering_id:
-            body = tiering_meta.get(TIERING_META_PREFIX + tiering_id, None)
+            body = resp.sysmeta_headers.get(header_name_from_id(tiering_id),
+                                            None)
             if body is None:
                 return HTTPNotFound("No intelligent tiering configuration "
                                     f"with id {tiering_id}.")
@@ -138,6 +130,9 @@ class IntelligentTieringController(Controller):
         """
         Handles PutBucketIntelligentTieringConfiguration
         """
+        # Check ACLs
+        req.get_response(self.app, method='HEAD')
+
         # Raises NoSuchBucket if bucket does not exist.
         info = req.get_container_info(self.app)
         # At least 1 object must be in the bucket to archive it.
@@ -178,6 +173,9 @@ class IntelligentTieringController(Controller):
         tiering_id = req.params.get('id')
         if not tiering_id:
             raise BadRequest("Missing parameter: id")
+
+        # Check ACLs
+        req.get_response(self.app, method='HEAD')
 
         # May raise exceptions
         self.apply_tiering(req, None)
