@@ -23,7 +23,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.etree import Element, tostring, \
     fromstring, XMLSyntaxError, DocumentInvalid, SubElement
 from swift.common.middleware.s3api.s3response import HTTPOk, \
-    S3NotImplemented, MalformedXML
+    S3NotImplemented, MalformedXML, InvalidBucketState
 
 MAX_PUT_VERSIONING_BODY_SIZE = 10240
 
@@ -68,6 +68,10 @@ class VersioningController(Controller):
         Handles PUT Bucket versioning.
         """
         self.set_s3api_command(req, 'put-bucket-versioning')
+        info = req.get_container_info(self.app)
+        object_lock = info['sysmeta'].get(
+            's3api-bucket-object-lock-enabled',
+            None)
 
         if 'object_versioning' not in get_swift_info():
             raise S3NotImplemented()
@@ -76,6 +80,11 @@ class VersioningController(Controller):
         try:
             elem = fromstring(xml, 'VersioningConfiguration')
             status = elem.find('./Status').text
+            if object_lock and status.lower() == 'suspended':
+                raise InvalidBucketState(
+                    'An Object Lock configuration is '
+                    'present on this bucket, so the versioning state cannot '
+                    'be changed.')
         except (XMLSyntaxError, DocumentInvalid):
             raise MalformedXML()
         except Exception as e:
