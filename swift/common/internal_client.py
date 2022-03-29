@@ -27,6 +27,7 @@ from zlib import compressobj
 
 from swift.common.exceptions import ClientException
 from swift.common.http import (HTTP_NOT_FOUND, HTTP_MULTIPLE_CHOICES,
+                               HTTP_FORBIDDEN,
                                is_client_error, is_server_error)
 from swift.common.request_helpers import USE_REPLICATION_NETWORK_HEADER
 from swift.common.swob import Request, bytes_to_wsgi
@@ -646,7 +647,7 @@ class InternalClient(object):
 
     def delete_object(
             self, account, container, obj,
-            acceptable_statuses=(2, HTTP_NOT_FOUND),
+            acceptable_statuses=(2, HTTP_NOT_FOUND, HTTP_FORBIDDEN),
             headers=None):
         """
         Deletes an object.
@@ -655,7 +656,8 @@ class InternalClient(object):
         :param container: The object's container.
         :param obj: The object.
         :param acceptable_statuses: List of status for valid responses,
-                                    defaults to (2, HTTP_NOT_FOUND).
+                                    defaults to (2, HTTP_NOT_FOUND,
+                                    HTTP_FORBIDDEN).
         :param headers: extra headers to send with request
 
         :raises UnexpectedResponse: Exception raised when requests fail

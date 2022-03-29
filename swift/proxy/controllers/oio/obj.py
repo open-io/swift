@@ -31,8 +31,8 @@ from swift.common.oio_utils import check_if_none_match, \
     REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
     obj_version_from_env, oio_versionid_to_swift_versionid, \
     swift_versionid_to_oio_versionid
-from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPNotFound, \
-    HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
+from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
+    HTTPNotFound, HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
     HTTPNoContent, Response, HTTPInternalServerError, multi_range_iterator, \
     HTTPServiceUnavailable, HTTPException
@@ -848,9 +848,7 @@ class ObjectController(BaseObjectController):
         except exceptions.NoSuchObject:
             # Swift doesn't consider this case as an error
             pass
-        except Exception as exc:
-            if 'retain until object' in str(exc) or  \
-                'locked bucket' in str(exc):
-                return HTTPNotFound(request=req)
+        except exceptions.Forbidden:
+            raise HTTPForbidden(request=req)
         resp = HTTPNoContent(request=req)
         return resp
