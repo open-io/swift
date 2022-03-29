@@ -14,8 +14,12 @@ jobs:
     - git clone --bare {{ .git.url }} {{ .cds.workspace }}
     - cd {{ .cds.workspace }}
     - git branch --all
-    # remove staging- branch before sync
-    - git branch -D $(git branch --format='%(refname:short)' | grep "^staging-") || true
+    # remove staging- branches before sync
+    - git branch -D $(git branch --format='%(refname:short)' --list "staging-*") || true
+    # remove private branches before sync
+    - git branch -D $(git branch --format='%(refname:short)' --list "private*" "dev/*/private*") || true
+    # remove all dev branches if required
+    - if [ "{{ .cds.proj.mirror_dev_branches }}" != "true" ]; then git branch -D $(git branch --format='%(refname:short)' --list "dev/*") || true; fi
     - git push --mirror --prune --force https://openiobot:{{ .cds.proj.OPENIOBOT_GITHUB_TOKEN }}@github.com/open-io/swift.git
 
   requirements:

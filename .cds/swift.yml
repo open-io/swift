@@ -17,11 +17,16 @@ workflow:
     depends_on:
       - root
 
-#  mirror:
-#    pipeline: swift-mirror
-#    application: swift
-#    depends_on:
-#      - root
+  mirror:
+    pipeline: swift-mirror
+    application: swift
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.proj.mirror_to_github
+          operator: eq
+          value: "true"
 
   build:
     pipeline: swift-build
