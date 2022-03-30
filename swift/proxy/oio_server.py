@@ -54,7 +54,7 @@ class Application(SwiftApplication):
                                   account_ring=account_ring,
                                   container_ring=container_ring)
         if conf is None:
-            conf = dict()
+            conf = {}
         sds_conf = {k[4:]: v
                     for k, v in conf.items()
                     if k.startswith("sds_")}
@@ -86,8 +86,12 @@ class Application(SwiftApplication):
         sds_conf['autocreate'] = config_true_value(
             sds_conf.get('autocreate', 'true'))
 
+        # NOTE(FVE): passing self.logger is different from passing just logger.
+        # If logger is None, self.logger will be properly instantiated by the
+        # constructor of the parent class.
         self.storage = storage or \
-            ObjectStorageApi(sds_namespace, endpoint=sds_proxy_url, **sds_conf)
+            ObjectStorageApi(sds_namespace, endpoint=sds_proxy_url,
+                             logger=self.logger, **sds_conf)
         self.delete_slo_parts = \
             config_true_value(conf.get('delete_slo_parts', True))
         self.check_state = \
