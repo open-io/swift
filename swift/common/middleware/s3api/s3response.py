@@ -150,6 +150,16 @@ class S3Response(S3ResponseBase, swob.Response):
                         s3_sysmeta_headers[key] = val
                 elif is_s3api_sysmeta(key, _server_type):
                     s3_sysmeta_headers[key] = val
+                    # Transform object lock s3api headers to amz headers
+                    # These headers are checked in ceph tests
+                    _key = key.lower()
+                    if _key == 'x-object-sysmeta-s3api-retention-mode':
+                        headers['x-amz-object-lock-mode'] = val
+                    elif _key == \
+                            'x-object-sysmeta-s3api-retention-retainuntildate':
+                        headers['x-amz-object-lock-retain-until-date'] = val
+                    elif _key == 'x-object-sysmeta-s3api-legal-hold-status':
+                        headers['x-amz-object-lock-legal-hold'] = val
                 else:
                     sw_headers[key] = val
             else:

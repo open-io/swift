@@ -124,7 +124,9 @@ class ObjectController(Controller):
                 raise NoSuchVersion(object_name, version_id)
 
         resp = req.get_response(self.app, query=query)
-
+        resp.headers['ObjectLock-Mode'] = resp.sysmeta_headers['X-Object-Sysmeta-S3Api-Retention-Mode']
+        resp.headers['ObjectLock-RetainUntilDate'] = resp.sysmeta_headers['X-Object-Sysmeta-S3Api-Retention-Retainuntildate']
+        resp.headers['ObjectLock-LegalHoldStatus'] = resp.sysmeta_headers['X-Object-Sysmeta-S3Api-Legal-Hold-Status']
         if req.method == 'HEAD':
             resp.app_iter = None
             # HEAD requests without keys on encrypted objects are allowed for
@@ -136,7 +138,6 @@ class ObjectController(Controller):
 
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)
-
         for key in ('content-type', 'content-language', 'expires',
                     'cache-control', 'content-disposition',
                     'content-encoding'):
@@ -159,7 +160,6 @@ class ObjectController(Controller):
         if 'range' in req.headers:
             req_range = req.headers['range']
             resp = self._gen_head_range_resp(req_range, resp)
-
         return resp
 
     @public
@@ -204,6 +204,21 @@ class ObjectController(Controller):
                 req.headers.pop(HTTP_HEADER_TAGGING_KEY))
             req.headers[OBJECT_TAGGING_HEADER] = tagging
 
+        if 'x-amz-object-lock-mode' in req.headers:
+            header = sysmeta_header('object', 'retention' + '-' + 'Mode')
+            req.headers[header] = req.headers['x-amz-object-lock-mode']
+        if 'x-amz-object-lock-retain-until-date' in req.headers:
+            header = sysmeta_header('object', 'retention' + '-' + 'RetainUntilDate')
+            req.headers[header] = req.headers['x-amz-object-lock-retain-until-date']
+        if 'x-amz-object-lock-legal-hold' in req.headers:
+            header = sysmeta_header('object', 'legal-hold' + '-' + 'status')
+            req.headers[header] = req.headers['x-amz-object-lock-legal-hold']
+        # lock_id = next(iter(req.params.keys()))
+        """
+        for key, val in out.items():
+            header = sysmeta_header('object', lock_id + '-' + key)
+            req.headers[header] = val
+        """
         req.check_copy_source(self.app)
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason

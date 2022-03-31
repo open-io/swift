@@ -231,7 +231,7 @@ class ObjectLockController(Controller):
     @check_iam_access("s3:PutObjectRetention")
     @check_iam_access("s3:PutObjectLegalHold")
     def PUT(self, req):
-        self.set_s3api_command(req, 'put-bucket-versioning')
+        # self.set_s3api_command(req, 'put-bucket-versioning')
         lock_id = next(iter(req.params.keys()))
         body = req.xml(10000)
         try:
@@ -255,14 +255,15 @@ class ObjectLockController(Controller):
                 old_retention_date = props.get('Retention-Retainuntildate',
                                                None)
 
-                if old_retention_date is not None:
-                    current_retention_date = out.get('RetainUntilDate')
+                current_retention_date = out.get('RetainUntilDate')
+                current_retention_mode = out.get('Mode')
+
+                if old_retention_date is not None and current_retention_date is not None:
                     if bypass_governance:
                         pass
                     elif current_retention_date < old_retention_date:
                         raise AccessDenied()
-                if old_retention_mode is not None:
-                    current_retention_mode = out.get('Mode')
+                if old_retention_mode is not None and current_retention_mode is not None:
                     if bypass_governance:
                         if old_retention_mode == 'COMPLIANCE' and \
                            current_retention_mode == 'GOVERNANCE':
