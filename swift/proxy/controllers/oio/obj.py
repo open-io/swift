@@ -29,7 +29,8 @@ from swift.common.middleware.versioned_writes.legacy \
 from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
     REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
-    obj_version_from_env
+    obj_version_from_env, oio_versionid_to_swift_versionid, \
+    swift_versionid_to_oio_versionid
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPNotFound, \
     HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
@@ -359,7 +360,8 @@ class ObjectController(BaseObjectController):
         if hash_ is not None:
             hash_ = hash_.lower()
         resp.headers['etag'] = hash_
-        resp.headers['x-object-sysmeta-version-id'] = metadata['version']
+        resp.headers['x-object-sysmeta-version-id'] = \
+            oio_versionid_to_swift_versionid(metadata.get('version'))
         resp.last_modified = int(metadata['mtime'])
         if stream:
             # Whether we are bothered with ranges or not, we wrap the
@@ -708,6 +710,9 @@ class ObjectController(BaseObjectController):
             # will trigger several (read) subrequests, hence the need for a
             # second version field.
             kwargs['version'] = kwargs.pop('new_version')
+        if 'version' in kwargs:
+            kwargs['version'] = swift_versionid_to_oio_versionid(
+                kwargs['version'])
 
         bucket_name = req.environ.get('s3api.bucket')
         if bucket_name:
@@ -770,7 +775,7 @@ class ObjectController(BaseObjectController):
         # FIXME(FVE): if \x10 character in object name, decode version
         # number and set it in the response headers, instead of the oio
         # version number.
-        version_id = meta.get('version', 'null')
+        version_id = oio_versionid_to_swift_versionid(meta.get('version'))
         resp = HTTPCreated(
             request=req, etag=checksum,
             last_modified=last_modified,

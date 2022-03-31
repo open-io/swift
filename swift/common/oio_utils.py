@@ -30,6 +30,20 @@ BUCKET_NAME_PROP = "sys.m2.bucket.name"
 MULTIUPLOAD_SUFFIX = '+segments'
 
 
+def swift_versionid_to_oio_versionid(version_id):
+    if not version_id or version_id == 'null':
+        return None
+    else:
+        return int(float(version_id) * 1000000)
+
+
+def oio_versionid_to_swift_versionid(versionid):
+    if versionid:
+        return '%.6f' % (int(versionid) / 1000000.)
+    else:
+        return 'null'
+
+
 def obj_version_from_env(env):
     """
     Fetch an object version from a request environment dictionary.
@@ -37,10 +51,8 @@ def obj_version_from_env(env):
     This discards 'null' versions since they are not supported by the
     oio backend.
     """
-    vers = env.get('oio.query', {}).get('version')
-    if isinstance(vers, str) and vers.lower() == 'null':
-        vers = None
-    return vers
+    return swift_versionid_to_oio_versionid(
+        env.get('oio.query', {}).get('version'))
 
 
 def handle_service_busy(fnc):

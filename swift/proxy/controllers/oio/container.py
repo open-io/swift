@@ -17,7 +17,8 @@ import json
 
 from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
-    handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP
+    handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP, \
+    oio_versionid_to_swift_versionid
 from swift.common.utils import public, Timestamp, \
     config_true_value, override_bytes_from_content_type
 from swift.common.constraints import check_metadata
@@ -205,7 +206,8 @@ class ContainerController(SwiftContainerController):
         if storage_policy:
             response['storage_policy'] = storage_policy
         if versions:
-            response['version'] = record.get('version', 'null')
+            response['version'] = oio_versionid_to_swift_versionid(
+                record.get('version'))
         if slo:
             response['slo'] = props.get("x-static-large-object")
         override_bytes_from_content_type(response)

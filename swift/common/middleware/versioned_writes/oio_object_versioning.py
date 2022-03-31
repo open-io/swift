@@ -134,7 +134,7 @@ class OioObjectContext(ObjectContext):
         req.environ.setdefault('oio.query', {})['version'] = version
         if version != 'null':
             try:
-                int(version)
+                Timestamp(version)
             except ValueError:
                 raise HTTPBadRequest('Invalid version parameter', request=req)
 
@@ -465,7 +465,7 @@ class OioContainerContext(ContainerContext):
                     if 'subdir' in item:
                         subdir_set.add(item['subdir'])
                     else:
-                        item['version_id'] = str(item.get('version', 'null'))
+                        item['version_id'] = item.get('version', 'null')
                         versions_listing.append(item)
                         if (item['content_type'] ==
                                 DELETE_MARKER_CONTENT_TYPE):
@@ -506,7 +506,7 @@ class OioObjectVersioningMiddleware(ObjectVersioningMiddleware):
         """
         if version_id not in ('null', None):
             try:
-                int(version_id)
+                Timestamp(version_id)
             except ValueError:
                 return False
         return True

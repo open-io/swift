@@ -103,7 +103,7 @@ OBJ_1_ISLATEST=$(jq -r ".Versions[0].IsLatest|tostring" <<< "$ALL_OBJ_VERS")
 # because the 2 objects are created before versioning is enabled.
 if [[ ("$OBJ_0_ID" != "null") || ("$OBJ_1_ID" != "null") ]]
 then
-  [[ "$OBJ_0_ID" -lt "$OBJ_1_ID" ]]
+  [[ $(echo "$OBJ_0_ID < $OBJ_1_ID" | bc -l) -eq 1 ]]
 fi
 
 [[ "$OBJ_1_MD5" == "\"$OBJ_1_EXPECTED_MD5\"" ]]
@@ -163,7 +163,7 @@ OBJ_2_ISLATEST=$(jq -r ".Versions[0].IsLatest|tostring" <<< "$ALL_OBJ_VERS")
 OBJ_1_EXPECTED_ID="$OBJ_1_ID"
 if [[ ("$OBJ_0_ID" != "null") || ("$OBJ_1_ID" != "null") ]]
 then
-  [[ "$OBJ_1_ID" -lt "$OBJ_2_ID" ]]
+  [[ $(echo "$OBJ_1_ID < $OBJ_2_ID" | bc -l) -eq 1 ]]
 fi
 [[ "$OBJ_1_MD5" == "\"$OBJ_1_EXPECTED_MD5\"" ]]
 [[ "$OBJ_2_MD5" == "\"$OBJ_2_EXPECTED_MD5\"" ]]
@@ -460,7 +460,7 @@ echo "######################################"
 # Convert a bucket name, object key and version to the
 # container and object name under which they are actually stored.
 s3-to-openio() {
-  s3_ver=${3}
+  s3_ver=$(echo ${3} | sed 's/\.//')
   # This is how the "object_versioning" middleware generates object names.
   #obj_ver=$(bc -l -- <<< "scale=5; (999999999999999 - ($s3_ver * 100000)) / 100000")
   #echo "versions${1} ${2}${obj_ver}"
