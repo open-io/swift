@@ -483,8 +483,8 @@ class S3ApiMiddleware(object):
         try:
             controller = req.controller(self.app, self.conf, self.logger)
         except S3NotImplemented:
-            # TODO: Probably we should distinct the error to log this warning
-            self.logger.warning('multipart: No SLO middleware in pipeline')
+            self.logger.info(
+                'User requested for a not yet implemented subresource')
             raise
 
         acl_handler = get_acl_handler(req.controller_name)(req, self.logger)
