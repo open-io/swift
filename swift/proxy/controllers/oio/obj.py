@@ -813,6 +813,19 @@ class ObjectController(BaseObjectController):
         """HTTP DELETE request handler."""
         container_info = self.container_info(
             self.account_name, self.container_name, req)
+        prop_bypass = req.headers.get('x-amz-bypass-governance-retention')
+        if prop_bypass:
+            metadata = self.load_object_metadata(req.headers)
+            try:
+                self.app.storage.object_set_properties(
+                    self.account_name, self.container_name, self.object_name,
+                    metadata, version=obj_version_from_env(req.environ))
+            except Exception as exc:
+                self.app.logger.warn('Failed to set properties on \
+                                     container: %s \
+                                     object %s, exception msg %s',
+                                     self.container_name,
+                                     self.object_name, str(exc))
         policy_index = req.headers.get('X-Backend-Storage-Policy-Index',
                                        container_info['storage_policy'])
         req.headers['X-Backend-Storage-Policy-Index'] = policy_index

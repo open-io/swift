@@ -63,6 +63,8 @@ class ObjectController(Controller):
     """
     Handles requests on objects
     """
+    HEADER_BYPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
+
     def _gen_head_range_resp(self, req_range, resp):
         """
         Swift doesn't handle Range header for HEAD requests.
@@ -208,7 +210,7 @@ class ObjectController(Controller):
             header = sysmeta_header('object', 'retention' + '-' + 'Mode')
             req.headers[header] = req.headers['x-amz-object-lock-mode']
         if 'x-amz-object-lock-retain-until-date' in req.headers:
-            header = sysmeta_header('object', 'retention' + '-' + 'RetainUntilDate')
+            header = sysmeta_header('object', 'retention-RetainUntilDate')
             req.headers[header] = req.headers['x-amz-object-lock-retain-until-date']
         if 'x-amz-object-lock-legal-hold' in req.headers:
             header = sysmeta_header('object', 'legal-hold' + '-' + 'status')
@@ -281,6 +283,14 @@ class ObjectController(Controller):
         Handle DELETE Object request
         """
         version_id = version_id_param(req)
+        bypass_governance = req.environ.get(self.HEADER_BYPASS_GOVERNANCE,
+                                            None)
+        if bypass_governance is not None and \
+           bypass_governance.lower() == 'true':
+            check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")
+            check_iam_bypass(lambda x, req: None)(None, req)
+            header = sysmeta_header('object', 'retention-bypass-governance')
+            req.headers[header] = bypass_governance
         self.set_s3api_command(req, 'delete-object')
         if version_id not in ('null', None):
             container_info = req.get_container_info(self.app)

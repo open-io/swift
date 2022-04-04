@@ -187,7 +187,7 @@ class ObjectLockController(Controller):
      - PutObjectRetention
     """
 
-    HEADER_YPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
+    HEADER_BYPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
 
     @public
     @check_iam_access("s3:GetObjectLegalHold")
@@ -242,7 +242,7 @@ class ObjectLockController(Controller):
             if 'object-lock-enabled' not in global_lock.keys() or \
                global_lock['object-lock-enabled'] == 'False':
                 raise InvalidRequest('InvalidRequest')
-            bypass_governance = req.environ.get(self.HEADER_YPASS_GOVERNANCE,
+            bypass_governance = req.environ.get(self.HEADER_BYPASS_GOVERNANCE,
                                                 None)
             out = self._xml_conf_to_dict(lock_id, body)
 

@@ -30,6 +30,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, NoSuchKey, ErrorResponse, MalformedXML, \
     UserKeyMustBeSpecified, AccessDenied, MissingRequestBodyError
+from swift.common.middleware.s3api.utils import sysmeta_header
 
 
 class MultiObjectDeleteController(Controller):
@@ -37,6 +38,9 @@ class MultiObjectDeleteController(Controller):
     Handles Delete Multiple Objects, which is logged as a MULTI_OBJECT_DELETE
     operation in the S3 server log.
     """
+
+    HEADER_BYPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
+
     def _gen_error_body(self, error, elem, delete_list):
         for key, version in delete_list:
             error_elem = SubElement(elem, 'Error')
@@ -57,6 +61,14 @@ class MultiObjectDeleteController(Controller):
         Handles Delete Multiple Objects.
         """
         self.set_s3api_command(req, 'delete-objects')
+        bypass_governance = req.environ.get(self.HEADER_BYPASS_GOVERNANCE,
+                                            None)
+        if bypass_governance is not None and \
+           bypass_governance.lower() == 'true':
+            check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")
+            check_iam_bypass(lambda x, req: None)(None, req)
+            header = sysmeta_header('object', 'retention-bypass-governance')
+            req.headers[header] = bypass_governance
 
         def object_key_iter(elem):
             for obj in elem.iterchildren('Object'):
