@@ -722,7 +722,8 @@ class TestS3ApiObj(S3ApiTestCase):
         req.content_type = 'text/plain'
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '400')
-        self.assertEqual(self._get_error_code(body), 'BadDigest')
+        self.assertEqual(self._get_error_code(body),
+                         'XAmzContentSHA256Mismatch')
 
     @s3acl
     def test_object_PUT_v4_unsigned_payload(self):

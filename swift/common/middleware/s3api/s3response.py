@@ -479,6 +479,11 @@ class InvalidBucketState(ErrorResponse):
     _msg = 'The request is not valid with the current state of the bucket.'
 
 
+class InvalidChunkSizeError(ErrorResponse):
+    _status = '403 Forbidden'
+    _msg = 'Only the last chunk is allowed to have a size less than 8192 bytes'
+
+
 class InvalidDigest(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'The Content-MD5 you specified was an invalid.'
@@ -811,6 +816,12 @@ class UserKeyMustBeSpecified(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'The bucket POST must contain the specified field name. If it is ' \
            'specified, please check the order of the fields.'
+
+
+class XAmzContentSHA256Mismatch(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'The provided \'x-amz-content-sha256\' header does not match what' \
+        ' was computed.'
 
 
 class BrokenMPU(ErrorResponse):
