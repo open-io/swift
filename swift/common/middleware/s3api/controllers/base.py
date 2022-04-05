@@ -95,18 +95,29 @@ def check_bucket_storage_domain(func):
     return _check_bucket_storage_domain
 
 
-def log_s3api_command(cmd_name):
+def set_s3_operation_rest(resource_type, object_resource_type=None,
+                          method=None):
     """
-    A decorator to append the specified command name to the swift.log_info
-    fields, if the log_s3api_command parameter is enabled.
+    A decorator to set the specified operation name to the s3api.info fields
+    and append it to the swift.log_info fields, if the log_s3_operation
+    parameter is enabled.
     """
-    def _log_s3api_command(func):
+    def _set_s3_operation(func):
         @functools.wraps(func)
-        def log_s3api_command_wrapper(self, req, *args, **kwargs):
-            self.set_s3api_command(req, cmd_name)
+        def set_s3_operation_wrapper(self, req, *args, **kwargs):
+            if object_resource_type and req.is_object_request:
+                rsrc_type = object_resource_type
+            else:
+                rsrc_type = resource_type
+            if method:
+                meth = method
+            else:
+                meth = req.method
+            self.set_s3_operation(req, f'REST.{meth}.{rsrc_type}')
             return func(self, req, *args, **kwargs)
-        return log_s3api_command_wrapper
-    return _log_s3api_command
+
+        return set_s3_operation_wrapper
+    return _set_s3_operation
 
 
 class Controller(object):
@@ -117,7 +128,7 @@ class Controller(object):
         self.app = app
         self.conf = conf
         self.logger = logger
-        self.command = None
+        self.operation = None
 
     @classmethod
     def resource_type(cls):
@@ -127,20 +138,21 @@ class Controller(object):
         name = cls.__name__[:-len('Controller')]
         return camel_to_snake(name).upper()
 
-    def set_s3api_command(self, req, command):
+    def set_s3_operation(self, req, operation):
         """
-        Set s3api command
-        and add this command to current request in swift.log_info fields.
+        Set the specified operation name to the s3api.info fields and append it
+        to the swift.log_info fields, if the log_s3_operation parameter is
+        enabled.
         :param req: HTTP request object
-        :param command: s3 command string
+        :param operation: S3 operation string
         """
-        if self.command:
+        if self.operation:
             return
-        self.command = command
-        if not self.conf.log_s3api_command:
+        self.operation = operation
+        req.environ.setdefault('s3api.info', {})['operation'] = self.operation
+        if not self.conf.log_s3_operation:
             return
-        req.environ.setdefault(
-            'swift.log_info', list()).append(self.command)
+        req.environ.setdefault('swift.log_info', []).append(self.operation)
 
 
 class UnsupportedController(Controller):

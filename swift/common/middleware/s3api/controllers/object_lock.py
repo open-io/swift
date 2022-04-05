@@ -17,7 +17,8 @@ import json
 from datetime import datetime
 from dict2xml import dict2xml
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, object_operation
+    bucket_operation, check_bucket_storage_domain, object_operation, \
+    set_s3_operation_rest
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -67,12 +68,12 @@ class BucketLockController(Controller):
     """
     operation_id = 'Object-Lock'
 
+    @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
     @public
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:GetBucketObjectLockConfiguration")
     def GET(self, req):
-        self.set_s3api_command(req, 'get-object-lock-configuration')
         resp = req.get_response(self.app, method='HEAD')
         info = resp.sysmeta_headers
         global_lock = filter_objectlock_meta(info, 'S3Api-Bucket-')
@@ -96,12 +97,12 @@ class BucketLockController(Controller):
         xml_out = dict2xml(body)
         return HTTPOk(body=xml_out, content_type='application/xml')
 
+    @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
     @public
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:PutBucketObjectLockConfiguration")
     def PUT(self, req):
-        self.set_s3api_command(req, 'put-object-lock-configuration')
         resp = req.get_response(self.app, method='HEAD')
         body = req.xml(10000)
         info = resp.sysmeta_headers
@@ -195,6 +196,7 @@ class ObjectLockLegalHoldController(Controller):
      - PutObjectLegalHold
     """
 
+    @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
     @public
     @object_operation
     @check_bucket_storage_domain
@@ -203,7 +205,6 @@ class ObjectLockLegalHoldController(Controller):
         objectlock_id = 'legal-hold'
         key_filter = OBJECT_HOLD_META_PREFIX
 
-        self.set_s3api_command(req, 'get-object-legal-hold')
         info = req.get_container_info(self.app)
         info_sysmeta = info['sysmeta']
         # To conform to aws when getting retention or legal-hold without
@@ -235,13 +236,13 @@ class ObjectLockLegalHoldController(Controller):
             raise NoSuchObjectLockConfiguration()
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
     @public
     @object_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:PutObjectLegalHold")
     def PUT(self, req):
         lock_id = 'legal-hold'
-        self.set_s3api_command(req, 'put-object-legal-hold')
         body = req.xml(10000)
         try:
             info = req.get_container_info(self.app)
@@ -280,12 +281,12 @@ class ObjectLockRetentionController(Controller):
      - PutObjectRetention
     """
 
+    @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
     @public
     @object_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:GetObjectRetention")
     def GET(self, req):
-        self.set_s3api_command(req, 'get-object-retention')
         info = req.get_container_info(self.app)
         info_sysmeta = info['sysmeta']
         # To conform to aws when getting retention or legal-hold without
@@ -320,13 +321,13 @@ class ObjectLockRetentionController(Controller):
             raise NoSuchObjectLockConfiguration()
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
     @public
     @object_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:PutObjectRetention")
     def PUT(self, req):
         lock_id = 'retention'
-        self.set_s3api_command(req, 'put-object-retention')
 
         body = req.xml(10000)
         try:

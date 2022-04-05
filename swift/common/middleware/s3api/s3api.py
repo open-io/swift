@@ -149,6 +149,7 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.constraints import valid_api_version
 from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
+from swift.common.swob import wsgi_to_str
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
@@ -324,8 +325,8 @@ class S3ApiMiddleware(object):
                              'all domains, * must be the only entry')
         self.conf.ratelimit_as_client_error = config_true_value(
             wsgi_conf.get('ratelimit_as_client_error', False))
-        self.conf.log_s3api_command = config_true_value(
-            wsgi_conf.get('log_s3api_command', False))
+        self.conf.log_s3_operation = config_true_value(
+            wsgi_conf.get('log_s3_operation', True))
         self.conf.allow_anonymous_path_requests = config_true_value(
             wsgi_conf.get('allow_anonymous_path_requests', False))
         self.conf.bucket_db_read_only = config_true_value(
@@ -378,9 +379,6 @@ class S3ApiMiddleware(object):
             rule.append(allowed_header_elm)
             check_cors_rule(rule)
             self.conf.cors_rules.append(rule)
-
-        self.conf.log_s3api_command = config_true_value(
-            wsgi_conf.get('log_s3api_command', False))
 
         self.conf.enable_access_logging = config_true_value(
             wsgi_conf.get('enable_access_logging', True))
@@ -444,7 +442,20 @@ class S3ApiMiddleware(object):
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
             env['s3api.bucket'] = req.container_name
+            env['s3api.info'] = {
+                'bucket': wsgi_to_str(req.container_name),
+                'requester': req.user_id,
+                'signature_version': req.signature_version,
+                'authentication_type': req.authentication_type,
+            }
+            try:
+                env['s3api.info']['account'] = req.get_account(
+                    req.container_name)
+            except Exception:
+                pass
             if req.object_name:
+                env['s3api.info']['key'] = wsgi_to_str(req.object_name)
+                env['s3api.info']['version_id'] = req.params.get('versionId')
                 env['s3api.storage_policy_to_class'] = \
                     req.storage_policy_to_class
             if req.storage_class:
@@ -474,6 +485,7 @@ class S3ApiMiddleware(object):
         except ErrorResponse as err_resp:
             if isinstance(err_resp, InternalError):
                 self.logger.exception(err_resp)
+            env.setdefault('s3api.info', {})['error_code'] = err_resp._code
             resp = err_resp
         except Exception as e:
             self.logger.exception(e)

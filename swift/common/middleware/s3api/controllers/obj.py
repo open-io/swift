@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import json
 from datetime import datetime
 from functools import partial
@@ -31,7 +32,7 @@ from swift.common.middleware.versioned_writes.object_versioning import \
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header, \
     convert_response
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_storage_domain
+    check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import \
     CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
     fill_cors_headers
@@ -64,6 +65,40 @@ def version_id_param(req):
             raise InvalidArgument('versionId', version_id,
                                   'Invalid version id specified')
     return version_id
+
+
+def set_s3_operation_rest_for_get_object(func):
+    """
+    A decorator to set the specified operation and command name
+    to the s3api.info fields.
+    """
+    @functools.wraps(func)
+    def _set_s3_operation(self, req, *args, **kwargs):
+        if 'X-Amz-Copy-Source' in req.headers:
+            set_s3_operation_wrapper = set_s3_operation_rest(
+                'OBJECT_GET', method='COPY')
+        else:
+            set_s3_operation_wrapper = set_s3_operation_rest('OBJECT')
+        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
+
+    return _set_s3_operation
+
+
+def set_s3_operation_rest_for_put_object(func):
+    """
+    A decorator to set the specified operation and command name
+    to the s3api.info fields.
+    """
+    @functools.wraps(func)
+    def _set_s3_operation(self, req, *args, **kwargs):
+        if 'X-Amz-Copy-Source' in req.headers:
+            set_s3_operation_wrapper = set_s3_operation_rest(
+                'OBJECT', method='COPY')
+        else:
+            set_s3_operation_wrapper = set_s3_operation_rest('OBJECT')
+        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
+
+    return _set_s3_operation
 
 
 class ObjectController(Controller):
@@ -161,6 +196,7 @@ class ObjectController(Controller):
                 resp.headers[key] = req.params['response-' + key]
         return resp
 
+    @set_s3_operation_rest('OBJECT')
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -169,8 +205,6 @@ class ObjectController(Controller):
         """
         Handle HEAD Object request
         """
-        self.set_s3api_command(req, 'head-object')
-
         resp = self.GETorHEAD(req)
 
         if 'range' in req.headers:
@@ -179,6 +213,7 @@ class ObjectController(Controller):
 
         return resp
 
+    @set_s3_operation_rest_for_get_object
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -187,8 +222,6 @@ class ObjectController(Controller):
         """
         Handle GET Object request
         """
-        self.set_s3api_command(req, 'get-object')
-
         try:
             resp = self.GETorHEAD(req)
             return resp
@@ -225,6 +258,7 @@ class ObjectController(Controller):
             else:
                 raise
 
+    @set_s3_operation_rest_for_put_object
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -233,11 +267,6 @@ class ObjectController(Controller):
         """
         Handle PUT Object and PUT Object (Copy) request
         """
-        if 'X-Amz-Copy-Source' in req.headers:
-            self.set_s3api_command(req, 'copy-object')
-        else:
-            self.set_s3api_command(req, 'put-object')
-
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
         if len(req.object_name) > constraints.MAX_OBJECT_NAME_LENGTH:
@@ -294,6 +323,7 @@ class ObjectController(Controller):
         resp.status = HTTP_OK
         return resp
 
+    @set_s3_operation_rest('OBJECT')
     @public
     def POST(self, req):
         raise S3NotImplemented()
@@ -330,6 +360,7 @@ class ObjectController(Controller):
         return config_true_value(
             container_info.get('sysmeta', {}).get('versions-enabled', False))
 
+    @set_s3_operation_rest('OBJECT')
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -346,7 +377,6 @@ class ObjectController(Controller):
             check_iam_bypass(lambda x, req: None)(None, req)
             header = sysmeta_header('object', 'retention-bypass-governance')
             req.headers[header] = bypass_governance
-        self.set_s3api_command(req, 'delete-object')
         if version_id not in ('null', None):
             container_info = req.get_container_info(self.app)
             if not container_info.get(
@@ -387,6 +417,7 @@ class ObjectController(Controller):
             return HTTPNoContent()
         return resp
 
+    @set_s3_operation_rest('PREFLIGHT')
     @public
     @check_bucket_storage_domain
     def OPTIONS(self, req):

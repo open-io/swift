@@ -172,7 +172,7 @@ class ProxyLoggingMiddleware(object):
                      'GET,HEAD,POST,PUT,DELETE,COPY,OPTIONS'))
         self.valid_methods = [m.strip().upper() for m in
                               self.valid_methods.split(',') if m.strip()]
-        access_log_conf = {}
+        self.access_log_conf = {}
         for key in ('log_facility', 'log_name', 'log_level', 'log_udp_host',
                     'log_udp_port', 'log_statsd_host', 'log_statsd_port',
                     'log_statsd_default_sample_rate',
@@ -180,9 +180,9 @@ class ProxyLoggingMiddleware(object):
                     'log_statsd_metric_prefix'):
             value = conf.get('access_' + key, conf.get(key, None))
             if value:
-                access_log_conf[key] = value
+                self.access_log_conf[key] = value
         self.access_logger = logger or get_logger(
-            access_log_conf,
+            self.access_log_conf,
             log_route=conf.get('access_log_route', 'proxy-access'),
             statsd_tail_prefix='proxy-server')
         self.reveal_sensitive_prefix = int(

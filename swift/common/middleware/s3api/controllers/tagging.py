@@ -19,7 +19,8 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.utils import close_if_possible, public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_container_existence, check_bucket_storage_domain
+    check_container_existence, check_bucket_storage_domain, \
+    set_s3_operation_rest
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -73,6 +74,7 @@ class TaggingController(Controller):
 
     """
 
+    @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @public
     @check_container_existence
     @check_bucket_storage_domain
@@ -81,11 +83,6 @@ class TaggingController(Controller):
         """
         Handles GET Bucket and Object tagging.
         """
-        if req.is_object_request:
-            self.set_s3api_command(req, 'get-object-tagging')
-        else:
-            self.set_s3api_command(req, 'get-bucket-tagging')
-
         resp = req.get_response(self.app, 'HEAD',
                                 req.container_name, req.object_name)
         headers = {}
@@ -109,6 +106,7 @@ class TaggingController(Controller):
         return HTTPOk(body=body, content_type='application/xml',
                       headers=headers)
 
+    @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @public
     @check_container_existence
     @check_bucket_storage_domain
@@ -117,11 +115,6 @@ class TaggingController(Controller):
         """
         Handles PUT Bucket and Object tagging.
         """
-        if req.is_object_request:
-            self.set_s3api_command(req, 'put-object-tagging')
-        else:
-            self.set_s3api_command(req, 'put-bucket-tagging')
-
         body = req.xml(MAX_TAGGING_BODY_SIZE)
         try:
             # Just validate the body
@@ -143,6 +136,7 @@ class TaggingController(Controller):
             return HTTPOk(headers=headers)
         return resp
 
+    @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @public
     @check_container_existence
     @check_bucket_storage_domain
@@ -151,11 +145,6 @@ class TaggingController(Controller):
         """
         Handles DELETE Bucket and Object tagging.
         """
-        if req.is_object_request:
-            self.set_s3api_command(req, 'delete-object-tagging')
-        else:
-            self.set_s3api_command(req, 'delete-bucket-tagging')
-
         # Send empty header to remove any previous value.
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = ""

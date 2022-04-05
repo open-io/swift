@@ -19,7 +19,7 @@ from swift.common.utils import public
 
 from swift.common.middleware.s3api.exception import ACLError
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_storage_domain
+    check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
     MalformedACLError, UnexpectedContent, MissingSecurityHeader
 from swift.common.middleware.s3api.etree import Element, SubElement, tostring
@@ -85,32 +85,24 @@ class AclController(Controller):
 
     Those APIs are logged as ACL operations in the S3 server log.
     """
+    @set_s3_operation_rest('ACL', 'OBJECT_ACL')
     @public
     @check_bucket_storage_domain
     def GET(self, req):
         """
         Handles GET Bucket acl and GET Object acl.
         """
-        if req.is_object_request:
-            self.set_s3api_command(req, 'get-object-acl')
-        else:
-            self.set_s3api_command(req, 'get-bucket-acl')
-
         resp = req.get_response(self.app, method='HEAD')
 
         return get_acl(req.user_id, resp.headers)
 
+    @set_s3_operation_rest('ACL', 'OBJECT_ACL')
     @public
     @check_bucket_storage_domain
     def PUT(self, req):
         """
         Handles PUT Bucket acl and PUT Object acl.
         """
-        if req.is_object_request:
-            self.set_s3api_command(req, 'put-object-acl')
-        else:
-            self.set_s3api_command(req, 'put-bucket-acl')
-
         if req.is_object_request:
             # Handle Object ACL
             raise S3NotImplemented()

@@ -18,8 +18,8 @@ from functools import wraps
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_container_existence, log_s3api_command, \
-    check_bucket_storage_domain
+    bucket_operation, check_container_existence, check_bucket_storage_domain, \
+    set_s3_operation_rest
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
@@ -165,11 +165,11 @@ class CorsController(Controller):
 
     """
 
+    @set_s3_operation_rest('CORS')
     @public
     @bucket_operation
     @check_container_existence
     @check_bucket_storage_domain
-    @log_s3api_command('get-bucket-cors')
     @check_iam_access('s3:GetBucketCORS')
     def GET(self, req):  # pylint: disable=invalid-name
         """
@@ -181,11 +181,11 @@ class CorsController(Controller):
             raise NoSuchCORSConfiguration
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('CORS')
     @public
     @bucket_operation
     @check_container_existence
     @check_bucket_storage_domain
-    @log_s3api_command('put-bucket-cors')
     @check_iam_access('s3:PutBucketCORS')
     def PUT(self, req):  # pylint: disable=invalid-name
         """
@@ -207,11 +207,11 @@ class CorsController(Controller):
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 
+    @set_s3_operation_rest('CORS')
     @public
     @check_bucket_storage_domain
     @bucket_operation
     @check_container_existence
-    @log_s3api_command('delete-bucket-cors')
     @check_iam_access('s3:PutBucketCORS')  # No specific permission for DELETE
     def DELETE(self, req):  # pylint: disable=invalid-name
         """

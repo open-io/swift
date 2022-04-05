@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain
+    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -40,6 +40,7 @@ class LifecycleController(Controller):
 
     """
 
+    @set_s3_operation_rest('LIFECYCLE')
     @public
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
     @check_bucket_storage_domain
@@ -55,6 +56,7 @@ class LifecycleController(Controller):
 
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('LIFECYCLE')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -74,6 +76,7 @@ class LifecycleController(Controller):
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 
+    @set_s3_operation_rest('LIFECYCLE')
     @public
     @bucket_operation
     @check_bucket_storage_domain

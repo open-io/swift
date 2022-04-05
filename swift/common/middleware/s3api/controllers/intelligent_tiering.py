@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain
+    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -109,6 +109,7 @@ class IntelligentTieringController(Controller):
 
         return elem
 
+    @set_s3_operation_rest('INTELLIGENT_TIERING')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -155,6 +156,7 @@ class IntelligentTieringController(Controller):
 
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('INTELLIGENT_TIERING')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -196,6 +198,7 @@ class IntelligentTieringController(Controller):
         return convert_response(req, subreq.get_response(self.app),
                                 204, HTTPOk)
 
+    @set_s3_operation_rest('INTELLIGENT_TIERING')
     @public
     @bucket_operation
     @check_bucket_storage_domain

@@ -61,6 +61,7 @@ Static Large Object when the multipart upload is completed.
 
 import binascii
 import copy
+import functools
 import os
 import re
 import time
@@ -80,7 +81,7 @@ from six.moves.urllib.parse import quote, urlparse
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
-    check_bucket_storage_domain
+    check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
@@ -160,6 +161,23 @@ def _make_complete_body(req, s3_etag, yielded_anything):
     return body
 
 
+def set_s3_operation_rest_for_put_part(func):
+    """
+    A decorator to set the specified operation and command name
+    to the s3api.info fields.
+    """
+    @functools.wraps(func)
+    def _set_s3_operation(self, req, *args, **kwargs):
+        if 'X-Amz-Copy-Source' in req.headers:
+            set_s3_operation_wrapper = set_s3_operation_rest(
+                'PART', method='COPY')
+        else:
+            set_s3_operation_wrapper = set_s3_operation_rest('PART')
+        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
+
+    return _set_s3_operation
+
+
 class PartController(Controller):
     """
     Handles the following APIs:
@@ -186,6 +204,7 @@ class PartController(Controller):
                                   err_msg)
         return part_number
 
+    @set_s3_operation_rest_for_put_part
     @public
     @object_operation
     @check_container_existence
@@ -195,12 +214,6 @@ class PartController(Controller):
         """
         Handles Upload Part and Upload Part Copy.
         """
-        if 'X-Amz-Copy-Source' in req.headers and \
-                'X-Amz-Copy-Source-Range' in req.headers:
-            self.set_s3api_command(req, 'upload-part-copy')
-        else:
-            self.set_s3api_command(req, 'upload-part')
-
         if 'uploadId' not in req.params:
             raise InvalidArgument('ResourceType', 'partNumber',
                                   'Unexpected query string parameter')
@@ -270,6 +283,7 @@ class PartController(Controller):
         resp.status = 200
         return resp
 
+    @set_s3_operation_rest('PART')
     @public
     @object_operation
     @check_container_existence
@@ -279,10 +293,9 @@ class PartController(Controller):
         """
         Handles Get Part (regular Get but with ?part-number=N).
         """
-        self.set_s3api_command(req, 'get-object-part')
-
         return self.GETorHEAD(req)
 
+    @set_s3_operation_rest('PART')
     @public
     @object_operation
     @check_container_existence
@@ -292,8 +305,6 @@ class PartController(Controller):
         """
         Handles Head Part (regular HEAD but with ?part-number=N).
         """
-        self.set_s3api_command(req, 'head-object-part')
-
         return self.GETorHEAD(req)
 
     def GETorHEAD(self, req):
@@ -376,6 +387,7 @@ class UploadsController(Controller):
 
     Those APIs are logged as UPLOADS operations in the S3 server log.
     """
+    @set_s3_operation_rest('UPLOADS')
     @public
     @bucket_operation(err_resp=InvalidRequest,
                       err_msg="Key is not expected for the GET method "
@@ -387,8 +399,6 @@ class UploadsController(Controller):
         """
         Handles List Multipart Uploads
         """
-        self.set_s3api_command(req, 'list-multipart-uploads')
-
         def separate_uploads(uploads, prefix, delimiter):
             """
             separate_uploads will separate uploads into non_delimited_uploads
@@ -541,6 +551,7 @@ class UploadsController(Controller):
 
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('UPLOADS')
     @public
     @object_operation
     @check_container_existence
@@ -550,7 +561,6 @@ class UploadsController(Controller):
         """
         Handles Initiate Multipart Upload.
         """
-        self.set_s3api_command(req, 'create-multipart-upload')
         if len(req.object_name) > constraints.MAX_OBJECT_NAME_LENGTH:
             # Note that we can still run into trouble where the MPU is just
             # within the limit, which means the segment names will go over
@@ -626,6 +636,7 @@ class UploadController(Controller):
 
     Those APIs are logged as UPLOAD operations in the S3 server log.
     """
+    @set_s3_operation_rest('UPLOAD')
     @public
     @object_operation
     @check_container_existence
@@ -635,8 +646,6 @@ class UploadController(Controller):
         """
         Handles List Parts.
         """
-        self.set_s3api_command(req, 'list-parts')
-
         def filter_part_num_marker(o):
             try:
                 num = int(os.path.basename(o['name']))
@@ -742,6 +751,7 @@ class UploadController(Controller):
 
         return HTTPOk(body=body, content_type='application/xml')
 
+    @set_s3_operation_rest('UPLOAD')
     @public
     @object_operation
     @check_container_existence
@@ -751,8 +761,6 @@ class UploadController(Controller):
         """
         Handles Abort Multipart Upload.
         """
-        self.set_s3api_command(req, 'abort-multipart-upload')
-
         upload_id = get_param(req, 'uploadId')
         _get_upload_info(req, self.app, upload_id)
 
@@ -793,6 +801,7 @@ class UploadController(Controller):
 
         return HTTPNoContent()
 
+    @set_s3_operation_rest('UPLOAD')
     @public
     @object_operation
     @check_container_existence
@@ -802,8 +811,6 @@ class UploadController(Controller):
         """
         Handles Complete Multipart Upload.
         """
-        self.set_s3api_command(req, 'complete-multipart-upload')
-
         upload_id = get_param(req, 'uploadId')
         resp = _get_upload_info(req, self.app, upload_id)
 

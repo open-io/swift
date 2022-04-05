@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
+
 from swift.common.swob import bytes_to_wsgi
 from swift.common.utils import json, public, last_modified_date_to_timestamp
 
@@ -24,17 +26,32 @@ from swift.common.middleware.s3api.utils import S3Timestamp, \
     validate_bucket_name, sysmeta_header
 
 
+def set_s3_operation_soap(operation):
+    """
+    A decorator to set the specified operation name to the s3api.info fields
+    and append it to the swift.log_info fields, if the log_s3_operation
+    parameter is enabled.
+    """
+    def _set_s3_operation(func):
+        @functools.wraps(func)
+        def set_s3_operation_wrapper(self, req, *args, **kwargs):
+            self.set_s3_operation(req, f'SOAP.{operation}')
+            return func(self, req, *args, **kwargs)
+
+        return set_s3_operation_wrapper
+    return _set_s3_operation
+
+
 class ServiceController(Controller):
     """
     Handles account level requests.
     """
+    @set_s3_operation_soap('ListAllMyBuckets')
     @public
     def GET(self, req):
         """
         Handle GET Service request
         """
-        self.set_s3api_command(req, 'list-buckets')
-
         resp = req.get_response(self.app, query={'format': 'json'})
 
         containers = json.loads(resp.body)

@@ -2380,7 +2380,8 @@ class LogLevelFilter(object):
 
 
 def get_logger(conf, name=None, log_to_console=False, log_route=None,
-               fmt="%(server)s: %(message)s", statsd_tail_prefix=None):
+               fmt="%(server)s: %(message)s", statsd_tail_prefix=None,
+               formatter=None):
     """
     Get the current system logger using config settings.
 
@@ -2427,7 +2428,7 @@ def get_logger(conf, name=None, log_to_console=False, log_route=None,
     logger = logging.getLogger(log_route)
     logger.propagate = False
     # all new handlers will get the same formatter
-    formatter = SwiftLogFormatter(
+    formatter = formatter or SwiftLogFormatter(
         fmt=fmt, max_line_length=int(conf.get('log_max_line_length', 0)))
 
     # get_logger will only ever add one SysLog Handler to a logger

@@ -272,6 +272,8 @@ class SigV4Mixin(object):
     A request class mixin to provide S3 signature v4 functionality
     """
 
+    signature_version = 'SigV4'
+
     def check_signature(self, secret):
         secret = utf8encode(secret)
         # Save secret for further signature computation
@@ -703,6 +705,7 @@ class S3Request(swob.Request):
     S3 request object.
     """
 
+    signature_version = 'SigV2'
     bucket_acl = _header_acl_property('container')
     object_acl = _header_acl_property('object')
 
@@ -730,6 +733,7 @@ class S3Request(swob.Request):
                 'check_signature': self.check_signature,
             }
         else:
+            self.signature_version = None
             self.string_to_sign = None
         self.account = None
         self.user_id = None
@@ -802,6 +806,14 @@ class S3Request(swob.Request):
                  'Signature' not in self.params and
                  'Expires' not in self.params and
                  'X-Amz-Credential' not in self.params))
+
+    @property
+    def authentication_type(self):
+        if self._is_query_auth:
+            return 'QueryString'
+        if self._is_header_auth:
+            return 'AuthHeader'
+        return None
 
     @property
     def _is_chunked_upload(self):
@@ -1366,14 +1378,7 @@ class S3Request(swob.Request):
     def bucket_db(self):
         return self.environ.get('s3api.bucket_db')
 
-    def to_swift_req(self, method, container, obj, query=None,
-                     body=None, headers=None):
-        """
-        Create a Swift request based on this request's environment.
-        """
-        env = self.environ.copy()
-        env['swift.infocache'] = self.environ.setdefault('swift.infocache', {})
-
+    def get_account(self, container):
         account = None
         if container:
             if container.endswith(MULTIUPLOAD_SUFFIX):
@@ -1399,6 +1404,17 @@ class S3Request(swob.Request):
                 account = self.access_key
             else:
                 account = self.account
+        return account
+
+    def to_swift_req(self, method, container, obj, query=None,
+                     body=None, headers=None):
+        """
+        Create a Swift request based on this request's environment.
+        """
+        env = self.environ.copy()
+        env['swift.infocache'] = self.environ.setdefault('swift.infocache', {})
+
+        account = self.get_account(container)
 
         def sanitize(value):
             if set(value).issubset(string.printable):

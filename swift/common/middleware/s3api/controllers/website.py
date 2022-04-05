@@ -28,6 +28,7 @@ from swift.common.middleware.s3api.controllers.base import (
     bucket_operation,
     check_bucket_storage_domain,
     check_container_existence,
+    set_s3_operation_rest,
 )
 from swift.common.middleware.s3api.etree import (
     fromstring,
@@ -82,6 +83,7 @@ class WebsiteController(Controller):
 
     """
 
+    @set_s3_operation_rest('WEBSITE')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -91,8 +93,6 @@ class WebsiteController(Controller):
         """
         Handles GET Bucket website.
         """
-        self.set_s3api_command(req, "get-bucket-website")
-
         resp = req.get_response(self.app, method="HEAD")
         body = resp.sysmeta_headers.get(BUCKET_WEBSITE_HEADER)
 
@@ -102,6 +102,7 @@ class WebsiteController(Controller):
         xml_out = dict2xml(body, wrap="WebsiteConfiguration", newlines=False)
         return HTTPOk(body=xml_out, content_type="application/xml")
 
+    @set_s3_operation_rest('WEBSITE')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -111,7 +112,6 @@ class WebsiteController(Controller):
         """
         Handles PUT Bucket website.
         """
-        self.set_s3api_command(req, "put-bucket-website")
         if not self.conf.enable_website:
             raise S3NotImplemented
         xml = req.xml(MAX_WEBSITE_BODY_SIZE)
@@ -122,6 +122,7 @@ class WebsiteController(Controller):
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 204, HTTPOk)
 
+    @set_s3_operation_rest('WEBSITE')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -131,8 +132,6 @@ class WebsiteController(Controller):
         """
         Handles DELETE Bucket website.
         """
-        self.set_s3api_command(req, "delete-bucket-website")
-
         req.headers[BUCKET_WEBSITE_HEADER] = ""
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 202, HTTPNoContent)

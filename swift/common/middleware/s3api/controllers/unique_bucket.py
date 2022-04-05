@@ -16,7 +16,7 @@
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers import BucketController
 from swift.common.middleware.s3api.controllers.base import \
-    check_bucket_storage_domain
+    check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
     BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable, InternalError
 
@@ -26,13 +26,12 @@ class UniqueBucketController(BucketController):
     Handles bucket requests, ensure bucket names are globally unique.
     """
 
+    @set_s3_operation_rest('BUCKET')
     @public
     def PUT(self, req):
         """
         Handle PUT Bucket request
         """
-        self.set_s3api_command(req, 'create-bucket')
-
         if self.conf.bucket_db_read_only:
             raise ServiceUnavailable('Bucket DB is read-only')
 
@@ -70,14 +69,13 @@ class UniqueBucketController(BucketController):
             raise InternalError('Failed to create bucket')
         return resp
 
+    @set_s3_operation_rest('BUCKET')
     @public
     @check_bucket_storage_domain
     def DELETE(self, req):
         """
         Handle DELETE Bucket request
         """
-        self.set_s3api_command(req, 'delete-bucket')
-
         if self.conf.bucket_db_read_only:
             raise ServiceUnavailable('Bucket DB is read-only')
 

@@ -19,7 +19,7 @@ from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain
+    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.etree import Element, tostring, \
     fromstring, XMLSyntaxError, DocumentInvalid, SubElement
 from swift.common.middleware.s3api.s3response import HTTPOk, \
@@ -37,6 +37,7 @@ class VersioningController(Controller):
 
     Those APIs are logged as VERSIONING operations in the S3 server log.
     """
+    @set_s3_operation_rest('VERSIONING')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -45,8 +46,6 @@ class VersioningController(Controller):
         """
         Handles GET Bucket versioning.
         """
-        self.set_s3api_command(req, 'get-bucket-versioning')
-
         resp = req.get_response(self.app, method='HEAD')
         enabled = resp.sw_headers.get('X-Container-Sysmeta-Versions-Enabled')
 
@@ -59,6 +58,7 @@ class VersioningController(Controller):
 
         return HTTPOk(body=body, content_type=None)
 
+    @set_s3_operation_rest('VERSIONING')
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -67,7 +67,6 @@ class VersioningController(Controller):
         """
         Handles PUT Bucket versioning.
         """
-        self.set_s3api_command(req, 'put-bucket-versioning')
         info = req.get_container_info(self.app)
         object_lock = info['sysmeta'].get(
             's3api-bucket-object-lock-enabled',

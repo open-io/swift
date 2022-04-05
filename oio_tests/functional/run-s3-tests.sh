@@ -7,7 +7,7 @@ export OIO_NS="OPENIO" OIO_ACCOUNT="test_account" OIO_USER=USER-$RANDOM OIO_PATH
 install_deps || exit 1
 compile_sds || exit 1
 run_sds || exit 1
-configure_aws
+configure_aws virtual
 configure_s3cmd
 configure_hosts
 
@@ -24,9 +24,13 @@ run_functional_test s3-default.cfg \
     s3-versioning.sh \
     s3-multipart.sh \
     s3-mpu.py \
-    s3-storage-class.py \
     s3-s3cmd.sh \
-    s3-website.py
+    s3-website.py \
+    bucket-logging.py
+
+configure_aws
+run_functional_test s3-default.cfg \
+    s3-storage-class.py
 
 # TODO(FVE): gridinit_cmd stop
 exit $RET

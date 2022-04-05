@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import functools
 import json
 
 from swift.common.constraints import MAX_OBJECT_NAME_LENGTH
@@ -35,6 +36,20 @@ from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE
 
 
+def set_s3_operation_batch_delete_object(func):
+    """
+    A decorator to set the specified operation name to the s3api.info fields
+    and append it to the swift.log_info fields, if the log_s3_operation
+    parameter is enabled.
+    """
+    @functools.wraps(func)
+    def _set_s3_operation(self, req, *args, **kwargs):
+        self.set_s3_operation(req, 'BATCH.DELETE.OBJECT')
+        return func(self, req, *args, **kwargs)
+
+    return _set_s3_operation
+
+
 class MultiObjectDeleteController(Controller):
     """
     Handles Delete Multiple Objects, which is logged as a MULTI_OBJECT_DELETE
@@ -51,6 +66,7 @@ class MultiObjectDeleteController(Controller):
 
         return tostring(elem)
 
+    @set_s3_operation_batch_delete_object
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -58,8 +74,6 @@ class MultiObjectDeleteController(Controller):
         """
         Handles Delete Multiple Objects.
         """
-        self.set_s3api_command(req, 'delete-objects')
-
         # This must be checked for each object name. Just prepare
         # the checker here and call it later.
         bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)

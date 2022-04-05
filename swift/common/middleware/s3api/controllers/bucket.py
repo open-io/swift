@@ -15,6 +15,7 @@
 
 from base64 import standard_b64encode as b64encode
 from base64 import standard_b64decode as b64decode
+import functools
 
 import six
 from six.moves.urllib.parse import quote, quote_plus
@@ -28,7 +29,7 @@ from swift.common.utils import json, public, config_true_value, Timestamp
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    log_s3api_command, check_bucket_storage_domain
+    check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import \
     CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
     fill_cors_headers
@@ -47,6 +48,22 @@ from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
+
+
+def set_s3_operation_rest_for_list_objects(func):
+    """
+    A decorator to set the specified operation and command name
+    to the s3api.info fields.
+    """
+    @functools.wraps(func)
+    def _set_s3_operation(self, req, *args, **kwargs):
+        if 'versions' in req.params:
+            set_s3_operation_wrapper = set_s3_operation_rest('BUCKETVERSIONS')
+        else:
+            set_s3_operation_wrapper = set_s3_operation_rest('BUCKET')
+        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
+
+    return _set_s3_operation
 
 
 class BucketController(Controller):
@@ -106,6 +123,7 @@ class BucketController(Controller):
         except (BucketNotEmpty, InternalError):
             raise ServiceUnavailable()
 
+    @set_s3_operation_rest('BUCKET')
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -114,8 +132,6 @@ class BucketController(Controller):
         """
         Handle HEAD Bucket (Get Metadata) request
         """
-        self.set_s3api_command(req, 'head-bucket')
-
         resp = req.get_response(self.app)
         return HTTPOk(headers=resp.headers)
 
@@ -350,6 +366,7 @@ class BucketController(Controller):
                 self._add_object(req, elem, o, encoding_type, listing_type,
                                  fetch_owner)
 
+    @set_s3_operation_rest_for_list_objects
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -390,13 +407,6 @@ class BucketController(Controller):
         encoding_type, query, listing_type, fetch_owner = \
             self._parse_request_options(req, max_keys)
 
-        if listing_type == 'object-versions':
-            self.set_s3api_command(req, 'list-object-versions')
-        elif listing_type == 'version-2':
-            self.set_s3api_command(req, 'list-objects-v2')
-        else:
-            self.set_s3api_command(req, 'list-objects')
-
         resp = req.get_response(self.app, query=query)
 
         objects = json.loads(resp.body)
@@ -418,6 +428,7 @@ class BucketController(Controller):
         resp = HTTPOk(body=body, content_type='application/xml')
         return resp
 
+    @set_s3_operation_rest('BUCKET')
     @public
     @fill_cors_headers
     @check_iam_access("s3:CreateBucket")
@@ -425,8 +436,6 @@ class BucketController(Controller):
         """
         Handle PUT Bucket request
         """
-        self.set_s3api_command(req, 'create-bucket')
-
         location = self.conf.location
         xml = req.xml(MAX_PUT_BUCKET_BODY_SIZE)
         if xml:
@@ -473,6 +482,7 @@ class BucketController(Controller):
         resp.location = '/' + req.container_name
         return resp
 
+    @set_s3_operation_rest('BUCKET')
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -481,14 +491,13 @@ class BucketController(Controller):
         """
         Handle DELETE Bucket request
         """
-        self.set_s3api_command(req, 'delete-bucket')
-
         # NB: object_versioning is responsible for cleaning up its container
         if self.conf.allow_multipart_uploads:
             self._delete_segments_bucket(req)
         resp = req.get_response(self.app)
         return resp
 
+    @set_s3_operation_rest('BUCKET')
     @public
     def POST(self, req):
         """
@@ -496,9 +505,9 @@ class BucketController(Controller):
         """
         raise S3NotImplemented()
 
+    @set_s3_operation_rest('PREFLIGHT')
     @public
     @check_bucket_storage_domain
-    @log_s3api_command('options')
     def OPTIONS(self, req):
         origin = req.headers.get('Origin')
         if not origin:
