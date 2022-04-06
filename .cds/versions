@@ -1,0 +1,2 @@
+export FDB_VERSION="6.3.23"
+export PYPI_SNAPSHOT="20220227-21h42m14s"

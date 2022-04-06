@@ -11,6 +11,7 @@ jobs:
         script: |+
           #!/bin/bash
           set -x
+          . .cds/versions
           export DEBIAN_FRONTEND=noninteractive
           curl http://mirror2.openio.io/pub/repo/openio/APT-GPG-KEY-OPENIO-0 | apt-key add -
           apt-add-repository "deb http://mirror2.openio.io/pub/repo/openio/sds/20.04/ubuntu/ bionic/"
@@ -20,6 +21,10 @@ jobs:
           systemctl stop redis.service
           systemctl disable redis.service
           virtualenv -p /usr/bin/python3 $HOME/swiftenv
+          cat << EOF > $HOME/swiftenv/pip.conf
+          [global]
+          index-url = https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
+          EOF
           . $HOME/swiftenv/bin/activate
           pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
