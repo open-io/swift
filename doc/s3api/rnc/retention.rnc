@@ -1,0 +1,7 @@
+include "common.rnc"
+
+start =
+  element Retention {
+    element Mode { xsd:string }&
+    element RetainUntilDate { xsd:string }
+    }

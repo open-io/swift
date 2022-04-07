@@ -3,9 +3,13 @@
   <include href="common.rng"/>
   <start>
     <element name="LegalHold">
-        <element name="Status">
+      <element name="Status">
+        <choice>
+          <value>ON</value>
+          <value>OFF</value>
           <data type="string"/>
-        </element>
+        </choice>
+      </element>
     </element>
   </start>
 </grammar>

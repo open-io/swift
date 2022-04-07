@@ -51,6 +51,7 @@ __all__ = [
     'UniqueBucketController',
 
     'AclController',
+    'BucketLockController',
     'S3AclController',
     'CorsController',
     'MultiObjectDeleteController',
@@ -61,7 +62,6 @@ __all__ = [
     'LifecycleController',
     'LocationController',
     'LoggingStatusController',
-    'BucketLockController',
     'ObjectLockController',
     'VersioningController',
     'TaggingController',

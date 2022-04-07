@@ -1,0 +1,6 @@
+include "common.rnc"
+
+start =
+  element LegalHold {
+    element Status { "ON" | "OFF" | xsd:string }
+  }

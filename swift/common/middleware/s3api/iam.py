@@ -47,8 +47,8 @@ RT_BUCKET = "Bucket"
 
 SUPPORTED_ACTIONS = {
     "s3:AbortMultipartUpload": (RT_OBJECT, ),
-    "s3:CreateBucket": (RT_BUCKET, ),
     "s3:BypassGovernanceRetention": (RT_OBJECT, ),
+    "s3:CreateBucket": (RT_BUCKET, ),
     "s3:DeleteBucket": (RT_BUCKET, ),
     "s3:DeleteBucketTagging": (RT_BUCKET, ),
     "s3:DeleteIntelligentTieringConfiguration": (RT_BUCKET, ),
@@ -61,10 +61,13 @@ SUPPORTED_ACTIONS = {
     "s3:GetBucketLogging": (RT_BUCKET, ),
     "s3:GetBucketTagging": (RT_BUCKET, ),
     "s3:GetBucketVersioning": (RT_BUCKET, ),
+    "s3:GetBucketObjectLockConfiguration": (RT_BUCKET, ),
     "s3:GetIntelligentTieringConfiguration": (RT_BUCKET, ),
     "s3:GetLifecycleConfiguration": (RT_BUCKET, ),
     "s3:GetObject": (RT_OBJECT, ),
     "s3:GetObjectAcl": (RT_OBJECT, ),
+    "s3:GetObjectLegalHold": (RT_OBJECT, ),
+    "s3:GetObjectRetention": (RT_OBJECT, ),
     "s3:GetObjectTagging": (RT_OBJECT, ),
     "s3:ListBucket": (RT_BUCKET, ),
     "s3:ListBucketMultipartUploads": (RT_BUCKET, ),
@@ -72,6 +75,7 @@ SUPPORTED_ACTIONS = {
     "s3:PutBucketAcl": (RT_BUCKET, ),
     "s3:PutBucketCORS": (RT_BUCKET, ),
     "s3:PutBucketLogging": (RT_BUCKET, ),
+    "s3:PutBucketObjectLockConfiguration": (RT_BUCKET, ),
     "s3:PutBucketTagging": (RT_BUCKET, ),
     "s3:PutBucketVersioning": (RT_BUCKET, ),
     "s3:PutIntelligentTieringConfiguration": (RT_BUCKET, ),
@@ -79,11 +83,7 @@ SUPPORTED_ACTIONS = {
     "s3:PutObject": (RT_OBJECT, ),
     "s3:PutObjectAcl": (RT_OBJECT, ),
     "s3:PutObjectTagging": (RT_OBJECT, ),
-    "s3:GetObjectLockConfiguration": (RT_BUCKET, ),
-    "s3:PutObjectLockConfiguration": (RT_BUCKET, ),
-    "s3:GetObjectRetention": (RT_OBJECT, ),
     "s3:PutObjectRetention": (RT_OBJECT, ),
-    "s3:GetObjectLegalHold": (RT_OBJECT, ),
     "s3:PutObjectLegalHold": (RT_OBJECT, ),
 }
 

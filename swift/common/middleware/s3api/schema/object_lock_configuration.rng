@@ -19,12 +19,12 @@
               </element>
               <zeroOrMore>
                 <element name="Days">
-                  <data type="int"/>
+                  <data type="integer"/>
                 </element>
               </zeroOrMore>
-               <zeroOrMore>
+              <zeroOrMore>
                 <element name="Years">
-                  <data type="int"/>
+                  <data type="integer"/>
                 </element>
               </zeroOrMore>
             </interleave>

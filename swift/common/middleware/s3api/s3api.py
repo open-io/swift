@@ -157,10 +157,9 @@ from swift.common.middleware.s3api.etree import Element
 from swift.common.middleware.s3api.exception import NotS3Request, \
     InvalidSubresource
 from swift.common.middleware.s3api.s3request import get_request_class
-from swift.common.middleware.s3api.s3response import AccessDenied, ErrorResponse, \
+from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
-    InvalidRequest, Redirect, NoMetaForKey, InvalidBucketState, \
-    InvalidRetentionPeriod
+    InvalidRequest, Redirect
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
@@ -467,21 +466,10 @@ class S3ApiMiddleware(object):
             if isinstance(err_resp, InternalError):
                 self.logger.exception(err_resp)
             resp = err_resp
-        except NoMetaForKey as e:
-            self.logger.exception(e)
-            resp = e
-        except InvalidBucketState as e:
-            self.logger.exception(e)
-            resp = e
-        except InvalidRetentionPeriod as e:
-            self.logger.exception(e)
-            resp = e
-        except AccessDenied as e:
-            self.logger.exception(e)
-            resp = e
         except Exception as e:
             self.logger.exception(e)
             resp = InternalError(reason=str(e))
+
         if isinstance(resp, S3ResponseBase) and 'swift.trans_id' in env:
             resp.headers['x-amz-id-2'] = env['swift.trans_id']
             resp.headers['x-amz-request-id'] = env['swift.trans_id']

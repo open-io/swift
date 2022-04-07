@@ -604,10 +604,11 @@ class MalformedXML(ErrorResponse):
     _msg = 'The XML you provided was not well-formed or did not validate ' \
            'against our published schema'
 
+
 class InvalidRetentionPeriod(ErrorResponse):
     _status = '400 Bad Request'
-    #_status = '400'
-    _msg = 'InvalidRetentionPeriod days or years'
+    _msg = 'Default retention period must be a positive integer value.'
+
 
 class MaxMessageLengthExceeded(ErrorResponse):
     _status = '400 Bad Request'
@@ -657,9 +658,11 @@ class NoLoggingStatusForKey(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'There is no such thing as a logging status sub-resource for a key.'
 
-class NoMetaForKey(ErrorResponse):
+
+class NoSuchObjectLockConfiguration(ErrorResponse):
     _status = '400 Bad Request'
-    _msg = 'No meta for key.'
+    _msg = 'The specified object does not have a ObjectLock configuration'
+
 
 class NoSuchBucket(ErrorResponse):
     _status = '404 Not Found'
@@ -670,9 +673,11 @@ class NoSuchBucket(ErrorResponse):
             raise InternalError()
         ErrorResponse.__init__(self, msg, bucket_name=bucket, *args, **kwargs)
 
+
 class ObjectLockConfigurationNotFoundError(ErrorResponse):
     _status = '404 Not Found'
-    _msg = 'object lock config not enabled.'
+    _msg = 'Object Lock configuration does not exist for this bucket'
+
 
 class NoSuchCORSConfiguration(ErrorResponse):
     _status = '404 Not Found'
