@@ -1,7 +1,5 @@
 #!/usr/bin/make -f
 
-. .cds/versions
-
 DESTDIR=$(CURDIR)/debian/${PACKAGE}
 PREFIX=/opt/${PACKAGE}
 

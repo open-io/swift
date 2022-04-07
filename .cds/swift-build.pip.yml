@@ -38,7 +38,7 @@ jobs:
             PACKAGE=${PACKAGE}-$(date +%Y%m%d%H%M).git{{ .git.hash.short }}
           fi
           export PACKAGE=${PACKAGE}-ovh${CDS_VERSION}
-
+          source .cds/versions
           make -f /external-packages/ubuntu/focal/Makefile.common install-apt-repo
           make -f /external-packages/ubuntu/focal/Makefile.common deb_changelog
           make -f /external-packages/ubuntu/focal/Makefile.common
