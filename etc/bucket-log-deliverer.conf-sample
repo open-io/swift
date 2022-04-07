@@ -1,0 +1,35 @@
+[log-deliverer]
+user = %USER%
+
+# Wait random time before starting
+# to avoid all the agents from working at the same time.
+wait_random_time_before_starting = False
+# In seconds, the interval between two full scans.
+interval = 1800
+# In seconds, the interval between two logs entries (for each volume).
+report_interval = 300
+
+# Common log stuff
+log_level = INFO
+log_facility = LOG_LOCAL0
+log_address = /dev/log
+syslog_prefix = swift,log-deliverer
+
+# Folder to search for log files
+log_directory = /var/log
+# Prefix to find S3 log files
+s3_log_prefix = s3access-
+# Namespace to use for SDS
+oio_namespace = OPENIO
+# S3 endpoint URL
+s3_endpoint_url = http://localhost:5000
+# S3 region
+s3_region = RegionOne
+# S3 access key ID of the log delivery user
+s3_access_key_id = logger:.log_delivery
+# S3 secret access key of the log delivery user
+s3_secret_access_key = LOG_DELIVERY
+
+# Logrotate
+maxsize = 100M
+rotate = 4

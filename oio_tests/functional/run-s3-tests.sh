@@ -26,7 +26,8 @@ run_functional_test s3-default.cfg \
     s3-mpu.py \
     s3-s3cmd.sh \
     s3-website.py \
-    bucket-logging.py
+    bucket-logging.py \
+    bucket-log-deliverer.py
 
 configure_aws
 run_functional_test s3-default.cfg \

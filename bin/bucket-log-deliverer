@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+# Copyright (c) 2022 OpenStack Foundation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import argparse
+
+from oio.common.configuration import read_conf
+from oio.common.logger import get_logger
+
+from swift.common.middleware.s3api.tools.log_deliverer import LogDeliverer
+
+
+def make_arg_parser():
+    descr = """
+    This daemon periodically scans a directory containing access logs
+    from buckets that have enabled S3 Access Logging.
+    These logs are archived once per hour and then sent
+    to the destination bucket.
+    """
+    parser = argparse.ArgumentParser(description=descr)
+    parser.add_argument(
+        'config',
+        help="""
+        """)
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help="More verbose output")
+    return parser
+
+
+if __name__ == '__main__':
+    args = make_arg_parser().parse_args()
+    verbose = args.verbose
+    config = args.config
+
+    conf = read_conf(config, 'log-deliverer')
+    logger = get_logger(conf, 'log-deliverer', verbose=verbose)
+
+    log_deliverer = LogDeliverer(conf)
+    log_deliverer.start()

@@ -22,6 +22,7 @@ cryptography>=2.0.2                     # BSD/Apache-2.0
 # dnspython>=1.15.0;python_version=='2.7' # http://www.dnspython.org/LICENSE
 # ipaddress>=1.0.16;python_version<'3.3'  # PSF
 blake3
+boto3
 dict2xml
 oio
 pika
