@@ -21,7 +21,8 @@ from swift.common.swob import HTTPMethodNotAllowed, \
 
 from oio.common.constants import REQID_HEADER
 from oio.common.exceptions import MethodNotAllowed, NoSuchContainer, \
-    NoSuchObject, OioTimeout, ServiceBusy, ServiceUnavailable, DeadlineReached
+    NoSuchObject, OioNetworkException, ServiceBusy, ServiceUnavailable, \
+    DeadlineReached
 from oio.common.redis_conn import catch_service_errors, RedisConnection
 
 
@@ -74,14 +75,14 @@ def handle_not_allowed(fnc):
 
 def handle_oio_timeout(fnc):
     """
-    Catch DeadlineReached and OioTimeout errors
+    Catch DeadlineReached and OioNetworkException (and OioTimeout) errors
     and return '503 Service Unavailable'.
     """
     @wraps(fnc)
     def _oio_timeout_wrapper(self, req, *args, **kwargs):
         try:
             return fnc(self, req, *args, **kwargs)
-        except (DeadlineReached, OioTimeout) as exc:
+        except (DeadlineReached, OioNetworkException) as exc:
             headers = {}
             # TODO(FVE): choose the value according to the timeout
             headers['Retry-After'] = '1'

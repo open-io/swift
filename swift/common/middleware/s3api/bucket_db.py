@@ -14,11 +14,12 @@
 # limitations under the License.
 
 import time
+from swift.common.middleware.s3api.s3response import ServiceUnavailable
 
 from swift.common.utils import config_true_value, parse_connection_string
 
 from oio.account.bucket_client import BucketClient
-from oio.common.exceptions import ClientException
+from oio.common.exceptions import ClientException, OioNetworkException
 from oio.common.redis_conn import RedisConnection
 
 
@@ -92,9 +93,14 @@ class OioBucketDb(object):
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
-                    'Failed to fetch owner for bucket %s: %s',
+                    'Failed to fetch owner of bucket %s: %s',
                     bucket, exc)
             return None
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error('Failed fetch owner of bucket %s: %s',
+                                  bucket, exc)
+            raise ServiceUnavailable from exc
 
     def set_owner(self, bucket, owner):
         try:
@@ -103,9 +109,14 @@ class OioBucketDb(object):
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
-                    'Failed to set owner %s for bucket %s: %s',
+                    'Failed to set owner %s of bucket %s: %s',
                     owner, bucket, exc)
             return False
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error('Failed set owner of bucket %s: %s',
+                                  bucket, exc)
+            raise ServiceUnavailable from exc
 
     def reserve(self, bucket, owner):
         try:
@@ -117,6 +128,10 @@ class OioBucketDb(object):
                     'Failed to reserve bucket %s with owner %s: %s',
                     bucket, owner, exc)
             return False
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error('Failed reserve bucket %s: %s', bucket, exc)
+            raise ServiceUnavailable from exc
 
     def release(self, bucket, owner):
         try:
@@ -126,6 +141,10 @@ class OioBucketDb(object):
                 self.logger.warning(
                     'Failed to release bucket %s with owner %s: %s',
                     bucket, owner, exc)
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error('Failed release bucket %s: %s', bucket, exc)
+            raise ServiceUnavailable from exc
 
 
 class RedisBucketDb(RedisConnection):

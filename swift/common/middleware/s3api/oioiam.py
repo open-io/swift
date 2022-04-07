@@ -17,10 +17,12 @@
 
 from oio.account.iam import RedisIamDb
 from oio.account.iam_client import IamClient
+from oio.common.exceptions import OioNetworkException
 from oio.common.utils import parse_conn_str
 
 from swift.common.middleware.s3api.iam import IamMiddleware, \
     StaticIamMiddleware
+from swift.common.middleware.s3api.s3response import ServiceUnavailable
 
 
 class RedisIamMiddleware(IamMiddleware, RedisIamDb):
@@ -52,7 +54,12 @@ class RedisIamMiddleware(IamMiddleware, RedisIamDb):
         if not (account and user):
             # No user policy if there is no user
             return None
-        return self.load_merged_user_policies(account, user)
+        try:
+            return self.load_merged_user_policies(account, user)
+        except OioNetworkException as exc:
+            self.logger.error('Failed load user policies %s/%s: %s',
+                              account, user, exc)
+            raise ServiceUnavailable from exc
 
 
 class OioIamMiddleware(IamMiddleware):
