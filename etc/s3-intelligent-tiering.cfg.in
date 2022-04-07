@@ -86,6 +86,9 @@ user_account2_admin = ADMIN_PASS .admin
 # Unpriviledged user of the account AUTH_account2
 user_account2_user1 = USER_PASS
 
+# Log delivery user
+user64_bG9nZ2Vy_LmxvZ19kZWxpdmVyeQ = LOG_DELIVERY  # logger:.log_delivery
+
 # Note: Put after iam and before s3api in the pipeline.
 [filter:bucket_quotas]
 use = egg:swift#bucket_quotas
