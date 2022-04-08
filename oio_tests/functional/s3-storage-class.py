@@ -233,7 +233,7 @@ class TestS3StorageClass(unittest.TestCase):
         data = run_awscli_s3api('list-buckets')
         self.assertIn(self.bucket, [b['Name'] for b in data['Buckets']])
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'cp', storage_domain=STANDARD_IA_DOMAIN,
             src='/etc/magic', bucket=self.bucket, key=key)
         self.assertRaisesRegex(
@@ -241,19 +241,19 @@ class TestS3StorageClass(unittest.TestCase):
             'head-object', storage_domain=STANDARD_IA_DOMAIN,
             bucket=self.bucket, key=key)
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'ls', storage_domain=STANDARD_IA_DOMAIN,
             bucket=self.bucket, key=key)
         data = run_awscli_s3api(
             'list-buckets', storage_domain=STANDARD_IA_DOMAIN)
         self.assertNotIn(self.bucket, [b['Name'] for b in data['Buckets']])
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'rm', storage_domain=STANDARD_IA_DOMAIN,
             bucket=self.bucket, key=key)
         run_awscli_s3('rm', bucket=self.bucket, key=key)
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'rb', storage_domain=STANDARD_IA_DOMAIN, bucket=self.bucket)
         run_awscli_s3('rb', bucket=self.bucket)
 
@@ -274,24 +274,24 @@ class TestS3StorageClass(unittest.TestCase):
             'list-buckets', storage_domain=STANDARD_IA_DOMAIN)
         self.assertIn(self.bucket, [b['Name'] for b in data['Buckets']])
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'cp', src='/etc/magic', bucket=self.bucket, key=key)
         self.assertRaisesRegex(
             CliError, 'Forbidden', run_awscli_s3api,
             'head-object', bucket=self.bucket, key=key)
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'ls', bucket=self.bucket, key=key)
         data = run_awscli_s3api('list-buckets')
         self.assertNotIn(self.bucket, [b['Name'] for b in data['Buckets']])
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'rm', bucket=self.bucket, key=key)
         run_awscli_s3(
             'rm', storage_domain=STANDARD_IA_DOMAIN,
             bucket=self.bucket, key=key)
         self.assertRaisesRegex(
-            CliError, 'BadStorageDomain', run_awscli_s3,
+            CliError, 'BadEndpoint', run_awscli_s3,
             'rb', bucket=self.bucket)
         run_awscli_s3(
             'rb', storage_domain=STANDARD_IA_DOMAIN, bucket=self.bucket)

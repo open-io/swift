@@ -40,7 +40,7 @@ from swift.common.middleware.s3api.s3response import \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    TooManyBuckets, BadStorageDomain
+    TooManyBuckets, BadEndpoint
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header
 
@@ -433,7 +433,7 @@ class BucketController(Controller):
         self.check_bucket_limit(req)
         if self.conf.check_bucket_storage_domain:
             if not req.storage_domain:
-                raise BadStorageDomain()
+                raise BadEndpoint
             req.headers[sysmeta_header('container', 'storage-domain')] = \
                 req.storage_domain
         resp = req.get_response(self.app)

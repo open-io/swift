@@ -324,10 +324,9 @@ class BadRequest(ErrorResponse):
     _status = '400 Bad Request'
 
 
-class BadStorageDomain(ErrorResponse):
+class BadEndpoint(ErrorResponse):
     _status = '403 Forbidden'
-    _msg = 'The storage domain you specified does not allow the bucket ' \
-           'to be used.'
+    _msg = 'This bucket is not accessible through this endpoint.'
 
 
 class BucketAlreadyExists(ErrorResponse):
