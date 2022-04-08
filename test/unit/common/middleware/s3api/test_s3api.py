@@ -719,6 +719,17 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidURI')
 
+    def test_invalid_uri_full_url_as_path(self):
+        req = Request.blank(
+            'https://s3api.cloud/bucket?delimiter=&prefix=',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
+        req.environ['PATH_INFO'] = \
+            'https://s3api.cloud/bucket?delimiter=&prefix='
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(self._get_error_code(body), 'InvalidURI')
+
     def test_object_create_bad_md5_unreadable(self):
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT',
