@@ -416,7 +416,6 @@ class OioContainerContext(ContainerContext):
             raise HTTPNotAcceptable(request=req)
 
         params = req.params
-        # FIXME(FVE) this is probably not working with oio-sds backend
         if 'version_marker' in params:
             if 'marker' not in params:
                 raise HTTPBadRequest('version_marker param requires marker')

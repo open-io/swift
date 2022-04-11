@@ -14,6 +14,8 @@
 # limitations under the License.
 
 from functools import wraps
+from swift.common.request_helpers import split_reserved_name
+from swift.common.utils import Timestamp
 
 from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPNotFound, \
@@ -53,6 +55,16 @@ def obj_version_from_env(env):
     """
     return swift_versionid_to_oio_versionid(
         env.get('oio.query', {}).get('version'))
+
+
+def split_oio_version_from_name(versioned_name):
+    try:
+        name, inv = split_reserved_name(versioned_name)
+        ts = ~Timestamp(inv)
+    except ValueError:
+        return versioned_name, None
+    version = swift_versionid_to_oio_versionid(ts.normal)
+    return name, version
 
 
 def handle_service_busy(fnc):

@@ -18,7 +18,7 @@ import json
 from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
     handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP, \
-    oio_versionid_to_swift_versionid
+    oio_versionid_to_swift_versionid, split_oio_version_from_name
 from swift.common.utils import public, Timestamp, \
     config_true_value, override_bytes_from_content_type
 from swift.common.constraints import check_metadata
@@ -128,6 +128,9 @@ class ContainerController(SwiftContainerController):
             # delimiters can be made more flexible later
             return HTTPPreconditionFailed(body='Bad delimiter')
         marker = get_param(req, 'marker', '')
+        version_marker = None
+        if marker:
+            marker, version_marker = split_oio_version_from_name(marker)
         end_marker = get_param(req, 'end_marker')
         limit = constraints.CONTAINER_LISTING_LIMIT
         given_limit = get_param(req, 'limit')
@@ -151,8 +154,8 @@ class ContainerController(SwiftContainerController):
         result = self.app.storage.object_list(
             self.account_name, self.container_name, prefix=prefix,
             limit=limit, delimiter=delimiter, marker=marker,
-            end_marker=end_marker, properties=True,
-            versions=opts.get('versions', False),
+            version_marker=version_marker, end_marker=end_marker,
+            properties=True, versions=opts.get('versions', False),
             deleted=opts.get('deleted', False),
             force_master=opts.get('force_master', False),
             headers=oio_headers, cache=oio_cache, perfdata=perfdata)
