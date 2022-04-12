@@ -123,11 +123,17 @@ class TestS3Versioning(unittest.TestCase):
         self._run_versioning_test(key, versions=[version2, version1])
 
     def _run_versioning_test(self, key, versions):
-        data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
-        self.assertEqual(len(data.get('Versions', [])), len(versions))
-        self.assertEqual(len(data.get('DeleteMarkers', [])), 0)
-        self.assertListEqual(versions, [entry['VersionId']
-                                        for entry in data['Versions']])
+        for page_size in (None, len(versions) + 1, len(versions),
+                          len(versions) - 1, 1):
+            params = ()
+            if page_size:
+                params += ('--page-size', str(page_size))
+            data = run_awscli_s3api(
+                "list-object-versions", *params, bucket=self.bucket)
+            self.assertEqual(len(data.get('Versions', [])), len(versions))
+            self.assertEqual(len(data.get('DeleteMarkers', [])), 0)
+            self.assertListEqual(versions, [entry['VersionId']
+                                            for entry in data['Versions']])
         for version in versions:
             run_awscli_s3api(
                 "get-object",
@@ -136,11 +142,17 @@ class TestS3Versioning(unittest.TestCase):
                 bucket=self.bucket, key=key)
 
         data = run_awscli_s3api("delete-object", bucket=self.bucket, key=key)
-        data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
-        self.assertEqual(len(data.get('Versions', [])), len(versions))
-        self.assertEqual(len(data.get('DeleteMarkers', [])), 1)
-        self.assertListEqual(versions, [entry['VersionId']
-                                        for entry in data['Versions']])
+        for page_size in (None, len(versions) + 1, len(versions),
+                          len(versions) - 1, 1):
+            params = ()
+            if page_size:
+                params += ('--page-size', str(page_size))
+            data = run_awscli_s3api(
+                "list-object-versions", *params, bucket=self.bucket)
+            self.assertEqual(len(data.get('Versions', [])), len(versions))
+            self.assertEqual(len(data.get('DeleteMarkers', [])), 1)
+            self.assertListEqual(versions, [entry['VersionId']
+                                            for entry in data['Versions']])
         for version in versions:
             run_awscli_s3api(
                 "get-object",
@@ -153,6 +165,40 @@ class TestS3Versioning(unittest.TestCase):
                 "delete-object",
                 "--version-id", entry['VersionId'],
                 bucket=self.bucket, key=entry['Key'])
+        data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
+        self.assertFalse(data)
+
+    def test_create_different_objects(self):
+        objects = []
+        for _ in range(8):
+            key = random_str(20)
+            version = self._create_simple_object(key)
+            objects.append((key, version))
+        objects.sort()
+
+        for page_size in (None, 10, 8, 5, 2, 1):
+            params = ()
+            if page_size:
+                params += ('--page-size', str(page_size))
+            data = run_awscli_s3api(
+                "list-object-versions", *params, bucket=self.bucket)
+            self.assertEqual(len(data.get('Versions', [])), len(objects))
+            self.assertEqual(len(data.get('DeleteMarkers', [])), 0)
+            self.assertListEqual(
+                objects, [(entry['Key'], entry['VersionId'])
+                          for entry in data['Versions']])
+        for key, version in objects:
+            run_awscli_s3api(
+                "get-object",
+                "--version-id", version,
+                "/tmp/out",
+                bucket=self.bucket, key=key)
+
+        for key, version in objects:
+            run_awscli_s3api(
+                "delete-object",
+                "--version-id", version,
+                bucket=self.bucket, key=key)
         data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
         self.assertFalse(data)
 
