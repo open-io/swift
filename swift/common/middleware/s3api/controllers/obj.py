@@ -219,7 +219,7 @@ class ObjectController(Controller):
             req.headers[OBJECT_TAGGING_HEADER] = tagging
         if 's3api-lock-bucket-defaultretention' in sysmeta_info:
             header = sysmeta_header('object',
-                                    'retention-Default-RetainUntilDate')
+                                    'retention-RetainUntilDate')
             # TODO avoid double cast
             future_timestamp = int(float(req_timestamp.internal)) + \
                 86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])

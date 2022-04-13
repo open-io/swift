@@ -217,18 +217,19 @@ class ObjectLockController(Controller):
 
         obj_meta = filter_objectlock_meta(sysmeta_object, key_filter)
 
-        if 'Retainuntildate' in obj_meta.keys():
-            obj_meta['RetainUntilDate'] = obj_meta['Retainuntildate']
-            obj_meta.pop('Retainuntildate')
-        elif 's3api-lock-bucket-object-lock' in info_sysmeta:
+        if 's3api-lock-bucket-object-lock' in info_sysmeta:
             default_conf = info_sysmeta.get('s3api-lock-bucket-object-lock')
             retention_json = json.loads(default_conf)
             mode = retention_json.get('Rule', {}).get('DefaultRetention',
                                                       {}).get('Mode', None)
-            obj_meta['Mode'] = mode
-            if 'Default-Retainuntildate' in obj_meta.keys():
-                obj_meta['RetainUntilDate'] = \
-                    obj_meta['Default-Retainuntildate']
+            # Use mode from object or fill with default one
+            if 'Mode' not in obj_meta.keys():
+                obj_meta['Mode'] = mode
+
+        if 'Retainuntildate' in obj_meta.keys():
+            obj_meta['RetainUntilDate'] = obj_meta['Retainuntildate']
+            obj_meta.pop('Retainuntildate')
+
         if 'Legalhold' in obj_meta.keys():
             obj_meta['LegalHold'] = obj_meta['Legalhold']
             obj_meta.pop('Legalhold')
