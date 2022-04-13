@@ -592,6 +592,8 @@ class TestS3ApiObj(S3ApiTestCase):
         self.assertEqual(code, 'RequestTimeout')
 
     def test_object_PUT_with_version(self):
+        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
         self.swift.register('GET',
                             '/v1/AUTH_test/bucket/src_obj?version-id=foo',
                             swob.HTTPOk, self.response_headers,
@@ -614,6 +616,8 @@ class TestS3ApiObj(S3ApiTestCase):
         self.assertEqual(elem.find('ETag').text, '"%s"' % self.etag)
 
         self.assertEqual(self.swift.calls, [
+            ('HEAD', '/v1/AUTH_test'),
+            ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket/src_obj?version-id=foo'),
             ('PUT', '/v1/AUTH_test/bucket/object?version-id=foo'),
         ])
@@ -1075,11 +1079,11 @@ class TestS3ApiObj(S3ApiTestCase):
         status, header, body = \
             self._test_object_PUT_copy(swob.HTTPOk, header)
         self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 2)
+        self.assertEqual(len(self.swift.calls_with_headers), 4)
         _, _, headers = self.swift.calls_with_headers[-1]
         self.assertTrue(headers.get('If-Match') is None)
         self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[0]
+        _, _, headers = self.swift.calls_with_headers[2]
         self.assertEqual(headers['If-Match'], etag)
         self.assertEqual(headers['If-Modified-Since'], last_modified_since)
 
@@ -1119,11 +1123,11 @@ class TestS3ApiObj(S3ApiTestCase):
             self._test_object_PUT_copy(swob.HTTPOk, header)
 
         self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 2)
+        self.assertEqual(len(self.swift.calls_with_headers), 4)
         _, _, headers = self.swift.calls_with_headers[-1]
         self.assertTrue(headers.get('If-None-Match') is None)
         self.assertTrue(headers.get('If-Unmodified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[0]
+        _, _, headers = self.swift.calls_with_headers[2]
         self.assertEqual(headers['If-None-Match'], etag)
         self.assertEqual(headers['If-Unmodified-Since'], last_modified_since)
 

@@ -826,6 +826,8 @@ class TestS3ApiMiddleware(S3ApiTestCase):
 
     @mock.patch.object(registry, '_swift_admin_info', dict())
     def test_server_side_encryption(self):
+        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
         sse_header = 'x-amz-server-side-encryption'
         self._test_unsupported_header(sse_header, 'AES256')
         self._test_unsupported_header(sse_header, 'aws:kms')
