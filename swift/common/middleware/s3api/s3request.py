@@ -825,6 +825,17 @@ class S3Request(swob.Request):
                 raise InvalidArgument('Content-Length',
                                       self.environ['CONTENT_LENGTH'])
 
+        if 'X-Amz-Copy-Source' in self.headers:
+            self.headers.pop('Content-MD5', None)
+            try:
+                check_path_header(self, 'X-Amz-Copy-Source', 2, '')
+            except swob.HTTPException:
+                msg = 'Copy Source must mention the source bucket and key: ' \
+                      'sourcebucket/sourcekey'
+                raise InvalidArgument('x-amz-copy-source',
+                                      self.headers['X-Amz-Copy-Source'],
+                                      msg)
+
         value = _header_strip(self.headers.get('Content-MD5'))
         if value is not None:
             if not re.match('^[A-Za-z0-9+/]+={0,2}$', value):
@@ -845,16 +856,6 @@ class S3Request(swob.Request):
                 'If-Modified-Since', 'If-Unmodified-Since')):
             raise S3NotImplemented(
                 'Conditional object PUTs are not supported.')
-
-        if 'X-Amz-Copy-Source' in self.headers:
-            try:
-                check_path_header(self, 'X-Amz-Copy-Source', 2, '')
-            except swob.HTTPException:
-                msg = 'Copy Source must mention the source bucket and key: ' \
-                      'sourcebucket/sourcekey'
-                raise InvalidArgument('x-amz-copy-source',
-                                      self.headers['X-Amz-Copy-Source'],
-                                      msg)
 
         if 'x-amz-metadata-directive' in self.headers:
             value = self.headers['x-amz-metadata-directive']

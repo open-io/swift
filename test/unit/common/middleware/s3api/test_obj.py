@@ -787,8 +787,9 @@ class TestS3ApiObj(S3ApiTestCase):
         self.assertNotIn('x-amz-meta-something', headers)
 
         _, _, headers = self.swift.calls_with_headers[-1]
-        # Check that s3api converts a Content-MD5 header into an etag.
-        self.assertEqual(headers['ETag'], self.etag)
+        # Check that s3api drops Content-MD5 header and not converted to etag.
+        self.assertIsNone(headers.get('ETag'))
+        self.assertIsNone(headers.get('Content-MD5'))
         # Check that metadata is omited if no directive is specified
         self.assertIsNone(headers.get('X-Object-Meta-Something'))
         self.assertIsNone(headers.get('X-Object-Meta-Unreadable-Prefix'))
