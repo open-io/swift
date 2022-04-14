@@ -40,7 +40,7 @@ from swift.common.middleware.s3api.s3response import \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    TooManyBuckets, BadEndpoint
+    TooManyBuckets, BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header
 
@@ -64,7 +64,10 @@ class BucketController(Controller):
         try:
             resp = req.get_response(self.app, 'HEAD')
             if int(resp.sw_headers['X-Container-Object-Count']) > 0:
-                raise BucketNotEmpty()
+                if resp.sw_headers.get('X-Container-Sysmeta-Versions-Enabled'):
+                    raise VersionedBucketNotEmpty()
+                else:
+                    raise BucketNotEmpty()
             # FIXME: This extra HEAD saves unexpected segment deletion
             # but if a complete multipart upload happen while cleanup
             # segment container below, completed object may be missing its

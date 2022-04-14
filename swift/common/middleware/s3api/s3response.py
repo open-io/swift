@@ -353,6 +353,12 @@ class BucketNotEmpty(ErrorResponse):
     _msg = 'The bucket you tried to delete is not empty'
 
 
+class VersionedBucketNotEmpty(BucketNotEmpty):
+    _msg = 'The bucket you tried to delete is not empty. ' \
+           'You must delete all versions in the bucket.'
+    _code = 'BucketNotEmpty'
+
+
 class CORSForbidden(ErrorResponse):
     _status = '403 Forbidden'
     _msg = 'CORSResponse: This CORS request is not allowed. This is usually ' \
