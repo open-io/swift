@@ -75,6 +75,14 @@ class DummyBucketDb(object):
         """
         self._bucket_db.pop(bucket, None)
 
+    def show(self, bucket, owner):
+        """
+        Show info of a bucket.
+        Not implemented for DummyBucketDb.
+        """
+        raise NotImplementedError("Bucket show not implemented with this "
+                                  "backend")
+
 
 class OioBucketDb(object):
     """
@@ -146,6 +154,16 @@ class OioBucketDb(object):
                 self.logger.error('Failed release bucket %s: %s', bucket, exc)
             raise ServiceUnavailable from exc
 
+    def show(self, bucket, owner):
+        try:
+            return self.bucket_client.bucket_show(bucket, owner)
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to show bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            return None
+
 
 class RedisBucketDb(RedisConnection):
     """
@@ -202,6 +220,16 @@ class RedisBucketDb(RedisConnection):
         """
         self.conn.delete(self._key(bucket))
 
+    def show(self, bucket, owner):
+        try:
+            return self.bucket_client.bucket_show(bucket, owner)
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to show bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            return None
+
 
 class BucketDbWrapper(object):
     """
@@ -235,6 +263,10 @@ class BucketDbWrapper(object):
         res = self.bucket_db.reserve(bucket=bucket, owner=owner, **kwargs)
         if res:
             self.cache[bucket] = owner
+        return res
+
+    def show(self, bucket, owner, **kwargs):
+        res = self.bucket_db.show(bucket=bucket, owner=owner)
         return res
 
 

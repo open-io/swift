@@ -133,11 +133,11 @@ class IntelligentTieringController(Controller):
         # Check ACLs
         req.get_response(self.app, method='HEAD')
 
-        # Raises NoSuchBucket if bucket does not exist.
-        info = req.get_container_info(self.app)
         # At least 1 object must be in the bucket to archive it.
-        if not info or info['object_count'] < 1:
-            raise BadRequest("Bucket is empty")
+        if req.bucket_db:
+            info = req.bucket_db.show(req.container_name, req.account)
+            if not info or info['objects'] < 1:
+                raise BadRequest("Bucket is empty or does not exist")
 
         tiering_id = req.params.get('id')
         body = req.xml(MAX_TIERING_BODY_SIZE)
