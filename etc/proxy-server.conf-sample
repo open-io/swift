@@ -1312,6 +1312,14 @@ use = egg:swift#intelligent_tiering
 [filter:container-quotas]
 use = egg:swift#container_quotas
 
+# Note: Put after iam and before s3api in the pipeline.
+[filter:bucket-quotas]
+use = egg:swift#bucket_quotas
+# Maximum size of the bucket in bytes.
+# quota_bytes =
+# Maximum object count of the bucket.
+# quota_objects =
+
 # Note: Put after auth in the pipeline.
 [filter:account-quotas]
 use = egg:swift#account_quotas

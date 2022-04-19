@@ -538,6 +538,15 @@ class S3ApiMiddleware(object):
             self.check_filter_order(pipeline, order)
             self.logger.debug('Use intelligent_tiering middleware.')
 
+        # Check bucket_quotas middleware position
+        if 'bucket_quotas' in pipeline:
+            if 'iam' in pipeline:
+                order = ['iam', 'bucket_quotas', 's3api']
+            else:
+                order = ['bucket_quotas', 's3api']
+            self.check_filter_order(pipeline, order)
+            self.logger.debug('Use bucket_quotas middleware.')
+
         if not self.conf.auth_pipeline_check:
             self.logger.debug('Skip pipeline auth check.')
             return
