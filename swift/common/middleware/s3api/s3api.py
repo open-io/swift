@@ -529,6 +529,15 @@ class S3ApiMiddleware(object):
         if 'iam' in pipeline:
             self.check_filter_order(pipeline, ['iam', 's3api'])
 
+        # Check intelligent_tiering middleware position
+        if 'intelligent_tiering' in pipeline:
+            if 'iam' in pipeline:
+                order = ['iam', 'intelligent_tiering', 's3api']
+            else:
+                order = ['intelligent_tiering', 's3api']
+            self.check_filter_order(pipeline, order)
+            self.logger.debug('Use intelligent_tiering middleware.')
+
         if not self.conf.auth_pipeline_check:
             self.logger.debug('Skip pipeline auth check.')
             return

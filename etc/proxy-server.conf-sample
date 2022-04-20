@@ -1285,6 +1285,29 @@ use = egg:swift#dlo
 # Time limit on GET requests (seconds)
 # max_get_time = 86400
 
+# Note: Put after iam and before s3api in the pipeline.
+[filter:intelligent-tiering]
+use = egg:swift#intelligent_tiering
+# URL: amqp://username:password@host:port[/vitual_host]
+# rabbitmq_url = amqp://guest:guest@localhost:5672
+# rabbitmq_exchange = pca
+# rabbitmq_queue = pca
+# Use durable exchange and queue
+# rabbitmq_durable = True
+# Use auto-delete exchange and queue
+# rabbitmq_auto_delete = False
+# Authorized action according to the bucket states.
+# Each action can have 0, 1, x possible bucket states and be comma separated.
+# Empty means no bucket states allowed.
+# Possible States are: 
+#   None, Locked, Archiving, Draining, Archived, Restoring, 
+#   Restored, Deleting, Flushed
+# it_iam_create_bucket_actions = None
+# it_iam_delete_bucket_actions = None, Flushed
+# it_iam_put_object_actions = None
+# it_iam_get_object_actions = Restored
+# it_iam_delete_object_actions = None
+
 # Note: Put after auth in the pipeline.
 [filter:container-quotas]
 use = egg:swift#container_quotas

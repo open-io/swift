@@ -20,7 +20,7 @@ import pika
 from pika.exchange_type import ExchangeType
 
 from swift.common.middleware.s3api.iam import ARN_S3_PREFIX, \
-    IAM_RULES_CALLBACK, IamRulesMatcher
+    IAM_RULES_CALLBACK, RT_BUCKET, RT_OBJECT, IamRulesMatcher
 from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     BadRequest, InvalidBucketState, NoSuchBucket, S3NotImplemented, \
     ServiceUnavailable
@@ -92,11 +92,6 @@ TIERING_ACTION_TIER_RESTORE = 'OVH_RESTORE'
 
 TIERING_TIER_ACTIONS = [TIERING_ACTION_TIER_ARCHIVE,
                         TIERING_ACTION_TIER_RESTORE]
-
-# Resource type: object
-RT_OBJECT = 'Object'
-# Resource type: bucket
-RT_BUCKET = 'Bucket'
 
 TIERING_IAM_SUPPORTED_ACTIONS = {
     's3:CreateBucket': RT_BUCKET,
