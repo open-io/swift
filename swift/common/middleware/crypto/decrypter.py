@@ -326,15 +326,15 @@ class DecrypterObjContext(BaseDecrypterContext):
 
         key_id = crypto_meta.get('key_id') if crypto_meta else None
         try:
-            return self.get_keys(req.environ, key_id=key_id)
+            required = [self.server_type]
+            optionals = []
+            if req.method == 'HEAD':
+                required.append('container')
+                optionals.append(self.server_type)
+            return self.get_keys(req.environ, required=required,
+                                 optionals=optionals, key_id=key_id)
         except HTTPException:
             if req.method == 'HEAD':
-                try:
-                    return self.get_keys(req.environ,
-                                         required=['container'],
-                                         key_id=key_id)
-                except HTTPException:
-                    pass
                 return None
             raise
 

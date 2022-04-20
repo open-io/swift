@@ -165,7 +165,7 @@ class CryptoWSGIContext(WSGIContext):
         self.logger = logger
         self.server_type = server_type
 
-    def get_keys(self, env, required=None, key_id=None):
+    def get_keys(self, env, required=None, optionals=[], key_id=None):
         # Get the key(s) from the keymaster
         required = required if required is not None else [self.server_type]
         try:
@@ -195,6 +195,8 @@ class CryptoWSGIContext(WSGIContext):
                 self.crypto.check_key(key)
                 continue
             except KeyError:
+                if name in optionals:
+                    continue
                 self.logger.exception(_("Missing key for %r") % name)
             except TypeError:
                 self.logger.exception(_("Did not get a keys dict"))
