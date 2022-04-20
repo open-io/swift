@@ -370,7 +370,12 @@ class ServerSideCopyMiddleware(object):
             # copied below and timestamps.
             exclude_headers = ('x-static-large-object', 'x-object-manifest',
                                'etag', 'content-type', 'x-timestamp',
-                               'x-backend-timestamp')
+                               'x-backend-timestamp',
+                               'x-object-sysmeta-slo-etag',
+                               'x-object-sysmeta-slo-size',
+                               'x-object-sysmeta-s3api-acl',
+                               'x-object-sysmeta-s3api-etag',
+                               'x-object-sysmeta-s3api-upload-id')
             copy_header_subset(source_resp, sink_req,
                                lambda k: k.lower() not in exclude_headers)
             # now update with original req headers
