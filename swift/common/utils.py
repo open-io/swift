@@ -1192,10 +1192,10 @@ INTERNAL_FORMAT = NORMAL_FORMAT + '_%016x'
 SHORT_FORMAT = NORMAL_FORMAT + '_%x'
 MAX_OFFSET = (16 ** 16) - 1
 PRECISION = 1e-5
-# In order not to have a rounding problem,
-# the power of 10 must be reversed by passing through a character string.
-MAX_RAW_TIMESTAMP = (10000000000 * int(
-    float(('%e' % PRECISION).replace('e-', 'e+')))) - 1
+# To avoid rounding problem, the inverse of the precision should be rounded
+# to the nearest integer.
+INV_PRECISION = round(1 / PRECISION)
+MAX_RAW_TIMESTAMP = (10000000000 * INV_PRECISION) - 1
 # Setting this to True will cause the internal format to always display
 # extended digits - even when the value is equivalent to the normalized form.
 # This isn't ideal during an upgrade when some servers might not understand
@@ -1277,14 +1277,14 @@ class Timestamp(object):
             raise ValueError('offset must be non-negative')
         if self.offset > MAX_OFFSET:
             raise ValueError('offset must be smaller than %d' % MAX_OFFSET)
-        self.raw = int(round(self.timestamp / PRECISION))
+        self.raw = int(round(self.timestamp * INV_PRECISION))
         # add delta
         if delta:
             self.raw = self.raw + delta
             if self.raw <= 0:
                 raise ValueError(
                     'delta must be greater than %d' % (-1 * self.raw))
-            self.timestamp = float(self.raw * PRECISION)
+            self.timestamp = float(self.raw / INV_PRECISION)
         if check_bounds:
             if self.timestamp < 0:
                 raise ValueError('timestamp cannot be negative')
@@ -1389,7 +1389,7 @@ class Timestamp(object):
     def __invert__(self):
         if self.offset:
             raise ValueError('Cannot invert timestamps with offsets')
-        return Timestamp((MAX_RAW_TIMESTAMP - self.raw) * PRECISION)
+        return Timestamp((MAX_RAW_TIMESTAMP - self.raw) / INV_PRECISION)
 
 
 def encode_timestamps(t1, t2=None, t3=None, explicit=False):
@@ -1467,14 +1467,14 @@ def decode_timestamps(encoded, explicit=False):
         # preserve any offset in t1 - only construct a distinct
         # timestamp if there is a non-zero delta.
         if delta:
-            t2 = Timestamp((t1.raw + delta) * PRECISION)
+            t2 = Timestamp((t1.raw + delta) / INV_PRECISION)
     elif not explicit:
         t2 = t1
     if len(parts) > 2:
         t3 = t2
         delta = signs[2] * int(parts[2], 16)
         if delta:
-            t3 = Timestamp((t2.raw + delta) * PRECISION)
+            t3 = Timestamp((t2.raw + delta) / INV_PRECISION)
     elif not explicit:
         t3 = t2
     return t1, t2, t3

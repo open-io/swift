@@ -36,12 +36,12 @@ utils.RESERVED = '\x10'
 # oio-sds uses object versions with microsecond precision.
 OIO_NORMAL_FORMAT = "%016.06f"
 utils.NORMAL_FORMAT = OIO_NORMAL_FORMAT
-utils.INTERNAL_FORMAT = OIO_NORMAL_FORMAT + '_%016x'
-utils.SHORT_FORMAT = OIO_NORMAL_FORMAT + '_%x'
+utils.INTERNAL_FORMAT = utils.NORMAL_FORMAT + '_%016x'
+utils.SHORT_FORMAT = utils.NORMAL_FORMAT + '_%x'
 OIO_PRECISION = 1e-6
 utils.PRECISION = OIO_PRECISION
-utils.MAX_RAW_TIMESTAMP = (10000000000 * int(
-    float(('%e' % OIO_PRECISION).replace('e-', 'e+')))) - 1
+utils.INV_PRECISION = round(1 / utils.PRECISION)
+utils.MAX_RAW_TIMESTAMP = (10000000000 * utils.INV_PRECISION) - 1
 
 orig_run_server = wsgi.run_server
 
