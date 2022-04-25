@@ -1872,6 +1872,8 @@ class S3Request(swob.Request):
             return info
         elif info['status'] == 404:
             raise NoSuchBucket(self.container_name)
+        elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
+            raise ServiceUnavailable()
         else:
             raise InternalError(
                 'unexpected status code %d' % info['status'])
