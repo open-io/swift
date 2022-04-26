@@ -23,7 +23,7 @@ from swift.common.middleware.s3api.etree import fromstring, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import AccessDenied, BadRequest,\
     HTTPOk, InvalidArgument, InvalidBucketState, InvalidRequest, \
-    InvalidRetentionPeriod, MalformedXML, \
+    InvalidRetentionPeriod, MalformedXML, MethodNotAllowed, \
     NoSuchObjectLockConfiguration, ObjectLockConfigurationNotFoundError
 
 from swift.common.middleware.s3api.utils import convert_response, \
@@ -85,6 +85,8 @@ class BucketLockController(Controller):
             body.pop(self.operation_id)
         if 'Defaultretention' in body:
             body.pop('Defaultretention')
+        if 'Defaultmode' in body:
+            body.pop('Defaultmode')
         xml_out = dict2xml(body)
         return HTTPOk(body=xml_out, content_type='application/xml')
 
@@ -109,8 +111,11 @@ class BucketLockController(Controller):
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
         nb_days = self._convert_to_days(out)
+        mode = out.get("Rule", {}).get("DefaultRetention", {}).get("Mode")
         req.headers[header_name_from_id(self.operation_id)] = json_output
         req.headers[header_name_from_id('defaultretention')] = nb_days
+        req.headers[header_name_from_id('defaultmode')] = mode
+
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 
@@ -197,6 +202,12 @@ class ObjectLockController(Controller):
             raise BadRequest("Bad parameter id")
         info = req.get_container_info(self.app)
         info_sysmeta = info['sysmeta']
+        # To conform to aws when getting retention or legal-hold without
+        # versionId but fails ceph tests
+        # if "versionId" not in req.params:
+        #    raise MethodNotAllowed(req.method,
+        #                           req.controller.resource_type())
+
         global_lock = filter_objectlock_meta(info_sysmeta,
                                              's3api-bucket-')
         if 'object-lock-enabled' not in global_lock.keys() or \
@@ -216,7 +227,6 @@ class ObjectLockController(Controller):
             raise BadRequest("Bad parameter id")
 
         obj_meta = filter_objectlock_meta(sysmeta_object, key_filter)
-
         if 's3api-lock-bucket-object-lock' in info_sysmeta:
             default_conf = info_sysmeta.get('s3api-lock-bucket-object-lock')
             retention_json = json.loads(default_conf)
@@ -247,7 +257,6 @@ class ObjectLockController(Controller):
     @check_iam_access("s3:PutObjectRetention")
     @check_iam_access("s3:PutObjectLegalHold")
     def PUT(self, req):
-        # self.set_s3api_command(req, 'put-bucket-versioning')
         lock_id = None
         if 'retention' in req.params.keys():
             lock_id = 'retention'
@@ -304,6 +313,9 @@ class ObjectLockController(Controller):
                             pass
                     else:
                         if current_retention_mode == old_retention_mode:
+                            pass
+                        elif current_retention_mode == "COMPLIANCE" and \
+                           old_retention_mode == "GOVERNANCE":
                             pass
                         else:
                             raise AccessDenied()

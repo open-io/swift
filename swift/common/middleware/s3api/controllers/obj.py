@@ -225,6 +225,9 @@ class ObjectController(Controller):
                 86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
             obj_date = datetime.fromtimestamp(future_timestamp)
             req.headers[header] = obj_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if 's3api-lock-bucket-defaultmode' in sysmeta_info:
+            header = sysmeta_header('object', 'retention-Mode')
+            req.headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
         if 'x-amz-object-lock-mode' in req.headers:
             header = sysmeta_header('object', 'retention-Mode')
             req.headers[header] = req.headers['x-amz-object-lock-mode']
