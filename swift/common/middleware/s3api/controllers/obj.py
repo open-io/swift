@@ -220,11 +220,11 @@ class ObjectController(Controller):
         if 's3api-lock-bucket-defaultretention' in sysmeta_info:
             header = sysmeta_header('object',
                                     'retention-RetainUntilDate')
-            # TODO avoid double cast
-            future_timestamp = int(float(req_timestamp.internal)) + \
+            future_timestamp = req_timestamp.timestamp + \
                 86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
             obj_date = datetime.fromtimestamp(future_timestamp)
-            req.headers[header] = obj_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+            format_date = obj_date.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
+            req.headers[header] = format_date
         if 's3api-lock-bucket-defaultmode' in sysmeta_info:
             header = sysmeta_header('object', 'retention-Mode')
             req.headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
