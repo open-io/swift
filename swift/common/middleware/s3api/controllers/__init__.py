@@ -35,7 +35,8 @@ from swift.common.middleware.s3api.controllers.location import \
 from swift.common.middleware.s3api.controllers.logging import \
     LoggingStatusController
 from swift.common.middleware.s3api.controllers.object_lock import \
-    BucketLockController, ObjectLockController
+    BucketLockController, ObjectLockLegalHoldController, \
+    ObjectLockRetentionController
 from swift.common.middleware.s3api.controllers.versioning import \
     VersioningController
 from swift.common.middleware.s3api.controllers.tagging import \
@@ -62,7 +63,8 @@ __all__ = [
     'LifecycleController',
     'LocationController',
     'LoggingStatusController',
-    'ObjectLockController',
+    'ObjectLockLegalHoldController',
+    'ObjectLockRetentionController',
     'VersioningController',
     'TaggingController',
 

@@ -40,6 +40,9 @@ from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError, HTTPOk, CORSForbidden, \
     CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest
+from swift.common.middleware.s3api.controllers.object_lock import \
+    HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
+    HEADER_RETENION_DATE
 
 
 def version_id_param(req):
@@ -63,10 +66,6 @@ class ObjectController(Controller):
     """
     Handles requests on objects
     """
-    HEADER_BYPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
-    HEADER_RETENION_MODE = 'X-Object-Sysmeta-S3Api-Retention-Mode'
-    HEADER_RETENION_DATE = 'X-Object-Sysmeta-S3Api-Retention-Retainuntildate'
-    HEADER_LEGAL_HOLD_STATUS = 'X-Object-Sysmeta-S3Api-Legal-Hold-Status'
 
     def _gen_head_range_resp(self, req_range, resp):
         """
@@ -129,15 +128,15 @@ class ObjectController(Controller):
                 raise NoSuchVersion(object_name, version_id)
 
         resp = req.get_response(self.app, query=query)
-        if self.HEADER_RETENION_MODE in resp.sysmeta_headers:
+        if HEADER_RETENION_MODE in resp.sysmeta_headers:
             resp.headers['ObjectLock-Mode'] = \
-                resp.sysmeta_headers[self.HEADER_RETENION_MODE]
-        if self.HEADER_RETENION_DATE in resp.sysmeta_headers:
+                resp.sysmeta_headers[HEADER_RETENION_MODE]
+        if HEADER_RETENION_DATE in resp.sysmeta_headers:
             resp.headers['ObjectLock-RetainUntilDate'] = \
-                resp.sysmeta_headers[self.HEADER_RETENION_DATE]
-        if self.HEADER_LEGAL_HOLD_STATUS in resp.sysmeta_headers:
+                resp.sysmeta_headers[HEADER_RETENION_DATE]
+        if HEADER_LEGAL_HOLD_STATUS in resp.sysmeta_headers:
             resp.headers['ObjectLock-LegalHoldStatus'] = \
-                resp.sysmeta_headers[self.HEADER_LEGAL_HOLD_STATUS]
+                resp.sysmeta_headers[HEADER_LEGAL_HOLD_STATUS]
         if req.method == 'HEAD':
             resp.app_iter = None
             # HEAD requests without keys on encrypted objects are allowed for
@@ -301,8 +300,7 @@ class ObjectController(Controller):
         Handle DELETE Object request
         """
         version_id = version_id_param(req)
-        bypass_governance = req.environ.get(self.HEADER_BYPASS_GOVERNANCE,
-                                            None)
+        bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)
         if bypass_governance is not None and \
            bypass_governance.lower() == 'true':
             check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")

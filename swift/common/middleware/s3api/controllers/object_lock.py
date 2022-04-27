@@ -21,9 +21,9 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
-from swift.common.middleware.s3api.s3response import AccessDenied, BadRequest,\
+from swift.common.middleware.s3api.s3response import AccessDenied, \
     HTTPOk, InvalidArgument, InvalidBucketState, InvalidRequest, \
-    InvalidRetentionPeriod, MalformedXML, MethodNotAllowed, \
+    InvalidRetentionPeriod, MalformedXML, \
     NoSuchObjectLockConfiguration, ObjectLockConfigurationNotFoundError
 
 from swift.common.middleware.s3api.utils import convert_response, \
@@ -34,6 +34,11 @@ from swift.common.utils import public
 BUCKET_LOCK_META_PREFIX = 'S3Api-Lock-Bucket-'
 OBJECT_RETENTION_META_PREFIX = 'S3Api-Retention-'
 OBJECT_HOLD_META_PREFIX = 'S3Api-Legal-Hold-'
+
+HEADER_BYPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
+HEADER_LEGAL_HOLD_STATUS = sysmeta_header('object', 'Legal-Hold-Status')
+HEADER_RETENION_MODE = sysmeta_header('object', 'Retention-Mode')
+HEADER_RETENION_DATE = sysmeta_header('object', 'Retention-Retainuntildate')
 
 
 def filter_objectlock_meta(meta, filter_key):
@@ -105,12 +110,12 @@ class BucketLockController(Controller):
             raise InvalidBucketState('Object Lock configuration cannot be '
                                      'enabled on existing buckets')
         try:
-            out = self._xml_conf_to_dict(body)
-            self._check_objectlock_config(out)
+            out = BucketLockController._xml_conf_to_dict(body)
+            BucketLockController._check_objectlock_config(out)
             json_output = json.dumps(out)
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
-        nb_days = self._convert_to_days(out)
+        nb_days = BucketLockController._convert_to_days(out)
         mode = out.get("Rule", {}).get("DefaultRetention", {}).get("Mode")
         req.headers[header_name_from_id(self.operation_id)] = json_output
         req.headers[header_name_from_id('defaultretention')] = nb_days
@@ -119,7 +124,8 @@ class BucketLockController(Controller):
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 
-    def _check_objectlock_config(self, conf_dict):
+    @staticmethod
+    def _check_objectlock_config(conf_dict):
         enabled = conf_dict.get("ObjectLockEnabled", {})
         days = conf_dict.get("Rule", {}).get("DefaultRetention",
                                              {}).get("Days")
@@ -141,7 +147,8 @@ class BucketLockController(Controller):
         if years and int(years) <= 0:
             raise InvalidRetentionPeriod()
 
-    def _xml_conf_to_dict(self, lock_conf_xml):
+    @staticmethod
+    def _xml_conf_to_dict(lock_conf_xml):
         """
         Convert the XML lock configuration into a more pythonic dictionary.
 
@@ -167,7 +174,8 @@ class BucketLockController(Controller):
                     out['Rule']['DefaultRetention']['Years'] = years.text
         return out
 
-    def _convert_to_days(self, conf_dict):
+    @staticmethod
+    def _convert_to_days(conf_dict):
         days = conf_dict.get("Rule", {}).get("DefaultRetention",
                                              {}).get("Days")
         years = conf_dict.get("Rule", {}).get("DefaultRetention",
@@ -178,28 +186,21 @@ class BucketLockController(Controller):
             return 365 * int(years)
 
 
-class ObjectLockController(Controller):
+class ObjectLockLegalHoldController(Controller):
     """
     Handles the following APIs:
      - GetObjectLegalHold
      - PutObjectLegalHold
-     - GetObjectRetention
-     - PutObjectRetention
     """
-
-    HEADER_BYPASS_GOVERNANCE = 'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION'
 
     @public
     @object_operation
     @check_iam_access("s3:GetObjectLegalHold")
-    @check_iam_access("s3:GetObjectRetention")
     def GET(self, req):
-        if 'retention' in req.params:
-            self.set_s3api_command(req, 'get-object-retention')
-        elif 'legal-hold' in req.params:
-            self.set_s3api_command(req, 'get-object-legal-hold')
-        else:
-            raise BadRequest("Bad parameter id")
+        objectlock_id = 'legal-hold'
+        key_filter = OBJECT_HOLD_META_PREFIX
+
+        self.set_s3api_command(req, 'get-object-legal-hold')
         info = req.get_container_info(self.app)
         info_sysmeta = info['sysmeta']
         # To conform to aws when getting retention or legal-hold without
@@ -215,30 +216,9 @@ class ObjectLockController(Controller):
             raise InvalidRequest(MISSING_LOCK_CONFIGURATION)
         resp = req.get_response(self.app, 'HEAD', req.container_name,
                                 req.object_name)
-        objectlock_id = None
         sysmeta_object = resp.sysmeta_headers
-        if 'retention' in req.params.keys():
-            objectlock_id = 'retention'
-            key_filter = OBJECT_RETENTION_META_PREFIX
-        elif 'legal-hold' in req.params.keys():
-            objectlock_id = 'legal-hold'
-            key_filter = OBJECT_HOLD_META_PREFIX
-        else:
-            raise BadRequest("Bad parameter id")
 
         obj_meta = filter_objectlock_meta(sysmeta_object, key_filter)
-        if 's3api-lock-bucket-object-lock' in info_sysmeta:
-            default_conf = info_sysmeta.get('s3api-lock-bucket-object-lock')
-            retention_json = json.loads(default_conf)
-            mode = retention_json.get('Rule', {}).get('DefaultRetention',
-                                                      {}).get('Mode', None)
-            # Use mode from object or fill with default one
-            if 'Mode' not in obj_meta.keys():
-                obj_meta['Mode'] = mode
-
-        if 'Retainuntildate' in obj_meta.keys():
-            obj_meta['RetainUntilDate'] = obj_meta['Retainuntildate']
-            obj_meta.pop('Retainuntildate')
 
         if 'Legalhold' in obj_meta.keys():
             obj_meta['LegalHold'] = obj_meta['Legalhold']
@@ -254,18 +234,93 @@ class ObjectLockController(Controller):
 
     @public
     @object_operation
-    @check_iam_access("s3:PutObjectRetention")
     @check_iam_access("s3:PutObjectLegalHold")
     def PUT(self, req):
-        lock_id = None
-        if 'retention' in req.params.keys():
-            lock_id = 'retention'
-            self.set_s3api_command(req, 'put-object-retention')
-        elif 'legal-hold' in req.params.keys():
-            lock_id = 'legal-hold'
-            self.set_s3api_command(req, 'put-object-legal-hold')
+        lock_id = 'legal-hold'
+        self.set_s3api_command(req, 'put-object-legal-hold')
+        body = req.xml(10000)
+        try:
+            info = req.get_container_info(self.app)
+            global_lock = filter_objectlock_meta(info['sysmeta'],
+                                                 's3api-bucket-')
+
+            if 'object-lock-enabled' not in global_lock.keys() or \
+               global_lock['object-lock-enabled'] == 'False':
+                raise InvalidRequest(MISSING_LOCK_CONFIGURATION)
+
+            out = ObjectLockLegalHoldController._xml_conf_to_dict(body)
+            for key, val in out.items():
+                header = sysmeta_header('object', lock_id + '-' + key)
+                req.headers[header] = val
+        except (DocumentInvalid, XMLSyntaxError) as exc:
+            raise MalformedXML(str(exc))
+        resp = req.get_response(self.app, method='POST')
+        return convert_response(req, resp, 202, HTTPOk)
+
+    @staticmethod
+    def _xml_conf_to_dict(lock_conf_xml):
+        lock_conf = fromstring(lock_conf_xml, 'LegalHold')
+        out = {
+            'Status': lock_conf.find('Status').text
+        }
+        if 'Status' not in out.keys() or \
+           out['Status'] not in ('ON', 'OFF'):
+            raise MalformedXML()
+        return out
+
+
+class ObjectLockRetentionController(Controller):
+    """
+    Handles the following APIs:
+     - GetObjectRetention
+     - PutObjectRetention
+    """
+
+    @public
+    @object_operation
+    @check_iam_access("s3:GetObjectRetention")
+    def GET(self, req):
+        self.set_s3api_command(req, 'get-object-retention')
+        info = req.get_container_info(self.app)
+        info_sysmeta = info['sysmeta']
+        # To conform to aws when getting retention or legal-hold without
+        # versionId but fails ceph tests
+        # if "versionId" not in req.params:
+        #    raise MethodNotAllowed(req.method,
+        #                           req.controller.resource_type())
+
+        global_lock = filter_objectlock_meta(info_sysmeta,
+                                             's3api-bucket-')
+        if 'object-lock-enabled' not in global_lock.keys() or \
+           global_lock['object-lock-enabled'] == 'False':
+            raise InvalidRequest(MISSING_LOCK_CONFIGURATION)
+        resp = req.get_response(self.app, 'HEAD', req.container_name,
+                                req.object_name)
+        objectlock_id = 'retention'
+        key_filter = OBJECT_RETENTION_META_PREFIX
+        sysmeta_object = resp.sysmeta_headers
+
+        obj_meta = filter_objectlock_meta(sysmeta_object, key_filter)
+
+        if 'Retainuntildate' in obj_meta.keys():
+            obj_meta['RetainUntilDate'] = obj_meta['Retainuntildate']
+            obj_meta.pop('Retainuntildate')
+
+        if obj_meta:
+            body = dict2xml(obj_meta, wrap="Retention")
+            if body is None:
+                return HTTPNotFound("No object retention"
+                                    f"with id {objectlock_id}.")
         else:
-            raise BadRequest("Bad parameter id")
+            raise NoSuchObjectLockConfiguration()
+        return HTTPOk(body=body, content_type='application/xml')
+
+    @public
+    @object_operation
+    @check_iam_access("s3:PutObjectRetention")
+    def PUT(self, req):
+        lock_id = 'retention'
+        self.set_s3api_command(req, 'put-object-retention')
 
         body = req.xml(10000)
         try:
@@ -276,12 +331,13 @@ class ObjectLockController(Controller):
             if 'object-lock-enabled' not in global_lock.keys() or \
                global_lock['object-lock-enabled'] == 'False':
                 raise InvalidRequest(MISSING_LOCK_CONFIGURATION)
-            bypass_governance = req.environ.get(self.HEADER_BYPASS_GOVERNANCE,
+            bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE,
                                                 None)
-            out = self._xml_conf_to_dict(lock_id, body)
+            out = ObjectLockRetentionController._xml_conf_to_dict(body)
 
             now = datetime.now()
-            now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            now_str = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
+
             current_retention_date = out.get('RetainUntilDate')
             current_retention_mode = out.get('Mode')
             if current_retention_date and current_retention_date < now_str:
@@ -314,9 +370,6 @@ class ObjectLockController(Controller):
                     else:
                         if current_retention_mode == old_retention_mode:
                             pass
-                        elif current_retention_mode == "COMPLIANCE" and \
-                           old_retention_mode == "GOVERNANCE":
-                            pass
                         else:
                             raise AccessDenied()
                 else:
@@ -334,22 +387,15 @@ class ObjectLockController(Controller):
         resp.status = 200
         return resp
 
-    def _xml_conf_to_dict(self, type, lock_conf_xml):
-        if type == 'retention':
-            lock_conf = fromstring(lock_conf_xml, 'Retention')
-            out = {
-                'Mode': lock_conf.find('Mode').text,
-                'RetainUntilDate': lock_conf.find('RetainUntilDate').text
-            }
+    @staticmethod
+    def _xml_conf_to_dict(lock_conf_xml):
+        lock_conf = fromstring(lock_conf_xml, 'Retention')
+        out = {
+            'Mode': lock_conf.find('Mode').text,
+            'RetainUntilDate': lock_conf.find('RetainUntilDate').text
+        }
 
-            if out['Mode'] not in ('GOVERNANCE', 'COMPLIANCE'):
-                raise MalformedXML()
-        else:
-            lock_conf = fromstring(lock_conf_xml, 'LegalHold')
-            out = {
-                'Status': lock_conf.find('Status').text
-            }
-            if 'Status' not in out.keys() or \
-               out['Status'] not in ('ON', 'OFF'):
-                raise MalformedXML()
+        if out['Mode'] not in ('GOVERNANCE', 'COMPLIANCE'):
+            raise MalformedXML()
+
         return out
