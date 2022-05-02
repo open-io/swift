@@ -69,6 +69,7 @@ bucket_db_connection = oio://
 allow_anonymous_path_requests = true
 s3_only = true
 landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
+enable_object_lock = true
 
 [filter:tempauth]
 use = egg:swift#tempauth

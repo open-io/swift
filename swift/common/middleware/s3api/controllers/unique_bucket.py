@@ -18,7 +18,8 @@ from swift.common.middleware.s3api.controllers import BucketController
 from swift.common.middleware.s3api.controllers.base import \
     check_bucket_storage_domain
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
-    BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable, InternalError
+    BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable, InternalError, \
+    PreconditionFailed
 from swift.common.middleware.s3api.utils import sysmeta_header
 
 
@@ -34,6 +35,10 @@ class UniqueBucketController(BucketController):
         """
         self.set_s3api_command(req, 'create-bucket')
         if 'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED' in req.environ:
+            if not self.conf.get('enable_object_lock', False):
+                raise PreconditionFailed(
+                    'object lock configuration is not enabled '
+                    'need to set flag enable_object_lock')
             req.headers[sysmeta_header(
                 'bucket',
                 'bucket-object-lock-enabled')] =\

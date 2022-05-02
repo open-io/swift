@@ -131,6 +131,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'default_storage_domain': None,
             'auto_storage_policies': {},
             'storage_class_by_policy': {},
+            'enable_object_lock': True,
         })
         s3api = S3ApiMiddleware(None, {})
         self.assertEqual(expected, s3api.conf)
@@ -166,6 +167,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'cors_preflight_allow_origin': 'foo.example.com,bar.example.com',
             'ratelimit_as_client_error': True,
             'auto_storage_policies_STANDARD': 'EC',
+            'enable_object_lock': True,
         }
         s3api = S3ApiMiddleware(None, conf)
         conf['cors_preflight_allow_origin'] = \
