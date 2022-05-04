@@ -97,7 +97,7 @@ class OioBucketDb(object):
 
     def get_owner(self, bucket):
         try:
-            return self.bucket_client.bucket_get_owner(bucket)
+            return self.bucket_client.bucket_get_owner(bucket, use_cache=True)
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
@@ -156,7 +156,8 @@ class OioBucketDb(object):
 
     def show(self, bucket, owner):
         try:
-            return self.bucket_client.bucket_show(bucket, owner)
+            return self.bucket_client.bucket_show(
+                bucket, owner, use_cache=True)
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
