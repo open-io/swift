@@ -5,6 +5,7 @@ lcov
 libcurl4-gnutls-dev
 liberasurecode1
 liberasurecode-dev
+libsystemd-dev
 locales
 python2
 python3
