@@ -40,11 +40,13 @@ from swift.common.middleware.s3api.s3response import \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    TooManyBuckets, BadEndpoint, VersionedBucketNotEmpty
+    TooManyBuckets, BadEndpoint, VersionedBucketNotEmpty, \
+    PreconditionFailed
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
+OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
 
 
 class BucketController(Controller):
@@ -439,6 +441,16 @@ class BucketController(Controller):
                 raise BadEndpoint
             req.headers[sysmeta_header('container', 'storage-domain')] = \
                 req.storage_domain
+
+        object_lock_enabled = req.environ.get(
+            'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED', 'False')
+        if object_lock_enabled.lower() == 'true':
+            if not self.conf.get('enable_object_lock', False):
+                raise PreconditionFailed(
+                    'object lock configuration is not enabled')
+            req.headers[OBJECT_LOCK_ENABLED_HEADER] = object_lock_enabled
+            req.headers['X-Versions-Enabled'] = 'true'
+
         resp = req.get_response(self.app)
 
         resp.status = HTTP_OK

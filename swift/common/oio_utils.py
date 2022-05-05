@@ -29,6 +29,7 @@ from oio.common.redis_conn import catch_service_errors, RedisConnection
 
 
 BUCKET_NAME_PROP = "sys.m2.bucket.name"
+BUCKET_OBJECT_LOCK_PROP = "sys.m2.bucket.objectlock.enabled"
 MULTIUPLOAD_SUFFIX = '+segments'
 
 

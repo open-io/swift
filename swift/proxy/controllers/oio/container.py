@@ -18,7 +18,8 @@ import json
 from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
     handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP, \
-    oio_versionid_to_swift_versionid, split_oio_version_from_name
+    BUCKET_OBJECT_LOCK_PROP, oio_versionid_to_swift_versionid, \
+    split_oio_version_from_name
 from swift.common.utils import public, Timestamp, \
     config_true_value, override_bytes_from_content_type
 from swift.common.constraints import check_metadata
@@ -40,6 +41,9 @@ from swift.proxy.controllers.base import clear_info_cache, \
     delay_denial, cors_validation, get_account_info, set_info_cache
 
 from oio.common import exceptions
+
+from swift.common.middleware.s3api.controllers.bucket import \
+    OBJECT_LOCK_ENABLED_HEADER
 
 
 class ContainerController(SwiftContainerController):
@@ -284,6 +288,11 @@ class ContainerController(SwiftContainerController):
             # This will be used when aggregating container statistics
             # to make bucket statistics.
             system[BUCKET_NAME_PROP] = bucket_name
+        bucket_object_lock_enabled = req.headers.get(
+            OBJECT_LOCK_ENABLED_HEADER, None)
+        if bucket_object_lock_enabled is not None:
+            system[BUCKET_OBJECT_LOCK_PROP] = \
+                bucket_object_lock_enabled
         # TODO container update metadata
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')

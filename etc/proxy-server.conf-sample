@@ -803,6 +803,12 @@ use = egg:swift#s3api
 # Landing page used when a client requests the endpoint without being authenticated
 #landing_page = https://aws.amazon.com/s3/
 
+# Enable or disable object Lock
+# If not set this is considered as se to true
+# object lock depends on versioning so if versioning is not enabled
+# then object lock is disabled no matter this flag value
+#enable_object_lock = false
+
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials
 # provided in the request header. Please put s3token between s3api
@@ -1299,8 +1305,8 @@ use = egg:swift#intelligent_tiering
 # Authorized action according to the bucket states.
 # Each action can have 0, 1, x possible bucket states and be comma separated.
 # Empty means no bucket states allowed.
-# Possible States are: 
-#   None, Locked, Archiving, Draining, Archived, Restoring, 
+# Possible States are:
+#   None, Locked, Archiving, Draining, Archived, Restoring,
 #   Restored, Deleting, Flushed
 # it_iam_create_bucket_actions = None
 # it_iam_delete_bucket_actions = None, Flushed
