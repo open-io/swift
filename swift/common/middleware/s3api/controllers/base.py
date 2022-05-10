@@ -16,7 +16,7 @@
 import functools
 
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
-    InvalidRequest, BadEndpoint
+    InvalidRequest, BadEndpoint, NoSuchBucket
 from swift.common.middleware.s3api.utils import camel_to_snake
 
 
@@ -81,11 +81,15 @@ def check_bucket_storage_domain(func):
     @functools.wraps(func)
     def _check_bucket_storage_domain(self, req):
         if self.conf.check_bucket_storage_domain:
-            info = req.get_container_info(self.app)
-            storage_domain = info.get('sysmeta', {}).get(
-                's3api-storage-domain', self.conf.default_storage_domain)
-            if req.storage_domain != storage_domain:
-                raise BadEndpoint
+            try:
+                info = req.get_container_info(self.app)
+                storage_domain = info.get('sysmeta', {}).get(
+                    's3api-storage-domain', self.conf.default_storage_domain)
+                if req.storage_domain != storage_domain:
+                    raise BadEndpoint
+            except NoSuchBucket:
+                # The bucket does not exist, the request is authorized
+                pass
         return func(self, req)
 
     return _check_bucket_storage_domain

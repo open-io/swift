@@ -58,21 +58,31 @@ class DummyBucketDb(object):
         self._bucket_db[bucket] = (owner, deadline)
         return True
 
-    def set_owner(self, bucket, owner):
+    def create(self, bucket, owner):
         """
-        Set the owner of a bucket.
+        Create a new bucket.
 
         :param bucket: name of the bucket
         :param owner: name of the account owning the bucket
-        :returns: True if the ownership has been set
+        :returns: True if the bucket has been create
         """
         self._bucket_db[bucket] = (owner, None)
         return True
+
+    def delete(self, bucket, owner):
+        """
+        Delete the specified bucket.
+        """
+        if owner != self.get_owner(bucket):
+            return
+        self._bucket_db.pop(bucket, None)
 
     def release(self, bucket, owner):
         """
         Remove the bucket from the database.
         """
+        if owner != self.get_owner(bucket):
+            return
         self._bucket_db.pop(bucket, None)
 
     def show(self, bucket, owner, **kwargs):
@@ -95,6 +105,12 @@ class OioBucketDb(object):
             logger=self.logger, **kwargs)
 
     def get_owner(self, bucket):
+        """
+        Get the owner of a bucket.
+
+        :param bucket: name of the bucket
+        :returns: the owner of the bucket
+        """
         try:
             return self.bucket_client.bucket_get_owner(bucket, use_cache=True)
         except NotFound:
@@ -112,23 +128,16 @@ class OioBucketDb(object):
                                   bucket, exc)
             raise ServiceUnavailable from exc
 
-    def set_owner(self, bucket, owner):
-        try:
-            self.bucket_client.bucket_set_owner(bucket, owner)
-            return True
-        except ClientException as exc:
-            if self.logger:
-                self.logger.warning(
-                    'Failed to set owner %s of bucket %s: %s',
-                    owner, bucket, exc)
-            return False
-        except OioNetworkException as exc:
-            if self.logger:
-                self.logger.error('Failed set owner of bucket %s: %s',
-                                  bucket, exc)
-            raise ServiceUnavailable from exc
-
     def reserve(self, bucket, owner):
+        """
+        Reserve a bucket. The bucket entry must not already
+        exist in the database.
+
+        :param bucket: name of the bucket
+        :param owner: name of the account owning the bucket
+        :param timeout: a timeout in seconds, for the reservation to expire.
+        :returns: True if the bucket has been reserved, False otherwise
+        """
         try:
             self.bucket_client.bucket_reserve(bucket, owner)
             return True
@@ -140,10 +149,66 @@ class OioBucketDb(object):
             return False
         except OioNetworkException as exc:
             if self.logger:
-                self.logger.error('Failed reserve bucket %s: %s', bucket, exc)
+                self.logger.error(
+                    'Failed to reserve bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            raise ServiceUnavailable from exc
+
+    def create(self, bucket, owner):
+        """
+        Create a new bucket.
+
+        :param bucket: name of the bucket
+        :param owner: name of the account owning the bucket
+        :returns: True if the bucket has been create
+        """
+        try:
+            self.bucket_client.bucket_create(bucket, owner)
+            return True
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to create bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            return False
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error(
+                    'Failed to create bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            raise ServiceUnavailable from exc
+
+    def delete(self, bucket, owner):
+        """
+        Delete the specified bucket.
+
+        :param bucket: name of the bucket
+        :param owner: name of the account owning the bucket
+        :returns: True if the bucket has been delete
+        """
+        try:
+            self.bucket_client.bucket_delete(bucket, owner, force=True)
+            return True
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to delete bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            return False
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error(
+                    'Failed to delete bucket %s with owner %s: %s',
+                    bucket, owner, exc)
             raise ServiceUnavailable from exc
 
     def release(self, bucket, owner):
+        """
+        Cancel the reservation for the bucket name.
+
+        :param bucket: name of the bucket
+        :param owner: name of the account owning the bucket
+        """
         try:
             self.bucket_client.bucket_release(bucket, owner)
         except ClientException as exc:
@@ -153,24 +218,34 @@ class OioBucketDb(object):
                     bucket, owner, exc)
         except OioNetworkException as exc:
             if self.logger:
-                self.logger.error('Failed release bucket %s: %s', bucket, exc)
+                self.logger.error(
+                    'Failed to release bucket %s with owner %s: %s',
+                    bucket, owner, exc)
             raise ServiceUnavailable from exc
 
     def show(self, bucket, owner, use_cache=True, **kwargs):
         """
         Show information about a bucket.
 
+        :param bucket: name of the bucket
+        :param owner: name of the account owning the bucket
         :param use_cache: allow to get a cached response (enabled by default)
         """
         try:
             return self.bucket_client.bucket_show(
-                bucket, owner, use_cache=use_cache)
+                bucket, account=owner, use_cache=use_cache)
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
                     'Failed to show bucket %s with owner %s: %s',
                     bucket, owner, exc)
             return None
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error(
+                    'Failed to show bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            raise ServiceUnavailable from exc
 
 
 class BucketDbWrapper(object):
@@ -191,12 +266,6 @@ class BucketDbWrapper(object):
         self.cache[bucket] = owner
         return owner
 
-    def set_owner(self, bucket, owner, **kwargs):
-        res = self.bucket_db.set_owner(bucket=bucket, owner=owner, **kwargs)
-        if res:
-            self.cache[bucket] = owner
-        return res
-
     def release(self, bucket, owner, **kwargs):
         self.cache.pop(bucket, None)
         return self.bucket_db.release(bucket=bucket, owner=owner, **kwargs)
@@ -206,6 +275,16 @@ class BucketDbWrapper(object):
         if res:
             self.cache[bucket] = owner
         return res
+
+    def create(self, bucket, owner, **kwargs):
+        res = self.bucket_db.create(bucket=bucket, owner=owner, **kwargs)
+        if res:
+            self.cache[bucket] = owner
+        return res
+
+    def delete(self, bucket, owner, **kwargs):
+        self.cache.pop(bucket, None)
+        return self.bucket_db.delete(bucket=bucket, owner=owner, **kwargs)
 
     def show(self, bucket, owner, **kwargs):
         res = self.bucket_db.show(bucket=bucket, owner=owner)

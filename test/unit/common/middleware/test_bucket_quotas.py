@@ -59,7 +59,7 @@ class TestBucketQuotas(S3ApiTestCase):
         self.s3api.conf.bucket_db_connection = 'dummy://'
         self.s3api.bucket_db = get_bucket_db(self.s3api.conf)
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
-        self.s3api.bucket_db.set_owner('test-bucket-quotas', 'AUTH_test')
+        self.s3api.bucket_db.create('test-bucket-quotas', 'AUTH_test')
 
         self.logger = debug_logger('test-bucket-quotas-middleware')
 

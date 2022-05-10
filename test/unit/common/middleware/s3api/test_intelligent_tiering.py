@@ -79,7 +79,7 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
                             None)
 
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
-        self.s3api.bucket_db.set_owner('test-tiering', 'AUTH_test')
+        self.s3api.bucket_db.create('test-tiering', 'AUTH_test')
 
     def test_xml_conf_to_dict(self):
         expected = {

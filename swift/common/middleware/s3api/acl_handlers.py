@@ -503,6 +503,9 @@ ACL_MAP = {
     # DELETE Bucket
     ('DELETE', 'DELETE', 'container'):
     {'Permission': 'OWNER'},
+    # DELETE Bucket (rollback)
+    ('PUT', 'DELETE', 'container'):
+    {'Permission': 'OWNER'},
     # HEAD Object
     ('HEAD', 'HEAD', 'object'):
     {'Permission': 'READ'},

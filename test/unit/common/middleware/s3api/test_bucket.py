@@ -1154,7 +1154,7 @@ class TestS3ApiBucket(S3ApiTestCase):
             self.s3api.bucket_db.reserve('bucket', 'AUTH_test')
             code = self._test_method_error('PUT', '/bucket', swob.HTTPAccepted)
             self.assertEqual(code, 'BucketAlreadyOwnedByYou')
-            self.s3api.bucket_db.release('bucket')
+            self.s3api.bucket_db.release('bucket', 'AUTH_test')
         code = self._test_method_error('PUT', '/bucket', swob.HTTPServerError)
         self.assertEqual(code, 'InternalError')
         code = self._test_method_error(

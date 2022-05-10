@@ -69,7 +69,7 @@ class TestSwift3Cors(S3ApiTestCase):
                             HTTPNoContent, {}, None)
 
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
-        self.s3api.bucket_db.set_owner('test-cors', 'AUTH_test')
+        self.s3api.bucket_db.create('test-cors', 'AUTH_test')
 
     def _cors_GET(self, path):
         req = Request.blank('%s?cors' % path,
