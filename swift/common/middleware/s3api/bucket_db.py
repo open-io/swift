@@ -21,7 +21,6 @@ from swift.common.utils import config_true_value, parse_connection_string
 from oio.account.bucket_client import BucketClient
 from oio.common.exceptions import ClientException, NotFound, \
     OioNetworkException
-from oio.common.redis_conn import RedisConnection
 
 
 class DummyBucketDb(object):
@@ -174,69 +173,6 @@ class OioBucketDb(object):
             return None
 
 
-class RedisBucketDb(RedisConnection):
-    """
-    Keep a list of buckets with their associated account.
-    """
-
-    def __init__(self, host=None, sentinel_hosts=None, sentinel_name=None,
-                 prefix="s3bucket:", **kwargs):
-        super(RedisBucketDb, self).__init__(
-            host=host, sentinel_hosts=sentinel_hosts,
-            sentinel_name=sentinel_name, **kwargs)
-        self._prefix = prefix
-
-    def _key(self, bucket):
-        return self._prefix + bucket
-
-    def get_owner(self, bucket):
-        """
-        Get the owner of a bucket.
-
-        :returns: the name of the account owning the bucket or None
-        """
-        owner = self.conn_slave.get(self._key(bucket))
-        return owner.decode('utf-8') if owner is not None else owner
-
-    def set_owner(self, bucket, owner):
-        """
-        Set the owner of a bucket.
-
-        :param bucket: name of the bucket
-        :param owner: name of the account owning the bucket
-        :returns: True if the ownership has been set
-        """
-        res = self.conn.set(self._key(bucket), owner.encode('utf-8'))
-        return res is True
-
-    def reserve(self, bucket, owner, timeout=30):
-        """
-        Reserve a bucket. The bucket entry must not already
-        exist in the database.
-
-        :param bucket: name of the bucket
-        :param owner: name of the account owning the bucket
-        :param timeout: a timeout in seconds, for the reservation to expire.
-        :returns: True if the bucket has been reserved, False otherwise
-        """
-        res = self.conn.set(self._key(bucket), owner.encode('utf-8'),
-                            ex=int(timeout), nx=True)
-        return res is True
-
-    def release(self, bucket, owner):
-        """
-        Remove the bucket from the database.
-        """
-        self.conn.delete(self._key(bucket))
-
-    def show(self, bucket, owner, **kwargs):
-        # XXX(FVE): the other implementation returns more information, but
-        # since we deprecated the Redis backend, we don't want to spend
-        # time fixing this one.
-        res = {'account': self.get_owner(bucket)}
-        return res
-
-
 class BucketDbWrapper(object):
     """
     Memoizer for bucket DB. It is intended to have the same life cycle
@@ -279,7 +215,7 @@ class BucketDbWrapper(object):
 def get_bucket_db(conf, logger=None):
     """
     If `bucket_db_connection` is set in `conf`, get an instance of the
-    appropriate bucket database class (RedisBucketDb or DummyBucketDb).
+    appropriate bucket database class (DummyBucketDb or OioBucketDb).
     `bucket_db_connection` must be a URL with a scheme, a host and optional
     parameters.
     """
@@ -288,13 +224,7 @@ def get_bucket_db(conf, logger=None):
     if conn_str:
         # New style configuration
         scheme, netloc, db_kwargs = parse_connection_string(conn_str)
-        if scheme in ('redis', 'redis+sentinel'):
-            klass = RedisBucketDb
-            if scheme == 'redis+sentinel':
-                db_kwargs['sentinel_hosts'] = netloc
-            else:
-                db_kwargs['host'] = netloc
-        elif scheme == 'dummy':
+        if scheme == 'dummy':
             klass = DummyBucketDb
         elif scheme in ('oio', 'fdb'):
             if scheme == 'fdb' and logger is not None:
@@ -311,7 +241,7 @@ def get_bucket_db(conf, logger=None):
                      if k.startswith('bucket_db_')}
         if config_true_value(db_kwargs.get('enabled', 'false')):
             if 'host' in db_kwargs or 'sentinel_hosts' in db_kwargs:
-                klass = RedisBucketDb
+                raise ValueError('bucket_db: redis is no longer supported')
             else:
                 klass = DummyBucketDb
     if klass:

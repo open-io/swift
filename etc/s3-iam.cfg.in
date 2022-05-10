@@ -54,7 +54,6 @@ use = egg:swift#staticweb
 use = egg:swift#oioiam
 log_level = DEBUG
 connection = %IAM_RULES_CONN%
-#connection = redis://127.0.0.1:6379
 #connection = oio://
 
 [filter:s3api]
@@ -66,7 +65,6 @@ storage_domain = localhost
 s3_acl = true
 check_bucket_owner = true
 # min_segment_size = 8
-#bucket_db_connection = redis://127.0.0.1:6379
 bucket_db_connection = oio://
 allow_anonymous_path_requests = true
 s3_only = true

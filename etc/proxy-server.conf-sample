@@ -592,7 +592,7 @@ use = egg:swift#oioiam
 #connection = file:///etc/swift/iam_rules.json
 
 # Load IAM user policies from a Redis database.
-#connection = redis://127.0.0.1:6379
+#connection = oio://
 
 # Load IAM user policies from a Redis database, with Redis Sentinel enabled.
 connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1
@@ -786,7 +786,7 @@ use = egg:swift#s3api
 #bucket_db_connection =
 #
 # IP address and port of a single Redis server.
-#bucket_db_connection = redis://127.0.0.1:6379?prefix=s3bucket%3A
+#bucket_db_connection = oio://
 #
 # Sentinel-enabled Redis cluster.
 #bucket_db_connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1&prefix=s3bucket%3A
