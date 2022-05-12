@@ -19,7 +19,8 @@ from swift.common.middleware.s3api.s3response import ServiceUnavailable
 from swift.common.utils import config_true_value, parse_connection_string
 
 from oio.account.bucket_client import BucketClient
-from oio.common.exceptions import ClientException, OioNetworkException
+from oio.common.exceptions import ClientException, NotFound, \
+    OioNetworkException
 from oio.common.redis_conn import RedisConnection
 
 
@@ -75,13 +76,12 @@ class DummyBucketDb(object):
         """
         self._bucket_db.pop(bucket, None)
 
-    def show(self, bucket, owner):
+    def show(self, bucket, owner, **kwargs):
         """
-        Show info of a bucket.
-        Not implemented for DummyBucketDb.
+        Show information about a bucket.
+        Only partially implemented for DummyBucketDb.
         """
-        raise NotImplementedError("Bucket show not implemented with this "
-                                  "backend")
+        return {'account': self.get_owner(bucket)}
 
 
 class OioBucketDb(object):
@@ -98,6 +98,9 @@ class OioBucketDb(object):
     def get_owner(self, bucket):
         try:
             return self.bucket_client.bucket_get_owner(bucket, use_cache=True)
+        except NotFound:
+            # Don't need to log, this is not an error
+            return None
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
@@ -154,10 +157,15 @@ class OioBucketDb(object):
                 self.logger.error('Failed release bucket %s: %s', bucket, exc)
             raise ServiceUnavailable from exc
 
-    def show(self, bucket, owner):
+    def show(self, bucket, owner, use_cache=True, **kwargs):
+        """
+        Show information about a bucket.
+
+        :param use_cache: allow to get a cached response (enabled by default)
+        """
         try:
             return self.bucket_client.bucket_show(
-                bucket, owner, use_cache=True)
+                bucket, owner, use_cache=use_cache)
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
@@ -221,15 +229,12 @@ class RedisBucketDb(RedisConnection):
         """
         self.conn.delete(self._key(bucket))
 
-    def show(self, bucket, owner):
-        try:
-            return self.bucket_client.bucket_show(bucket, owner)
-        except ClientException as exc:
-            if self.logger:
-                self.logger.warning(
-                    'Failed to show bucket %s with owner %s: %s',
-                    bucket, owner, exc)
-            return None
+    def show(self, bucket, owner, **kwargs):
+        # XXX(FVE): the other implementation returns more information, but
+        # since we deprecated the Redis backend, we don't want to spend
+        # time fixing this one.
+        res = {'account': self.get_owner(bucket)}
+        return res
 
 
 class BucketDbWrapper(object):

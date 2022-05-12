@@ -70,9 +70,30 @@ class UniqueBucketController(BucketController):
         except NoSuchBucket:
             ct_owner = req.bucket_db.get_owner(req.container_name)
             if ct_owner == req.account:
-                # The bucket used to be ours, but for some reason
-                # it has not been released.
-                req.bucket_db.release(req.container_name, req.account)
+                # The bucket database may be shared across several regions.
+                # FIXME(FVE): if we detect a region mismatch, we should return
+                # an error 400 instead of a 404.
+                bucket_meta = req.bucket_db.show(req.container_name, ct_owner,
+                                                 use_cache=False)
+                # We have clues that bucket metadata can be cleaned whereas
+                # the bucket still has an owner (because of async updates).
+                if bucket_meta is None:
+                    self.logger.warning(
+                        "Bucket %s (previously owned by account %s) was "
+                        + "deleted, but bucket DB was only partially cleaned",
+                        req.container_name, ct_owner)
+                    region = None
+                else:
+                    region = bucket_meta.get("region", "").lower()
+
+                if region is None or region == self.conf.location.lower():
+                    self.logger.warning(
+                        "Releasing bucket %s from account %s "
+                        + "(was deleted before)",
+                        req.container_name, req.account)
+                    # The bucket used to be ours, but for some reason
+                    # it has not been released.
+                    req.bucket_db.release(req.container_name, req.account)
             raise
 
         if resp.is_success:
