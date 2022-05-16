@@ -118,7 +118,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'landing_page': 'https://aws.amazon.com/s3/',
             'log_s3api_command': False,
             'max_bucket_listing': 1000,
-            'max_buckets_per_account': 100,
             'max_multi_delete_objects': 1000,
             'max_parts_listing': 1000,
             'max_upload_part_num': 1000,
@@ -156,7 +155,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                 'https://docs.openstack.org/swift/latest/s3_compat.html',
             'log_s3api_command': True,
             'max_bucket_listing': 500,
-            'max_buckets_per_account': 1000,
             'max_multi_delete_objects': 600,
             'max_parts_listing': 70,
             'max_upload_part_num': 800,
@@ -237,8 +235,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         check_bad_positive_ints(allowable_clock_skew=0)
         check_bad_positive_ints(max_bucket_listing=-100)
         check_bad_positive_ints(max_bucket_listing=0)
-        check_bad_positive_ints(max_buckets_per_account=-100)
-        check_bad_positive_ints(max_buckets_per_account=0)
         check_bad_positive_ints(max_multi_delete_objects=-100)
         check_bad_positive_ints(max_multi_delete_objects=0)
         check_bad_positive_ints(max_parts_listing=-100)
@@ -1411,9 +1407,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             environ={'REQUEST_METHOD': 'PUT'},
             headers={'Authorization': 'AWS access:signature',
                      'Date': self.get_date_header()})
-        # TEST method is used to resolve a tenant name
-        self.swift.register('TEST', '/v1/AUTH_TENANT_ID',
-                            swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_TENANT_ID/bucket',
                             swob.HTTPCreated, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_TENANT_ID',
@@ -1426,7 +1419,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
 
             status, headers, body = self.call_s3api(req)
             self.assertEqual(body, b'')
-            self.assertEqual(2, mock_req.call_count)
+            self.assertEqual(1, mock_req.call_count)
             self.assertIn('swift.backend_path', req.environ)
             self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
                              req.environ['swift.backend_path'])
@@ -1444,9 +1437,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             environ={'REQUEST_METHOD': 'PUT'},
             headers={'Authorization': 'AWS access:signature',
                      'Date': self.get_date_header()})
-        # TEST method is used to resolve a tenant name
-        self.swift.register('TEST', '/v1/AUTH_PROJECT_ID',
-                            swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_PROJECT_ID/bucket',
                             swob.HTTPCreated, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_PROJECT_ID',
@@ -1459,7 +1449,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
 
             status, headers, body = self.call_s3api(req)
             self.assertEqual(body, b'')
-            self.assertEqual(2, mock_req.call_count)
+            self.assertEqual(1, mock_req.call_count)
             self.assertIn('swift.backend_path', req.environ)
             self.assertEqual('/v1/AUTH_PROJECT_ID/bucket',
                              req.environ['swift.backend_path'])
@@ -1479,8 +1469,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             environ={'REQUEST_METHOD': 'PUT'},
             headers={'Authorization': 'AWS access:signature',
                      'Date': self.get_date_header()})
-        self.swift.register('HEAD', '/v1/AUTH_TENANT_ID',
-                            swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_TENANT_ID/bucket',
                             swob.HTTPCreated, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_TENANT_ID',
@@ -1510,9 +1498,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                 # sets 'X-Identity-Status: Invalid' and never contacts
                 # Keystone.
                 self.assertEqual('403 Forbidden', status)
-                self.assertNotIn('swift.backend_path', req.environ)
-                # self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
-                #                  req.environ['swift.backend_path'])
+                self.assertIn('swift.backend_path', req.environ)
+                self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
+                                 req.environ['swift.backend_path'])
                 self.assertEqual(1, mock_req.call_count)
                 # it never even tries to contact keystone
                 self.assertEqual(0, mock_fetch.call_count)
@@ -1534,8 +1522,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                      'Date': self.get_date_header()})
         self.swift.register('PUT', '/v1/AUTH_TENANT_ID/bucket',
                             swob.HTTPCreated, {}, None)
-        self.swift.register('HEAD', '/v1/AUTH_TENANT_ID',
-                            swob.HTTPOk, {}, None)
         # For now, s3 acl commits the bucket owner acl via POST
         # after PUT container so we need to register the resposne here
         self.swift.register('POST', '/v1/AUTH_TENANT_ID/bucket',

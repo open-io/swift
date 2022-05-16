@@ -41,17 +41,17 @@ function trap_exit {
 	echo "EXIT signal trapped"
 	echo "--------------------"
 	set +e
-    openio account unset -p X-Account-Meta-Max-Buckets "${OIO_ACCOUNT}"
+    openio account unset --max-buckets "${OIO_ACCOUNT}"
     sudo systemctl start memcached | true
 }
 
 trap trap_exit EXIT
 
 NB_BUCKETS=OUT=$(${AWS} s3 ls | wc -l)
-openio account set -p X-Account-Meta-Max-Buckets=$((NB_BUCKETS + 1)) "${OIO_ACCOUNT}"
+openio account set --max-buckets $((NB_BUCKETS + 1)) "${OIO_ACCOUNT}"
 ${AWS} s3api create-bucket --bucket ${BUCKET_3}
 OUT=$(${AWS} s3api create-bucket --bucket ${BUCKET_4} 2>&1 | tail -n 1)
 echo "$OUT" | grep "TooManyBuckets"
 
-openio account unset -p X-Account-Meta-Max-Buckets "${OIO_ACCOUNT}"
+openio account unset --max-buckets "${OIO_ACCOUNT}"
 ${AWS} s3api create-bucket --bucket ${BUCKET_4}

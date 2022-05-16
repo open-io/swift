@@ -33,8 +33,6 @@ class TestSwift3BucketDb(S3ApiTestCase):
         self.s3api.conf.bucket_db_connection = 'dummy://'
         self.s3api.bucket_db = get_bucket_db(self.s3api.conf)
 
-        self.swift.register('HEAD', '/v1/AUTH_test2',
-                            swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_test2/bucket',
                             swob.HTTPCreated, {}, None)
         self.swift.register('PUT', '/v1/AUTH_test2/bucket+segments',

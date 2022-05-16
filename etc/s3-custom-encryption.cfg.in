@@ -63,7 +63,6 @@ log_s3api_command = True
 storage_domain = localhost
 s3_acl = true
 check_bucket_owner = true
-max_buckets_per_account = 500
 # min_segment_size = 8
 bucket_db_connection = oio://
 allow_anonymous_path_requests = false

@@ -263,8 +263,6 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('dns_compliant_bucket_names', True))
         self.conf.max_bucket_listing = config_positive_int_value(
             wsgi_conf.get('max_bucket_listing', 1000))
-        self.conf.max_buckets_per_account = config_positive_int_value(
-            wsgi_conf.get('max_buckets_per_account', 100))
         self.conf.max_parts_listing = config_positive_int_value(
             wsgi_conf.get('max_parts_listing', 1000))
         self.conf.max_multi_delete_objects = config_positive_int_value(

@@ -14,12 +14,13 @@
 # limitations under the License.
 
 import time
-from swift.common.middleware.s3api.s3response import ServiceUnavailable
+from swift.common.middleware.s3api.s3response import ServiceUnavailable, \
+    TooManyBuckets
 
 from swift.common.utils import config_true_value, parse_connection_string
 
 from oio.account.bucket_client import BucketClient
-from oio.common.exceptions import ClientException, NotFound, \
+from oio.common.exceptions import ClientException, NotFound, BadRequest, \
     OioNetworkException
 
 
@@ -142,6 +143,8 @@ class OioBucketDb(object):
             self.bucket_client.bucket_reserve(bucket, owner)
             return True
         except ClientException as exc:
+            if isinstance(exc, BadRequest) and 'Too many buckets' in str(exc):
+                raise TooManyBuckets from exc
             if self.logger:
                 self.logger.warning(
                     'Failed to reserve bucket %s with owner %s: %s',
@@ -166,6 +169,8 @@ class OioBucketDb(object):
             self.bucket_client.bucket_create(bucket, owner)
             return True
         except ClientException as exc:
+            if isinstance(exc, BadRequest) and 'Too many buckets' in str(exc):
+                raise TooManyBuckets from exc
             if self.logger:
                 self.logger.warning(
                     'Failed to create bucket %s with owner %s: %s',

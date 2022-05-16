@@ -1214,7 +1214,6 @@ class TestS3ApiBucket(S3ApiTestCase):
         self.assertEqual(status, '503 Service Unavailable')
         # The last call was PUT not POST for acl set
         self.assertEqual(self.swift.calls, [
-            ('HEAD', '/v1/AUTH_test'),
             ('PUT', '/v1/AUTH_test/bucket'),
         ])
 
