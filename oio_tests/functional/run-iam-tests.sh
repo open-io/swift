@@ -25,7 +25,7 @@ if [ "$RET" -ne "0" ]; then
   exit $RET
 fi
 
-# IAM, with rules in a Redis database
+# IAM, with rules in a fdb database
 CONN_STR="fdb://127.0.0.1:6379"
 for USER in $(jq -r --raw-output 'keys | .[]' $RULES_FILE)
 do
@@ -35,7 +35,8 @@ do
 done
 
 sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-iam.cfg.in > etc/s3-iam.cfg
-run_functional_test s3-iam.cfg s3-iam.sh
+run_functional_test s3-iam.cfg s3-iam.sh \
+  s3-object-lock.sh
 
 # TODO(FVE): gridinit_cmd stop
 exit $RET

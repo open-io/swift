@@ -74,6 +74,60 @@
                 "Action": ["s3:*"],
                 "Effect": "Allow",
                 "Resource": ["arn:aws:s3:::companybucket/home/user1/*"]
+            },
+            {
+                "Sid": "objectlockconfiguration",
+                "Action": [
+                    "s3:ListBucket",
+                    "s3:GetBucketObjectLockConfiguration",
+                    "s3:PutBucketObjectLockConfiguration"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                    "arn:aws:s3:::shared-bucket-config",
+                    "arn:aws:s3:::shared-bucket-config/*"
+                ]
+            },
+            {
+                "Sid": "legal-hold",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:GetObjectLegalHold",
+                    "s3:PutObjectLegalHold"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                    "arn:aws:s3:::shared-bucket-hold",
+                    "arn:aws:s3:::shared-bucket-hold/obj*"
+                ]
+            },
+            {
+                "Sid": "retention",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:GetObjectRetention",
+                    "s3:PutObjectRetention"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                    "arn:aws:s3:::shared-bucket-retention",
+                    "arn:aws:s3:::shared-bucket-retention/obj-retention*"
+                ]
+            },
+            {
+                "Sid": "bypass",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:BypassGovernanceRetention"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                    "arn:aws:s3:::shared-bucket-bypass",
+                    "arn:aws:s3:::shared-bucket-bypass/obj-delete*"
+                ]
             }
         ]
     },
