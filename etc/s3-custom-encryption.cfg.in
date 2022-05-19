@@ -74,7 +74,9 @@ landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
 use = egg:swift#tempauth
 log_level = DEBUG
 user_demo_demo = DEMO_PASS .admin
+# Unpriviledged users of the account AUTH_demo
 user_demo_user1 = USER_PASS
+user_demo_user2 = USER_PASS
 
 user_tester2_tester2 = TESTER2 .admin
 

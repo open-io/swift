@@ -88,6 +88,10 @@ aws_secret_access_key=DEMO_PASS
 aws_access_key_id=demo:user1
 aws_secret_access_key=USER_PASS
 
+[user2]
+aws_access_key_id=demo:user2
+aws_secret_access_key=USER_PASS
+
 [a2adm]
 aws_access_key_id=account2:admin
 aws_secret_access_key=ADMIN_PASS
@@ -109,6 +113,16 @@ s3 =
     addressing_style = $addressing_style
 
 [profile user1]
+region = RegionOne
+s3 =
+    signature_version = s3
+    max_concurrent_requests = 10
+    max_queue_size = 100
+    multipart_threshold = 15MB
+    multipart_chunksize = 5MB
+    addressing_style = $addressing_style
+
+[profile user2]
 region = RegionOne
 s3 =
     signature_version = s3

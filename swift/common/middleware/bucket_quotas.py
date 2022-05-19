@@ -57,18 +57,6 @@ class BucketQuotaMiddleware(object):
         return self.app(env, msg)
 
     @staticmethod
-    def _generate_allow_rule(container_name):
-        rule = {
-            'Sid': 'BucketQuotaAllowEverything',
-            'Action': 's3:*',
-            'Effect': 'Allow',
-            'Resource': [ARN_S3_PREFIX + container_name,
-                         ARN_S3_PREFIX + container_name + '/*']
-        }
-        rules = {'Statement': [rule]}
-        return rules
-
-    @staticmethod
     # pylint: disable=protected-access
     def _add_or_replace_rule_in_matcher(matcher, rules_to_add):
         """
@@ -94,9 +82,6 @@ class BucketQuotaMiddleware(object):
             self._add_or_replace_rule_in_matcher(matcher, quota_rules)
         else:
             matcher = IamRulesMatcher(quota_rules, logger=self.logger)
-            # No rules before this middleware, need to allow everything
-            allow_rules = self._generate_allow_rule(req.container_name)
-            self._add_or_replace_rule_in_matcher(matcher, allow_rules)
 
         return matcher
 

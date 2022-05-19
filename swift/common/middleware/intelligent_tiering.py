@@ -390,18 +390,6 @@ class IntelligentTieringMiddleware(object):
         return rules
 
     @staticmethod
-    def _iam_generate_allow_rule(container_name):
-        rules = {'Statement': []}
-        rules['Statement'].append({
-            'Sid': 'IntelligentTieringAllowEverything',
-            'Action': 's3:*',
-            'Effect': 'Allow',
-            'Resource': [ARN_S3_PREFIX + container_name,
-                         ARN_S3_PREFIX + container_name + '/*']
-        })
-        return rules
-
-    @staticmethod
     # pylint: disable=protected-access
     def _add_or_replace_rule_in_matcher(matcher, rules_to_add):
         """
@@ -434,8 +422,6 @@ class IntelligentTieringMiddleware(object):
             self._add_or_replace_rule_in_matcher(matcher, it_rules)
         else:
             matcher = IamRulesMatcher(it_rules, logger=self.logger)
-            allow_rules = self._iam_generate_allow_rule(req.container_name)
-            self._add_or_replace_rule_in_matcher(matcher, allow_rules)
 
         return matcher
 
