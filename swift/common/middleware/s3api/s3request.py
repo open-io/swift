@@ -76,7 +76,8 @@ ALLOWED_SUB_RESOURCES = sorted([
     'versionId', 'versioning', 'versions', 'website',
     'response-cache-control', 'response-content-disposition',
     'response-content-encoding', 'response-content-language',
-    'response-content-type', 'response-expires', 'cors', 'tagging', 'restore'
+    'response-content-type', 'response-expires', 'cors', 'tagging', 'restore',
+    'object-lock'
 ])
 
 
