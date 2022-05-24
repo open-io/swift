@@ -146,8 +146,9 @@ class MultiObjectDeleteController(Controller):
                             msg_parts.extend(
                                 '%s: %s' % (obj, status)
                                 for obj, status in delete_result['Errors'])
-                            return key, {'code': 'SLODeleteError',
-                                         'message': '\n'.join(msg_parts)}
+                            return key, version, {'code': 'SLODeleteError',
+                                                  'message':
+                                                  '\n'.join(msg_parts)}
                         # else, all good
                     except (ValueError, TypeError, KeyError):
                         # Logs get all the gory details
@@ -155,31 +156,39 @@ class MultiObjectDeleteController(Controller):
                             'Could not parse SLO delete response (%s): %s',
                             resp.status, resp.body)
                         # Client gets something more generic
-                        return key, {'code': 'SLODeleteError',
-                                     'message': 'Unexpected swift response'}
+                        return key, version, {'code': 'SLODeleteError',
+                                              'message':
+                                              'Unexpected swift response'}
             except NoSuchKey:
                 pass
             except ErrorResponse as e:
-                return key, {'code': e.__class__.__name__, 'message': e._msg}
+                return key, version, {'versionid': version,
+                                      'code': e.__class__.__name__,
+                                      'message': e._msg}
             except Exception:
                 self.logger.exception(
                     'Unexpected Error handling DELETE of %r %r' % (
                         req.container_name, key))
-                return key, {'code': 'Server Error', 'message': 'Server Error'}
+                return key, version, {'code': 'Server Error',
+                                      'message': 'Server Error'}
 
-            return key, None
+            return key, version, None
 
         with StreamingPile(self.conf.multi_delete_concurrency) as pile:
-            for key, err in pile.asyncstarmap(do_delete, (
+            for key, version, err in pile.asyncstarmap(do_delete, (
                     (req, key, version) for key, version in delete_list)):
                 if err:
                     error = SubElement(elem, 'Error')
                     SubElement(error, 'Key').text = key
                     SubElement(error, 'Code').text = err['code']
+                    if version:
+                        SubElement(error, 'VersionId').text = version
                     SubElement(error, 'Message').text = err['message']
                 elif not self.quiet:
                     deleted = SubElement(elem, 'Deleted')
                     SubElement(deleted, 'Key').text = key
+                    if version:
+                        SubElement(deleted, 'VersionId').text = version
 
         body = tostring(elem)
 
