@@ -135,7 +135,8 @@ class IntelligentTieringController(Controller):
 
         # At least 1 object must be in the bucket to archive it.
         if req.bucket_db:
-            info = req.bucket_db.show(req.container_name, req.account)
+            info = req.bucket_db.show(req.container_name, req.account,
+                                      use_cache=False)
             if not info or info['objects'] < 1:
                 raise BadRequest("Bucket is empty or does not exist")
 
