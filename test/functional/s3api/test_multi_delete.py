@@ -38,13 +38,16 @@ class TestS3ApiMultiDelete(S3ApiBase):
         for obj in objects:
             self.conn.make_request('PUT', bucket, obj)
 
-    def _gen_multi_delete_xml(self, objects, quiet=None):
+    def _gen_multi_delete_xml(self, objects, quiet=None,
+                              version=None):
         elem = Element('Delete')
         if quiet:
             SubElement(elem, 'Quiet').text = quiet
         for key in objects:
             obj = SubElement(elem, 'Object')
             SubElement(obj, 'Key').text = key
+            if version:
+                SubElement(obj, 'VersionId').text = 'null'
 
         return tostring(elem, use_s3ns=False)
 
@@ -224,6 +227,44 @@ class TestS3ApiMultiDelete(S3ApiBase):
         elem = fromstring(body, 'DeleteResult')
         resp_objects = elem.findall('Deleted')
         self.assertEqual(len(resp_objects), 1)
+
+    def test_delete_multi_objects_versions(self):
+        bucket = 'bucket'
+        query = 'delete'
+        put_objects = ['obj%s' % var for var in range(5)]
+        self._prepare_test_delete_multi_objects(bucket, put_objects)
+
+        # Delete 2 objects via MultiDelete API with VersionId
+        req_objects = ['obj1', 'obj2']
+        xml = self._gen_multi_delete_xml(req_objects, version=True)
+        content_md5 = calculate_md5(xml)
+        status, headers, body = \
+            self.conn.make_request('POST', bucket, body=xml,
+                                   headers={'Content-MD5': content_md5},
+                                   query=query)
+        self.assertEqual(status, 200)
+        elem = fromstring(body, 'DeleteResult')
+        resp_objects = elem.findall('Deleted')
+        self.assertEqual(len(resp_objects), len(req_objects))
+        for o in resp_objects:
+            self.assertTrue(o.find('Key').text in req_objects)
+            self.assertEqual(o.find('VersionId').text, 'null')
+
+        # Delete 2 objects via MultiDelete API without VersionId
+        req_objects = ['obj3', 'obj4']
+        xml = self._gen_multi_delete_xml(req_objects)
+        content_md5 = calculate_md5(xml)
+        status, headers, body = \
+            self.conn.make_request('POST', bucket, body=xml,
+                                   headers={'Content-MD5': content_md5},
+                                   query=query)
+        self.assertEqual(status, 200)
+        elem = fromstring(body, 'DeleteResult')
+        resp_objects = elem.findall('Deleted')
+        self.assertEqual(len(resp_objects), len(req_objects))
+        for o in resp_objects:
+            self.assertTrue(o.find('Key').text in req_objects)
+            self.assertEqual(o.find('VersionId'), None)
 
 
 class TestS3ApiMultiDeleteSigV4(TestS3ApiMultiDelete):
