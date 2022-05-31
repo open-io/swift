@@ -813,19 +813,6 @@ class ObjectController(BaseObjectController):
         """HTTP DELETE request handler."""
         container_info = self.container_info(
             self.account_name, self.container_name, req)
-        prop_bypass = req.headers.get('x-amz-bypass-governance-retention')
-        if prop_bypass:
-            metadata = self.load_object_metadata(req.headers)
-            try:
-                self.app.storage.object_set_properties(
-                    self.account_name, self.container_name, self.object_name,
-                    metadata, version=obj_version_from_env(req.environ))
-            except Exception as exc:
-                self.app.logger.warn('Failed to set properties on \
-                                     container: %s \
-                                     object %s, exception msg %s',
-                                     self.container_name,
-                                     self.object_name, str(exc))
         policy_index = req.headers.get('X-Backend-Storage-Policy-Index',
                                        container_info['storage_policy'])
         req.headers['X-Backend-Storage-Policy-Index'] = policy_index
@@ -847,6 +834,8 @@ class ObjectController(BaseObjectController):
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
+        bypass_governance = req.headers.get(
+            'x-amz-bypass-governance-retention', None)
         # only send headers if needed
         if SUPPORT_VERSIONING and req.headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
@@ -855,6 +844,7 @@ class ObjectController(BaseObjectController):
             storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
                 version=obj_version_from_env(req.environ),
+                bypass_governance=bypass_governance,
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
