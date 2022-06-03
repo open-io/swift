@@ -1960,6 +1960,9 @@ class S3AclRequest(S3Request):
         if 'REMOTE_USER' in sw_req.environ:
             self.environ['REMOTE_USER'] = sw_req.environ['REMOTE_USER']
 
+        if 'TEMPAUTH_USERS' in sw_req.environ:
+            self.environ['TEMPAUTH_USERS'] = sw_req.environ['TEMPAUTH_USERS']
+
         # Need to skip S3 authorization on subsequent requests to prevent
         # overwriting the account in PATH_INFO
         del self.environ['s3api.auth_details']

@@ -51,7 +51,7 @@ Example::
 """
 from swift.common.middleware.s3api.subresource import ACL, Owner, encode_acl
 from swift.common.middleware.s3api.s3response import MissingSecurityHeader, \
-    MalformedACLError, UnexpectedContent, AccessDenied
+    MalformedACLError, UnexpectedContent, AccessDenied, InvalidArgument
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.etree import fromstring, XMLSyntaxError, \
     DocumentInvalid
@@ -308,6 +308,11 @@ class S3AclHandler(BaseAclHandler):
                 self.req.environ[ACL_EXPLICIT_ALLOW] = False
 
             for g in req_acl.grants:
+                grantee_id = g.grantee.id if hasattr(g.grantee, 'id') else None
+                tempauth_users = self.req.environ.get('TEMPAUTH_USERS', [])
+                if grantee_id is not None and tempauth_users and \
+                   grantee_id not in tempauth_users:
+                    raise InvalidArgument('', '', msg='Invalid id')
                 self.logger.debug(
                     'Grant %s %s permission on the object /%s/%s' %
                     (g.grantee, g.permission, self.req.container_name,

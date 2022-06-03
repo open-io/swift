@@ -307,6 +307,7 @@ class TempAuth(object):
                 env['REMOTE_USER'] = groups
                 env['swift.authorize'] = self.authorize
                 env['swift.clean_acl'] = clean_acl
+                env['TEMPAUTH_USERS'] = self.users.keys()
                 if '.reseller_admin' in groups:
                     env['reseller_request'] = True
             else:
