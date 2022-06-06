@@ -229,6 +229,7 @@ class ProxyLoggingMiddleware(object):
                                     self.anonymization_salt),
             # Others information
             'method': 'GET',
+            'domain': '',
             'protocol': '',
             'status_int': '0',
             'auth_token': '1234...',
@@ -311,6 +312,10 @@ class ProxyLoggingMiddleware(object):
                                            for k, v in req.headers.items())
 
         method = self.method_from_req(req)
+        domain = req.environ.get('HTTP_HOST',
+                                 req.environ.get('SERVER_NAME', None))
+        if ':' in domain:
+            domain, port = domain.rsplit(':', 1)
         duration_time_str = "%.4f" % (end_time - start_time)
         policy_index = get_policy_index(req.headers, resp_headers)
 
@@ -355,6 +360,7 @@ class ProxyLoggingMiddleware(object):
                                     self.anonymization_salt),
             # Others information
             'method': method,
+            'domain': domain,
             'protocol':
                 req.environ.get('SERVER_PROTOCOL'),
             'status_int': status_int,
