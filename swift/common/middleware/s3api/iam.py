@@ -59,9 +59,9 @@ SUPPORTED_ACTIONS = {
     "s3:GetBucketCORS": (RT_BUCKET, ),
     "s3:GetBucketLocation": (RT_BUCKET, ),
     "s3:GetBucketLogging": (RT_BUCKET, ),
+    "s3:GetBucketObjectLockConfiguration": (RT_BUCKET, ),
     "s3:GetBucketTagging": (RT_BUCKET, ),
     "s3:GetBucketVersioning": (RT_BUCKET, ),
-    "s3:GetBucketObjectLockConfiguration": (RT_BUCKET, ),
     "s3:GetIntelligentTieringConfiguration": (RT_BUCKET, ),
     "s3:GetLifecycleConfiguration": (RT_BUCKET, ),
     "s3:GetObject": (RT_OBJECT, ),
@@ -82,9 +82,9 @@ SUPPORTED_ACTIONS = {
     "s3:PutLifecycleConfiguration": (RT_BUCKET, ),
     "s3:PutObject": (RT_OBJECT, ),
     "s3:PutObjectAcl": (RT_OBJECT, ),
-    "s3:PutObjectTagging": (RT_OBJECT, ),
-    "s3:PutObjectRetention": (RT_OBJECT, ),
     "s3:PutObjectLegalHold": (RT_OBJECT, ),
+    "s3:PutObjectRetention": (RT_OBJECT, ),
+    "s3:PutObjectTagging": (RT_OBJECT, ),
 }
 
 IAM_ACTION = 'swift.iam.action'

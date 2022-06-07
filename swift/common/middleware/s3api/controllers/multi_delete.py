@@ -60,13 +60,15 @@ class MultiObjectDeleteController(Controller):
         Handles Delete Multiple Objects.
         """
         self.set_s3api_command(req, 'delete-objects')
+
+        # This must be checked for each object name. Just prepare
+        # the checker here and call it later.
         bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)
         if bypass_governance is not None and \
            bypass_governance.lower() == 'true':
             check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")
-            check_iam_bypass(lambda x, req: None)(None, req)
-            header = sysmeta_header('object', 'retention-bypass-governance')
-            req.headers[header] = bypass_governance
+        else:
+            check_iam_bypass = None
 
         def object_key_iter(elem):
             for obj in elem.iterchildren('Object'):
@@ -129,8 +131,16 @@ class MultiObjectDeleteController(Controller):
             req.object_name = str_to_wsgi(key)
             if version:
                 req.params = {'version-id': version, 'symlink': 'get'}
+            req_headers = {'Accept': 'application/json'}
 
             try:
+                if check_iam_bypass:
+                    # Will raise AccessDenied if bypass not allowed
+                    check_iam_bypass(lambda x, req: None)(None, req)
+                    header = sysmeta_header(
+                        'object', 'retention-bypass-governance')
+                    req_headers[header] = bypass_governance
+
                 try:
                     query = req.gen_multipart_manifest_delete_query(
                         self.app, version=version)
@@ -141,7 +151,7 @@ class MultiObjectDeleteController(Controller):
                     query['symlink'] = 'get'
 
                 resp = req.get_response(self.app, method='DELETE', query=query,
-                                        headers={'Accept': 'application/json'})
+                                        headers=req_headers)
                 # If async segment cleanup is available, we expect to get
                 # back a 204; otherwise, the delete is synchronous and we
                 # have to read the response to actually do the SLO delete
