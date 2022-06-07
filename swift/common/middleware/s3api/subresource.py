@@ -219,7 +219,7 @@ class User(Grantee):
         return elem
 
     def __str__(self):
-        return self.display_name
+        return self.display_name or str(self.display_name)
 
     def __lt__(self, other):
         if not isinstance(other, User):
