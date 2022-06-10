@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <start>
+    <element name="WebsiteConfiguration">
+      <interleave>
+        <optional>
+          <element name="ErrorDocument">
+            <element name="Key">
+              <data type="string"/>
+            </element>
+          </element>
+        </optional>
+        <optional>
+          <element name="IndexDocument">
+            <element name="Suffix">
+              <data type="string"/>
+            </element>
+          </element>
+        </optional>
+        <optional>
+          <element name="RedirectAllRequestsTo">
+            <interleave>
+              <element name="HostName">
+                <data type="string"/>
+              </element>
+              <optional>
+                <element name="Protocol">
+                  <choice>
+                    <value>http</value>
+                    <value>https</value>
+                  </choice>
+                </element>
+              </optional>
+            </interleave>
+          </element>
+        </optional>
+        <optional>
+          <element name="RoutingRules">
+            <zeroOrMore>
+              <element name="RoutingRule">
+                <interleave>
+                  <optional>
+                    <element name="Condition">
+                      <interleave>
+                        <optional>
+                          <element name="HttpErrorCodeReturnedEquals">
+                            <data type="string"/>
+                          </element>
+                        </optional>
+                        <optional>
+                          <element name="KeyPrefixEquals">
+                            <data type="string"/>
+                          </element>
+                        </optional>
+                      </interleave>
+                    </element>
+                  </optional>
+                  <element name="Redirect">
+                    <interleave>
+                      <optional>
+                        <element name="HostName">
+                          <data type="string"/>
+                        </element>
+                      </optional>
+                      <optional>
+                        <element name="HttpRedirectCode">
+                          <data type="string"/>
+                        </element>
+                      </optional>
+                      <optional>
+                        <element name="Protocol">
+                          <choice>
+                            <value>http</value>
+                            <value>https</value>
+                          </choice>
+                        </element>
+                      </optional>
+                      <optional>
+                        <element name="ReplaceKeyPrefixWith">
+                          <data type="string"/>
+                        </element>
+                      </optional>
+                      <optional>
+                        <element name="ReplaceKeyWith">
+                          <data type="string"/>
+                        </element>
+                      </optional>
+                    </interleave>
+                  </element>
+                </interleave>
+              </element>
+            </zeroOrMore>
+          </element>
+        </optional>
+      </interleave>
+    </element>
+  </start>
+</grammar>

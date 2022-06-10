@@ -1,0 +1,28 @@
+start =
+  element WebsiteConfiguration {
+    element ErrorDocument {
+      element Key { xsd:string }
+    }? &
+    element IndexDocument {
+      element Suffix {xsd:string}
+    }? &
+    element RedirectAllRequestsTo {
+      element HostName { xsd:string } &
+      element Protocol { "http" | "https" }?
+    }? &
+    element RoutingRules {
+      element RoutingRule {
+        element Condition {
+          element HttpErrorCodeReturnedEquals { xsd:string }? &
+          element KeyPrefixEquals { xsd:string }?
+        }? &
+        element Redirect {
+          element HostName { xsd:string }? &
+          element HttpRedirectCode { xsd:string }? &
+          element Protocol { "http" | "https" }? &
+          element ReplaceKeyPrefixWith { xsd:string }? &
+          element ReplaceKeyWith { xsd:string }?
+        }
+      }*
+    }?
+  }

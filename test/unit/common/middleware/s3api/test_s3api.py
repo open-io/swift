@@ -895,9 +895,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
     def test_torrent(self):
         self._test_unsupported_resource('torrent')
 
-    def test_website(self):
-        self._test_unsupported_resource('website')
-
     def test_cors(self):
         self.swift.register('HEAD', '/v1/AUTH_X',
                             swob.HTTPNoContent, {}, None)

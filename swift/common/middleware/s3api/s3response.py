@@ -722,6 +722,11 @@ class NoSuchVersion(ErrorResponse):
                                *args, **kwargs)
 
 
+class NoSuchWebsiteConfiguration(ErrorResponse):
+    _status = '404 Not Found'
+    _msg = 'The specified bucket does not have a website configuration.'
+
+
 # NotImplemented is a python built-in constant.  Use S3NotImplemented instead.
 class S3NotImplemented(ErrorResponse):
     _status = '501 Not Implemented'

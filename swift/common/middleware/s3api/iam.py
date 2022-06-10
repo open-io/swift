@@ -51,6 +51,7 @@ SUPPORTED_ACTIONS = {
     "s3:CreateBucket": (RT_BUCKET, ),
     "s3:DeleteBucket": (RT_BUCKET, ),
     "s3:DeleteBucketTagging": (RT_BUCKET, ),
+    "s3:DeleteBucketWebsite": (RT_BUCKET, ),
     "s3:DeleteIntelligentTieringConfiguration": (RT_BUCKET, ),
     # Regular delete (object) and multi-delete (bucket)
     "s3:DeleteObject": (RT_BUCKET, RT_OBJECT),
@@ -62,6 +63,7 @@ SUPPORTED_ACTIONS = {
     "s3:GetBucketObjectLockConfiguration": (RT_BUCKET, ),
     "s3:GetBucketTagging": (RT_BUCKET, ),
     "s3:GetBucketVersioning": (RT_BUCKET, ),
+    "s3:GetBucketWebsite": (RT_BUCKET, ),
     "s3:GetIntelligentTieringConfiguration": (RT_BUCKET, ),
     "s3:GetLifecycleConfiguration": (RT_BUCKET, ),
     "s3:GetObject": (RT_OBJECT, ),
@@ -78,6 +80,7 @@ SUPPORTED_ACTIONS = {
     "s3:PutBucketObjectLockConfiguration": (RT_BUCKET, ),
     "s3:PutBucketTagging": (RT_BUCKET, ),
     "s3:PutBucketVersioning": (RT_BUCKET, ),
+    "s3:PutBucketWebsite": (RT_BUCKET, ),
     "s3:PutIntelligentTieringConfiguration": (RT_BUCKET, ),
     "s3:PutLifecycleConfiguration": (RT_BUCKET, ),
     "s3:PutObject": (RT_OBJECT, ),
