@@ -70,7 +70,11 @@ BUCKET_ALLOWED_TRANSITIONS = {
     # On DeleteBucketIntelligentTieringConfiguration RESTORE request by user
     # After x days, the bucket is not on disk anymore and only on tapes
     # RabbitMQ message: deleting (only for deleting state)
-    BUCKET_STATE_RESTORED: (BUCKET_STATE_DELETING, BUCKET_STATE_ARCHIVED),
+    BUCKET_STATE_RESTORED: (
+        BUCKET_STATE_DELETING,
+        BUCKET_STATE_DRAINING,
+        BUCKET_STATE_ARCHIVED,
+    ),
     # By PCA when deleting is over
     BUCKET_STATE_DELETING: (BUCKET_STATE_FLUSHED),
     # Bucket flushed and deleted, no further state
