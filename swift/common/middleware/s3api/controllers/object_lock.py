@@ -17,7 +17,7 @@ import json
 from datetime import datetime
 from dict2xml import dict2xml
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, object_operation
+    bucket_operation, check_bucket_storage_domain, object_operation
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -69,6 +69,7 @@ class BucketLockController(Controller):
 
     @public
     @bucket_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:GetBucketObjectLockConfiguration")
     def GET(self, req):
         self.set_s3api_command(req, 'get-object-lock-configuration')
@@ -97,6 +98,7 @@ class BucketLockController(Controller):
 
     @public
     @bucket_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:PutBucketObjectLockConfiguration")
     def PUT(self, req):
         self.set_s3api_command(req, 'put-object-lock-configuration')
@@ -195,6 +197,7 @@ class ObjectLockLegalHoldController(Controller):
 
     @public
     @object_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:GetObjectLegalHold")
     def GET(self, req):
         objectlock_id = 'legal-hold'
@@ -234,6 +237,7 @@ class ObjectLockLegalHoldController(Controller):
 
     @public
     @object_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:PutObjectLegalHold")
     def PUT(self, req):
         lock_id = 'legal-hold'
@@ -278,6 +282,7 @@ class ObjectLockRetentionController(Controller):
 
     @public
     @object_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:GetObjectRetention")
     def GET(self, req):
         self.set_s3api_command(req, 'get-object-retention')
@@ -317,6 +322,7 @@ class ObjectLockRetentionController(Controller):
 
     @public
     @object_operation
+    @check_bucket_storage_domain
     @check_iam_access("s3:PutObjectRetention")
     def PUT(self, req):
         lock_id = 'retention'
