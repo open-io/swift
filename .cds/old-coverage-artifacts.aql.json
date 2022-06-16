@@ -1,0 +1,22 @@
+{
+    "files": [
+        {
+            "aql": {
+                "items.find": {
+                    "repo": "pu-objectstorage-swift-static",
+                    "$and": [
+                        {
+                            "path": {"$match": "*coverage/dev"}
+                        },
+                        {
+                            "type": "folder"
+                        },
+                        {
+                            "created": {"$lt": "${date}"}
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}

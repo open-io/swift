@@ -153,10 +153,25 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
+  clean-artifacts:
+    pipeline: swift-clean-artifacts
+    application: swift
+    depends_on:
+      - root
+    conditions:
+      check:
+        - variable: cds.triggered_by.username
+          operator: eq
+          value: "cds.scheduler"
+
 metadata:
   default_tags: git.branch,git.author,git.tag
 
 retention_policy: "if(cds_triggered_by_username == 'cds.scheduler') then\n  return run_days_before < 1\nend\nif(has_git_branch == \"true\") then\n  if(git_branch_exist == \"true\") then    \n    return run_days_before < 365\n  else\n    return run_days_before < 2\n  end\nelse\n  return run_days_before < 365\nend"
+
+integrations:
+  artifactory-pu-objectstorage-swift:
+    type: artifact_manager
 
 notifications:
   - type: vcs
