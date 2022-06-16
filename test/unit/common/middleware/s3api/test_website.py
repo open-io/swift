@@ -16,6 +16,7 @@
 import unittest
 from swift.common.middleware.s3api.controllers.website import (
     BUCKET_WEBSITE_HEADER,
+    WebsiteController,
 )
 from swift.common.swob import Request, HTTPNoContent, HTTPNotFound
 
@@ -175,16 +176,20 @@ class TestS3ApiWebsite(S3ApiTestCase):
         self.assertEqual("200 OK", status)
 
     def test_GET(self):
+        expected_output = WebsiteController._xml_conf_to_json(WEBSITE_XML)
+
         self.swift.register(
             "HEAD",
             "/v1/AUTH_test/test-website",
             HTTPNoContent,
-            {BUCKET_WEBSITE_HEADER: WEBSITE_XML},
+            {BUCKET_WEBSITE_HEADER: expected_output},
             None,
         )
         status, _, body = self._website_GET("/test-website")
         self.assertEqual("200 OK", status)
-        self.assertEqual(body, WEBSITE_XML)
+        body_output = WebsiteController._xml_conf_to_json(body)
+
+        self.assertEqual(body_output, expected_output)
 
     def test_DELETE_website(self):
         self.swift.register(

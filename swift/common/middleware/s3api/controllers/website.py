@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+from dict2xml import dict2xml
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import (
     convert_response,
@@ -44,15 +46,6 @@ MAX_WEBSITE_BODY_SIZE = 10240
 BUCKET_WEBSITE_HEADER = sysmeta_header("bucket", "website")
 
 
-def check_website_config(data):
-    redirect_all_requests_to = data.find("RedirectAllRequestsTo")
-    if redirect_all_requests_to is not None:
-        raise S3NotImplemented("RedirectAllRequestsTo is not implemented yet.")
-    routing_rules = data.find("RoutingRules")
-    if routing_rules is not None:
-        raise S3NotImplemented("RoutingRules is not implemented yet.")
-
-
 class WebsiteController(Controller):
     """
     Handles the following APIs:
@@ -79,7 +72,9 @@ class WebsiteController(Controller):
 
         if not body:
             raise NoSuchWebsiteConfiguration
-        return HTTPOk(body=body, content_type="application/xml")
+        body = json.loads(body)
+        xml_out = dict2xml(body, wrap="WebsiteConfiguration", newlines=False)
+        return HTTPOk(body=xml_out, content_type="application/xml")
 
     @public
     @bucket_operation
@@ -92,14 +87,10 @@ class WebsiteController(Controller):
         """
         self.set_s3api_command(req, "put-bucket-website")
         xml = req.xml(MAX_WEBSITE_BODY_SIZE)
-        try:
-            data = fromstring(xml, "WebsiteConfiguration")
-        except (XMLSyntaxError, DocumentInvalid):
-            raise MalformedXML()
 
-        check_website_config(data)
+        json_output = WebsiteController._xml_conf_to_json(xml)
 
-        req.headers[BUCKET_WEBSITE_HEADER] = xml
+        req.headers[BUCKET_WEBSITE_HEADER] = json_output
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 204, HTTPOk)
 
@@ -117,3 +108,35 @@ class WebsiteController(Controller):
         req.headers[BUCKET_WEBSITE_HEADER] = ""
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 202, HTTPNoContent)
+
+    @staticmethod
+    def _xml_conf_to_json(website_conf_xml):
+        try:
+            data = fromstring(website_conf_xml, "WebsiteConfiguration")
+        except (XMLSyntaxError, DocumentInvalid):
+            raise MalformedXML()
+
+        # Check if conf has RedirectAllRequestsTo or RoutingRules
+        redirect_all_requests_to = data.find("RedirectAllRequestsTo")
+        if redirect_all_requests_to is not None:
+            raise S3NotImplemented(
+                "RedirectAllRequestsTo is not implemented yet."
+            )
+        routing_rules = data.find("RoutingRules")
+        if routing_rules is not None:
+            raise S3NotImplemented("RoutingRules is not implemented yet.")
+
+        out = {}
+        error_document = data.find("ErrorDocument")
+        if error_document is not None:
+            out["ErrorDocument"] = {}
+            out["ErrorDocument"]["Key"] = error_document.find("Key").text
+        index_document = data.find("IndexDocument")
+        if index_document is not None:
+            out["IndexDocument"] = {}
+            out["IndexDocument"]["Suffix"] = index_document.find("Suffix").text
+
+        json_output = json.dumps(
+            out, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        )
+        return json_output
