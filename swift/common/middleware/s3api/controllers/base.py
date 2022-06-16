@@ -17,6 +17,7 @@ import functools
 
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRequest, BadEndpoint, NoSuchBucket
+from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER
 from swift.common.middleware.s3api.utils import camel_to_snake
 
 
@@ -81,10 +82,24 @@ def check_bucket_storage_domain(func):
     @functools.wraps(func)
     def _check_bucket_storage_domain(self, req):
         if self.conf.check_bucket_storage_domain:
+            if req.user_id:
+                if ':' in req.user_id:
+                    _, user = req.user_id.split(':', 1)
+                else:
+                    user = req.user_id
+                if user == LOG_DELIVERY_USER:
+                    # Log files are always uploaded with the STANDARD storage
+                    # class (if available).
+                    # And since in some configurations the STANDARD storage
+                    # class is only allowed from a specific storage domain,
+                    # all users in the LogDelevery group must skip this check.
+                    return func(self, req)
+
             try:
                 info = req.get_container_info(self.app)
                 storage_domain = info.get('sysmeta', {}).get(
-                    's3api-storage-domain', self.conf.default_storage_domain)
+                    's3api-storage-domain',
+                    self.conf.default_storage_domain)
                 if req.storage_domain != storage_domain:
                     raise BadEndpoint
             except NoSuchBucket:
