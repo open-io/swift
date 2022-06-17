@@ -381,6 +381,9 @@ class S3ApiMiddleware(object):
         self.conf.enable_object_lock = config_true_value(
             wsgi_conf.get('enable_object_lock', True))
 
+        self.conf.enable_website = config_true_value(
+            wsgi_conf.get('enable_website', False))
+
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)

@@ -803,6 +803,10 @@ use = egg:swift#s3api
 # then object lock is disabled no matter this flag value
 #enable_object_lock = false
 
+# Enable or disable website
+# If not set this is considered as false
+#enable_website = true
+
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials
 # provided in the request header. Please put s3token between s3api

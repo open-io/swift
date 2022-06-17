@@ -86,7 +86,8 @@ class S3ApiTestCase(unittest.TestCase):
             'allow_multipart_uploads': True,
             'min_segment_size': 5242880,
             'log_level': 'debug',
-            'log_s3api_command': False
+            'log_s3api_command': False,
+            'enable_website': True
         }
 
         self.app = FakeApp()
