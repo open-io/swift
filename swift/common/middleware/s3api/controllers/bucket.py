@@ -18,9 +18,10 @@ from base64 import standard_b64decode as b64decode
 
 import six
 from six.moves.urllib.parse import quote
+from functools import partial
 
 from swift.common import swob
-from swift.common.http import HTTP_OK
+from swift.common.http import HTTP_OK, is_success
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.utils import json, public, config_true_value, Timestamp
@@ -35,13 +36,13 @@ from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import \
-    HTTPOk, S3NotImplemented, InvalidArgument, \
+    AccessDenied, BadRequest, HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    BadEndpoint, VersionedBucketNotEmpty, PreconditionFailed
+    BadEndpoint, VersionedBucketNotEmpty, PreconditionFailed, S3Response
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    sysmeta_header
+    convert_response, sysmeta_header
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
@@ -353,6 +354,62 @@ class BucketController(Controller):
         """
         Handle GET Bucket (List Objects) request
         """
+        container_info = req.get_container_info(self.app)
+        if is_success(container_info["status"]):
+            meta = container_info.get("sysmeta", {})
+            website_conf = meta.get("s3api-website", "").strip()
+            website_conf = json.loads(website_conf)
+            self._error = website_conf["ErrorDocument"]["Key"]
+            self._index = website_conf["IndexDocument"]["Suffix"]
+            if self._index is not None:
+                try:
+                    resp = req.get_response(
+                        self.app, obj=self._index, method="GET"
+                    )
+                    return resp
+                except BadRequest:
+                    print("BadRequest")
+                    if self._error is not None:
+                        resp = req.get_response(
+                            self.app, obj=self._error, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(S3Response, body=resp.body, status=400),
+                        )
+                    else:
+                        raise
+                except AccessDenied:
+                    print("AccessDenied")
+                    if self._error is not None:
+                        resp = req.get_response(
+                            self.app, obj=self._error, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(S3Response, body=resp.body, status=403),
+                        )
+                    else:
+                        raise
+                except NoSuchKey:
+                    print("NoSuchKey")
+                    if self._error is not None:
+                        resp = req.get_response(
+                            self.app, obj=self._error, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(S3Response, body=resp.body, status=404),
+                        )
+                    else:
+                        raise
+                
         tag_max_keys = req.get_validated_param(
             'max-keys', self.conf.max_bucket_listing)
         # TODO: Separate max_bucket_listing and default_bucket_listing
