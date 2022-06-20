@@ -15,6 +15,7 @@
 
 import json
 from dict2xml import dict2xml
+from swift.common.http import is_success
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import (
     convert_response,
@@ -40,10 +41,35 @@ from swift.common.middleware.s3api.s3response import (
     NoSuchWebsiteConfiguration,
     S3NotImplemented,
 )
+from swift.common.swob import str_to_wsgi
 
 MAX_WEBSITE_BODY_SIZE = 10240
 
 BUCKET_WEBSITE_HEADER = sysmeta_header("bucket", "website")
+
+
+def get_website_conf(app, req):
+    """
+    get_website_conf will return index document and error document from
+    website configuration.
+
+    :returns: strings of index document and error document
+    """
+    suffix, error = None, None
+    container_info = req.get_container_info(app)
+    if is_success(container_info["status"]):
+        meta = container_info.get("sysmeta", {})
+        website_conf = meta.get("s3api-website", "")
+        if website_conf != "":
+            website_conf_dict = json.loads(website_conf)
+            error = website_conf_dict.get("ErrorDocument", {}).get("Key")
+            if error is not None:
+                error = str_to_wsgi(error)
+            suffix = website_conf_dict.get("IndexDocument", {}).get("Suffix")
+            if suffix is not None:
+                suffix = str_to_wsgi(suffix)
+
+    return suffix, error
 
 
 class WebsiteController(Controller):

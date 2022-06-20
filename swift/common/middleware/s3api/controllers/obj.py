@@ -15,6 +15,7 @@
 
 import json
 from datetime import datetime
+from functools import partial
 from swift.common import constraints
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
@@ -27,7 +28,8 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
     SSEC_KEY_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
-from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
+from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header, \
+    convert_response
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain
 from swift.common.middleware.s3api.controllers.cors import \
@@ -35,11 +37,13 @@ from swift.common.middleware.s3api.controllers.cors import \
     fill_cors_headers
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
+from swift.common.middleware.s3api.controllers.website import get_website_conf
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError, HTTPOk, CORSForbidden, \
-    CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest
+    CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest, \
+    AccessDenied, S3Response
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE
@@ -184,7 +188,41 @@ class ObjectController(Controller):
         """
         self.set_s3api_command(req, 'get-object')
 
-        return self.GETorHEAD(req)
+        try:
+            resp = self.GETorHEAD(req)
+            return resp
+        except NoSuchKey:
+            suffix_doc, error_doc = get_website_conf(self.app, req)
+
+            if suffix_doc is not None:
+                if req.object_name.endswith("/"):
+                    suffix_doc = req.object_name + suffix_doc
+                else:
+                    suffix_doc = req.object_name + "/" + suffix_doc
+                try:
+                    resp = req.get_response(
+                        self.app, obj=suffix_doc, method="GET"
+                    )
+                    return resp
+                except (BadRequest, AccessDenied, NoSuchKey) as err:
+                    if error_doc is not None:
+                        resp = req.get_response(
+                            self.app, obj=error_doc, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(
+                                S3Response,
+                                app_iter=resp.app_iter,
+                                status=err.status_int
+                            ),
+                        )
+                    else:
+                        raise
+            else:
+                raise
 
     @public
     @check_bucket_storage_domain
