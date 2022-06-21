@@ -804,8 +804,8 @@ use = egg:swift#s3api
 #enable_object_lock = false
 
 # Enable or disable website
-# If not set this is considered as false
-#enable_website = true
+# If not set this is considered as true
+#enable_website = false
 
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials

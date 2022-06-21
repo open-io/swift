@@ -382,7 +382,7 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('enable_object_lock', True))
 
         self.conf.enable_website = config_true_value(
-            wsgi_conf.get('enable_website', False))
+            wsgi_conf.get('enable_website', True))
 
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
