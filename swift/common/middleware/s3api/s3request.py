@@ -1324,8 +1324,6 @@ class S3Request(swob.Request):
         if 'versioning' in self.params:
             return VersioningController
         if 'website' in self.params:
-            if not self.conf.get('enable_website', False):
-                raise NotImplementedError
             return WebsiteController
         if 'tagging' in self.params:
             return TaggingController
