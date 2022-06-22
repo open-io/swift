@@ -48,6 +48,13 @@ jobs:
           - . $HOME/swiftenv/bin/activate
           - ./oio_tests/run_tests.sh '{{.cds.env.TEST_SUITE}}'
 
+      - name: Analyze Ceph S3 tests results
+        optional: true
+        script:
+            - '[ "{{.cds.env.TEST_SUITE}}" = "ceph-s3tests" ] || exit 0'
+            - . $HOME/swiftenv/bin/activate
+            - ./third_party/ceph-s3tests-reports/bin/report.py --detailed ceph-s3tests-attributes.yaml --known-failures doc/s3api/conf/ceph-known-failures-oio.yaml tests_report.xml
+
       - name: Save coverage information
         always_executed: true
         script:
