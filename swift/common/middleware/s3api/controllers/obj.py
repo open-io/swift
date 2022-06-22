@@ -15,8 +15,10 @@
 
 import json
 from datetime import datetime
+from functools import partial
 from swift.common import constraints
-from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
+from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT, \
+    is_success
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
     normalize_etag
@@ -27,7 +29,8 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
     SSEC_KEY_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
-from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
+from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header, \
+    convert_response
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain
 from swift.common.middleware.s3api.controllers.cors import \
@@ -39,7 +42,8 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError, HTTPOk, CORSForbidden, \
-    CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest
+    CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest, \
+    AccessDenied, S3Response
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE
@@ -99,6 +103,27 @@ class ObjectController(Controller):
                 pass
 
         return resp
+
+    def _get_website_conf(self, req, app):
+        """
+        _get_website_conf will return index document and error document from
+        website configuration.
+
+        :returns: strings of index document and error document
+        """
+        suffix, error = "", ""
+        container_info = req.get_container_info(app)
+        if is_success(container_info["status"]):
+            meta = container_info.get("sysmeta", {})
+            print(meta)
+            website_conf = meta.get("s3api-website", "").strip()
+            if website_conf != "":
+                website_conf_dict = json.loads(website_conf)
+                error = website_conf_dict.get("ErrorDocument", {}).get("Key")
+                suffix = website_conf_dict.get("IndexDocument", {}).get(
+                    "Suffix"
+                )
+        return suffix, error
 
     def GETorHEAD(self, req):
         had_match = False
@@ -184,7 +209,61 @@ class ObjectController(Controller):
         """
         self.set_s3api_command(req, 'get-object')
 
-        return self.GETorHEAD(req)
+        try:
+            resp = self.GETorHEAD(req)
+            return resp
+        except NoSuchKey:
+            suffix, error = self._get_website_conf(req, self.app)
+
+            if suffix != "":
+                if req.object_name[-1:] == "/":
+                    req.object_name = req.object_name + suffix
+                else:
+                    req.object_name = req.object_name + "/" + suffix
+                try:
+                    resp = self.GETorHEAD(req)
+                    return resp
+                except BadRequest:
+                    if error != "":
+                        resp = req.get_response(
+                            self.app, obj=error, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(S3Response, body=resp.body, status=400),
+                        )
+                    else:
+                        raise
+                except AccessDenied:
+                    if error != "":
+                        resp = req.get_response(
+                            self.app, obj=error, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(S3Response, body=resp.body, status=403),
+                        )
+                    else:
+                        raise
+                except NoSuchKey:
+                    if error != "":
+                        resp = req.get_response(
+                            self.app, obj=error, method="GET"
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(S3Response, body=resp.body, status=404),
+                        )
+                    else:
+                        raise
+            else:
+                raise
 
     @public
     @check_bucket_storage_domain

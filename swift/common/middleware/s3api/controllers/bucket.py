@@ -346,6 +346,27 @@ class BucketController(Controller):
                 self._add_object(req, elem, o, encoding_type, listing_type,
                                  fetch_owner)
 
+    def _get_website_conf(self, req, app):
+        """
+        _get_website_conf will return index document and error document from
+        website configuration.
+
+        :returns: strings of index document and error document
+        """
+        suffix, error = "", ""
+        container_info = req.get_container_info(app)
+        if is_success(container_info["status"]):
+            meta = container_info.get("sysmeta", {})
+            print(meta)
+            website_conf = meta.get("s3api-website", "").strip()
+            if website_conf != "":
+                website_conf_dict = json.loads(website_conf)
+                error = website_conf_dict.get("ErrorDocument", {}).get("Key")
+                suffix = website_conf_dict.get("IndexDocument", {}).get(
+                    "Suffix"
+                )
+        return suffix, error
+
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -354,62 +375,46 @@ class BucketController(Controller):
         """
         Handle GET Bucket (List Objects) request
         """
-        container_info = req.get_container_info(self.app)
-        if is_success(container_info["status"]):
-            meta = container_info.get("sysmeta", {})
-            website_conf = meta.get("s3api-website", "").strip()
-            website_conf = json.loads(website_conf)
-            self._error = website_conf["ErrorDocument"]["Key"]
-            self._index = website_conf["IndexDocument"]["Suffix"]
-            if self._index is not None:
-                try:
-                    resp = req.get_response(
-                        self.app, obj=self._index, method="GET"
+        suffix, error = self._get_website_conf(req, self.app)
+
+        if suffix != "":
+            try:
+                resp = req.get_response(self.app, obj=suffix, method="GET")
+                return resp
+            except BadRequest:
+                if error != "":
+                    resp = req.get_response(self.app, obj=error, method="GET")
+                    return convert_response(
+                        req,
+                        resp,
+                        200,
+                        partial(S3Response, body=resp.body, status=400),
                     )
-                    return resp
-                except BadRequest:
-                    print("BadRequest")
-                    if self._error is not None:
-                        resp = req.get_response(
-                            self.app, obj=self._error, method="GET"
-                        )
-                        return convert_response(
-                            req,
-                            resp,
-                            200,
-                            partial(S3Response, body=resp.body, status=400),
-                        )
-                    else:
-                        raise
-                except AccessDenied:
-                    print("AccessDenied")
-                    if self._error is not None:
-                        resp = req.get_response(
-                            self.app, obj=self._error, method="GET"
-                        )
-                        return convert_response(
-                            req,
-                            resp,
-                            200,
-                            partial(S3Response, body=resp.body, status=403),
-                        )
-                    else:
-                        raise
-                except NoSuchKey:
-                    print("NoSuchKey")
-                    if self._error is not None:
-                        resp = req.get_response(
-                            self.app, obj=self._error, method="GET"
-                        )
-                        return convert_response(
-                            req,
-                            resp,
-                            200,
-                            partial(S3Response, body=resp.body, status=404),
-                        )
-                    else:
-                        raise
-                
+                else:
+                    raise
+            except AccessDenied:
+                if error != "":
+                    resp = req.get_response(self.app, obj=error, method="GET")
+                    return convert_response(
+                        req,
+                        resp,
+                        200,
+                        partial(S3Response, body=resp.body, status=403),
+                    )
+                else:
+                    raise
+            except NoSuchKey:
+                if error != "":
+                    resp = req.get_response(self.app, obj=error, method="GET")
+                    return convert_response(
+                        req,
+                        resp,
+                        200,
+                        partial(S3Response, body=resp.body, status=404),
+                    )
+                else:
+                    raise
+
         tag_max_keys = req.get_validated_param(
             'max-keys', self.conf.max_bucket_listing)
         # TODO: Separate max_bucket_listing and default_bucket_listing
