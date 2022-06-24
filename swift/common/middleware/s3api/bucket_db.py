@@ -292,7 +292,7 @@ class BucketDbWrapper(object):
         return self.bucket_db.delete(bucket=bucket, owner=owner, **kwargs)
 
     def show(self, bucket, owner, **kwargs):
-        res = self.bucket_db.show(bucket=bucket, owner=owner)
+        res = self.bucket_db.show(bucket=bucket, owner=owner, **kwargs)
         return res
 
 
