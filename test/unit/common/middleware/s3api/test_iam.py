@@ -269,3 +269,91 @@ class TestS3Iam(TestCase):
             ('ALLOW', 'AllowListingOfUserFolder'),
             check(bucket_res, "s3:ListBucket",
                   MagicMock(params={'prefix': 'home/David/foo/'})))
+
+    def test_explicit_allow_ListAllMyBuckets(self):
+        rules = json.loads("""
+        {
+            "Statement": [
+                {
+                    "Action": ["s3:ListAllMyBuckets"],
+                    "Effect": "Allow",
+                    "Resource": ["arn:aws:s3:::*"],
+                    "Sid": "AllowListAllMyBuckets"
+                }
+            ],
+            "Version": "2012-10-17"
+        }
+        """)
+        rsc = IamResource(None)
+        check = IamRulesMatcher(rules)
+        self.assertEqual((EXPLICIT_ALLOW, 'AllowListAllMyBuckets'),
+                         check(rsc, "s3:ListAllMyBuckets"))
+
+    def test_explicit_deny_ListAllMyBuckets(self):
+        rules = json.loads("""
+        {
+            "Statement": [
+                {
+                    "Action": ["s3:ListAllMyBuckets"],
+                    "Effect": "Deny",
+                    "Resource": ["arn:aws:s3:::*"],
+                    "Sid": "DenyListAllMyBuckets"
+                }
+            ],
+            "Version": "2012-10-17"
+        }
+        """)
+        rsc = IamResource(None)
+        check = IamRulesMatcher(rules)
+        self.assertEqual((EXPLICIT_DENY, 'DenyListAllMyBuckets'),
+                         check(rsc, "s3:ListAllMyBuckets"))
+
+    def test_no_rule_ListAllMyBuckets(self):
+        rules = json.loads("""
+        {
+            "Statement": [],
+            "Version": "2012-10-17"
+        }
+        """)
+        rsc = IamResource(None)
+        check = IamRulesMatcher(rules)
+        self.assertEqual((None, None),
+                         check(rsc, "s3:ListAllMyBuckets"))
+
+    def test_ListAllMyBuckets_with_bucket_resource_rule(self):
+        rules = json.loads("""
+        {
+            "Statement": [
+                {
+                    "Action": ["s3:ListAllMyBuckets"],
+                    "Effect": "Deny",
+                    "Resource": ["arn:aws:s3:::bucket"],
+                    "Sid": "DenyListAllMyBuckets"
+                }
+            ],
+            "Version": "2012-10-17"
+        }
+        """)
+        rsc = IamResource(None)
+        check = IamRulesMatcher(rules)
+        self.assertEqual((None, None),
+                         check(rsc, "s3:ListAllMyBuckets"))
+
+    def test_ListAllMyBuckets_with_object_resource_rule(self):
+        rules = json.loads("""
+        {
+            "Statement": [
+                {
+                    "Action": ["s3:ListAllMyBuckets"],
+                    "Effect": "Deny",
+                    "Resource": ["arn:aws:s3:::*/*"],
+                    "Sid": "DenyListAllMyBuckets"
+                }
+            ],
+            "Version": "2012-10-17"
+        }
+        """)
+        rsc = IamResource(None)
+        check = IamRulesMatcher(rules)
+        self.assertEqual((None, None),
+                         check(rsc, "s3:ListAllMyBuckets"))

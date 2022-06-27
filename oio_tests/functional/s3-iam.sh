@@ -6,9 +6,11 @@ source $(pwd)/$(dirname "$0")/common.sh
 AWSA1ADM="aws --profile default --endpoint-url ${ENDPOINT_URL}"
 # "user1" is only allowed some operations
 AWSA1U1="aws --profile user1 --endpoint-url ${ENDPOINT_URL}"
+# "user2" has no rules
+AWSA1U2="aws --profile user2 --endpoint-url ${ENDPOINT_URL}"
 # "as2adm" is administrator
 AWSA2ADM="aws --profile a2adm --endpoint-url ${ENDPOINT_URL}"
-# "a2u1" is only allowed some operations
+# "a2u1" is only allowed some operations (ListAllMyBuckets not included)
 AWSA2U1="aws --profile a2u1 --endpoint-url ${ENDPOINT_URL}"
 
 COMPANY_BUCKET="companybucket"
@@ -46,6 +48,19 @@ test_create_bucket() {
   echo $ACL | jq -r .Owner | grep "account2:user1"
   echo $ACL | jq -r .Grants | grep "account2:user1"
   echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
+}
+
+test_list_buckets() {
+  OUT=$(${AWSA1ADM} s3 ls | awk '{ print $3 }' | tr '\n' ' ')
+  [ "$OUT" == "$COMPANY_BUCKET $SHARED_BUCKET $A1U1_BUCKET ${VERSIONS_BUCKET} " ]
+  OUT=$(${AWSA1U2} s3 ls |& tail -n 1)
+  [ -z "$OUT" ]
+  OUT=$(${AWSA1U1} s3 ls |& tail -n 1)
+  [ -z "$OUT" ]
+  OUT=$(${AWSA2ADM} s3 ls |& tail -n 1)
+  [ -z "$OUT" ]
+  OUT=$(${AWSA2U1} s3 ls |& tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
 }
 
 test_bucket_acls() {
@@ -251,6 +266,7 @@ test_head_missing_object() {
 }
 
 test_create_bucket
+test_list_buckets
 test_bucket_acls
 test_create_objects
 test_multipart_ops
