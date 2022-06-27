@@ -182,6 +182,20 @@ test_delete_objects() {
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/user1_bigfile
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/bigfiles/bigfile
   ${AWSA1ADM} s3 rm s3://${A1U1_BUCKET}/not_so_magic
+
+  # user1 (demo) can delete some objects from its folder in the shared bucket
+  OUT=$(${AWSA1U1}  s3api delete-objects --bucket ${SHARED_BUCKET} --delete '{"Objects": [{"Key": "user1_1"}, {"Key": "demo_1"}, {"Key": "test"}, {"Key": "user1_2"}]}')
+  [ "$(echo $OUT | jq '.Deleted | length')" -eq 2 ]
+  [ "$(echo "$OUT" | jq -r .Deleted[].Key | sort | tr '\n' ' ')" == 'user1_1 user1_2 ' ]
+  [ "$(echo $OUT | jq '.Errors | length')" -eq 2 ]
+  [ "$(echo "$OUT" | jq -r .Errors[].Key | sort | tr '\n' ' ')" == 'demo_1 test ' ]
+  [ "$(echo $OUT | jq -r .Errors[].Code | uniq)" == 'AccessDenied' ]
+  ${AWSA1ADM} s3api put-bucket-acl --grant-write id=demo:user1 --bucket ${SHARED_BUCKET}
+  # now, user1 can delete all objects in the shared bucket
+  OUT=$(${AWSA1U1}  s3api delete-objects --bucket ${SHARED_BUCKET} --delete '{"Objects": [{"Key": "user1_1"}, {"Key": "demo_1"}, {"Key": "test"}, {"Key": "user1_2"}]}')
+  [ "$(echo $OUT | jq '.Deleted | length')" -eq 4 ]
+  [ "$(echo $OUT | jq -r .Deleted[].Key | sort | tr '\n' ' ')" == 'demo_1 test user1_1 user1_2 ' ]
+  [ "$(echo $OUT | jq '.Errors | length')" -eq 0 ]
 }
 
 test_delete_buckets() {

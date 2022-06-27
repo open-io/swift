@@ -54,7 +54,6 @@ class MultiObjectDeleteController(Controller):
     @public
     @bucket_operation
     @check_bucket_storage_domain
-    @check_iam_access('s3:DeleteObject')
     def POST(self, req):
         """
         Handles Delete Multiple Objects.
@@ -113,8 +112,12 @@ class MultiObjectDeleteController(Controller):
 
         elem = Element('DeleteResult')
 
-        # check bucket existence
+        # Check bucket existence
+        # and check once if the user has write permissions (ACL)
         try:
+            # If IAM is enabled, checking ACLs will not throw an exception.
+            # The exception will be thrown (if necessary)
+            # after the IAM rules check for each object.
             req.get_response(self.app, 'HEAD')
         except AccessDenied as error:
             body = self._gen_error_body(error, elem, delete_list)
@@ -128,12 +131,18 @@ class MultiObjectDeleteController(Controller):
         def do_delete(base_req, key, version):
             req = copy.copy(base_req)
             req.environ = copy.copy(base_req.environ)
+            # IAM rules are not checked in the main request,
+            # only the ACLs are already checked.
+            # req.environ[IAM_EXPLICIT_ALLOW] = None
+            # req.environ[ACL_EXPLICIT_ALLOW] = True|False
             req.object_name = str_to_wsgi(key)
             if version:
                 req.params = {'version-id': version, 'symlink': 'get'}
             req_headers = {'Accept': 'application/json'}
 
             try:
+                check_iam_access('s3:DeleteObject')(
+                    lambda x, req: None)(None, req)
                 if check_iam_bypass:
                     # Will raise AccessDenied if bypass not allowed
                     check_iam_bypass(lambda x, req: None)(None, req)
