@@ -108,6 +108,8 @@ class TestS3ApiBucket(S3ApiTestCase):
             'HEAD', '/v1/AUTH_test/unavailable', swob.HTTPServiceUnavailable,
             {}, None)
         self.swift.register(
+            'HEAD', '/v1/AUTH_test/subdirs', swob.HTTPNoContent, {}, None)
+        self.swift.register(
             'GET', '/v1/AUTH_test/junk', swob.HTTPOk,
             {'Content-Type': 'application/json'}, listing_body)
         self.swift.register(
@@ -1062,6 +1064,8 @@ class TestS3ApiBucket(S3ApiTestCase):
         ]
         self.assertEqual(expected, discovered)
         self.assertEqual(self.swift.calls, [
+            ('HEAD', normalize_path('/v1/AUTH_test')),
+            ('HEAD', normalize_path('/v1/AUTH_test/junk')),
             ('GET', normalize_path('/v1/AUTH_test/junk?'
              'limit=1001&marker=rose&version_marker=null&versions=')),
         ])
@@ -1126,6 +1130,8 @@ class TestS3ApiBucket(S3ApiTestCase):
         self.assertEqual(expected, discovered)
 
         self.assertEqual(self.swift.calls, [
+            ('HEAD', normalize_path('/v1/AUTH_test')),
+            ('HEAD', normalize_path('/v1/AUTH_test/junk')),
             ('GET', normalize_path('/v1/AUTH_test/junk'
              '?limit=1001&prefix=subdir/&versions=')),
         ])
