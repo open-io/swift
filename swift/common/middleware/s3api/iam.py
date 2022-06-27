@@ -40,6 +40,8 @@ RE_ALLOW = "allow"
 # Rule effect: deny
 RE_DENY = "deny"
 
+# Resource type: service (neither a bucket nor an object)
+RT_SERVICE = "Service"
 # Resource type: object
 RT_OBJECT = "Object"
 # Resource type: bucket
@@ -70,6 +72,7 @@ SUPPORTED_ACTIONS = {
     "s3:GetObjectLegalHold": RT_OBJECT,
     "s3:GetObjectRetention": RT_OBJECT,
     "s3:GetObjectTagging": RT_OBJECT,
+    "s3:ListAllMyBuckets": RT_SERVICE,
     "s3:ListBucket": RT_BUCKET,
     "s3:ListBucketMultipartUploads": RT_BUCKET,
     "s3:ListMultipartUploadParts": RT_OBJECT,
@@ -100,24 +103,70 @@ class IamResource(object):
     """
 
     def __init__(self, name):
+        if name is None:
+            name = '*'  # Service resource
         if name.startswith(ARN_AWS_PREFIX):
             self._resource_name = name
+            self._is_s3 = name.startswith(ARN_S3_PREFIX)
         else:
             self._resource_name = ARN_S3_PREFIX + name
+            self._is_s3 = True
 
     @property
     def arn(self):
+        """
+        Return the resource name in ARN (Amazon Resource Name) format.
+        """
         return self._resource_name
 
-    def is_bucket(self):
+    @property
+    def is_s3(self):
+        """
+        Check if the resource is an S3 resource.
+        """
+        return self._is_s3
+
+    def _is_service(self):
+        return self._resource_name[len(ARN_S3_PREFIX):] == '*'
+
+    def is_service(self):
+        """
+        Check if the resource is a service resource (and an S3 resource)
+        (neither a bucket nor an object).
+        """
+        return self._is_s3 and self._is_service()
+
+    def _is_bucket(self):
         return '/' not in self._resource_name
 
-    def is_object(self):
+    def is_bucket(self):
+        """
+        Check if the resource is a bucket resource.
+        """
+        return self._is_s3 and self._is_bucket()
+
+    def _is_object(self):
         return '/' in self._resource_name
+
+    def is_object(self):
+        """
+        Check if the resource is an object resource.
+        """
+        return self._is_s3 and self._is_object()
 
     @property
     def type(self):
-        return RT_BUCKET if self.is_bucket() else RT_OBJECT
+        """
+        Return the resource type (Service, Bucket or Object)
+        if it is an S3 resource.
+        """
+        if not self._is_s3:
+            return None
+        if self._is_service():
+            return RT_SERVICE
+        if self._is_bucket():
+            return RT_BUCKET
+        return RT_OBJECT
 
 
 def string_equals(actual, expected):
@@ -383,39 +432,46 @@ def check_iam_access(object_action, bucket_action=None):
             # the request, thus we consider they don't.
             req.environ[IAM_EXPLICIT_ALLOW] = False
 
+            # FIXME(IAM): a * must be used as object name,
+            # not as wildcard in Resource below
+            if req.object_name:
+                rsc = IamResource(req.container_name + '/' + req.object_name)
+            elif req.container_name:
+                rsc = IamResource(req.container_name)
+            else:
+                rsc = IamResource(None)
+
+            effect = None
             # FIXME(IAM): refine the callback parameters
             matcher = rules_cb(req)
             if matcher:
-                # FIXME(IAM): a * must be used as object name,
-                # not as wildcard in Resource below
-                if req.object_name:
-                    rsc = IamResource(req.container_name + '/' +
-                                      req.object_name)
-                elif req.container_name:
-                    rsc = IamResource(req.container_name)
-                else:
-                    rsc = None
-
                 effect, sid = matcher(rsc, action, req)
                 # An IAM rule explicitly denies the request.
                 if effect == EXPLICIT_DENY:
                     matcher.logger.debug("Request explicitly denied by IAM (" +
                                          sid + ")")
                     raise AccessDenied()
-                # No IAM rule matched, and ACLs do not allow the request.
-                if effect is None and acl_allow is False:
-                    matcher.logger.debug("Request implicitly denied "
-                                         "(no allow statement)")
+
+            # If no IAM rule matched for this user, ...
+            if effect is None:
+                # ... and ACLs did not grant access rights,
+                # don't let anything pass through.
+                if acl_allow is False:
+                    matcher.logger.debug(
+                        "Request implicitly denied (no allow statement "
+                        "and ACLs deny access to the resource)")
+                    raise AccessDenied()
+                # else:
+                #    # acl_allow is None -> ACLs were not checked yet.
+
+                # ... and service resource does not have an ACL.
+                if rsc.type == RT_SERVICE:
+                    matcher.logger.debug(
+                        "Request implicitly denied (no allow statement "
+                        "and resource is service)")
                     raise AccessDenied()
 
-                req.environ[IAM_EXPLICIT_ALLOW] = effect == EXPLICIT_ALLOW
-
-            # If there is no rule for this user, and ACLs did not grant
-            # access rights, don't let anything pass through.
-            elif acl_allow is False:
-                raise AccessDenied()
-            # else:
-            #    # acl_allow is None -> ACLs were not checked yet.
+            req.environ[IAM_EXPLICIT_ALLOW] = effect == EXPLICIT_ALLOW
 
             # TODO(FVE): check bucket policy (not implemented ATM)
             # If the bucket has an owner, but the request's account is

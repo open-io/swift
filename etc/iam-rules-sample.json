@@ -169,6 +169,14 @@
                     "arn:aws:s3:::user1*",
                     "arn:aws:s3:::user1*/*"
                 ]
+            },
+            {
+                "Sid": "ListAllMyBuckets",
+                "Action": ["s3:ListAllMyBuckets"],
+                "Effect": "Allow",
+                "Resource": [
+                    "arn:aws:s3:::*"
+                ]
             }
         ]
     }

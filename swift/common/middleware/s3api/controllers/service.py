@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
+    check_iam_access, iam_is_enabled
 from swift.common.swob import bytes_to_wsgi
 from swift.common.utils import json, public, last_modified_date_to_timestamp
 
@@ -29,6 +31,7 @@ class ServiceController(Controller):
     Handles account level requests.
     """
     @public
+    @check_iam_access('s3:ListAllMyBuckets')
     def GET(self, req):
         """
         Handle GET Service request
@@ -56,6 +59,11 @@ class ServiceController(Controller):
             (self.conf.s3_acl and self.conf.check_bucket_owner)
             or self.conf.check_bucket_storage_domain
         )
+        if check_each_bucket and iam_is_enabled(req.environ):
+            # For each bucket, the owner is checked.
+            # These checks should not be skipped due to IAM authorization
+            # for the S3 operation.
+            req.environ[IAM_EXPLICIT_ALLOW] = False
 
         buckets = SubElement(elem, 'Buckets')
         for c in containers:

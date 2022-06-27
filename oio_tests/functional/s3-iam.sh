@@ -41,6 +41,17 @@ test_create_bucket() {
   echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
 }
 
+test_list_buckets() {
+  OUT=$(${AWSA1ADM} s3 ls | awk '{ print $3 }' | tr '\n' ' ')
+  [ "$OUT" == "$COMPANY_BUCKET $SHARED_BUCKET $A1U1_BUCKET " ]
+  OUT=$(${AWSA1U1} s3 ls 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+  OUT=$(${AWSA2ADM} s3 ls)
+  [ -z "$OUT" ]
+  OUT=$(${AWSA2U1} s3 ls | awk '{ print $3 }' | tr '\n' ' ')
+  [ "$OUT" == "$A2U1_BUCKET " ]
+}
+
 test_bucket_acls() {
   # user1 (demo) cannot set or read bucket ACLs
   OUT=$(${AWSA1U1} s3api get-bucket-acl --bucket $A1U1_BUCKET 2>&1 | tail -n 1)
@@ -213,6 +224,7 @@ test_delete_buckets() {
 }
 
 test_create_bucket
+test_list_buckets
 test_bucket_acls
 test_create_objects
 test_multipart_ops
