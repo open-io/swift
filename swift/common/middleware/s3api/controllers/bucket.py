@@ -21,7 +21,7 @@ from six.moves.urllib.parse import quote
 from functools import partial
 
 from swift.common import swob
-from swift.common.http import HTTP_OK, is_success
+from swift.common.http import HTTP_OK
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.utils import json, public, config_true_value, Timestamp
@@ -32,6 +32,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.controllers.cors import \
     CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
     fill_cors_headers
+from swift.common.middleware.s3api.controllers.website import get_website_conf
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -346,27 +347,6 @@ class BucketController(Controller):
                 self._add_object(req, elem, o, encoding_type, listing_type,
                                  fetch_owner)
 
-    def _get_website_conf(self, req, app):
-        """
-        _get_website_conf will return index document and error document from
-        website configuration.
-
-        :returns: strings of index document and error document
-        """
-        suffix, error = "", ""
-        container_info = req.get_container_info(app)
-        if is_success(container_info["status"]):
-            meta = container_info.get("sysmeta", {})
-            print(meta)
-            website_conf = meta.get("s3api-website", "").strip()
-            if website_conf != "":
-                website_conf_dict = json.loads(website_conf)
-                error = website_conf_dict.get("ErrorDocument", {}).get("Key")
-                suffix = website_conf_dict.get("IndexDocument", {}).get(
-                    "Suffix"
-                )
-        return suffix, error
-
     @public
     @check_bucket_storage_domain
     @fill_cors_headers
@@ -375,7 +355,7 @@ class BucketController(Controller):
         """
         Handle GET Bucket (List Objects) request
         """
-        suffix, error = self._get_website_conf(req, self.app)
+        suffix, error = get_website_conf(self.app, req)
 
         if suffix != "":
             try:

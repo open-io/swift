@@ -17,8 +17,7 @@ import json
 from datetime import datetime
 from functools import partial
 from swift.common import constraints
-from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT, \
-    is_success
+from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
     normalize_etag
@@ -38,6 +37,7 @@ from swift.common.middleware.s3api.controllers.cors import \
     fill_cors_headers
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
+from swift.common.middleware.s3api.controllers.website import get_website_conf
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
@@ -103,27 +103,6 @@ class ObjectController(Controller):
                 pass
 
         return resp
-
-    def _get_website_conf(self, req, app):
-        """
-        _get_website_conf will return index document and error document from
-        website configuration.
-
-        :returns: strings of index document and error document
-        """
-        suffix, error = "", ""
-        container_info = req.get_container_info(app)
-        if is_success(container_info["status"]):
-            meta = container_info.get("sysmeta", {})
-            print(meta)
-            website_conf = meta.get("s3api-website", "").strip()
-            if website_conf != "":
-                website_conf_dict = json.loads(website_conf)
-                error = website_conf_dict.get("ErrorDocument", {}).get("Key")
-                suffix = website_conf_dict.get("IndexDocument", {}).get(
-                    "Suffix"
-                )
-        return suffix, error
 
     def GETorHEAD(self, req):
         had_match = False
@@ -213,7 +192,7 @@ class ObjectController(Controller):
             resp = self.GETorHEAD(req)
             return resp
         except NoSuchKey:
-            suffix, error = self._get_website_conf(req, self.app)
+            suffix, error = get_website_conf(self.app, req)
 
             if suffix != "":
                 if req.object_name[-1:] == "/":
