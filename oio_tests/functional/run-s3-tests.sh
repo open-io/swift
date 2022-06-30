@@ -25,7 +25,8 @@ run_functional_test s3-default.cfg \
     s3-multipart.sh \
     s3-mpu.py \
     s3-storage-class.py \
-    s3-s3cmd.sh
+    s3-s3cmd.sh \
+    s3-website.py
 
 # TODO(FVE): gridinit_cmd stop
 exit $RET
