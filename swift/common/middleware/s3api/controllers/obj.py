@@ -194,7 +194,7 @@ class ObjectController(Controller):
         except NoSuchKey:
             suffix, error = get_website_conf(self.app, req)
 
-            if suffix != "":
+            if suffix is not None:
                 if req.object_name[-1:] == "/":
                     req.object_name = req.object_name + suffix
                 else:
@@ -203,7 +203,7 @@ class ObjectController(Controller):
                     resp = self.GETorHEAD(req)
                     return resp
                 except BadRequest:
-                    if error != "":
+                    if error is not None:
                         resp = req.get_response(
                             self.app, obj=error, method="GET"
                         )
@@ -216,7 +216,7 @@ class ObjectController(Controller):
                     else:
                         raise
                 except AccessDenied:
-                    if error != "":
+                    if error is not None:
                         resp = req.get_response(
                             self.app, obj=error, method="GET"
                         )
@@ -229,7 +229,7 @@ class ObjectController(Controller):
                     else:
                         raise
                 except NoSuchKey:
-                    if error != "":
+                    if error is not None:
                         resp = req.get_response(
                             self.app, obj=error, method="GET"
                         )

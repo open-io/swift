@@ -357,12 +357,12 @@ class BucketController(Controller):
         """
         suffix, error = get_website_conf(self.app, req)
 
-        if suffix != "":
+        if suffix is not None:
             try:
                 resp = req.get_response(self.app, obj=suffix, method="GET")
                 return resp
             except BadRequest:
-                if error != "":
+                if error is not None:
                     resp = req.get_response(self.app, obj=error, method="GET")
                     return convert_response(
                         req,
@@ -373,7 +373,7 @@ class BucketController(Controller):
                 else:
                     raise
             except AccessDenied:
-                if error != "":
+                if error is not None:
                     resp = req.get_response(self.app, obj=error, method="GET")
                     return convert_response(
                         req,
@@ -384,7 +384,7 @@ class BucketController(Controller):
                 else:
                     raise
             except NoSuchKey:
-                if error != "":
+                if error is not None:
                     resp = req.get_response(self.app, obj=error, method="GET")
                     return convert_response(
                         req,

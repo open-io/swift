@@ -54,11 +54,10 @@ def get_website_conf(app, req):
 
     :returns: strings of index document and error document
     """
-    suffix, error = "", ""
+    suffix, error = None, None
     container_info = req.get_container_info(app)
     if is_success(container_info["status"]):
         meta = container_info.get("sysmeta", {})
-        print(meta)
         website_conf = meta.get("s3api-website", "").strip()
         if website_conf != "":
             website_conf_dict = json.loads(website_conf)
