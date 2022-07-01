@@ -119,7 +119,9 @@ class RabbitMQClient(object):
         self.namespace = namespace
         self.url = url
         self.queue = queue
+        self.dl_queue = f"{queue}-dl"
         self.exchange = exchange
+        self.dl_exchange = f"{exchange}-dlx"
         self.rabbitmq_durable = rabbitmq_durable
         self.rabbitmq_auto_delete = rabbitmq_auto_delete
 
@@ -138,10 +140,24 @@ class RabbitMQClient(object):
                                          exchange_type=ExchangeType.topic,
                                          durable=self.rabbitmq_durable,
                                          auto_delete=self.rabbitmq_auto_delete)
+                channel.exchange_declare(exchange=self.dl_exchange,
+                                         exchange_type=ExchangeType.fanout,
+                                         durable=True,
+                                         auto_delete=False,
+                                         internal=True)
                 channel.queue_declare(queue=self.queue,
                                       durable=self.rabbitmq_durable,
-                                      auto_delete=self.rabbitmq_auto_delete)
+                                      auto_delete=self.rabbitmq_auto_delete,
+                                      arguments={
+                                          "x-dead-letter-exchange":
+                                          self.dl_exchange,
+                                      })
+                channel.queue_declare(queue=self.dl_queue,
+                                      durable=True,
+                                      auto_delete=False)
                 channel.queue_bind(exchange=self.exchange, queue=self.queue)
+                channel.queue_bind(exchange=self.dl_exchange,
+                                   queue=self.dl_queue)
             except Exception:
                 if channel.is_open:
                     channel.cancel()
