@@ -1785,6 +1785,8 @@ class S3Request(swob.Request):
             if self.conf.ratelimit_as_client_error:
                 raise SlowDown(status='429 Slow Down')
             raise SlowDown()
+        if status == HTTP_PRECONDITION_FAILED:
+            raise PreconditionFailed()
         if resp.status_int == HTTP_CONFLICT:
             # TODO: validate that this actually came up out of SLO
             raise BrokenMPU()
