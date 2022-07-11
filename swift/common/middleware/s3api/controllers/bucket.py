@@ -290,14 +290,17 @@ class BucketController(Controller):
                     fetch_owner):
         name = o['name']
         if encoding_type == 'url':
-            name = quote(name.encode('utf-8'))
+            escaped_name = quote(name.encode('utf-8'))
+        else:
+            escaped_name = ''.join([x if x.isprintable() else
+                                   '&#x%X' % ord(x) for x in name])
 
         if listing_type == 'object-versions':
             if o['content_type'] == DELETE_MARKER_CONTENT_TYPE:
                 contents = SubElement(elem, 'DeleteMarker')
             else:
                 contents = SubElement(elem, 'Version')
-            SubElement(contents, 'Key').text = name
+            SubElement(contents, 'Key').text = escaped_name
             SubElement(contents, 'VersionId').text = o.get(
                 'version_id') or 'null'
             if 'object_versioning' in get_swift_info():
@@ -307,7 +310,7 @@ class BucketController(Controller):
                 SubElement(contents, 'IsLatest').text = 'true'
         else:
             contents = SubElement(elem, 'Contents')
-            SubElement(contents, 'Key').text = name
+            SubElement(contents, 'Key').text = escaped_name
         SubElement(contents, 'LastModified').text = \
             o['last_modified'][:-3] + 'Z'
         if contents.tag != 'DeleteMarker':

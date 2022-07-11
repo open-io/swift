@@ -146,6 +146,30 @@ class TestS3ApiObject(S3ApiBase):
         self.assertEqual(status, 204)
         self.assertCommonResponseHeaders(headers)
 
+    def test_object_non_printable_char(self):
+        # object with non printable char (control char)
+        obj = u'object name\x02-\x0d-\x0f %-sign🙂'
+        content = b'abc123'
+        etag = md5(content, usedforsecurity=False).hexdigest()
+
+        # PUT Object
+        status, headers, body = \
+            self.conn.make_request('PUT', self.bucket, obj, body=content)
+        self.assertEqual(status, 200)
+
+        self.assertCommonResponseHeaders(headers)
+        self.assertTrue('content-length' in headers)  # sanity
+        self.assertEqual(headers['content-length'], '0')
+        self._assertObjectEtag(self.bucket, obj, etag)
+
+        status, headers, body = \
+            self.conn.make_request('GET', self.bucket)
+        self.assertEqual(status, 200)
+        elem = fromstring(body, 'ListBucketResult')
+        obj_name = elem.find('Contents').find("Key").text
+        self.assertEqual(
+            obj_name, 'object name&#x2-&#xD-&#xF %-sign🙂')
+
     def test_put_object_error(self):
         auth_error_conn = Connection(tf.config['s3_access_key'], 'invalid')
         status, headers, body = \
