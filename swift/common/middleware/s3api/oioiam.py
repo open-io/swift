@@ -15,51 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from oio.account.iam import RedisIamDb
 from oio.account.iam_client import IamClient
-from oio.common.exceptions import OioNetworkException
 from oio.common.utils import parse_conn_str
 
 from swift.common.middleware.s3api.iam import IamMiddleware, \
     StaticIamMiddleware
-from swift.common.middleware.s3api.s3response import ServiceUnavailable
-
-
-class RedisIamMiddleware(IamMiddleware, RedisIamDb):
-    """
-    Middleware loading IAM policies from a Redis database.
-
-    There is one hash per account.
-    Each field of the hash holds one IAM policy document for one user.
-    It is possible to set several documents per user.
-
-    Examples (Keystone's style account names):
-        IAM:account:AUTH_d1bcefa04c41403c92f4ee5634559e4c
-            admin:admin/default
-                '{"Statement": [...]}'
-        IAM:account:AUTH_acc6af49dcfe41799323b3b7902ae1b0
-            demo:demo/default
-                '{"Statement": [...]}'
-            demo:demo/custom
-                '{"Statement": [...]}'
-            demo:demo2/default
-                '{"Statement": [...]}'
-    """
-
-    def __init__(self, app, conf):
-        super(RedisIamMiddleware, self).__init__(app, conf)
-        RedisIamDb.__init__(self, logger=self.logger, **conf)
-
-    def load_rules_for_user(self, account, user):
-        if not (account and user):
-            # No user policy if there is no user
-            return None
-        try:
-            return self.load_merged_user_policies(account, user)
-        except OioNetworkException as exc:
-            self.logger.error('Failed load user policies %s/%s: %s',
-                              account, user, exc)
-            raise ServiceUnavailable from exc
 
 
 class OioIamMiddleware(IamMiddleware):
@@ -104,13 +64,7 @@ def filter_factory(global_conf, **local_config):
     scheme, netloc, kwargs = parse_conn_str(conn_str)
     conf.update(kwargs)
 
-    if scheme in ('redis', 'redis+sentinel'):
-        klass = RedisIamMiddleware
-        if scheme == 'redis+sentinel':
-            conf['sentinel_hosts'] = netloc
-        else:
-            conf['host'] = netloc
-    elif scheme == 'oio':
+    if scheme == 'oio':
         klass = OioIamMiddleware
     elif scheme == 'fdb':
         from sys import stderr
