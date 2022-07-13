@@ -156,6 +156,7 @@ class Config(dict):
     DEFAULTS = {
         'storage_classes': ['STANDARD'],
         'storage_domains': {},
+        'ignore_storage_class_header': True,
         'location': 'us-east-1',
         'force_swift_request_proxy_log': False,
         'dns_compliant_bucket_names': True,

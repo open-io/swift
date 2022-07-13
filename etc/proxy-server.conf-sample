@@ -698,6 +698,10 @@ use = egg:swift#s3api
 # [STORAGE_DOMAIN]:[STORAGE_CLASS]
 # storage_domain =
 #
+# Ignore the storage class requested by the client, use the storage domain's
+# default storage class instead.
+# ignore_storage_class_header = True
+#
 # When this parameter is enabled, a bucket can only be used from within
 # a storage domain. For buckets created while the parameter was disabled,
 # they will only be usable on the first storage domain specified

@@ -937,17 +937,24 @@ class S3Request(swob.Request):
             raise NotS3Request()
 
     def _get_storage_class(self):
+        """
+        Get the storage class requested by the client, or the default one of
+        the requested storage domain (endpoint) if the client did not
+        specify any (or ignore_storage_class_header is True).
+        """
         storage_class = None
         if self.object_name and self.method in ('PUT', 'POST'):
             # Use the storage domain's storage class
             storage_class = self.conf.storage_domains.get(self.storage_domain)
-            storage_class_hdr = self.headers.get('x-amz-storage-class')
-            if storage_class:
-                if storage_class_hdr and storage_class != storage_class_hdr:
-                    raise InvalidStorageClass()
-            else:
-                # Otherwise, use the storage class sent by the client
-                storage_class = storage_class_hdr
+            if not self.conf.ignore_storage_class_header:
+                storage_class_hdr = self.headers.get('x-amz-storage-class')
+                if storage_class:
+                    if storage_class_hdr and \
+                            storage_class != storage_class_hdr:
+                        raise InvalidStorageClass()
+                else:
+                    # Otherwise, use the storage class sent by the client
+                    storage_class = storage_class_hdr
             # Otherwise, use STANDARD by default
             if not storage_class:
                 storage_class = 'STANDARD'
