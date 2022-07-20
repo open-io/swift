@@ -29,6 +29,7 @@ jobs:
           . $HOME/swiftenv/bin/activate
           pip install --upgrade pip setuptools virtualenv tox -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
+          eval $(worker key install --env-git proj-ssh-openio)
           git submodule update --init --remote
           cd third_party/oio-sds && pip install -e . && cd ../..
           pip install -e .
