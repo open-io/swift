@@ -85,6 +85,23 @@ class TestS3BasicTest(unittest.TestCase):
             'https://www.ovhcloud.com/fr/public-cloud/object-storage/',
             resp.headers['location'])
 
+    def test_list_delimiter(self):
+        bucket = random_str(10)
+        keys = {"file", "file/", "ville", "test"}
+
+        run_awscli_s3("mb", bucket=bucket)
+        for key in keys:
+            run_awscli_s3api("put-object", bucket=bucket, key=key)
+
+        # list with string delimiter
+        params = ('--delimiter', 'le')
+        data = run_awscli_s3api("list-objects", *params, bucket=bucket)
+
+        self.assertEqual(data['CommonPrefixes'],
+                         [{'Prefix': 'file'}, {'Prefix': 'ville'}])
+        self.assertEqual(data['Contents'][0]['Key'], 'test')
+        self.assertEqual(len(data['Contents']), 1)
+
     resp = requests.post('http://localhost:5000', allow_redirects=False)
     assert resp.status_code == 405
 

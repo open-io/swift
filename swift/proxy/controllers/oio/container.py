@@ -128,9 +128,6 @@ class ContainerController(SwiftContainerController):
         path = get_param(req, 'path')
         prefix = get_param(req, 'prefix')
         delimiter = get_param(req, 'delimiter')
-        if delimiter and (len(delimiter) > 1 or ord(delimiter) > 254):
-            # delimiters can be made more flexible later
-            return HTTPPreconditionFailed(body='Bad delimiter')
         marker = get_param(req, 'marker', '')
         version_marker = None
         if marker:
