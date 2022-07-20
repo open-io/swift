@@ -260,8 +260,12 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
 
         status, _headers, body = self.call_s3api(req)
 
-        self.assertEqual('501 Not Implemented', status)
-        self.assertEqual('NotImplemented', self._get_error_code(body))
+        self.assertEqual('200 OK', status)
+        elem = fromstring(body,
+                          'ListBucketIntelligentTieringConfigurationsOutput')
+        configurations = elem.findall('IntelligentTieringConfiguration')
+
+        self.assertEqual(1, len(configurations))
 
     def test_DELETE_no_id(self):
         req = Request.blank('/test-tiering?intelligent-tiering',

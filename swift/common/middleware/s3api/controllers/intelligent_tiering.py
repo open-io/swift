@@ -15,8 +15,8 @@
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain
-from swift.common.middleware.s3api.etree import fromstring, \
-    DocumentInvalid, XMLSyntaxError, tostring
+from swift.common.middleware.s3api.etree import Element, SubElement, \
+    DocumentInvalid, XMLSyntaxError, fromstring, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, S3NotImplemented
@@ -38,7 +38,15 @@ def header_name_from_id(tiering_id):
     Generate the name of the header which will contain the whole
     tiering configuration document.
     """
-    return sysmeta_header('container', 'intelligent-tiering-' + tiering_id)
+    return header_name_prefix() + tiering_id
+
+
+def header_name_prefix():
+    """
+    Compute the prefix of the header which will contain the whole
+    tiering configuration document.
+    """
+    return sysmeta_header('container', 'intelligent-tiering-')
 
 
 def xml_conf_to_dict(tiering_conf_xml):
@@ -88,6 +96,19 @@ class IntelligentTieringController(Controller):
         # This can raise exceptions too
         return tiering_callback(req, tiering_dict)
 
+    def _build_base_listing(self):
+        elem = Element('ListBucketIntelligentTieringConfigurationsOutput')
+        return elem
+
+    def _build_list_tiering_result(self, objects):
+        elem = self._build_base_listing()
+        SubElement(elem, 'IsTruncated').text = 'false'
+
+        for object in objects:
+            elem.append(object)
+
+        return elem
+
     @public
     @bucket_operation
     @check_bucket_storage_domain
@@ -97,28 +118,40 @@ class IntelligentTieringController(Controller):
         Handles GetBucketIntelligentTieringConfiguration
         and ListBucketIntelligentTieringConfigurations
         """
+        configurations = []
         resp = req.get_response(self.app, method='HEAD')
         tiering_id = req.params.get('id')
         if tiering_id:
+            # GetBucketIntelligentTieringConfiguration
+            func = lambda objs: objs[0]
             body = resp.sysmeta_headers.get(header_name_from_id(tiering_id),
                                             None)
             if body is None:
                 return HTTPNotFound("No intelligent tiering configuration "
                                     f"with id {tiering_id}.")
+            configurations.append(body)
+
         else:
-            # TODO(FVE): concatenate all configurations
-            raise S3NotImplemented(
-                "ListBucketIntelligentTieringConfigurations "
-                "is not implemented yet.")
+            # ListBucketIntelligentTieringConfiguration
+            func = self._build_list_tiering_result
+            prefix = header_name_prefix().lower()
+            for key, value in resp.sysmeta_headers.items():
+                _key = key.lower()
+                if _key.startswith(prefix):
+                    configurations.append(value)
 
         # May raise exceptions
         result = self.apply_tiering(req, None)
 
-        # Patch the returned body with the bucket status
-        tiering_conf_xml = fromstring(body.encode('utf-8'))
-        for elem in tiering_conf_xml.iter("Status"):
-            elem.text = result.get('bucket_status')
-        body = tostring(tiering_conf_xml)
+        conf_elements = []
+        for conf in configurations:
+            tiering_conf_xml = fromstring(conf.encode('utf-8'))
+
+            for elem in tiering_conf_xml.iter("Status"):
+                elem.text = result.get('bucket_status')
+            conf_elements.append(tiering_conf_xml)
+
+        body = tostring(func(conf_elements))
 
         return HTTPOk(body=body, content_type='application/xml')
 

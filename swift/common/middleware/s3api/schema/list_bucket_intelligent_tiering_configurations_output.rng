@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <include href="common.rng"/>
+  <start>
+    <element name="ListBucketIntelligentTieringConfigurationsOutput">
+      <element name="IsTruncated">
+        <data type="boolean"/>
+      </element>
+      <group>
+        <optional>
+          <element name="NextContinuationToken">
+            <data type="string"/>
+          </element>
+        </optional>
+        <optional>
+          <element name="ContinuationToken">
+            <data type="string"/>
+          </element>
+        </optional>
+      </group>
+      <zeroOrMore>
+        <element name="IntelligentTieringConfiguration">
+          <interleave>
+            <element name="Id">
+              <data type="string"/>
+            </element>
+            <optional>
+              <element name="Filter">
+                <ref name="Filter"/>
+              </element>
+            </optional>
+            <element name="Status">
+              <choice>
+                <value>Enabled</value>
+                <value>Disabled</value>
+                <data type="string"/>
+              </choice>
+            </element>
+            <oneOrMore>
+              <element name="Tiering">
+                <interleave>
+                  <element name="AccessTier">
+                    <choice>
+                      <value>ARCHIVE_ACCESS</value>
+                      <value>DEEP_ARCHIVE_ACCESS</value>
+                      <data type="string"/>
+                    </choice>
+                  </element>
+                  <element name="Days">
+                    <data type="positiveInteger"/>
+                  </element>
+                </interleave>
+              </element>
+            </oneOrMore>
+          </interleave>
+        </element>
+      </zeroOrMore>
+    </element>
+  </start>
+</grammar>

@@ -1,0 +1,19 @@
+include "common.rnc"
+
+start =
+  element ListBucketIntelligentTieringConfigurationsOutput {
+    element IsTruncated { xsd:boolean },
+    (
+      element NextContinuationToken { xsd:string }?,
+      element ContinuationToken { xsd:string }?
+    ),
+    element IntelligentTieringConfiguration {
+      element Id { xsd:string } &
+      element Filter { Filter }? &
+      element Status { "Enabled" | "Disabled" | xsd:string } &
+      element Tiering {
+        element AccessTier { "ARCHIVE_ACCESS" | "DEEP_ARCHIVE_ACCESS" | xsd:string } &
+        element Days { xsd:positiveInteger }
+      }+
+    }*
+  }
