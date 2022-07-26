@@ -45,7 +45,7 @@ from swift.common.utils import Timestamp, WatchdogTimeout, config_true_value, \
     public, split_path, list_from_csv, GreenthreadSafeIterator, \
     GreenAsyncPile, quorum_size, parse_content_type, drain_and_close, \
     document_iters_to_http_response_body, ShardRange, find_shard_range, \
-    cache_from_env, MetricsPrefixLoggerAdapter, get_swift_info
+    cache_from_env, MetricsPrefixLoggerAdapter, get_swift_info, RESERVED
 from swift.common.bufferedhttp import http_connect
 from swift.common import constraints
 from swift.common.exceptions import ChunkReadTimeout, ChunkWriteTimeout, \
@@ -497,16 +497,19 @@ def get_container_info(env, app, swift_source=None, read_caches=True):
     if obj_vers_info and obj_vers_info.get('allow_oio_versioning', False):
         return info
 
-    versions_cont = info.get('sysmeta', {}).get('versions-container', '')
-    if versions_cont:
-        versions_cont = wsgi_unquote(str_to_wsgi(
-            versions_cont)).split('/')[0]
-        versions_req = _prepare_pre_auth_info_request(
-            env, ("/%s/%s/%s" % (version, wsgi_account, versions_cont)),
-            (swift_source or 'GET_CONTAINER_INFO'))
-        versions_req.headers['X-Backend-Allow-Reserved-Names'] = 'true'
-        versions_info = get_container_info(versions_req.environ, app)
-        info['bytes'] = info['bytes'] + versions_info['bytes']
+    if RESERVED != '\x10':
+        versions_cont = info.get('sysmeta', {}).get('versions-container', '')
+        if versions_cont:
+            versions_cont = wsgi_unquote(str_to_wsgi(
+                versions_cont)).split('/')[0]
+            versions_req = _prepare_pre_auth_info_request(
+                env, ("/%s/%s/%s" % (version, wsgi_account, versions_cont)),
+                (swift_source or 'GET_CONTAINER_INFO'))
+            versions_req.headers['X-Backend-Allow-Reserved-Names'] = 'true'
+            versions_info = get_container_info(versions_req.environ, app)
+            info['bytes'] = info['bytes'] + versions_info['bytes']
+    # else:
+    #     oio-sds does not need a versions container
 
     return info
 

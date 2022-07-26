@@ -20,18 +20,14 @@ OpenIO variant of the ObjectVersioningMiddleware.
 import itertools
 import json
 
-from six.moves.urllib.parse import unquote
-
 from swift.common.constraints import valid_api_version, CONTAINER_LISTING_LIMIT
-from swift.common.http import is_success, HTTP_NOT_FOUND, HTTP_CONFLICT
+from swift.common.http import is_success, HTTP_NOT_FOUND
 from swift.common.request_helpers import \
     get_reserved_name, constrain_req_limit
 from swift.common.swob import \
     HTTPBadRequest, str_to_wsgi, wsgi_quote, \
     wsgi_unquote, Request, HTTPNotFound, HTTPException, \
-    HTTPInternalServerError, HTTPNotAcceptable, \
-    HTTPConflict
-from swift.common.storage_policy import POLICIES
+    HTTPNotAcceptable
 from swift.common.utils import get_logger, Timestamp, drain_and_close, \
     config_true_value, close_if_possible, \
     split_path, RESERVED_STR, MD5_OF_EMPTY_STRING
@@ -40,8 +36,7 @@ from swift.proxy.controllers.base import get_container_info
 
 from swift.common.middleware.versioned_writes.object_versioning import \
     ObjectVersioningMiddleware, CLIENT_VERSIONS_ENABLED, \
-    DELETE_MARKER_CONTENT_TYPE, SYSMETA_VERSIONS_CONT, \
-    SYSMETA_VERSIONS_ENABLED, \
+    DELETE_MARKER_CONTENT_TYPE, SYSMETA_VERSIONS_ENABLED, \
     ObjectContext, ContainerContext
 
 
@@ -248,47 +243,10 @@ class OioContainerContext(ContainerContext):
         """
         Handle request to delete a user's container.
 
-        As part of deleting a container, this middleware will also delete
-        the hidden container holding object versions.
-
-        Before a user's container can be deleted, swift must check
-        if there are still old object versions from that container.
-        Only after disabling versioning and deleting *all* object versions
-        can a container be deleted.
+        This middleware doesn't use the hidden container
+        holding object versions.
+        The main container can be deleted directly.
         """
-        container_info = get_container_info(req.environ, self.app,
-                                            swift_source='OV')
-
-        versions_cont = unquote(container_info.get(
-            'sysmeta', {}).get('versions-container', ''))
-
-        if versions_cont:
-            account = req.split_path(3, 3, True)[1]
-            # using a HEAD request here as opposed to get_container_info
-            # to make sure we get an up-to-date value
-            versions_req = make_pre_authed_request(
-                req.environ, method='HEAD', swift_source='OV',
-                path=wsgi_quote('/v1/%s/%s' % (
-                    account, str_to_wsgi(versions_cont))),
-                headers={'X-Backend-Allow-Reserved-Names': 'true'})
-            vresp = versions_req.get_response(self.app)
-            drain_and_close(vresp)
-            if vresp.is_success and int(vresp.headers.get(
-                    'X-Container-Object-Count', 0)) > 0:
-                raise HTTPConflict(
-                    'Delete all versions before deleting container.',
-                    request=req)
-            elif not vresp.is_success and vresp.status_int != 404:
-                raise HTTPInternalServerError(
-                    'Error deleting versioned container')
-            else:
-                versions_req.method = 'DELETE'
-                resp = versions_req.get_response(self.app)
-                drain_and_close(resp)
-                if not is_success(resp.status_int) and resp.status_int != 404:
-                    raise HTTPInternalServerError(
-                        'Error deleting versioned container')
-
         app_resp = self._app_call(req.environ)
 
         start_response(self._response_status,
@@ -323,79 +281,12 @@ class OioContainerContext(ContainerContext):
                 'configured as source of container syncing.',
                 request=req)
 
-        versions_cont = container_info.get(
-            'sysmeta', {}).get('versions-container')
         is_enabled = config_true_value(
             req.headers[CLIENT_VERSIONS_ENABLED])
-
         req.headers[SYSMETA_VERSIONS_ENABLED] = is_enabled
-
-        # TODO: a POST request to a primary container that doesn't exist
-        # will fail, so we will create and delete the versions container
-        # for no reason
-        if config_true_value(is_enabled):
-            (version, account, container, _) = req.split_path(3, 4, True)
-
-            # Attempt to use same policy as primary container, otherwise
-            # use default policy
-            if is_success(container_info['status']):
-                primary_policy_idx = container_info['storage_policy']
-                if POLICIES[primary_policy_idx].is_deprecated:
-                    # Do an auth check now, so we don't leak information
-                    # about the container
-                    aresp = req.environ['swift.authorize'](req)
-                    if aresp:
-                        raise aresp
-
-                    # Proxy controller would catch the deprecated policy, too,
-                    # but waiting until then would mean the error message
-                    # would be a generic "Error enabling object versioning".
-                    raise HTTPBadRequest(
-                        'Cannot enable object versioning on a container '
-                        'that uses a deprecated storage policy.',
-                        request=req)
-                hdrs = {'X-Storage-Policy': POLICIES[primary_policy_idx].name}
-            else:
-                if req.method == 'PUT' and \
-                        'X-Storage-Policy' in req.headers:
-                    hdrs = {'X-Storage-Policy':
-                            req.headers['X-Storage-Policy']}
-                else:
-                    hdrs = {}
-            hdrs['X-Backend-Allow-Reserved-Names'] = 'true'
-
-            versions_cont = self._build_versions_container_name(container)
-            versions_cont_path = "/%s/%s/%s" % (
-                version, account, versions_cont)
-            ver_cont_req = make_pre_authed_request(
-                req.environ, path=wsgi_quote(versions_cont_path),
-                method='PUT', headers=hdrs, swift_source='OV')
-            resp = ver_cont_req.get_response(self.app)
-            # Should always be short; consume the body
-            drain_and_close(resp)
-            if is_success(resp.status_int) or resp.status_int == HTTP_CONFLICT:
-                req.headers[SYSMETA_VERSIONS_CONT] = wsgi_quote(versions_cont)
-            else:
-                raise HTTPInternalServerError(
-                    'Error enabling object versioning')
 
         # make original request
         app_resp = self._app_call(req.environ)
-
-        # if we just created a versions container but the original
-        # request failed, delete the versions container
-        # and let user retry later
-        if not is_success(self._get_status_int()) and \
-                SYSMETA_VERSIONS_CONT in req.headers:
-            versions_cont_path = "/%s/%s/%s" % (
-                version, account, versions_cont)
-            ver_cont_req = make_pre_authed_request(
-                req.environ, path=wsgi_quote(versions_cont_path),
-                method='DELETE', headers=hdrs, swift_source='OV')
-
-            # TODO: what if this one fails??
-            resp = ver_cont_req.get_response(self.app)
-            drain_and_close(resp)
 
         if self._response_headers is None:
             self._response_headers = []

@@ -17,9 +17,11 @@
 
 import json
 import tempfile
+from time import sleep
 import unittest
 
-from oio_tests.functional.common import random_str, run_awscli_s3api
+from oio_tests.functional.common import random_str, run_awscli_s3api, \
+    run_openiocli
 
 
 class TestS3Versioning(unittest.TestCase):
@@ -69,6 +71,19 @@ class TestS3Versioning(unittest.TestCase):
             profile=profile)
         deleted_keys = {k['Key'] for k in res['Deleted']}
         self.assertEqual(deleted_keys, set(keys))
+
+    def test_containers_list(self):
+        bucket = random_str(10)
+        run_awscli_s3api("create-bucket", bucket=bucket)
+        data1 = run_openiocli("container", "list", account="AUTH_demo")
+        run_awscli_s3api(
+            "put-bucket-versioning",
+            "--versioning-configuration", "Status=Enabled",
+            bucket=bucket)
+        sleep(2)  # Wait for all events to be processed
+        data2 = run_openiocli("container", "list", account="AUTH_demo")
+        # Make sure no new containers are created for versioning
+        self.assertEqual(data1, data2)
 
     def test_multi_delete_utf8(self):
         return self._test_multi_delete_utf8(profile='default')
