@@ -39,6 +39,22 @@ CUSTOM_HASHER = {
 }
 
 
+def is_customer_provided_key(key_id):
+    """
+    Tell if the key ID represends an encryption key provided by the customer.
+    """
+    return key_id and key_id.get('ssec', False)
+
+
+def requires_customer_provided_key(crypto_meta):
+    """
+    Tell if the key in the provided crypto metadata was originally provided
+    by the customer (as opposed to provided by the gateway configuration
+    or a KMS).
+    """
+    return crypto_meta and is_customer_provided_key(crypto_meta.get('key_id'))
+
+
 class Crypto(object):
     """
     Used by middleware: Calls cryptography library

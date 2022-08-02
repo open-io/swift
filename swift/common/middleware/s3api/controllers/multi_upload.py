@@ -569,6 +569,10 @@ class UploadsController(Controller):
             req.headers[sysmeta_header('object', 'has-content-type')] = 'no'
         req.headers['Content-Type'] = 'application/directory'
 
+        # Do not encrypt metadata we put on this (empty) temporary object.
+        # Later we will read it, possibly without access to the encryption key.
+        req.environ['swift.crypto.override'] = True
+
         try:
             seg_req = copy.copy(req)
             seg_req.environ = copy.copy(req.environ)

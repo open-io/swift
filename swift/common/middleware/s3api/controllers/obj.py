@@ -146,7 +146,8 @@ class ObjectController(Controller):
             # HEAD requests without keys on encrypted objects are allowed for
             # internal usage (e.g. ACLs). But we should deny them when they
             # come from the outside.
-            if (config_true_value(resp.sw_headers.get('X-Object-Is-Encrypted'))
+            if (config_true_value(
+                    resp.sw_headers.get('X-Requires-Encryption-Key'))
                     and SSEC_KEY_HEADER not in req.headers):
                 raise BadRequest(MISSING_KEY_MSG)
 

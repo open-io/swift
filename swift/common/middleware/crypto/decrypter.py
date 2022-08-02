@@ -20,7 +20,8 @@ from swift import gettext_ as _
 from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
-    load_crypto_meta, extract_crypto_meta, Crypto
+    load_crypto_meta, extract_crypto_meta, Crypto, \
+    requires_customer_provided_key
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     get_sys_meta_prefix, get_user_meta_prefix, \
@@ -364,9 +365,10 @@ class DecrypterObjContext(BaseDecrypterContext):
 
         mod_resp_headers = self.decrypt_resp_headers(put_keys, post_keys)
         # Some middlewares need to know the object is encrypted with a
-        # customer-provided key.
-        if self.crypto.ssec_mode:
-            mod_resp_headers.append(('X-Object-Is-Encrypted', True))
+        # customer-provided key but there is no key in the request.
+        if self.crypto.ssec_mode and \
+                requires_customer_provided_key(put_crypto_meta):
+            mod_resp_headers.append(('X-Requires-Encryption-Key', True))
 
         if put_crypto_meta and req.method == 'GET' and \
                 is_success(self._get_status_int()):

@@ -62,8 +62,10 @@ echo "$OBJ_1_CHECKSUM obj_1" | md5sum -c -
 echo "Downloading same object with openio CLI"
 openio object save "$BUCKET" "obj_1" --file "./obj_1.openio"
 
-echo "Checking it is the same (because it is not cyphered)"
-[ "$OBJ_1_CHECKSUM" == "$(md5sum ./obj_1.openio | cut -d ' ' -f 1)" ]
+## We used to not cypher anything when user does not provide any key, but now
+## we cypher with the global key.
+# echo "Checking it is the same (because it is not cyphered)"
+# [ "$OBJ_1_CHECKSUM" == "$(md5sum ./obj_1.openio | cut -d ' ' -f 1)" ]
 
 echo "Checking reported checksum of obj_1_cyphered"
 OBJ_1_ETAG=$(${AWS} s3api head-object --bucket "$BUCKET" --key "obj_1_cyphered" ${ENC_OPTS_EXT} | sed -n -E -e "${ETAG_REGEX}")

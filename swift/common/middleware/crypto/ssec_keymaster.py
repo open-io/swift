@@ -1,5 +1,5 @@
 # Copyright (c) 2021 OpenStack Foundation
-# Copyright (c) 2021 OVH SAS
+# Copyright (c) 2021-2022 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ from swift.common.middleware.crypto.keymaster import KeyMaster, \
     KeyMasterContext
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
+from swift.common.utils import config_true_value
 from swift.common import wsgi
 
 
@@ -100,6 +101,10 @@ class SsecKeyMasterContext(KeyMasterContext):
         self._keys = {}
         account_path = os.path.join(os.sep, self.account)
 
+        if key_id and not key_id.get("ssec", False) \
+                and self.keymaster.fallback_on_keymaster:
+            return super().fetch_crypto_keys(*args, key_id=key_id, **kwargs)
+
         if self.container:
             if key_id:
                 secret_id = key_id.get('secret_id',
@@ -117,13 +122,17 @@ class SsecKeyMasterContext(KeyMasterContext):
                     self._keys['object'] = self.keymaster.create_key(
                         path, secret=secret)
                 except HTTPException:
+                    if self.keymaster.fallback_on_keymaster and not \
+                            crypto_utils.is_customer_provided_key(key_id):
+                        return super().fetch_crypto_keys(
+                            *args, key_id=key_id, **kwargs)
                     # HEAD: decode system metadata with container key
                     # POST, PUT: catch exception, do not encrypt
                     # GET: transmit the exception to the client
                     if self.req.method != 'HEAD':
                         raise
 
-            self._keys['id'] = {'v': '1', 'path': path}
+            self._keys['id'] = {'v': '1', 'path': path, 'ssec': True}
 
         return self._keys
 
@@ -141,6 +150,11 @@ class SsecKeyMaster(KeyMaster):
     same way as the original Keymaster middleware.
     """
     log_route = 'ssec_keymaster'
+
+    def __init__(self, app, conf):
+        super().__init__(app, conf)
+        self.fallback_on_keymaster = config_true_value(
+            conf.get('fallback_on_keymaster', False))
 
     def __call__(self, env, start_response):
         req = Request(env)

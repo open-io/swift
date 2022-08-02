@@ -97,6 +97,7 @@ use = egg:swift#symlink
 use = egg:swift#keymaster
 # Sets the path from which the keymaster config options should be read.
 #keymaster_config_path =
+meta_version_to_write = 3
 
 # echo "Next-Gen Object Storage & Serverless Computing" | base64
 encryption_root_secret_0 = TmV4dC1HZW4gT2JqZWN0IFN0b3JhZ2UgJiBTZXJ2ZXJsZXNzIENvbXB1dGluZwo=
