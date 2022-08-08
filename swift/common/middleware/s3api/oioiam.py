@@ -16,10 +16,12 @@
 # limitations under the License.
 
 from oio.account.iam_client import IamClient
+from oio.common.exceptions import OioNetworkException
 from oio.common.utils import parse_conn_str
 
 from swift.common.middleware.s3api.iam import IamMiddleware, \
     StaticIamMiddleware
+from swift.common.middleware.s3api.s3response import ServiceUnavailable
 
 
 class OioIamMiddleware(IamMiddleware):
@@ -45,7 +47,13 @@ class OioIamMiddleware(IamMiddleware):
         if not (account and user):
             # No user policy if there is no user
             return None
-        return self.iam_client.load_merged_user_policies(account, user)
+        try:
+            return self.iam_client.load_merged_user_policies(account, user)
+        except OioNetworkException as exc:
+            self.logger.error(
+                'Failed to load merged user policies for user %s/%s: %s',
+                account, user, exc)
+            raise ServiceUnavailable from exc
 
 
 def filter_factory(global_conf, **local_config):
