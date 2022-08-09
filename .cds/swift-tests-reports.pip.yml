@@ -10,10 +10,10 @@ jobs:
       - name: Install dependencies
         script:
           - apt update
-          - apt install -y python3-virtualenv virtualenv lcov
+          - apt install -y jq lcov python3-virtualenv virtualenv
           - virtualenv -p /usr/bin/python3 $HOME/oiovenv
           - . $HOME/oiovenv/bin/activate
-          - pip install --upgrade pip virtualenv coverage
+          - pip install --upgrade awscli awscli-plugin-endpoint coverage pip virtualenv git+https://github.com/boyska/xq.git
 
       - artifactDownload:
           path: '{{.cds.workspace}}'
@@ -28,15 +28,16 @@ jobs:
           - coverage report --skip-empty --ignore-errors > coverage-report-py.txt
           - worker upload --tag='{{.cds.version}}' {{.cds.workspace}}/coverage-report-py.txt
           - coverage xml --skip-empty --ignore-errors -o coverage-py.xml
-          - mkdir coverage
-          - coverage html --skip-empty --ignore-errors -d coverage/coverage-report-py
-          - echo '<!DOCTYPE html><html><a href="./coverage-report-py/">Python coverage report</a></body></html>' > coverage/index.html
+          - coverage html --skip-empty --ignore-errors -d coverage-report-py
+          - coverage json --omit="/usr/lib/python3*" --ignore-errors -o coverage-report-py-full.json
+          - jq -f .cds/python-coverage-filter.jq coverage-report-py-full.json > coverage-report-py.json
 
       - coverage:
           format: cobertura
           path: '{{.cds.workspace}}/coverage-py.xml'
 
-      - artifactDownload:
+      - name: Download test result artifacts
+        artifactDownload:
           path: '{{.cds.workspace}}'
           pattern: 'tests_report.*.xml'
           tag: '{{.cds.version}}'
@@ -45,7 +46,62 @@ jobs:
         script:
           - rm -f tests_report.ceph*.xml
 
+      - name: Aggregate test results
+        optional: true
+        script: |+
+          #!/bin/bash
+          . $HOME/oiovenv/bin/activate
+          export TEST_COUNT=0
+          shopt -s nullglob
+          for TEST_RESULT in tests_report.*.xml
+          do
+            ((TEST_COUNT+=$(xq -r "/testsuite/@tests" $TEST_RESULT)))
+          done
+          shopt -u nullglob
+          echo "{\"tests\": {\"Python\": {\"total\": $TEST_COUNT}}}" > test-report-py.json
+
       - jUnitReport: '{{.cds.workspace}}/tests_report.*.xml'
+
+      - name: Create code coverage directory
+        script:
+          - cd {{.cds.workspace}}
+          - jq -s '.[0] * .[1]' coverage-report-py.json test-report-py.json > coverage-summary.json
+          - worker upload --tag='{{.cds.version}}' coverage-summary.json
+          - mkdir coverage
+          - mv coverage-report-py coverage-summary.json coverage/
+          - echo '<!DOCTYPE html><html><a href="./coverage-report-py/">Python coverage report</a><br/><a href="./coverage-summary.json">Coverage summary by language</a></body></html>' > coverage/index.html
+
+      - name: Publish code coverage reports on S3 public cloud
+        script: |+
+          #!/bin/bash
+          . $HOME/oiovenv/bin/activate
+          cd {{.cds.workspace}}
+          mkdir -p "$HOME/.aws"
+          cat <<EOF >>"$HOME/.aws/credentials"
+          [kpi]
+          aws_access_key_id={{.cds.proj.kpi_s3_access_key}}
+          aws_secret_access_key={{.cds.proj.kpi_s3_access_secret}}
+          region=gra
+          EOF
+          cat <<EOF >>"$HOME/.aws/config"
+          [plugins]
+          endpoint = awscli_plugin_endpoint
+          [profile kpi]
+          s3 =
+              endpoint_url = {{.cds.proj.kpi_s3_endpoint}}
+              signature_version = s3v4
+              addressing_style = virtual
+              multipart_threshold = 100MB
+          s3api =
+              endpoint_url = {{.cds.proj.kpi_s3_endpoint}}
+          EOF
+          # There may be a more elegant way in bash to filter out the name of
+          # development branches, but this weird method also applies to the
+          # OVH_Serve_Static_Files step (where we cannot use bash).
+          aws --profile kpi s3 cp coverage/coverage-summary.json s3://{{.cds.proj.kpi_s3_bucket}}/{{.cds.application}}/{{ .git.branch | replace "dev/" "develop/" | replace "feature/oio-backend" "master" | trunc 7 | replace "develop" "dev" }}/{{.cds.version}}/coverage-summary.json
+          # If we re-run an old build, this will overwrite the report of the
+          # actual latest merged code. This will not happen often.
+          [ "{{ .git.branch }}" = "feature/oio-backend" ] && aws --profile kpi s3 cp coverage/coverage-summary.json s3://{{.cds.proj.kpi_s3_bucket}}/{{.cds.application}}/master/latest/coverage-summary.json || true
 
       - name: Publish code coverage reports on Artifactory
         optional: true
