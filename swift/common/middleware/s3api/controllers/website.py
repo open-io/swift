@@ -111,9 +111,9 @@ class WebsiteController(Controller):
         """
         Handles PUT Bucket website.
         """
-        if not self.conf.enable_website:
-            raise NotImplementedError
         self.set_s3api_command(req, "put-bucket-website")
+        if not self.conf.enable_website:
+            raise S3NotImplemented
         xml = req.xml(MAX_WEBSITE_BODY_SIZE)
 
         json_output = WebsiteController._xml_conf_to_json(xml)
