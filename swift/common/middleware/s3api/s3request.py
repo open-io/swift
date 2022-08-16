@@ -1969,6 +1969,8 @@ class S3AclRequest(S3Request):
 
         sw_req.environ.get('swift.authorize', lambda req: None)(sw_req)
         self.environ['swift_owner'] = sw_req.environ.get('swift_owner', False)
+        self.environ['reseller_request'] = sw_req.environ.get(
+            'reseller_request', False)
         if 'REMOTE_USER' in sw_req.environ:
             self.environ['REMOTE_USER'] = sw_req.environ['REMOTE_USER']
 

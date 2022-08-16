@@ -30,7 +30,7 @@ from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
     REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
     obj_version_from_env, oio_versionid_to_swift_versionid, \
-    swift_versionid_to_oio_versionid
+    swift_versionid_to_oio_versionid, extract_oio_headers
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
     HTTPNotFound, HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
@@ -43,8 +43,7 @@ from swift.proxy.controllers.base import set_object_info_cache, \
     delay_denial, cors_validation, get_object_info
 from swift.proxy.controllers.obj import check_content_type
 
-from swift.proxy.controllers.obj import BaseObjectController as \
-    BaseObjectController
+from swift.proxy.controllers.obj import BaseObjectController
 
 from oio.common import exceptions
 from oio.common.constants import FORCEVERSIONING_HEADER
@@ -463,6 +462,7 @@ class ObjectController(BaseObjectController):
     @public
     @cors_validation
     @delay_denial
+    @extract_oio_headers
     @handle_not_allowed
     @handle_oio_timeout
     @handle_service_busy

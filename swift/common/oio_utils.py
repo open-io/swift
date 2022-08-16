@@ -30,6 +30,7 @@ from oio.common.redis_conn import catch_service_errors, RedisConnection
 
 BUCKET_NAME_PROP = "sys.m2.bucket.name"
 BUCKET_OBJECT_LOCK_PROP = "sys.m2.bucket.objectlock.enabled"
+FORCED_VERSION_HEADER = "X-Oio-Version-Id"
 MULTIUPLOAD_SUFFIX = '+segments'
 
 
@@ -149,6 +150,19 @@ def check_if_none_match(fnc):
                 raise HTTPPreconditionFailed(request=req)
         return fnc(self, req, *args, **kwargs)
     return _if_none_match_wrapper
+
+
+def extract_oio_headers(fnc):
+    """Extract OpenIO specific request headers"""
+    @wraps(fnc)
+    def _extract_oio_headers(self, req, *args, **kwargs):
+        query = req.environ.setdefault('oio.query', {})
+        is_reseller = req.environ.get('reseller_request', False)
+        # Allow privileged users to choose the version number of new objects
+        if FORCED_VERSION_HEADER in req.headers and is_reseller:
+            query['new_version'] = req.headers[FORCED_VERSION_HEADER]
+        return fnc(self, req, *args, **kwargs)
+    return _extract_oio_headers
 
 
 class RedisDb(RedisConnection):

@@ -75,7 +75,7 @@ enable_object_lock = true
 use = egg:swift#tempauth
 log_level = DEBUG
 # Main user of the account AUTH_demo
-user_demo_demo = DEMO_PASS .admin
+user_demo_demo = DEMO_PASS .admin .reseller_admin
 # Unpriviledged users of the account AUTH_demo
 user_demo_user1 = USER_PASS
 user_demo_user2 = USER_PASS
