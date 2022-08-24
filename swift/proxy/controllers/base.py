@@ -44,7 +44,7 @@ from swift.common.utils import Timestamp, WatchdogTimeout, config_true_value, \
     public, split_path, list_from_csv, GreenthreadSafeIterator, \
     GreenAsyncPile, quorum_size, parse_content_type, drain_and_close, \
     document_iters_to_http_response_body, ShardRange, cache_from_env, \
-    CooperativeIterator
+    CooperativeIterator, match_cors
 from swift.common.bufferedhttp import http_connect
 from swift.common import constraints
 from swift.common.exceptions import ChunkReadTimeout, ChunkWriteTimeout, \
@@ -2253,9 +2253,15 @@ class Controller(object):
                 [a.strip()
                  for a in cors_info['allow_origin'].split(' ')
                  if a.strip()])
+        if origin in allowed_origins or '*' in allowed_origins:
+            return True
         if self.app.cors_allow_origin:
-            allowed_origins.update(self.app.cors_allow_origin)
-        return origin in allowed_origins or '*' in allowed_origins
+            # For the origins present in the conf, only one wildcard
+            # (placed anywhere) is authorized
+            for allowed_origin in self.app.cors_allow_origin:
+                if match_cors(allowed_origin, origin):
+                    return True
+        return False
 
     @public
     def OPTIONS(self, req):

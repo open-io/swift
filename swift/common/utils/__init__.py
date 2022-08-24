@@ -6462,3 +6462,14 @@ class CooperativeIterator(object):
 
     def close(self):
         close_if_possible(self.wrapped_iter)
+
+
+def match_cors(pattern, value):
+    """
+    Match the value of a CORS header against the specified pattern.
+    """
+    pattern_parts = pattern.split('*', 1)  # Only one wildcard is authorized
+    if len(pattern_parts) == 1:
+        return pattern == value
+    return value.startswith(pattern_parts[0]) \
+        and value.endswith(pattern_parts[1])

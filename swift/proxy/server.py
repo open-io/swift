@@ -290,6 +290,11 @@ class Application(object):
             a.strip()
             for a in conf.get('cors_allow_origin', '').split(',')
             if a.strip()]
+        for origin in self.cors_allow_origin:
+            if origin.count('*') > 1:
+                raise ValueError(
+                    'CORS allowed origin "%s" can not have more '
+                    'than one wildcard' % origin)
         self.cors_expose_headers = [
             a.strip()
             for a in conf.get('cors_expose_headers', '').split(',')

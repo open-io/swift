@@ -7047,6 +7047,23 @@ class TestReplicatedObjectController(
             self.assertEqual(200, resp.status_int)
             self.assertEqual('Origin', resp.headers.get('vary'))
 
+            # With a wildcard character in the middle
+            controller.app.cors_allow_origin = ['http://*.foo', ]
+            req = Request.blank(
+                '/v1/a/c',
+                {'REQUEST_METHOD': 'OPTIONS'},
+                headers={'Origin': 'http://foo.bar',
+                         'Access-Control-Request-Method': 'GET'})
+            resp = controller.OPTIONS(req)
+            self.assertEqual(401, resp.status_int)
+            req = Request.blank(
+                '/v1/a/c',
+                {'REQUEST_METHOD': 'OPTIONS'},
+                headers={'Origin': 'http://bar.foo',
+                         'Access-Control-Request-Method': 'GET'})
+            resp = controller.OPTIONS(req)
+            self.assertEqual(200, resp.status_int)
+
             def my_container_info_wildcard(*args):
                 return {
                     'cors': {
@@ -10879,6 +10896,23 @@ class TestContainerController(unittest.TestCase):
                 headers={'Origin': 'http://foo.bar',
                          'Access-Control-Request-Method': 'GET'})
             controller.app.cors_allow_origin = ['http://foo.bar', ]
+            resp = controller.OPTIONS(req)
+            self.assertEqual(200, resp.status_int)
+
+            # With a wildcard character in the middle
+            controller.app.cors_allow_origin = ['http://*.foo', ]
+            req = Request.blank(
+                '/v1/a/c',
+                {'REQUEST_METHOD': 'OPTIONS'},
+                headers={'Origin': 'http://foo.bar',
+                         'Access-Control-Request-Method': 'GET'})
+            resp = controller.OPTIONS(req)
+            self.assertEqual(401, resp.status_int)
+            req = Request.blank(
+                '/v1/a/c',
+                {'REQUEST_METHOD': 'OPTIONS'},
+                headers={'Origin': 'http://bar.foo',
+                         'Access-Control-Request-Method': 'GET'})
             resp = controller.OPTIONS(req)
             self.assertEqual(200, resp.status_int)
 
