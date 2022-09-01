@@ -29,6 +29,7 @@ function install_deps() {
     libjson-c-dev \
     libleveldb-dev \
     liblzo2-dev \
+    librabbitmq-dev \
     libsqlite3-dev \
     libxml2-dev \
     libxslt1-dev \
