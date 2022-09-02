@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import re
 from functools import wraps
 
 from swift.common.utils import public
@@ -41,12 +40,11 @@ def match_cors(pattern, value):
     """
     Match the value of a CORS header against the specified pattern.
     """
-    pattern_parts = pattern.split('*')
+    pattern_parts = pattern.split('*', 1)  # Only one wildcard is authorized
     if len(pattern_parts) == 1:
         return pattern == value
-    # protect all non-alphanumerics (except wildcards) as we keep them as is
-    regex = '^' + '.*'.join([re.escape(p) for p in pattern_parts]) + '$'
-    return re.match(regex, value) is not None
+    return value.startswith(pattern_parts[0]) \
+        and value.endswith(pattern_parts[1])
 
 
 def get_cors(app, conf, req, method, origin):

@@ -152,7 +152,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'bucket_db_read_only': True,
             'check_bucket_owner': True,
             'check_bucket_storage_domain': True,
-            'cors_allow_origin': 'somewhere.com,some.other.where.io',
+            'cors_allow_origin': 'somewhere.com,some.*.where.io',
             'landing_page':
                 'https://docs.openstack.org/swift/latest/s3_compat.html',
             'log_s3api_command': True,

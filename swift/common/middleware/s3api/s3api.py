@@ -153,6 +153,7 @@ from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
+from swift.common.middleware.s3api.controllers.cors import check_cors_rule
 from swift.common.middleware.s3api.etree import Element
 from swift.common.middleware.s3api.exception import NotS3Request, \
     InvalidSubresource
@@ -375,6 +376,7 @@ class S3ApiMiddleware(object):
             allowed_header_elm = Element('AllowedHeader')
             allowed_header_elm.text = '*'
             rule.append(allowed_header_elm)
+            check_cors_rule(rule)
             self.conf.cors_rules.append(rule)
 
         self.conf.log_s3api_command = config_true_value(
