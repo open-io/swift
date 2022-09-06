@@ -44,9 +44,6 @@ class OioIamMiddleware(IamMiddleware):
             logger=self.logger)
 
     def load_rules_for_user(self, account, user):
-        if not (account and user):
-            # No user policy if there is no user
-            return None
         try:
             return self.iam_client.load_merged_user_policies(
                 account, user, use_cache=True)

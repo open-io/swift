@@ -16,7 +16,6 @@
 from fnmatch import fnmatchcase
 from functools import wraps
 
-from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.exception import IAMException
 from swift.common.middleware.s3api.s3response import AccessDenied
 from swift.common.utils import config_auto_int_value, get_logger, tlru_cache
@@ -90,7 +89,6 @@ SUPPORTED_ACTIONS = {
 }
 
 IAM_ACTION = 'swift.iam.action'
-IAM_EXPLICIT_ALLOW = 'swift.iam.explicit_allow'
 IAM_RULES_CALLBACK = 'swift.callback.fetch_iam_rules'
 
 
@@ -376,13 +374,6 @@ def check_iam_access(object_action, bucket_action=None):
             else:
                 action = object_action
 
-            # Maybe ACLs authorized the request.
-            acl_allow = req.environ.get(ACL_EXPLICIT_ALLOW)
-
-            # IAM rules will be checked. We don't know yet if they allow
-            # the request, thus we consider they don't.
-            req.environ[IAM_EXPLICIT_ALLOW] = False
-
             # FIXME(IAM): refine the callback parameters
             matcher = rules_cb(req)
             if matcher:
@@ -397,36 +388,19 @@ def check_iam_access(object_action, bucket_action=None):
                     rsc = None
 
                 effect, sid = matcher(rsc, action, req)
-                # An IAM rule explicitly denies the request.
-                if effect == EXPLICIT_DENY:
-                    matcher.logger.debug("Request explicitly denied by IAM (" +
-                                         sid + ")")
+                # If the user policies do not explicitly allow,
+                # the user access is necessarily denied
+                if not effect == EXPLICIT_ALLOW:
+                    # An IAM rule explicitly denies the request.
+                    if effect == EXPLICIT_DENY:
+                        matcher.logger.debug(
+                            'Request explicitly denied by IAM (%s)', sid)
+                        raise AccessDenied()
+                    matcher.logger.debug(
+                        'Request implicitly denied (no allow statement)')
                     raise AccessDenied()
-                # No IAM rule matched, and ACLs do not allow the request.
-                if effect is None and acl_allow is False:
-                    matcher.logger.debug("Request implicitly denied "
-                                         "(no allow statement)")
-                    raise AccessDenied()
-
-                req.environ[IAM_EXPLICIT_ALLOW] = effect == EXPLICIT_ALLOW
-
-            # If there is no rule for this user, and ACLs did not grant
-            # access rights, don't let anything pass through.
-            elif acl_allow is False:
-                raise AccessDenied()
             # else:
-            #    # acl_allow is None -> ACLs were not checked yet.
-
-            # TODO(FVE): check bucket policy (not implemented ATM)
-            # If the bucket has an owner, but the request's account is
-            # different, deny the request. User policies cannot give access
-            # to other account's buckets.
-            if (acl_allow is None and req.container_name and req.bucket_db
-                    and req.environ[IAM_EXPLICIT_ALLOW]):
-                bkt_owner = req.bucket_db.get_owner(req.container_name)
-                if bkt_owner and bkt_owner != req.account:
-                    # We cannot deny access immediately. Let the ACLs decide.
-                    req.environ[IAM_EXPLICIT_ALLOW] = False
+            #     This is an unauthenticated request
 
             return func(*args, **kwargs)
         return wrapper
@@ -480,16 +454,18 @@ class IamMiddleware(object):
         Load IAM rules for the specified user, then build an IamRulesMatcher
         instance.
         """
-        rules = self.load_rules_for_user(account, user_id)
-        if rules:
-            self.logger.debug("Loading IAM rules for account=%s user_id=%s",
-                              account, user_id)
-            matcher = IamRulesMatcher(rules, logger=self.logger)
-            return matcher
-        else:
-            self.logger.debug("No IAM rule for account=%s user_id=%s",
-                              account, user_id)
+        if not (account and user_id):
+            # No user policy if there is no user
             return None
+        self.logger.debug("Loading IAM rules for account=%s user_id=%s",
+                          account, user_id)
+        rules = self.load_rules_for_user(account, user_id)
+        if not rules:
+            # FIXME(ADU): Will no longer be useful when the account service
+            # still returns a result.
+            rules = {'Statement': []}
+        matcher = IamRulesMatcher(rules, logger=self.logger)
+        return matcher
 
     def rules_callback(self, s3req):
         matcher = self._load_rules_matcher(s3req.account, s3req.user_id)
@@ -521,9 +497,9 @@ class StaticIamMiddleware(IamMiddleware):
                 self.rules = json.load(rules_fd)
 
     def load_rules_for_user(self, account, user_id):
-        if not user_id:
-            return None
         rules = self.rules.get(user_id)
+        if not rules:
+            rules = {'Statement': []}
         return rules
 
 
@@ -532,17 +508,6 @@ def iam_is_enabled(env):
     Check if IAM is enabled for this environment.
     """
     return env.get(IAM_RULES_CALLBACK) is not None
-
-
-def iam_explicit_allow(env):
-    """
-    Tell is IAM rules have already been checked, and allow the request
-    to be executed.
-
-    :returns: True is the request is allowed, False if the request is not
-        explicitly allowed, and None if the rules have not been checked yet.
-    """
-    return env.get(IAM_EXPLICIT_ALLOW)
 
 
 def filter_factory(global_conf, **local_config):

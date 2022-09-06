@@ -52,11 +52,9 @@ Example::
 from swift.common.middleware.s3api.subresource import ACL, Owner, encode_acl
 from swift.common.middleware.s3api.s3response import MissingSecurityHeader, \
     MalformedACLError, UnexpectedContent, AccessDenied
-from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.etree import fromstring, XMLSyntaxError, \
     DocumentInvalid
-from swift.common.middleware.s3api.iam import iam_explicit_allow, \
-    iam_is_enabled
+from swift.common.middleware.s3api.iam import iam_is_enabled
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header
 
@@ -146,20 +144,7 @@ class BaseAclHandler(object):
                                              container, '')
             acl = resp.bucket_acl
 
-        try:
-            acl.check_permission(self.user_id, permission)
-            self.req.environ.setdefault(ACL_EXPLICIT_ALLOW, True)
-        except AccessDenied as exc:
-            # If IAM is disabled and ACLs say no -> deny.
-            # If IAM is enabled, already checked and False -> deny.
-            # If IAM is enabled, but explicit_allow is None -> let the
-            # request handling continue, it will be checked later.
-            if not iam_is_enabled(self.req.environ) or \
-                    iam_explicit_allow(self.req.environ) is False:
-                self.logger.debug('permission denied: %s %s %s %s',
-                                  exc, self.user_id, permission, acl)
-                raise
-            self.req.environ[ACL_EXPLICIT_ALLOW] = False
+        acl.check_permission(self.user_id, permission)
 
         if sw_method == 'HEAD':
             return resp
@@ -225,19 +210,11 @@ class BucketAclHandler(BaseAclHandler):
         req_acl = ACL.from_headers(self.req.headers,
                                    Owner(self.user_id, self.user_id))
 
-        try:
-            if not self.req.environ.get('swift_owner'):
-                raise AccessDenied()
-            self.req.environ.setdefault(ACL_EXPLICIT_ALLOW, True)
-        except AccessDenied:
-            # If IAM is disabled and ACLs say no -> deny.
-            # If IAM is enabled, already checked and False -> deny.
-            # If IAM is enabled, but explicit_allow is None -> let the
-            # request handling continue, it will be checked later.
-            if not iam_is_enabled(self.req.environ) or \
-                    iam_explicit_allow(self.req.environ) is False:
-                raise
-            self.req.environ[ACL_EXPLICIT_ALLOW] = False
+        # If user policies are enabled, let them verify authorization.
+        # Otherwise check that the user is indeed a `swift_owner`.
+        if not iam_is_enabled(self.req.environ) \
+                and not self.req.environ.get('swift_owner'):
+            raise AccessDenied()
 
         # To avoid overwriting the existing bucket's ACL, we send PUT
         # request first before setting the ACL to make sure that the target
@@ -293,19 +270,8 @@ class S3AclHandler(BaseAclHandler):
                                    b_resp.bucket_acl.owner,
                                    o_resp.object_acl.owner)
 
-            try:
-                # Don't change the owner of the resource by PUT acl request.
-                o_resp.object_acl.check_owner(req_acl.owner.id)
-                self.req.environ.setdefault(ACL_EXPLICIT_ALLOW, True)
-            except AccessDenied:
-                # If IAM is disabled and ACLs say no -> deny.
-                # If IAM is enabled, already checked and False -> deny.
-                # If IAM is enabled, but explicit_allow is None -> let the
-                # request handling continue, it will be checked later.
-                if not iam_is_enabled(self.req.environ) or \
-                        iam_explicit_allow(self.req.environ) is False:
-                    raise
-                self.req.environ[ACL_EXPLICIT_ALLOW] = False
+            # Don't change the owner of the resource by PUT acl request.
+            o_resp.object_acl.check_owner(req_acl.owner.id)
 
             for g in req_acl.grants:
                 self.logger.debug(
@@ -324,19 +290,8 @@ class S3AclHandler(BaseAclHandler):
                                    self.req.xml(ACL.max_xml_length),
                                    resp.bucket_acl.owner)
 
-            try:
-                # Don't change the owner of the resource by PUT acl request.
-                resp.bucket_acl.check_owner(req_acl.owner.id)
-                self.req.environ.setdefault(ACL_EXPLICIT_ALLOW, True)
-            except AccessDenied:
-                # If IAM is disabled and ACLs say no -> deny.
-                # If IAM is enabled, already checked and False -> deny.
-                # If IAM is enabled, but explicit_allow is None -> let the
-                # request handling continue, it will be checked later.
-                if not iam_is_enabled(self.req.environ) or \
-                        iam_explicit_allow(self.req.environ) is False:
-                    raise
-                self.req.environ[ACL_EXPLICIT_ALLOW] = False
+            # Don't change the owner of the resource by PUT acl request.
+            resp.bucket_acl.check_owner(req_acl.owner.id)
 
             for g in req_acl.grants:
                 self.logger.debug(

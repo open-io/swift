@@ -145,10 +145,6 @@ class MultiObjectDeleteController(Controller):
         def do_delete(base_req, key, version):
             req = copy.copy(base_req)
             req.environ = copy.copy(base_req.environ)
-            # IAM rules are not checked in the main request,
-            # only the ACLs are already checked.
-            # req.environ[IAM_EXPLICIT_ALLOW] = None
-            # req.environ[ACL_EXPLICIT_ALLOW] = True|False
             req.object_name = str_to_wsgi(key)
             if version:
                 req.params = {'version-id': version, 'symlink': 'get'}

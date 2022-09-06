@@ -25,8 +25,8 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::user1bucket",
-                    "arn:aws:s3:::user1bucket/*"
+                    "arn:aws:s3:::user1bucket*",
+                    "arn:aws:s3:::user1bucket*/*"
                 ]
             },
             {
@@ -38,7 +38,7 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::sharedbucket/user1_*"
+                    "arn:aws:s3:::sharedbucket*/user1_*"
                 ]
             },
             {
@@ -51,29 +51,29 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::sharedbucket",
-                    "arn:aws:s3:::sharedbucket/*"
+                    "arn:aws:s3:::sharedbucket*",
+                    "arn:aws:s3:::sharedbucket*/*"
                 ]
             },
             {
                 "Sid": "NavToUserFolder",
                 "Action": "s3:ListBucket",
                 "Effect": "Allow",
-                "Resource": "arn:aws:s3:::companybucket",
+                "Resource": "arn:aws:s3:::companybucket*",
                 "Condition": {"StringEquals":{"s3:prefix":["", "home/", "home/user1/"]}}
             },
             {
                 "Sid": "UserFolder",
                 "Action": "s3:ListBucket",
                 "Effect": "Allow",
-                "Resource": "arn:aws:s3:::companybucket",
+                "Resource": "arn:aws:s3:::companybucket*",
                 "Condition": {"StringLike":{"s3:prefix":["home/user1/*"]}}
             },
             {
                 "Sid": "UserFolderObjects",
                 "Action": ["s3:*"],
                 "Effect": "Allow",
-                "Resource": ["arn:aws:s3:::companybucket/home/user1/*"]
+                "Resource": ["arn:aws:s3:::companybucket*/home/user1/*"]
             },
             {
                 "Sid": "objectlockconfiguration",
@@ -84,8 +84,8 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::shared-bucket-config",
-                    "arn:aws:s3:::shared-bucket-config/*"
+                    "arn:aws:s3:::shared-bucket-config*",
+                    "arn:aws:s3:::shared-bucket-config*/*"
                 ]
             },
             {
@@ -98,8 +98,8 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::shared-bucket-hold",
-                    "arn:aws:s3:::shared-bucket-hold/obj*"
+                    "arn:aws:s3:::shared-bucket-hold*",
+                    "arn:aws:s3:::shared-bucket-hold*/obj*"
                 ]
             },
             {
@@ -112,8 +112,8 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::shared-bucket-retention",
-                    "arn:aws:s3:::shared-bucket-retention/obj-retention*"
+                    "arn:aws:s3:::shared-bucket-retention*",
+                    "arn:aws:s3:::shared-bucket-retention*/obj-retention*"
                 ]
             },
             {
@@ -125,8 +125,8 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::shared-bucket-bypass",
-                    "arn:aws:s3:::shared-bucket-bypass/obj-delete*"
+                    "arn:aws:s3:::shared-bucket-bypass*",
+                    "arn:aws:s3:::shared-bucket-bypass*/obj-delete*"
                 ]
             }
         ]
@@ -157,8 +157,8 @@
                 ],
                 "Effect": "Allow",
                 "Resource": [
-                    "arn:aws:s3:::sharedbucket",
-                    "arn:aws:s3:::sharedbucket/*"
+                    "arn:aws:s3:::sharedbucket*",
+                    "arn:aws:s3:::sharedbucket*/*"
                 ]
             },
             {

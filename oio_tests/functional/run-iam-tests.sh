@@ -17,7 +17,7 @@ RULES_FILE="$PWD/etc/iam-rules-sample.json"
 sed -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" etc/s3-iam.cfg.in > etc/s3-iam.cfg
 run_functional_test s3-iam.cfg \
   s3-forced-params.py \
-  s3-iam.sh \
+  s3-iam.py \
   s3-tagging.sh \
   s3-versioning.py
 
@@ -36,7 +36,8 @@ do
 done
 
 sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-iam.cfg.in > etc/s3-iam.cfg
-run_functional_test s3-iam.cfg s3-iam.sh \
+run_functional_test s3-iam.cfg \
+  s3-iam.py \
   s3-object-lock.sh
 
 # TODO(FVE): gridinit_cmd stop
