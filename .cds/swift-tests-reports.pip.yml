@@ -67,9 +67,9 @@ jobs:
           - cd {{.cds.workspace}}
           - jq -s '.[0] * .[1]' coverage-report-py.json test-report-py.json > coverage-summary.json
           - worker upload --tag='{{.cds.version}}' coverage-summary.json
-          - jq -r '"obsto_kpi_dev_coverage_line_total{language=\"python\",repository=\"oio-sds\"} \(.coverage.Python.line_total)"' coverage-report-py.json >coverage-summary.openmetrics
-          - jq -r '"obsto_kpi_dev_coverage_line_percentage{language=\"python\",repository=\"oio-sds\"} \(.coverage.Python.line_percent)"' coverage-report-py.json >>coverage-summary.openmetrics
-          - jq -r '"obsto_kpi_dev_tests_total{language=\"python\",repository=\"oio-sds\"} \(.tests.Python.total)"' test-report-py.json >>coverage-summary.openmetrics
+          - jq -r '"obsto_kpi_dev_coverage_line_total{language=\"python\",repository=\"swift\"} \(.coverage.Python.line_total)"' coverage-report-py.json >coverage-summary.openmetrics
+          - jq -r '"obsto_kpi_dev_coverage_line_percentage{language=\"python\",repository=\"swift\"} \(.coverage.Python.line_percent)"' coverage-report-py.json >>coverage-summary.openmetrics
+          - jq -r '"obsto_kpi_dev_tests_total{language=\"python\",repository=\"swift\"} \(.tests.Python.total)"' test-report-py.json >>coverage-summary.openmetrics
           - worker upload --tag='{{.cds.version}}' coverage-summary.openmetrics
           - mkdir coverage
           - mv coverage-report-py coverage-summary.json coverage-summary.openmetrics coverage/
