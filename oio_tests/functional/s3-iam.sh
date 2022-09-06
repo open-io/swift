@@ -36,11 +36,11 @@ test_create_bucket() {
   # user1 (account2) can create bucket with prefix user1
   ${AWSA2U1} s3 mb "s3://${A2U1_BUCKET}"
   ACL=$(${AWSA2U1} s3api get-bucket-acl --bucket "${A2U1_BUCKET}")
-  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "account2:user1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "account2" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "account2" ]]
   [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "account2:user1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "account2" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "account2" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 }
@@ -52,32 +52,32 @@ test_bucket_acls() {
   # FIXME(ADU): To perform these operations, the user should be explicitly
   # allowed by user policies.
   ACL=$(${AWSA1U1} s3api get-bucket-acl --bucket "${A1U1_BUCKET}")
-  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:demo" ]]
-  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo:demo" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
   ${AWSA1U1} s3api put-bucket-acl --bucket $A1U1_BUCKET --acl public-read
   ACL=$(${AWSA1U1} s3api get-bucket-acl --bucket "${A1U1_BUCKET}")
-  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:demo" ]]
-  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "2" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "Group" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.URI)" == "http://acs.amazonaws.com/groups/global/AllUsers" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "READ" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.DisplayName)" == "demo:demo" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.Type)" == "CanonicalUser" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[1].Permission)" == "FULL_CONTROL" ]]
   ${AWSA1U1} s3api put-bucket-acl --bucket $A1U1_BUCKET --acl private
   ACL=$(${AWSA1U1} s3api get-bucket-acl --bucket "${A1U1_BUCKET}")
-  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:demo" ]]
-  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo:demo" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 
@@ -122,22 +122,22 @@ test_create_objects() {
   ${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user2/magic
   ${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user1/magic
   ACL=$(${AWSA1U1} s3api get-object-acl --bucket "${COMPANY_BUCKET}" --key home/user1/magic)
-  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:user1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo:user1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 
   # user1 (account2) can create objects in its own bucket
   ${AWSA2U1} s3 cp /etc/magic s3://${A2U1_BUCKET}/magic
   ACL=$(${AWSA2U1} s3api get-object-acl --bucket "${A2U1_BUCKET}" --key magic)
-  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "account2:user1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "account2" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "account2" ]]
   [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "account2:user1" ]]
-  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "account2" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "account2" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
   [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 }
@@ -264,7 +264,7 @@ test_delete_objects() {
   # allowed by user policies.
   OUT=$(${AWSA1U1}  s3api delete-objects --bucket ${SHARED_BUCKET} --delete '{"Objects": [{"Key": "user1_1"}, {"Key": "demo_1"}, {"Key": "test"}, {"Key": "user1_2"}]}')
   [ "$(echo $OUT | jq '.Deleted | length')" -eq 4 ]
-  ${AWSA1ADM} s3api put-bucket-acl --grant-write id=demo:user1 --bucket ${SHARED_BUCKET}
+  ${AWSA1ADM} s3api put-bucket-acl --grant-write id=demo --bucket ${SHARED_BUCKET}
   # now, user1 (demo) can delete all objects in the shared bucket
   OUT=$(${AWSA1U1}  s3api delete-objects --bucket ${SHARED_BUCKET} --delete '{"Objects": [{"Key": "user1_1"}, {"Key": "demo_1"}, {"Key": "test"}, {"Key": "user1_2"}]}')
   [ "$(echo $OUT | jq '.Deleted | length')" -eq 4 ]

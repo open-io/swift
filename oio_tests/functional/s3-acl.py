@@ -26,10 +26,10 @@ A2ADM = 'a2adm'
 A2U1 = 'a2u1'
 
 NAME_TO_CUSERID = {
-    A1ADM: 'demo:demo',
-    A1U1: 'demo:user1',
-    A2ADM: 'account2:admin',
-    A2U1: 'account2:user1'
+    A1ADM: 'demo',
+    A1U1: 'demo',
+    A2ADM: 'account2',
+    A2U1: 'account2'
 }
 
 

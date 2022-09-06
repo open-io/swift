@@ -15,6 +15,8 @@
 
 import functools
 
+from swift.common.middleware.s3api.subresource import \
+    user_id_to_canonical_user_id
 from swift.common.swob import bytes_to_wsgi
 from swift.common.utils import json, public, last_modified_date_to_timestamp
 
@@ -65,9 +67,10 @@ class ServiceController(Controller):
         # work without that) so we use something bogus.
         elem = Element('ListAllMyBucketsResult')
 
+        canonical_user_id = user_id_to_canonical_user_id(req.user_id)
         owner = SubElement(elem, 'Owner')
-        SubElement(owner, 'ID').text = req.user_id
-        SubElement(owner, 'DisplayName').text = req.user_id
+        SubElement(owner, 'ID').text = canonical_user_id
+        SubElement(owner, 'DisplayName').text = canonical_user_id
 
         check_each_bucket = (
             (self.conf.s3_acl and self.conf.check_bucket_owner)

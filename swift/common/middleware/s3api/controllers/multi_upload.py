@@ -69,6 +69,8 @@ import time
 import six
 
 from swift.common import constraints
+from swift.common.middleware.s3api.subresource import \
+    user_id_to_canonical_user_id
 from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, \
     str_to_wsgi, wsgi_to_str
 from swift.common.utils import json, public, reiterate, md5, list_from_csv, \
@@ -523,6 +525,7 @@ class UploadsController(Controller):
         SubElement(result_elem, 'IsTruncated').text = \
             'true' if truncated else 'false'
 
+        canonical_user_id = user_id_to_canonical_user_id(req.user_id)
         # TODO: don't show uploads which are initiated before this bucket is
         # created.
         for u in uploads:
@@ -533,11 +536,11 @@ class UploadsController(Controller):
             SubElement(upload_elem, 'Key').text = name
             SubElement(upload_elem, 'UploadId').text = u['upload_id']
             initiator_elem = SubElement(upload_elem, 'Initiator')
-            SubElement(initiator_elem, 'ID').text = req.user_id
-            SubElement(initiator_elem, 'DisplayName').text = req.user_id
+            SubElement(initiator_elem, 'ID').text = canonical_user_id
+            SubElement(initiator_elem, 'DisplayName').text = canonical_user_id
             owner_elem = SubElement(upload_elem, 'Owner')
-            SubElement(owner_elem, 'ID').text = req.user_id
-            SubElement(owner_elem, 'DisplayName').text = req.user_id
+            SubElement(owner_elem, 'ID').text = canonical_user_id
+            SubElement(owner_elem, 'DisplayName').text = canonical_user_id
             SubElement(upload_elem, 'StorageClass').text = \
                 req.storage_policy_to_class(u['storage_policy'])
             SubElement(upload_elem, 'Initiated').text = \
@@ -722,12 +725,13 @@ class UploadController(Controller):
         SubElement(result_elem, 'Key').text = object_name
         SubElement(result_elem, 'UploadId').text = upload_id
 
+        canonical_user_id = user_id_to_canonical_user_id(req.user_id)
         initiator_elem = SubElement(result_elem, 'Initiator')
-        SubElement(initiator_elem, 'ID').text = req.user_id
-        SubElement(initiator_elem, 'DisplayName').text = req.user_id
+        SubElement(initiator_elem, 'ID').text = canonical_user_id
+        SubElement(initiator_elem, 'DisplayName').text = canonical_user_id
         owner_elem = SubElement(result_elem, 'Owner')
-        SubElement(owner_elem, 'ID').text = req.user_id
-        SubElement(owner_elem, 'DisplayName').text = req.user_id
+        SubElement(owner_elem, 'ID').text = canonical_user_id
+        SubElement(owner_elem, 'DisplayName').text = canonical_user_id
 
         SubElement(result_elem, 'StorageClass').text = storage_class
         SubElement(result_elem, 'PartNumberMarker').text = str(part_num_marker)

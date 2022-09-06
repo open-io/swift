@@ -217,13 +217,13 @@ class User(Grantee):
     type = 'CanonicalUser'
 
     def __init__(self, name):
-        self.canonical_user_id = user_id_to_canonical_user_id(name)
+        name = user_id_to_canonical_user_id(name)
         self.id = name
         self.display_name = name
 
     def __contains__(self, key):
-        canonical_user_id = user_id_to_canonical_user_id(key)
-        return canonical_user_id == self.canonical_user_id
+        key = user_id_to_canonical_user_id(key)
+        return key == self.id
 
     def elem(self):
         elem = Element('Grantee', nsmap={'xsi': XMLNS_XSI})
@@ -248,7 +248,10 @@ class Owner(object):
     def __init__(self, id, name):
         if not (name is None or isinstance(name, six.string_types)):
             raise TypeError('name must be a string or None')
-        self.canonical_user_id = user_id_to_canonical_user_id(id)
+        _id = id
+        id = user_id_to_canonical_user_id(id)
+        if _id == name:
+            name = id
         self.id = id
         self.name = name
 
@@ -361,10 +364,7 @@ class LogDelivery(Group):
     uri = 'http://acs.amazonaws.com/groups/s3/LogDelivery'
 
     def __contains__(self, key):
-        if ':' in key:
-            tenant, user = key.split(':', 1)
-        else:
-            user = key
+        user = key.split(':', 1)[-1]
         return user == LOG_DELIVERY_USER
 
 
@@ -496,8 +496,8 @@ class ACL(object):
                 return
             raise AccessDenied()
 
-        canonical_user_id = user_id_to_canonical_user_id(user_id)
-        if canonical_user_id != self.owner.canonical_user_id:
+        user_id = user_id_to_canonical_user_id(user_id)
+        if user_id != self.owner.id:
             raise AccessDenied()
 
     def check_permission(self, user_id, permission):

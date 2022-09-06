@@ -295,11 +295,11 @@ class BaseTestS3ApiSubresource(unittest.TestCase):
         self.assertEqual('test:tester', header_value['Owner'])
         self.assertEqual(len(header_value['Grant']), 1)
 
-    def test_encode_acl_many_grant(self):
+    def test_encode_acl_many_grants(self):
         headers = {}
         users = []
         for i in range(0, 99):
-            users.append('id=test:tester%s' % str(i))
+            users.append('id=test:tester%d' % i)
         users = ','.join(users)
         headers['x-amz-grant-read'] = users
         acl = ACL.from_headers(headers, Owner('test:tester', 'test:tester'))
@@ -312,6 +312,40 @@ class BaseTestS3ApiSubresource(unittest.TestCase):
         self.assertTrue('Grant' in header_value)
         self.assertEqual('test:tester', header_value['Owner'])
         self.assertEqual(len(header_value['Grant']), 99)
+
+    def test_encode_decode_acl_container(self):
+        acl = ACLPrivate(Owner(id='test:tester',
+                               name='test:tester'))
+        acp = encode_acl('container', acl)
+        header_value = json.loads(acp[sysmeta_header('container', 'acl')])
+        self.assertTrue('Owner' in header_value)
+        self.assertTrue('Grant' in header_value)
+        self.assertEqual('test:tester', header_value['Owner'])
+        self.assertEqual(len(header_value['Grant']), 1)
+
+        acl = decode_acl('container', acp, self.allow_no_owner)
+        self.assertEqual(type(acl), ACL)
+        self.assertEqual(acl.owner.id, 'test:tester')
+        self.assertEqual(len(acl.grants), 1)
+        self.assertEqual(str(acl.grants[0].grantee), 'test:tester')
+        self.assertEqual(acl.grants[0].permission, 'FULL_CONTROL')
+
+    def test_encode_decode_acl_object(self):
+        acl = ACLPrivate(Owner(id='test:tester',
+                               name='test:tester'))
+        acp = encode_acl('object', acl)
+        header_value = json.loads(acp[sysmeta_header('object', 'acl')])
+        self.assertTrue('Owner' in header_value)
+        self.assertTrue('Grant' in header_value)
+        self.assertEqual('test:tester', header_value['Owner'])
+        self.assertEqual(len(header_value['Grant']), 1)
+
+        acl = decode_acl('object', acp, self.allow_no_owner)
+        self.assertEqual(type(acl), ACL)
+        self.assertEqual(acl.owner.id, 'test:tester')
+        self.assertEqual(len(acl.grants), 1)
+        self.assertEqual(str(acl.grants[0].grantee), 'test:tester')
+        self.assertEqual(acl.grants[0].permission, 'FULL_CONTROL')
 
     def test_from_headers_x_amz_acl(self):
         canned_acls = ['public-read', 'public-read-write',

@@ -177,7 +177,7 @@ class TestBucketLogging(unittest.TestCase):
         log_entry = self.journal_reader.next()
         self.assertIsNotNone(log_entry)
         log_message = log_entry.data['MESSAGE']
-        regex = r'^demo:demo ' + self.bucket + r' \[[0-9]{2}\/[A-Za-z]{3}' \
+        regex = r'^demo ' + self.bucket + r' \[[0-9]{2}\/[A-Za-z]{3}' \
             + r'\/[0-9]{4}:[0-9]{2}:[0-9]{2}:[0-9]{2} \+0000\]' \
             + r' 127\.0\.0\.1 demo:demo tx[0-9a-f]{21}-[0-9a-f]{10} ' \
             + re.escape(operation) + r' ' + re.escape(key) \

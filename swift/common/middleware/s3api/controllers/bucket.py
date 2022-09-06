@@ -23,6 +23,8 @@ from functools import partial
 
 from swift.common import swob
 from swift.common.http import HTTP_OK
+from swift.common.middleware.s3api.subresource import \
+    user_id_to_canonical_user_id
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.utils import json, public, config_true_value, Timestamp
@@ -351,8 +353,12 @@ class BucketController(Controller):
             SubElement(contents, 'Size').text = str(o['bytes'])
         if fetch_owner or listing_type != 'version-2':
             owner = SubElement(contents, 'Owner')
-            SubElement(owner, 'ID').text = req.user_id
-            SubElement(owner, 'DisplayName').text = req.user_id
+            # FIXME(ADU): To add the owner, we should use the properties of
+            # the objects and check if the user has the right to know
+            # this information
+            canonical_user_id = user_id_to_canonical_user_id(req.user_id)
+            SubElement(owner, 'ID').text = canonical_user_id
+            SubElement(owner, 'DisplayName').text = canonical_user_id
         if contents.tag != 'DeleteMarker':
             SubElement(contents, 'StorageClass').text = \
                 req.storage_policy_to_class(o.get('storage_policy'))
