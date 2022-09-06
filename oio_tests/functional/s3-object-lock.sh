@@ -20,15 +20,15 @@ test_object_lock_configuration_permission() {
   ${AWSA1ADM} s3api create-bucket --bucket ${NOT_SHARED_BUCKET} --object-lock-enabled-for-bucket
   ${AWSA1ADM} s3api create-bucket --bucket ${SHARED_BUCKET} --object-lock-enabled-for-bucket
 
-  out=$(${AWSA1U1} s3api put-object-lock-configuration --bucket ${NOT_SHARED_BUCKET} --object-lock-configuration '{"ObjectLockEnabled": "Enabled","Rule": {"DefaultRetention": {"Mode": "GOVERNANCE", "Days": 1}}}' 2>&1 | tail -n 1)
-  echo "$out" | grep "Access Denied"
-  out=$(${AWSA1U1} s3api get-object-lock-configuration --bucket ${NOT_SHARED_BUCKET} 2>&1 | tail -n 1)
-  echo "$out" | grep "Access Denied"
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3api put-object-lock-configuration --bucket ${NOT_SHARED_BUCKET} --object-lock-configuration '{"ObjectLockEnabled": "Enabled","Rule": {"DefaultRetention": {"Mode": "GOVERNANCE", "Days": 1}}}'
+  ${AWSA1U1} s3api get-object-lock-configuration --bucket ${NOT_SHARED_BUCKET}
 
-  out=$(${AWSA1U1} s3api put-object-lock-configuration --bucket ${SHARED_BUCKET} --object-lock-configuration '{"ObjectLockEnabled": "Enabled","Rule": {"DefaultRetention": {"Mode": "GOVERNANCE", "Days": 1}}}')
-  echo $out |  grep -v 'Access Denied'
-  out=$(${AWSA1U1} s3api get-object-lock-configuration --bucket ${SHARED_BUCKET})
-  echo $out |  grep -v 'Access Denied'
+  ${AWSA1U1} s3api put-object-lock-configuration --bucket ${SHARED_BUCKET} --object-lock-configuration '{"ObjectLockEnabled": "Enabled","Rule": {"DefaultRetention": {"Mode": "GOVERNANCE", "Days": 1}}}'
+  ${AWSA1U1} s3api get-object-lock-configuration --bucket ${SHARED_BUCKET}
 
   ${AWSA1ADM} s3 rb --force s3://${NOT_SHARED_BUCKET}
   ${AWSA1ADM} s3 rb --force s3://${SHARED_BUCKET}
@@ -61,14 +61,15 @@ test_object_lock_legal_hold_permission() {
   OUT=$(${AWSA1ADM} s3 cp /etc/magic s3://${NOT_SHARED_BUCKET}/obj1 2>&1)
   OUT=$(${AWSA1ADM} s3 cp /etc/magic s3://${SHARED_BUCKET}/obj1 2>&1)
 
-  out=$(${AWSA1U1} s3api put-object-legal-hold --bucket ${NOT_SHARED_BUCKET} --key obj1 --legal-hold '{"Status": "ON"}' 2>&1 | tail -1)
-  echo $out | grep 'Access Denied'
-  out=$(${AWSA1U1} s3api put-object-legal-hold --bucket ${SHARED_BUCKET} --key obj1 --legal-hold '{"Status": "ON"}' 2>&1 | tail -1)
-  echo $out | grep -v 'Access Denied'
-  out=$(${AWSA1U1} s3api get-object-legal-hold --bucket ${NOT_SHARED_BUCKET} --key obj1 2>&1 | tail -1)
-  echo $out | grep 'Access Denied'
-  out=$(${AWSA1U1} s3api get-object-legal-hold --bucket ${SHARED_BUCKET} --key obj1 2>&1 | tail -1)
-  echo $out | grep -v 'Access Denied'
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3api put-object-legal-hold --bucket ${NOT_SHARED_BUCKET} --key obj1 --legal-hold '{"Status": "ON"}'
+  ${AWSA1U1} s3api get-object-legal-hold --bucket ${NOT_SHARED_BUCKET} --key obj1
+
+  ${AWSA1U1} s3api put-object-legal-hold --bucket ${SHARED_BUCKET} --key obj1 --legal-hold '{"Status": "ON"}'
+  ${AWSA1U1} s3api get-object-legal-hold --bucket ${SHARED_BUCKET} --key obj1
 }
 
 test_object_lock_retention_permission() {
@@ -88,16 +89,15 @@ test_object_lock_retention_permission() {
   OUT=$(${AWSA1ADM} s3 cp /etc/magic s3://${NOT_SHARED_BUCKET}/obj-retention1 2>&1)
   OUT=$(${AWSA1ADM} s3 cp /etc/magic s3://${SHARED_BUCKET}/obj-retention1 2>&1)
 
-  out=$(${AWSA1U1} s3api put-object-retention --bucket ${NOT_SHARED_BUCKET} --key obj-retention1 --retention '{ "Mode": "GOVERNANCE", "RetainUntilDate": "2030-05-29T08:33:01.00Z" }' 2>&1 | tail -n 1)
-  echo $out | grep 'Access Denied'
-  out=$(${AWSA1U1} s3api put-object-retention --bucket ${SHARED_BUCKET} --key obj-retention1 --retention '{ "Mode": "GOVERNANCE", "RetainUntilDate": "2030-05-29T08:33:01.00Z" }' 2>&1 | tail -n 1)
-  echo $out | grep -v 'Access Denied'
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3api put-object-retention --bucket ${NOT_SHARED_BUCKET} --key obj-retention1 --retention '{ "Mode": "GOVERNANCE", "RetainUntilDate": "2030-05-29T08:33:01.00Z" }'
+  ${AWSA1U1} s3api get-object-retention --bucket ${NOT_SHARED_BUCKET} --key obj-retention1
 
-  out=$(${AWSA1U1} s3api get-object-retention --bucket ${NOT_SHARED_BUCKET} --key obj-retention1 2>&1 | tail -n 1)
-  echo $out | grep 'Access Denied'
-  out=$(${AWSA1U1} s3api get-object-retention --bucket ${SHARED_BUCKET} --key obj-retention1 2>&1 | tail -n 1)
-  echo $out | grep -v 'Access Denied'
-
+  ${AWSA1U1} s3api put-object-retention --bucket ${SHARED_BUCKET} --key obj-retention1 --retention '{ "Mode": "GOVERNANCE", "RetainUntilDate": "2030-05-29T08:33:01.00Z" }'
+  ${AWSA1U1} s3api get-object-retention --bucket ${SHARED_BUCKET} --key obj-retention1
 }
 
 test_object_lock_bypass_governance_permission() {
@@ -124,12 +124,15 @@ test_object_lock_bypass_governance_permission() {
   not_shared_versions=$(${AWSA1ADM} s3api list-object-versions --bucket ${NOT_SHARED_BUCKET}  --output=json --query='{Objects: *[].{Key:Key,VersionId:VersionId}}')
   shared_versions=$(${AWSA1ADM} s3api list-object-versions --bucket ${SHARED_BUCKET}  --output=json --query='{Objects: *[].{Key:Key,VersionId:VersionId}}')
 
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
   version_not_shared=$(echo $not_shared_versions | grep -oP "[0-9\.]*\.[0-9]*")
+  ${AWSA1U1} s3api delete-object --bucket ${NOT_SHARED_BUCKET} --key obj-delete-bypass --version-id "${version_not_shared}" --bypass-governance-retention
+
   version_shared=$(echo $shared_versions | grep -oP "[0-9\.]*\.[0-9]*")
-  OUT=$(${AWSA1U1} s3api delete-object --bucket ${NOT_SHARED_BUCKET} --key obj-delete-bypass --version-id "${version_not_shared}" --bypass-governance-retention 2>&1 | tail -n 1)
-  echo $OUT | grep 'Access Denied'
-  OUT=$(${AWSA1U1} s3api delete-object --bucket ${SHARED_BUCKET} --key obj-delete-bypass --version-id $version_shared --bypass-governance-retention 2>&1 | tail -n 1)
-  echo $OUT | grep -v 'Access Denied'
+  ${AWSA1U1} s3api delete-object --bucket ${SHARED_BUCKET} --key obj-delete-bypass --version-id $version_shared --bypass-governance-retention
 }
 
 test_object_lock_configuration_permission

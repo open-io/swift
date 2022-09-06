@@ -28,7 +28,9 @@ from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.middleware.s3api.exception import InvalidSubresource
 
 
-class TestS3ApiSubresource(unittest.TestCase):
+class BaseTestS3ApiSubresource(unittest.TestCase):
+
+    __test__ = False
 
     def setUp(self):
         self.s3_acl = True
@@ -55,6 +57,7 @@ class TestS3ApiSubresource(unittest.TestCase):
 
         self.assertTrue('test:tester' in grantee)
         self.assertTrue('test:tester2' in grantee)
+        self.assertTrue(None in grantee)  # Unauthenticated user
         uri = 'http://acs.amazonaws.com/groups/global/AllUsers'
         self.assertEqual(grantee.elem().find('./URI').text, uri)
 
@@ -362,6 +365,11 @@ class TestS3ApiSubresource(unittest.TestCase):
         grantee = Grantee()
         func = lambda: '' in grantee
         self.assertRaises(S3NotImplemented, func)
+
+
+class TestS3ApiSubresource(BaseTestS3ApiSubresource):
+
+    __test__ = True
 
 
 if __name__ == '__main__':

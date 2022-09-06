@@ -43,6 +43,10 @@ utils.PRECISION = OIO_PRECISION
 utils.INV_PRECISION = round(1 / utils.PRECISION)
 utils.MAX_RAW_TIMESTAMP = (10000000000 * utils.INV_PRECISION) - 1
 
+# OVHcloud wants to be compatible with the S3 standard,
+# so S3 ACLs should only grant rights to another account.
+utils.REAL_S3_ACL = True
+
 orig_run_server = wsgi.run_server
 
 

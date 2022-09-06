@@ -45,7 +45,7 @@ from functools import partial
 
 import six
 
-from swift.common.utils import json
+from swift.common.utils import json, REAL_S3_ACL
 
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     MalformedACLError, S3NotImplemented, InvalidRequest, AccessDenied
@@ -132,6 +132,12 @@ def decode_acl(resource, headers, allow_no_owner):
         raise InvalidSubresource((resource, 'acl', value), e)
 
 
+def user_id_to_canonical_user_id(user_id):
+    if REAL_S3_ACL and user_id:
+        return user_id.split(':', 1)[0]
+    return user_id
+
+
 class Grantee(object):
     """
     Base class for grantee.
@@ -211,11 +217,13 @@ class User(Grantee):
     type = 'CanonicalUser'
 
     def __init__(self, name):
+        self.canonical_user_id = user_id_to_canonical_user_id(name)
         self.id = name
         self.display_name = name
 
     def __contains__(self, key):
-        return key == self.id
+        canonical_user_id = user_id_to_canonical_user_id(key)
+        return canonical_user_id == self.canonical_user_id
 
     def elem(self):
         elem = Element('Grantee', nsmap={'xsi': XMLNS_XSI})
@@ -238,9 +246,10 @@ class Owner(object):
     Owner class for S3 accounts
     """
     def __init__(self, id, name):
-        self.id = id
         if not (name is None or isinstance(name, six.string_types)):
             raise TypeError('name must be a string or None')
+        self.canonical_user_id = user_id_to_canonical_user_id(id)
+        self.id = id
         self.name = name
 
 
@@ -487,7 +496,8 @@ class ACL(object):
                 return
             raise AccessDenied()
 
-        if user_id != self.owner.id:
+        canonical_user_id = user_id_to_canonical_user_id(user_id)
+        if canonical_user_id != self.owner.canonical_user_id:
             raise AccessDenied()
 
     def check_permission(self, user_id, permission):

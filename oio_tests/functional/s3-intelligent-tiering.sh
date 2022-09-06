@@ -45,23 +45,20 @@ test_create_bucket() {
 }
 
 test_create_object() {
-  # user1 cannot create any object in the shared bucket
-  # (not the owner and no IAM rule to create object 'magic')
-  OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
-
-  # user2 cannot create objects (no permission)
-  OUT=$(${AWSA1U2} s3 cp /etc/magic  s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
-
-  if [ "$WITH_IAM" != true ]; then
-    # Give full control to user1
-    ${AWSA1ADM} s3api put-bucket-acl --grant-full-control "id=demo:user1" --bucket ${SHARED_BUCKET}
-  fi
-
-  # user1 has now full control or it can create objects prefixed by its user name
-  ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic
+  # user1 can create an object in the shared bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic
   ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic2
+
+  # user2 can create objects
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U2} s3 cp /etc/magic  s3://${SHARED_BUCKET}/user2_magic
 
   # admin can create any object in his bucket or using FullAccess IAM rules
   ${AWSA1ADM} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic
@@ -76,27 +73,38 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U1} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 10)
   echo "$OUT" | grep "user1_magic"
 
-  # user2 cannot list objects (no permission)
-  OUT=$(${AWSA1U2} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user2 can list objects
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U2} s3 ls s3://${SHARED_BUCKET}
 
   # user1 can delete object in the bucket before archiving
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic2
 
-  # user2 cannot delete object in the bucket before archiving (no permission)
-  OUT=$(${AWSA1U2} s3 rm s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user2 can delete object in the bucket before archiving
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U2} s3 rm s3://${SHARED_BUCKET}/magic
 
   # Ask for ARCHIVE operation
   ${AWSA1U1} s3api put-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid \
     --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}"
 
-  # user2 cannot ask for ARCHIVE operation (no permission)
+  # user2 can ask for ARCHIVE operation,
+  # but archiving has already been triggered
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
   OUT=$(${AWSA1U2} s3api put-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid \
     --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}" 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  echo "$OUT" | grep "BadRequest"
 
   # Check if RabbitMQ HTTP API port is open
   #   (should be on CDS, eventually in dev env).
@@ -115,7 +123,7 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic2 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
-  # user2 still cannot create (no permission)
+  # user2 cannot create anymore (Intelligent-tiering deny)
   OUT=$(${AWSA1U2} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic2 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
@@ -123,7 +131,7 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U1} s3 cp s3://${SHARED_BUCKET}/user1_magic "${TEMPDIR}/user1_magic" 2>&1 | tail -n 1)
   echo "$OUT" | grep "Forbidden"
 
-  # user2 still cannot read any object in the bucket (no permission)
+  # user2 cannot read any object in the bucket (Intelligent-tiering deny)
   OUT=$(${AWSA1U2} s3 cp s3://${SHARED_BUCKET}/user1_magic "${TEMPDIR}/user1_magic" 2>&1 | tail -n 1)
   echo "$OUT" | grep "Forbidden"
 
@@ -131,40 +139,33 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
-  # user2 still cannot delete any object in the bucket (no permission)
+  # user2 cannot delete any object in the bucket (Intelligent-tiering deny)
   OUT=$(${AWSA1U2} s3 rm s3://${SHARED_BUCKET}/user1_magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
-  # user1 can list its objects
+  # user1 can list the objects
   OUT=$(${AWSA1U1} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 10)
-  echo "$OUT" | grep "user1_magic"
+  echo "$OUT" | grep "user2_magic"
 
-  # user2 still cannoy list objects
+  # user2 can list the objects
   OUT=$(${AWSA1U2} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 10)
-  echo "$OUT" | grep "AccessDenied"
+  echo "$OUT" | grep "user2_magic"
 
-  if [ "$WITH_IAM" == true ]; then
-    # user1 can fetch the bucket intelligent-tiering-configuration
-    # and the bucket status
-    OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
-      --bucket ${SHARED_BUCKET} --id myid 2>&1)
-  else
-    # user1 cannot fetch the bucket intelligent-tiering-configuration
-    # and the bucket status because it's not a admin user
-    OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
-      --bucket ${SHARED_BUCKET} --id myid 2>&1 | tail -n 1)
-    echo "$OUT" | grep "AccessDenied"
-    OUT=$(${AWSA1ADM} s3api get-bucket-intelligent-tiering-configuration \
-      --bucket ${SHARED_BUCKET} --id myid 2>&1)
-  fi
+  # user1 can fetch the bucket intelligent-tiering-configuration
+  # and the bucket status
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
+    --bucket ${SHARED_BUCKET} --id myid 2>&1)
   echo $OUT | grep "\"Status\": \"Locked\""
   echo $OUT | grep "\"AccessTier\": \"OVH_ARCHIVE\""
 
-  # user2 cannot fetch the bucket intelligent-tiering-configuration
-  # and the bucket status (no permission)
-  OUT=$(${AWSA1U2} s3api get-bucket-intelligent-tiering-configuration \
-    --bucket ${SHARED_BUCKET} --id myid 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user2 can fetch the bucket intelligent-tiering-configuration
+  # and the bucket status
+  ${AWSA1U2} s3api get-bucket-intelligent-tiering-configuration \
+    --bucket ${SHARED_BUCKET} --id myid
 }
 
 test_clean() {
@@ -176,15 +177,17 @@ test_clean() {
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic
   # admin can delete any object
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/magic
+  ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/user2_magic
 
   openio --account AUTH_demo container set ${SHARED_BUCKET} \
     --property X-Container-Sysmeta-S3Api-Archiving-Status="Flushed"
 
-  # user1 cannot delete buckets (no IAM rule to delete bucket)
-  OUT=$(${AWSA1U1} s3 rb s3://${SHARED_BUCKET} 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
-  # admin can delete buckets
-  ${AWSA1ADM} s3 rb s3://$SHARED_BUCKET
+  # user1 can delete buckets
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3 rb s3://${SHARED_BUCKET}
 }
 
 test_create_bucket

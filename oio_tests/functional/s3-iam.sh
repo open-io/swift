@@ -36,17 +36,50 @@ test_create_bucket() {
   # user1 (account2) can create bucket with prefix user1
   ${AWSA2U1} s3 mb "s3://${A2U1_BUCKET}"
   ACL=$(${AWSA2U1} s3api get-bucket-acl --bucket "${A2U1_BUCKET}")
-  echo $ACL | jq -r .Owner | grep "account2:user1"
-  echo $ACL | jq -r .Grants | grep "account2:user1"
-  echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 }
 
 test_bucket_acls() {
-  # user1 (demo) cannot set or read bucket ACLs
-  OUT=$(${AWSA1U1} s3api get-bucket-acl --bucket $A1U1_BUCKET 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
-  OUT=$(${AWSA1U1} s3api put-bucket-acl --bucket $A1U1_BUCKET --acl public-read 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can set or read bucket ACLs.
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ACL=$(${AWSA1U1} s3api get-bucket-acl --bucket "${A1U1_BUCKET}")
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
+  ${AWSA1U1} s3api put-bucket-acl --bucket $A1U1_BUCKET --acl public-read
+  ACL=$(${AWSA1U1} s3api get-bucket-acl --bucket "${A1U1_BUCKET}")
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "2" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "Group" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.URI)" == "http://acs.amazonaws.com/groups/global/AllUsers" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "READ" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.DisplayName)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[1].Grantee.Type)" == "CanonicalUser" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[1].Permission)" == "FULL_CONTROL" ]]
+  ${AWSA1U1} s3api put-bucket-acl --bucket $A1U1_BUCKET --acl private
+  ACL=$(${AWSA1U1} s3api get-bucket-acl --bucket "${A1U1_BUCKET}")
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo:demo" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 
   # user1 (account2) cannot read or set ACLs of a bucket of another account,
   # even with PutBucketAcl permission
@@ -57,9 +90,12 @@ test_bucket_acls() {
 }
 
 test_create_objects() {
-  # user1 (demo) cannot create any object in the shared bucket...
-  OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can create an object in the shared bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/magic
 
   # but can create objects prefixed by its user name
   ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic
@@ -77,60 +113,87 @@ test_create_objects() {
   ${AWSA1U1} s3 cp /etc/magic s3://${A1U1_BUCKET}/not_so_magic
   ${AWSA1U1} s3 cp "${BIGFILE}" s3://${A1U1_BUCKET}/bigfiles/bigfile
 
-  # user1 (demo) can create objects in his company's bucket,
-  # but only in a specific folder.
-  OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
-  OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user2/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can create objects in the company bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies (currently, only in a specific folder).
+  ${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/magic
+  ${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user2/magic
   ${AWSA1U1} s3 cp /etc/magic s3://${COMPANY_BUCKET}/home/user1/magic
   ACL=$(${AWSA1U1} s3api get-object-acl --bucket "${COMPANY_BUCKET}" --key home/user1/magic)
-  echo $ACL | jq -r .Owner | grep "demo:user1"
-  echo $ACL | jq -r .Grants | grep "demo:user1"
-  echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "demo:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "demo:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "demo:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "demo:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 
   # user1 (account2) can create objects in its own bucket
   ${AWSA2U1} s3 cp /etc/magic s3://${A2U1_BUCKET}/magic
   ACL=$(${AWSA2U1} s3api get-object-acl --bucket "${A2U1_BUCKET}" --key magic)
-  echo $ACL | jq -r .Owner | grep "account2:user1"
-  echo $ACL | jq -r .Grants | grep "account2:user1"
-  echo $ACL | jq -r .Grants | grep "FULL_CONTROL"
+  [[ "$(echo "${ACL}" | jq -r .Owner.DisplayName)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Owner.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r ".Grants | length")" -eq "1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.DisplayName)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.ID)" == "account2:user1" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Grantee.Type)" == "CanonicalUser" ]]
+  [[ "$(echo "${ACL}" | jq -r .Grants[0].Permission)" == "FULL_CONTROL" ]]
 }
 
 test_multipart_ops() {
-  # user1 can create a multipart upload
+  # user1 (demo) can create a multipart upload
   UPLOAD_ID=$(${AWSA1U1} s3api create-multipart-upload --bucket ${SHARED_BUCKET} --key user1_mpu \
               | jq -r .UploadId)
 
-  # user1 can upload parts
+  # user1 (demo) can upload parts
   ${AWSA1U1} s3api upload-part --bucket ${SHARED_BUCKET} --key user1_mpu \
     --part-number 1 --upload-id "${UPLOAD_ID}" --body "${BIGFILE}"
   ${AWSA1U1} s3api upload-part --bucket ${SHARED_BUCKET} --key user1_mpu \
     --part-number 2 --upload-id "${UPLOAD_ID}" --body "${BIGFILE}"
 
-  # user1 cannot list parts
-  OUT=$(${AWSA1U1} s3api list-parts --bucket ${SHARED_BUCKET} --key user1_mpu \
-        --upload-id "${UPLOAD_ID}" 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can list parts
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3api list-parts --bucket ${SHARED_BUCKET} --key user1_mpu \
+    --upload-id "${UPLOAD_ID}"
 
-  # user1 cannot list multipart uploads
-  OUT=$(${AWSA1U1} s3api list-multipart-uploads --bucket ${SHARED_BUCKET} \
-        2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can list multipart uploads
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3api list-multipart-uploads --bucket ${SHARED_BUCKET}
 
-  # user1 cannot abort a multipart upload
-  OUT=$(${AWSA1U1} s3api abort-multipart-upload --bucket ${SHARED_BUCKET} \
-        --key user1_mpu --upload-id "${UPLOAD_ID}" 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can abort a multipart upload
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3api abort-multipart-upload --bucket ${SHARED_BUCKET} \
+    --key user1_mpu --upload-id "${UPLOAD_ID}"
 
-  # admin can list parts
+  # user1 (demo) can create a multipart upload (again)
+  UPLOAD_ID=$(${AWSA1U1} s3api create-multipart-upload --bucket ${SHARED_BUCKET} --key user1_mpu \
+              | jq -r .UploadId)
+
+  # user1 (demo) can upload parts (again)
+  ${AWSA1U1} s3api upload-part --bucket ${SHARED_BUCKET} --key user1_mpu \
+    --part-number 1 --upload-id "${UPLOAD_ID}" --body "${BIGFILE}"
+  ${AWSA1U1} s3api upload-part --bucket ${SHARED_BUCKET} --key user1_mpu \
+    --part-number 2 --upload-id "${UPLOAD_ID}" --body "${BIGFILE}"
+
+  # admin (demo) can list parts
   ${AWSA1ADM} s3api list-parts --bucket ${SHARED_BUCKET} --key user1_mpu \
     --upload-id "${UPLOAD_ID}"
 
-  # admin can list multipart uploads
+  # admin (demo) can list multipart uploads
   ${AWSA1ADM} s3api list-multipart-uploads --bucket ${SHARED_BUCKET}
 
-  # admin can abort a multipart upload
+  # admin (demo) can abort a multipart upload
   ${AWSA1ADM} s3api abort-multipart-upload --bucket ${SHARED_BUCKET} \
     --key user1_mpu --upload-id "${UPLOAD_ID}"
 }
@@ -142,10 +205,12 @@ test_read_objects() {
   ${AWSA1U1} s3 cp s3://${SHARED_BUCKET}/user1_magic "$TEMPDIR/user1_magic"
   ${AWSA1U1} s3 cp s3://${SHARED_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_shared_bucket"
 
-  # user1 (demo) can list objects from his folder in the company bucket,
-  # but not from other folders
-  OUT=$(${AWSA1U1} s3 ls s3://${COMPANY_BUCKET}/home/user2/ 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can list objects from the company bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies (currently, only in a specific folder).
+  ${AWSA1U1} s3 ls s3://${COMPANY_BUCKET}/home/user2/
   ${AWSA1U1} s3 ls s3://${COMPANY_BUCKET}/home/user1/
 
   # user1 (account2) can read any object from its own bucket
@@ -164,13 +229,22 @@ test_delete_objects() {
   ${AWSA1U1} s3 rm s3://${A1U1_BUCKET}/magic
   ${AWSA1U1} s3 rm s3://${A1U1_BUCKET}/bigfiles/bigfile
 
-  # user1 (demo) cannot delete objects from the shared bucket...
-  OUT=$(${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can delete objects from the shared bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/magic
   # except objects prefixed by its user name.
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic
 
-  # user1 (demo) can delete objects from its folder in his company's bucket
+  # user1 (demo) can delete objects from the company bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies (currently, only in a specific folder).
+  ${AWSA1U1} s3 rm s3://${COMPANY_BUCKET}/magic
+  ${AWSA1U1} s3 rm s3://${COMPANY_BUCKET}/home/user2/magic
   ${AWSA1U1} s3 rm s3://${COMPANY_BUCKET}/home/user1/magic
 
   # user1 (account2) can delete objects from its own bucket
@@ -183,15 +257,15 @@ test_delete_objects() {
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/bigfiles/bigfile
   ${AWSA1ADM} s3 rm s3://${A1U1_BUCKET}/not_so_magic
 
-  # user1 (demo) can delete some objects from its folder in the shared bucket
+  # user1 (demo) can delete all objects from its folder in the shared bucket
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
   OUT=$(${AWSA1U1}  s3api delete-objects --bucket ${SHARED_BUCKET} --delete '{"Objects": [{"Key": "user1_1"}, {"Key": "demo_1"}, {"Key": "test"}, {"Key": "user1_2"}]}')
-  [ "$(echo $OUT | jq '.Deleted | length')" -eq 2 ]
-  [ "$(echo "$OUT" | jq -r .Deleted[].Key | sort | tr '\n' ' ')" == 'user1_1 user1_2 ' ]
-  [ "$(echo $OUT | jq '.Errors | length')" -eq 2 ]
-  [ "$(echo "$OUT" | jq -r .Errors[].Key | sort | tr '\n' ' ')" == 'demo_1 test ' ]
-  [ "$(echo $OUT | jq -r .Errors[].Code | uniq)" == 'AccessDenied' ]
+  [ "$(echo $OUT | jq '.Deleted | length')" -eq 4 ]
   ${AWSA1ADM} s3api put-bucket-acl --grant-write id=demo:user1 --bucket ${SHARED_BUCKET}
-  # now, user1 can delete all objects in the shared bucket
+  # now, user1 (demo) can delete all objects in the shared bucket
   OUT=$(${AWSA1U1}  s3api delete-objects --bucket ${SHARED_BUCKET} --delete '{"Objects": [{"Key": "user1_1"}, {"Key": "demo_1"}, {"Key": "test"}, {"Key": "user1_2"}]}')
   [ "$(echo $OUT | jq '.Deleted | length')" -eq 4 ]
   [ "$(echo $OUT | jq -r .Deleted[].Key | sort | tr '\n' ' ')" == 'demo_1 test user1_1 user1_2 ' ]
@@ -199,15 +273,17 @@ test_delete_objects() {
 }
 
 test_delete_buckets() {
-  # user1 cannot delete buckets
-  OUT=$(${AWSA1U1} s3 rb s3://$A1U1_BUCKET 2>&1 | tail -n 1)
-  echo "$OUT" | grep "AccessDenied"
+  # user1 (demo) can delete buckets
+  # All users in the same account have the same canonical user ID,
+  # which is used by ACLs.
+  # FIXME(ADU): To perform these operations, the user should be explicitly
+  # allowed by user policies.
+  ${AWSA1U1} s3 rb s3://$A1U1_BUCKET
 
   # user1 (account2) can delete its own bucket
   ${AWSA2U1} s3 rb s3://${A2U1_BUCKET}
 
   # admin can delete any bucket
-  ${AWSA1ADM} s3 rb s3://$A1U1_BUCKET
   ${AWSA1ADM} s3 rb s3://$SHARED_BUCKET
   ${AWSA1ADM} s3 rb s3://$COMPANY_BUCKET
 }

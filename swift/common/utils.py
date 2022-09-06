@@ -217,6 +217,10 @@ LOG_LINE_DEFAULT_FORMAT = '{remote_addr} - - [{time.d}/{time.b}/{time.Y}' \
                           '{policy_index}'
 DEFAULT_LOCK_TIMEOUT = 10
 
+# AWS uses S3 ACLs to grant rights to another account.
+# OpenStack, by design, uses S3 ACLs to grant rights to another user.
+REAL_S3_ACL = False
+
 
 class InvalidHashPathConfigError(ValueError):
 

@@ -17,12 +17,16 @@ import sys
 import logging
 from collections import defaultdict
 from mock import MagicMock as Mock
+
 from swift.common import utils
 from swift.common.utils import NOTICE
+
 from oio.api.object_storage import ObjectStorageApi
 from oio.account.client import AccountClient
 from oio.container.client import ContainerClient
 from oio.blob.client import BlobClient
+
+utils.REAL_S3_ACL = True
 
 
 class FakeStorageAPI(ObjectStorageApi):
