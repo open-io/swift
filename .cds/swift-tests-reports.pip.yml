@@ -55,6 +55,7 @@ jobs:
           shopt -s nullglob
           for TEST_RESULT in tests_report.*.xml
           do
+            echo $TEST_RESULT
             ((TEST_COUNT+=$(xq -r "/testsuite/@tests" $TEST_RESULT)))
           done
           shopt -u nullglob
