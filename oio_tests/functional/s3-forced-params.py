@@ -90,6 +90,20 @@ class TestForcedParams(unittest.TestCase):
         if VersionId:
             request.headers.add_header('x-oio-version-id', str(VersionId))
 
+    @staticmethod
+    def _set_custom_header_v2(params, **kwargs):
+        """
+        Set OpenIO specific headers on an HTTP request, advanced version.
+        """
+        headers = params['headers']
+        for hdr_key in list(headers.keys()):
+            # I'm not sure the .lower() is necessary,
+            # I added it to make Aymeric happy.
+            if hdr_key.lower().startswith('x-amz-meta-x-oio-'):
+                value = headers.pop(hdr_key)
+                new_key = hdr_key[len('x-amz-meta-'):]
+                headers[new_key.capitalize()] = value
+
     # -------------------------------------------
     # Tests
     # -------------------------------------------
@@ -126,6 +140,30 @@ class TestForcedParams(unittest.TestCase):
     def test_force_version_v4_sign_not_reseller(self):
         return self._test_upload_object_forced_version(self.client,
                                                        is_reseller=False)
+
+    def _test_upload_object_forced_version_v2(self, client, is_reseller=True):
+        key = "upload_%04d" % (random.randint(0, 9999), )
+        data = key.encode('utf-8')
+        version = "1234567890.000000"
+        client.meta.events.register(
+            'before-call.s3.PutObject',
+            self.__class__._set_custom_header_v2)
+        client.put_object(Bucket=self.bucket, Key=key, Body=data,
+                          Metadata={"x-oio-version-id": version})
+        self._to_delete.append(key)
+        head_res = client.head_object(Bucket=self.bucket, Key=key)
+        self.assertEqual(len(data), head_res['ContentLength'])
+        if is_reseller:
+            self.assertEqual(version, head_res['VersionId'])
+        else:
+            self.assertNotEqual(version, head_res['VersionId'])
+
+    def test_force_version_v2_v4_sign(self):
+        return self._test_upload_object_forced_version_v2(self.admin_client)
+
+    def test_force_version_v2_v4_sign_not_reseller(self):
+        return self._test_upload_object_forced_version_v2(self.client,
+                                                          is_reseller=False)
 
 
 if __name__ == "__main__":
