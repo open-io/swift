@@ -48,7 +48,8 @@ class OioIamMiddleware(IamMiddleware):
             # No user policy if there is no user
             return None
         try:
-            return self.iam_client.load_merged_user_policies(account, user)
+            return self.iam_client.load_merged_user_policies(
+                account, user, use_cache=True)
         except OioNetworkException as exc:
             self.logger.error(
                 'Failed to load merged user policies for user %s/%s: %s',
