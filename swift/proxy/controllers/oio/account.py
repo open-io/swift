@@ -216,7 +216,8 @@ class AccountController(SwiftAccountController):
     def get_account_head_resp(self, req):
         oio_headers = {REQID_HEADER: self.trans_id}
         info = self.app.storage.account_show(
-            self.account_name, headers=oio_headers)
+            self.account_name, headers=oio_headers,
+            use_cache=True)
         return account_listing_response(req, info=info)
 
     @public
