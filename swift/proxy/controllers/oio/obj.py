@@ -302,10 +302,14 @@ class ObjectController(BaseObjectController):
 
     def get_object_fetch_resp(self, req):
         storage = self.app.storage
+        ranges = None
         if req.headers.get('Range'):
-            ranges = ranges_from_http_header(req.headers.get('Range'))
-        else:
-            ranges = None
+            try:
+                ranges = ranges_from_http_header(req.headers.get('Range'))
+            except ValueError as exc:
+                # When the Range header is malformed, it is ignored
+                self.logger.warning('Malformed Range header (%s): %s',
+                                    self.trans_id, exc)
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
@@ -567,16 +571,20 @@ class ObjectController(BaseObjectController):
                              self.object_name)
         storage = self.app.storage
 
+        ranges = None
         if req.headers.get('Range'):
             raise Exception("Fast Copy with Range is unsupported")
 
-            ranges = ranges_from_http_header(req.headers.get('Range'))
-            if len(ranges) != 1:
-                raise HTTPInternalServerError(
-                    request=req, body="mutiple ranges unsupported")
-            ranges = ranges[0]
-        else:
-            ranges = None
+            try:
+                ranges = ranges_from_http_header(req.headers.get('Range'))
+                if len(ranges) != 1:
+                    raise HTTPInternalServerError(
+                        request=req, body="mutiple ranges unsupported")
+                ranges = ranges[0]
+            except ValueError as exc:
+                # When the Range header is malformed, it is ignored
+                self.logger.warning('Malformed header Range (%s): %s',
+                                    self.trans_id, exc)
 
         headers = self._prepare_headers(req)
         metadata = self.load_object_metadata(headers)
