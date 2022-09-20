@@ -42,32 +42,39 @@ jobs:
           pattern: 'tests_report.*.xml'
           tag: '{{.cds.version}}'
 
-      - name: Filter tests reports
-        script:
-          - rm -f tests_report.ceph*.xml
-
       - name: Aggregate test results
         optional: true
         script: |+
           #!/bin/bash
           . $HOME/oiovenv/bin/activate
           export TEST_COUNT=0
+          export TEST_FUNC=0
+          export TEST_UNIT=0
           shopt -s nullglob
           for TEST_RESULT in tests_report.*.xml
           do
-            ((TEST_COUNT+=$(xq -r "/testsuite/@tests" $TEST_RESULT)))
+            count=$(xq -r "/testsuite/@tests" $TEST_RESULT)
+            if [[ "$TEST_RESULT" =~ .+unit.* ]]
+            then
+              ((TEST_UNIT+=$count))
+            else
+              ((TEST_FUNC+=$count))
+            fi
+            ((TEST_COUNT+=$count))
           done
           shopt -u nullglob
-          echo "{\"tests\": {\"Python\": {\"total\": $TEST_COUNT}}}" > test-report-py.json
+          echo "{\"tests\": {\"Python\": {\"functional\": $TEST_FUNC, \"total\": $TEST_COUNT, \"unit\": $TEST_UNIT}}}" > test-report-py.json
 
       - jUnitReport: '{{.cds.workspace}}/tests_report.*.xml'
+        optional: true
 
       - name: Create code coverage directory
         script:
           - cd {{.cds.workspace}}
           - jq -r '"obsto_kpi_dev_coverage_line_total{language=\"python\",repository=\"swift\"} \(.coverage.Python.line_total)"' coverage-report-py.json >coverage-summary.openmetrics
           - jq -r '"obsto_kpi_dev_coverage_line_percentage{language=\"python\",repository=\"swift\"} \(.coverage.Python.line_percent)"' coverage-report-py.json >>coverage-summary.openmetrics
-          - jq -r '"obsto_kpi_dev_tests_total{language=\"python\",repository=\"swift\"} \(.tests.Python.total)"' test-report-py.json >>coverage-summary.openmetrics
+          - jq -r '"obsto_kpi_dev_tests_total{repository=\"swift\",type=\"functional\"} \(.tests.Python.functional)"' test-report-py.json >>coverage-summary.openmetrics
+          - jq -r '"obsto_kpi_dev_tests_total{repository=\"swift\",type=\"unit\"} \(.tests.Python.unit)"' test-report-py.json >>coverage-summary.openmetrics
           - worker upload --tag='{{.cds.version}}' coverage-summary.openmetrics
           - mkdir coverage
           - mv coverage-report-py coverage-summary.openmetrics coverage/

@@ -123,7 +123,7 @@ workflow:
           operator: ne
           value: "cds.scheduler"
 
-  ceph-s3tests:
+  ceph-s3-tests:
     pipeline: swift-oio-tests
     application: swift
     environment: ceph-s3tests-env
@@ -140,6 +140,7 @@ workflow:
     pipeline: swift-tests-reports
     application: swift
     depends_on:
+      - ceph-s3-tests
       - tests-unit
       - oio-tests-unit
       - oio-tests-s3
