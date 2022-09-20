@@ -2444,6 +2444,12 @@ class TestFile(Base):
         self.assertEqual(info['content_type'], content_type)
         self.assertIn('last_modified', info)
 
+        # Get key with max length
+        file_name = 'a' * 1025
+        file_item = self.env.container.file(file_name)
+        info = file_item.info()
+        self.assert_status(400)
+
     def testDeleteOfFileThatDoesNotExist(self):
         # in container that exists
         file_item = self.env.container.file(Utils.create_name())

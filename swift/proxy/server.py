@@ -48,7 +48,7 @@ from swift.common.swob import HTTPBadRequest, HTTPForbidden, \
     HTTPServerError, HTTPException, Request, HTTPServiceUnavailable, \
     wsgi_to_str
 from swift.common.exceptions import APIVersionError
-
+from oio.common.exceptions import BadRequest
 
 # List of entry points for mandatory middlewares.
 #
@@ -493,6 +493,8 @@ class Application(object):
             err = HTTPPreconditionFailed(
                 request=req, body='Invalid UTF8 or contains NULL')
             return err(env, start_response)
+        except BadRequest as e:
+            return HTTPBadRequest(None, body=str(e))
         except (Exception, Timeout):
             start_response('500 Server Error',
                            [('Content-Type', 'text/plain')])
@@ -603,6 +605,8 @@ class Application(object):
                     req.environ['swift.authorize'] = old_authorize
         except HTTPException as error_response:
             return error_response
+        except BadRequest as exc:
+            raise exc
         except (Exception, Timeout):
             self.logger.exception('ERROR Unhandled exception in request')
             return HTTPServerError(request=req)

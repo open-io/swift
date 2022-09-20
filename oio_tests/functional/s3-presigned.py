@@ -117,6 +117,22 @@ class TestPresignedUrls(unittest.TestCase):
     def test_upload_object_v4_sign(self):
         return self._test_upload_object(self.client)
 
+    def test_get_long_key(self):
+        key = 1025 * 'a'
+        self.assertRaisesRegex(
+            ClientError,
+            r'.*KeyTooLong.*Your key is too long*',
+            self.client.get_object,
+            Bucket=self.bucket, Key=key)
+
+    def test_get_limit_key(self):
+        key = 1023 * 'a'
+        self.assertRaisesRegex(
+            ClientError,
+            r'.*NoSuchKey.*',
+            self.client.get_object,
+            Bucket=self.bucket, Key=key)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

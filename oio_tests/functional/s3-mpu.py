@@ -307,6 +307,13 @@ class TestS3Mpu(unittest.TestCase):
     def test_mpu_with_random_chars(self):
         self._test_mpu(random_str(32, chars=RANDOM_UTF8_CHARS))
 
+    def test_mpu_with_long_key(self):
+        try:
+            self._test_mpu('a' * 1015)
+        except Exception as exc:
+            if 'longer than 1024' in str(exc):
+                pass
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -146,7 +146,7 @@ import json
 from paste.deploy import loadwsgi
 from six.moves.urllib.parse import parse_qs
 
-from swift.common.constraints import valid_api_version
+from swift.common.constraints import valid_api_version, MAX_OBJECT_NAME_LENGTH
 from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
@@ -159,7 +159,7 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
 from swift.common.middleware.s3api.s3request import get_request_class
 from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
-    InvalidRequest, Redirect
+    InvalidRequest, Redirect, KeyTooLongError
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
@@ -167,6 +167,7 @@ from swift.common.middleware.s3api.utils import Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.registry import get_swift_info, register_swift_info, \
     register_sensitive_header, register_sensitive_param
+from swift.common.swob import wsgi_to_str
 
 
 class ListingEtagMiddleware(object):
@@ -449,6 +450,11 @@ class S3ApiMiddleware(object):
             if req.object_name:
                 env['s3api.storage_policy_to_class'] = \
                     req.storage_policy_to_class
+                name_to_str = wsgi_to_str(req.object_name)
+                if name_to_str is not None:
+                    if (len(name_to_str.encode('utf-8')) >
+                       MAX_OBJECT_NAME_LENGTH):
+                        raise KeyTooLongError()
             if req.storage_class:
                 auto_storage_policies = self.conf.auto_storage_policies.get(
                     req.storage_class)
