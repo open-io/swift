@@ -837,15 +837,21 @@ class S3Request(swob.Request):
             given_domain, port = given_domain.rsplit(':', 1)
 
         for storage_domain in self.conf.storage_domains:
-            storage_domain = storage_domain.lstrip('.')
+            if storage_domain.startswith('s3.'):
+                storage_domain = storage_domain[len('s3.'):]
             if given_domain.endswith(storage_domain):
-                if len(given_domain) == len(storage_domain):
+                given_subdomain = given_domain[:-len(storage_domain)]
+                if given_subdomain.endswith('s3-website.'):
+                    given_subdomain = given_subdomain[:-len('s3-website.')]
+                elif given_subdomain.endswith('s3.'):
+                    given_subdomain = given_subdomain[:-len('s3.')]
+                if given_subdomain == "":
                     # No bucket in host
-                    return storage_domain, None
-                bucket_name = given_domain[:-len(storage_domain)]
+                    return given_domain, None
+                bucket_name = given_subdomain
                 if bucket_name[-1] == '.':
                     # Bucket in host
-                    return storage_domain, bucket_name[:-1]
+                    return given_domain[len(bucket_name):], bucket_name[:-1]
 
         return None, None
 

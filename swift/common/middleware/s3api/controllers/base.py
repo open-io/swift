@@ -101,7 +101,14 @@ def check_bucket_storage_domain(func):
                     's3api-storage-domain',
                     self.conf.default_storage_domain)
                 if req.storage_domain != storage_domain:
-                    raise BadEndpoint
+                    if req.storage_domain.startswith("s3-website"):
+                        requested_root_url = req.storage_domain.replace(
+                            "s3-website.", "", 1)
+                        root_url = storage_domain.replace("s3.", "", 1)
+                        if requested_root_url != root_url:
+                            raise BadEndpoint
+                    else:
+                        raise BadEndpoint
             except NoSuchBucket:
                 # The bucket does not exist, the request is authorized
                 pass

@@ -226,9 +226,8 @@ class ObjectController(Controller):
             resp = self.GETorHEAD(req)
             return resp
         except NoSuchKey:
-            suffix_doc, error_doc = get_website_conf(self.app, req)
-
-            if suffix_doc is not None:
+            if req.storage_domain.startswith("s3-website"):
+                suffix_doc, error_doc = get_website_conf(self.app, req)
                 if req.object_name.endswith("/"):
                     suffix_doc = req.object_name + suffix_doc
                 else:
