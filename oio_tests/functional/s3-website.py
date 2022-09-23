@@ -28,6 +28,20 @@ from oio_tests.functional.common import (
 
 
 class TestS3Website(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with open("/etc/hosts", "a") as file:
+            file.write("127.0.0.1       s3-website.sbg.perf.cloud.ovh.net\n")
+            file.write("127.0.0.1       s3.sbg.perf.cloud.ovh.net\n")
+
+    @classmethod
+    def teardownClass(cls):
+        with open("hosts", "r+") as file:
+            lines = file.readlines()
+            file.seek(0)
+            file.truncate()
+            file.writelines(lines[:-2])
+
     def setUp(self):
         self.bucket = random_str(10)
         self.region = "RegionOne"
@@ -61,12 +75,18 @@ class TestS3Website(unittest.TestCase):
         self.error_file, self.error_path = mkstemp()
         with os.fdopen(self.error_file, "w") as file:
             file.write(self.error_body)
-        run_awscli_s3("mb", bucket=self.bucket)
+        run_awscli_s3("mb", bucket=self.bucket, storage_domain="s3.sbg.perf.cloud.ovh.net")
 
     def tearDown(self):
-        run_awscli_s3api("delete-bucket-website", bucket=self.bucket)
+        run_awscli_s3api("delete-bucket-website",
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
         try:
-            run_awscli_s3("rb", "--force", bucket=self.bucket)
+            run_awscli_s3("rb", "--force",
+                bucket=self.bucket,
+                storage_domain="s3.sbg.perf.cloud.ovh.net",
+            )
         except CliError as exc:
             if "NoSuchBucket" not in str(exc):
                 raise
@@ -88,6 +108,7 @@ class TestS3Website(unittest.TestCase):
             "text/html",
             bucket=self.bucket,
             key=key,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
     def _put_error(self, key=""):
@@ -103,7 +124,24 @@ class TestS3Website(unittest.TestCase):
             "text/html",
             bucket=self.bucket,
             key=key,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
+
+    def test_without_website_subdomain(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get("http://s3.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
+
+        # check website page
+        self.assertEqual(r.status_code, 403)
 
     def test_root_level_with_slash(self):
         self._put_index()
@@ -112,10 +150,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket + "/")
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -128,10 +167,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -145,10 +185,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket + "/" + prefix)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/" + prefix)
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -162,10 +203,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket + "/" + prefix)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/" + prefix)
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -179,10 +221,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             index_key_with_special_character,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket + "/")
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -197,10 +240,11 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check 404 because object does not exist
         self.assertEqual(r.status_code, 404)
@@ -213,10 +257,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check 404 because object does not exist
         self.assertEqual(r.status_code, 404)
@@ -232,10 +277,11 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check 403 because object is not public-read
         self.assertEqual(r.status_code, 403)
@@ -249,10 +295,11 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check 403 because object is not public-read
         self.assertEqual(r.status_code, 403)
@@ -262,7 +309,7 @@ class TestS3Website(unittest.TestCase):
         self._put_index()
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check 403 because website is not enable and bucket is private
         self.assertEqual(r.status_code, 403)
@@ -275,18 +322,23 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket + "/")
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
 
         # check website page
         self.assertEqual(r.status_code, 200)
 
         # delete website conf
-        run_awscli_s3api("delete-bucket-website", bucket=self.bucket)
+        run_awscli_s3api(
+            "delete-bucket-website",
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
 
-        r = requests.get("http://localhost:5000/" + self.bucket + "/")
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
 
         # check 403 because website is not enable and bucket is private
         self.assertEqual(r.status_code, 403)
@@ -303,10 +355,11 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             error_key_with_special_character,
             bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
         # request website
-        r = requests.get("http://localhost:5000/" + self.bucket)
+        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
         # check 404 because object does not exist
         self.assertEqual(r.status_code, 404)

@@ -226,35 +226,37 @@ class ObjectController(Controller):
             resp = self.GETorHEAD(req)
             return resp
         except NoSuchKey:
-            suffix_doc, error_doc = get_website_conf(self.app, req)
-
-            if suffix_doc is not None:
-                if req.object_name.endswith("/"):
-                    suffix_doc = req.object_name + suffix_doc
-                else:
-                    suffix_doc = req.object_name + "/" + suffix_doc
-                try:
-                    resp = req.get_response(
-                        self.app, obj=suffix_doc, method="GET"
-                    )
-                    return resp
-                except (BadRequest, AccessDenied, NoSuchKey) as err:
-                    if error_doc is not None:
-                        resp = req.get_response(
-                            self.app, obj=error_doc, method="GET"
-                        )
-                        return convert_response(
-                            req,
-                            resp,
-                            200,
-                            partial(
-                                S3Response,
-                                app_iter=resp.app_iter,
-                                status=err.status_int
-                            ),
-                        )
+            if req.is_website:
+                suffix_doc, error_doc = get_website_conf(self.app, req)
+                if suffix_doc is not None:
+                    if req.object_name.endswith("/"):
+                        suffix_doc = req.object_name + suffix_doc
                     else:
-                        raise
+                        suffix_doc = req.object_name + "/" + suffix_doc
+                    try:
+                        resp = req.get_response(
+                            self.app, obj=suffix_doc, method="GET"
+                        )
+                        return resp
+                    except (BadRequest, AccessDenied, NoSuchKey) as err:
+                        if error_doc is not None:
+                            resp = req.get_response(
+                                self.app, obj=error_doc, method="GET"
+                            )
+                            return convert_response(
+                                req,
+                                resp,
+                                200,
+                                partial(
+                                    S3Response,
+                                    app_iter=resp.app_iter,
+                                    status=err.status_int
+                                ),
+                            )
+                        else:
+                            raise
+                else:
+                    raise
             else:
                 raise
 

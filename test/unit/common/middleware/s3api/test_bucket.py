@@ -1064,8 +1064,6 @@ class TestS3ApiBucket(S3ApiTestCase):
         ]
         self.assertEqual(expected, discovered)
         self.assertEqual(self.swift.calls, [
-            ('HEAD', normalize_path('/v1/AUTH_test')),
-            ('HEAD', normalize_path('/v1/AUTH_test/junk')),
             ('GET', normalize_path('/v1/AUTH_test/junk?'
              'limit=1001&marker=rose&version_marker=null&versions=')),
         ])
@@ -1130,8 +1128,6 @@ class TestS3ApiBucket(S3ApiTestCase):
         self.assertEqual(expected, discovered)
 
         self.assertEqual(self.swift.calls, [
-            ('HEAD', normalize_path('/v1/AUTH_test')),
-            ('HEAD', normalize_path('/v1/AUTH_test/junk')),
             ('GET', normalize_path('/v1/AUTH_test/junk'
              '?limit=1001&prefix=subdir/&versions=')),
         ])

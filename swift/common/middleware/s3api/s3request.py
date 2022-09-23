@@ -717,7 +717,11 @@ class S3Request(swob.Request):
         self._timestamp = None
         self._secret = None
         self._chunk_signature_valid = True
-        self.storage_domain, self.bucket_in_host = self._parse_host()
+        (
+            self.storage_domain,
+            self.bucket_in_host,
+            self.is_website,
+        ) = self._parse_host()
         self.access_key, self.signature = self._parse_auth_info()
         self.container_name, self.object_name = self._parse_uri()
         self.storage_class = self._get_storage_class()
@@ -824,30 +828,46 @@ class S3Request(swob.Request):
 
     def _parse_host(self):
         if not self.conf.storage_domains:
-            return None, None
+            return None, None, None
 
         if 'HTTP_HOST' in self.environ:
             given_domain = self.environ['HTTP_HOST']
         elif 'SERVER_NAME' in self.environ:
             given_domain = self.environ['SERVER_NAME']
         else:
-            return None, None
+            return None, None, None
         port = ''
         if ':' in given_domain:
             given_domain, port = given_domain.rsplit(':', 1)
 
         for storage_domain in self.conf.storage_domains:
-            storage_domain = storage_domain.lstrip('.')
-            if given_domain.endswith(storage_domain):
-                if len(given_domain) == len(storage_domain):
-                    # No bucket in host
-                    return storage_domain, None
-                bucket_name = given_domain[:-len(storage_domain)]
-                if bucket_name[-1] == '.':
+            domain = storage_domain
+            if storage_domain.startswith('s3.'):
+                domain = storage_domain[len('s3.'):]
+            if given_domain.endswith(domain):
+                is_website = False
+                bucket_name = ""
+                given_subdomain = given_domain[:-len(domain)]
+                bucket_name = given_subdomain
+                if given_subdomain.endswith('s3-website.'):
+                    is_website = True
+                    bucket_name = given_subdomain[:-len('s3-website.')]
+                elif given_subdomain.endswith('s3.'):
+                    bucket_name = given_subdomain[:-len('s3.')]
+                elif not given_domain.endswith(storage_domain):
+                    return None, None, None
+                if bucket_name != "":
                     # Bucket in host
-                    return storage_domain, bucket_name[:-1]
+                    return (
+                        storage_domain,
+                        bucket_name[:-1],
+                        is_website,
+                    )
+                else:
+                    # No bucket in host
+                    return storage_domain, None, is_website
 
-        return None, None
+        return None, None, None
 
     def _parse_uri(self):
         # NB: returns WSGI strings
