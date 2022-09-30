@@ -21,7 +21,8 @@ from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPNotFound, \
     HTTPNotModified, HTTPPreconditionFailed, HTTPServiceUnavailable
 
-from oio.common.constants import REQID_HEADER
+from oio.common.constants import REQID_HEADER, \
+    HEADER_PREFIX as OIO_HEADER_PREFIX
 from oio.common.exceptions import MethodNotAllowed, NoSuchContainer, \
     NoSuchObject, OioNetworkException, ServiceBusy, ServiceUnavailable, \
     DeadlineReached
@@ -30,7 +31,7 @@ from oio.common.redis_conn import catch_service_errors, RedisConnection
 
 BUCKET_NAME_PROP = "sys.m2.bucket.name"
 BUCKET_OBJECT_LOCK_PROP = "sys.m2.bucket.objectlock.enabled"
-FORCED_VERSION_HEADER = "X-Oio-Version-Id"
+FORCED_VERSION_HEADER = OIO_HEADER_PREFIX + "Version-Id"
 MULTIUPLOAD_SUFFIX = '+segments'
 
 
@@ -153,14 +154,38 @@ def check_if_none_match(fnc):
 
 
 def extract_oio_headers(fnc):
-    """Extract OpenIO specific request headers"""
+    """
+    Extract OpenIO specific request headers.
+
+    User must be a "reseller admin", and the parameter has to be defined here.
+    """
+
+    _header_mapping = {
+        "version-id": "new_version"
+    }
+
     @wraps(fnc)
     def _extract_oio_headers(self, req, *args, **kwargs):
         query = req.environ.setdefault('oio.query', {})
         is_reseller = req.environ.get('reseller_request', False)
-        # Allow privileged users to choose the version number of new objects
-        if FORCED_VERSION_HEADER in req.headers and is_reseller:
-            query['new_version'] = req.headers[FORCED_VERSION_HEADER]
+        # Allow privileged users to pass OpenIO-specific parameters
+        if is_reseller:
+            # This was our preferred versions of passing custom parameters...
+            if FORCED_VERSION_HEADER in req.headers:
+                query['new_version'] = req.headers[FORCED_VERSION_HEADER]
+            # ... however it's difficult to pass custom header with most
+            # S3 SDKs. The only way is to pass "metadata". But we don't want
+            # this metadata to be saved, thus we pass a disallowed character.
+            aws_oio_prefix = "x-amz-meta-" + OIO_HEADER_PREFIX + "?"
+            for key, val in list(req.environ["headers_raw"]):
+                lowered = key.lower()
+                if lowered.startswith(aws_oio_prefix):
+                    suffix = lowered[len(aws_oio_prefix):]
+                    if suffix in _header_mapping:
+                        query[_header_mapping[suffix]] = val
+                    else:
+                        self.logger.debug(
+                            "%s is not mapped to any OpenIO param", key)
         return fnc(self, req, *args, **kwargs)
     return _extract_oio_headers
 

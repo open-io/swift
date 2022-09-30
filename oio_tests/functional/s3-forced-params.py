@@ -14,29 +14,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
 import random
 import unittest
 
 from functools import partial
+from urllib.parse import urlparse
 
 import boto3
 
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from minio import Minio
+from minio.credentials.providers import AWSConfigProvider
+
 
 ENDPOINT_URL = "http://localhost:5000"
 
 
-def get_client(endpoint_url=ENDPOINT_URL, signature_version="s3v4",
-               addressing_style="path", region_name="RegionOne",
-               profile="user1"):
+def get_boto_client(endpoint_url=ENDPOINT_URL, signature_version="s3v4",
+                    addressing_style="path", region_name="RegionOne",
+                    profile="user1"):
     client_config = Config(signature_version=signature_version,
                            region_name=region_name,
                            s3={"addressing_style": addressing_style})
     session = boto3.Session(profile_name=profile)
     client = session.client(service_name='s3', endpoint_url=endpoint_url,
                             config=client_config)
+    return client
+
+
+def get_minio_client(endpoint_url=ENDPOINT_URL, region_name="RegionOne",
+                     profile="user1"):
+    creds = AWSConfigProvider(profile=profile)
+    client = Minio(urlparse(endpoint_url).netloc, credentials=creds,
+                   region=region_name, secure=False)
     return client
 
 
@@ -49,8 +62,8 @@ class TestForcedParams(unittest.TestCase):
     def setUpClass(cls):
         super(TestForcedParams, cls).setUpClass()
         cls.bucket = "user1bucket"
-        cls.client = get_client(profile="user1")
-        cls.admin_client = get_client(profile="default")
+        cls.client = get_boto_client(profile="user1")
+        cls.admin_client = get_boto_client(profile="default")
         cls.admin_client.create_bucket(Bucket=cls.bucket)
 
     @classmethod
@@ -126,14 +139,15 @@ class TestForcedParams(unittest.TestCase):
             self.assertNotEqual(version, head_res['VersionId'])
 
     def test_force_version_v2_sign(self):
-        sigv2_client = get_client(profile="default", signature_version='s3')
+        sigv2_client = get_boto_client(profile="default",
+                                       signature_version='s3')
         return self._test_upload_object_forced_version(sigv2_client)
 
     def test_force_version_v4_sign(self):
         return self._test_upload_object_forced_version(self.admin_client)
 
     def test_force_version_v2_sign_not_reseller(self):
-        sigv2_client = get_client(profile="user1", signature_version='s3')
+        sigv2_client = get_boto_client(profile="user1", signature_version='s3')
         return self._test_upload_object_forced_version(sigv2_client,
                                                        is_reseller=False)
 
@@ -164,6 +178,33 @@ class TestForcedParams(unittest.TestCase):
     def test_force_version_v2_v4_sign_not_reseller(self):
         return self._test_upload_object_forced_version_v2(self.client,
                                                           is_reseller=False)
+
+    def _test_upload_object_forced_version_minio(
+            self, client, is_reseller=True):
+        key = "upload_%04d" % (random.randint(0, 9999), )
+        data = key.encode('utf-8')
+        version = "1234567890.000000"
+        cust_header = "x-oio-?version-id"
+        client.put_object(bucket_name=self.bucket, object_name=key,
+                          data=io.BytesIO(data), length=len(data),
+                          metadata={cust_header: version})
+        self._to_delete.append(key)
+        head_res = client.stat_object(bucket_name=self.bucket, object_name=key)
+        self.assertEqual(len(data), head_res.size)
+        if is_reseller:
+            self.assertEqual(version, head_res.version_id)
+        else:
+            self.assertNotEqual(version, head_res.version_id)
+        self.assertNotIn(cust_header, head_res.metadata)
+
+    def test_force_version_minio(self):
+        client = get_minio_client(profile="default")
+        return self._test_upload_object_forced_version_minio(client)
+
+    def test_force_version_minio_not_reseller(self):
+        client = get_minio_client(profile="user1")
+        return self._test_upload_object_forced_version_minio(client,
+                                                             is_reseller=False)
 
 
 if __name__ == "__main__":
