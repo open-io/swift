@@ -17,7 +17,7 @@ import unittest
 import mock
 
 import six
-from six.moves.urllib.parse import quote, parse_qsl
+from six.moves.urllib.parse import quote, quote_plus, parse_qsl
 
 from swift.common import swob
 from swift.common.middleware.versioned_writes.object_versioning import \
@@ -235,7 +235,7 @@ class TestS3ApiBucket(S3ApiTestCase):
                              o.find('./LastModified').text)
 
         self.assertEqual(items, [
-            (quote(i[0].encode('utf-8')),
+            (quote_plus(i[0].encode("utf-8"), safe="/"),
              PFS_ETAG if i[0] == 'pfs-obj' else
              '"0-N"' if i[0] == 'slo' else '"0"')
             for i in self.objects])

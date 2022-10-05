@@ -17,7 +17,7 @@ from base64 import standard_b64encode as b64encode
 from base64 import standard_b64decode as b64decode
 
 import six
-from six.moves.urllib.parse import quote
+from six.moves.urllib.parse import quote, quote_plus
 from functools import partial
 
 from swift.common import swob
@@ -283,14 +283,14 @@ class BucketController(Controller):
         common_prefixes = SubElement(elem, 'CommonPrefixes')
         name = o['subdir']
         if encoding_type == 'url':
-            name = quote(name.encode('utf-8'))
+            name = quote_plus(name.encode("utf-8"), safe="/")
         SubElement(common_prefixes, 'Prefix').text = name
 
     def _add_object(self, req, elem, o, encoding_type, listing_type,
                     fetch_owner):
         name = o['name']
         if encoding_type == 'url':
-            escaped_name = quote(name.encode('utf-8'))
+            escaped_name = quote_plus(name.encode("utf-8"), safe="/")
         else:
             escaped_name = ''.join([x if x.isprintable() else
                                    '&#x%X' % ord(x) for x in name])
