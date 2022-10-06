@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from copy import deepcopy
 import json
 import re
 import tempfile
@@ -23,7 +24,7 @@ import unittest
 from cysystemd.reader import JournalReader, JournalOpenMode, Rule
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api
+    run_awscli_s3api, run_openiocli
 
 
 LOGGING_STATUS = {
@@ -39,20 +40,12 @@ class TestBucketLogging(unittest.TestCase):
     def setUp(self):
         super(TestBucketLogging, self).setUp()
         self.bucket = f'test-bucket-logging-{random_str(8)}'
-        run_awscli_s3('mb', bucket=self.bucket)
-        with tempfile.NamedTemporaryFile() as file:
-            file.write(json.dumps(LOGGING_STATUS).encode('utf-8'))
-            file.flush()
-            run_awscli_s3api(
-                'put-bucket-logging',
-                '--bucket-logging-status', f'file://{file.name}',
-                bucket=self.bucket)
+        self.logging_bucket = f'test-bucket-logging-{random_str(8)}'
         self.journal_reader = JournalReader()
         self.journal_reader.open(JournalOpenMode.LOCAL_ONLY)
         self.journal_reader.seek_head()
         self.journal_reader.add_filter(
             Rule('SYSLOG_IDENTIFIER', f's3access-{self.bucket}'))
-        self._check_log_message('REST.PUT.LOGGING_STATUS', 'PUT', '/?logging')
 
     def tearDown(self):
         try:
@@ -60,7 +53,123 @@ class TestBucketLogging(unittest.TestCase):
         except CliError as exc:
             if 'NoSuchBucket' not in str(exc):
                 raise
+        try:
+            run_awscli_s3('rb', '--force', bucket=self.logging_bucket)
+        except CliError as exc:
+            if 'NoSuchBucket' not in str(exc):
+                raise
         super(TestBucketLogging, self).tearDown()
+
+    def test_no_logging_bucket(self):
+        run_awscli_s3('mb', bucket=self.bucket)
+        with tempfile.NamedTemporaryFile() as file:
+            logging_status = deepcopy(LOGGING_STATUS)
+            logging_status['LoggingEnabled']['TargetBucket'] = \
+                self.logging_bucket
+            file.write(json.dumps(logging_status).encode('utf-8'))
+            file.flush()
+            self.assertRaisesRegex(
+                CliError, 'InvalidTargetBucketForLogging',
+                run_awscli_s3api, 'put-bucket-logging',
+                '--bucket-logging-status', f'file://{file.name}',
+                bucket=self.bucket)
+
+    def test_no_permission(self):
+        # AWS does not check the target bucket's permissions at setup time
+        run_awscli_s3('mb', bucket=self.bucket)
+        run_awscli_s3('mb', bucket=self.logging_bucket)
+        with tempfile.NamedTemporaryFile() as file:
+            logging_status = deepcopy(LOGGING_STATUS)
+            logging_status['LoggingEnabled']['TargetBucket'] = \
+                self.logging_bucket
+            file.write(json.dumps(logging_status).encode('utf-8'))
+            file.flush()
+            run_awscli_s3api(
+                'put-bucket-logging',
+                '--bucket-logging-status', f'file://{file.name}',
+                bucket=self.bucket)
+        self._check_log_message('REST.PUT.LOGGING_STATUS', 'PUT', '/?logging')
+
+    def test_cross_account(self):
+        run_awscli_s3('mb', bucket=self.bucket)
+        run_awscli_s3('mb', bucket=self.logging_bucket, profile='a2adm')
+        run_awscli_s3api(
+            'put-bucket-acl',
+            '--grant-write',
+            'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+            '--grant-read-acp',
+            'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+            bucket=self.logging_bucket, profile='a2adm')
+        try:
+            with tempfile.NamedTemporaryFile() as file:
+                logging_status = deepcopy(LOGGING_STATUS)
+                logging_status['LoggingEnabled']['TargetBucket'] = \
+                    self.logging_bucket
+                file.write(json.dumps(logging_status).encode('utf-8'))
+                file.flush()
+                self.assertRaisesRegex(
+                    CliError, 'InvalidTargetBucketForLogging',
+                    run_awscli_s3api, 'put-bucket-logging',
+                    '--bucket-logging-status', f'file://{file.name}',
+                    bucket=self.bucket)
+        finally:
+            run_awscli_s3(
+                'rb', '--force', bucket=self.logging_bucket, profile='a2adm')
+
+    def test_cross_location(self):
+        run_awscli_s3('mb', bucket=self.bucket)
+        run_awscli_s3('mb', bucket=self.logging_bucket)
+        run_awscli_s3api(
+            'put-bucket-acl',
+            '--grant-write',
+            'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+            '--grant-read-acp',
+            'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+            bucket=self.logging_bucket)
+        region = run_openiocli(
+            'bucket', 'show', self.logging_bucket, '-c', 'region',
+            account='AUTH_demo')['region']
+        run_openiocli(
+            'bucket', 'set', self.logging_bucket, '--region', 'LOGGING',
+            account='AUTH_demo', json_format=False)
+        try:
+            with tempfile.NamedTemporaryFile() as file:
+                logging_status = deepcopy(LOGGING_STATUS)
+                logging_status['LoggingEnabled']['TargetBucket'] = \
+                    self.logging_bucket
+                file.write(json.dumps(logging_status).encode('utf-8'))
+                file.flush()
+                self.assertRaisesRegex(
+                    CliError, 'CrossLocationLoggingProhibitted',
+                    run_awscli_s3api, 'put-bucket-logging',
+                    '--bucket-logging-status', f'file://{file.name}',
+                    bucket=self.bucket)
+        finally:
+            run_openiocli(
+                'bucket', 'set', self.logging_bucket, '--region', region,
+                account='AUTH_demo', json_format=False)
+
+    def _configure(self):
+        run_awscli_s3('mb', bucket=self.bucket)
+        run_awscli_s3('mb', bucket=self.logging_bucket)
+        run_awscli_s3api(
+            'put-bucket-acl',
+            '--grant-write',
+            'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+            '--grant-read-acp',
+            'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+            bucket=self.logging_bucket)
+        with tempfile.NamedTemporaryFile() as file:
+            logging_status = deepcopy(LOGGING_STATUS)
+            logging_status['LoggingEnabled']['TargetBucket'] = \
+                self.logging_bucket
+            file.write(json.dumps(logging_status).encode('utf-8'))
+            file.flush()
+            run_awscli_s3api(
+                'put-bucket-logging',
+                '--bucket-logging-status', f'file://{file.name}',
+                bucket=self.bucket)
+        self._check_log_message('REST.PUT.LOGGING_STATUS', 'PUT', '/?logging')
 
     def _check_log_message(self, operation, method, path,
                            key='-', status_int=200, error_code='-'):
@@ -89,29 +198,35 @@ class TestBucketLogging(unittest.TestCase):
         self.assertIsNone(self.journal_reader.next())
 
     def test_head_bucket(self):
+        self._configure()
         run_awscli_s3api('head-bucket', bucket=self.bucket)
         self._check_log_message('REST.HEAD.BUCKET', 'HEAD', '/')
 
     def test_list_objects(self):
+        self._configure()
         run_awscli_s3api('list-objects', bucket=self.bucket)
         self._check_log_message(
             'REST.GET.BUCKET', 'GET', '/?encoding-type=url')
 
     def test_list_object_versions(self):
+        self._configure()
         run_awscli_s3api('list-object-versions', bucket=self.bucket)
         self._check_log_message(
             'REST.GET.BUCKETVERSIONS', 'GET', '/?versions&encoding-type=url')
 
     def test_get_bucket_acl(self):
+        self._configure()
         run_awscli_s3api('get-bucket-acl', bucket=self.bucket)
         self._check_log_message('REST.GET.ACL', 'GET', '/?acl')
 
     def test_put_bucket_acl(self):
+        self._configure()
         run_awscli_s3api(
             'put-bucket-acl', '--acl', 'public-read', bucket=self.bucket)
         self._check_log_message('REST.PUT.ACL', 'PUT', '/?acl')
 
     def test_put_get_delete_bucket_tagging(self):
+        self._configure()
         run_awscli_s3api(
             'put-bucket-tagging',
             '--tagging', 'TagSet=[{Key=bucket,Value=logging}]',
@@ -128,6 +243,7 @@ class TestBucketLogging(unittest.TestCase):
             'REST.DELETE.TAGGING', 'DELETE', '/?tagging', status_int=204)
 
     def test_get_bucket_tagging_no_tag(self):
+        self._configure()
         self.assertRaisesRegex(
             CliError, 'NoSuchTagSet', run_awscli_s3api,
             'get-bucket-tagging', bucket=self.bucket)
@@ -136,6 +252,7 @@ class TestBucketLogging(unittest.TestCase):
             status_int=404, error_code='NoSuchTagSet')
 
     def test_put_get_delete_cors(self):
+        self._configure()
         run_awscli_s3api(
             'put-bucket-cors',
             '--cors-configuration', """
@@ -159,6 +276,7 @@ class TestBucketLogging(unittest.TestCase):
             'REST.DELETE.CORS', 'DELETE', '/?cors', status_int=204)
 
     def test_get_bucket_cors_no_configuration(self):
+        self._configure()
         self.assertRaisesRegex(
             CliError, 'NoSuchCORSConfiguration', run_awscli_s3api,
             'get-bucket-cors', bucket=self.bucket)
@@ -167,10 +285,12 @@ class TestBucketLogging(unittest.TestCase):
             status_int=404, error_code='NoSuchCORSConfiguration')
 
     def test_get_bucket_versioning(self):
+        self._configure()
         run_awscli_s3api('get-bucket-versioning', bucket=self.bucket)
         self._check_log_message('REST.GET.VERSIONING', 'GET', '/?versioning')
 
     def test_put_bucket_versioning(self):
+        self._configure()
         run_awscli_s3api(
             'put-bucket-versioning',
             '--versioning-configuration', 'Status=Enabled',
@@ -178,6 +298,7 @@ class TestBucketLogging(unittest.TestCase):
         self._check_log_message('REST.PUT.VERSIONING', 'PUT', '/?versioning')
 
     def test_put_head_delete_object(self):
+        self._configure()
         with tempfile.NamedTemporaryFile() as file:
             run_awscli_s3api(
                 'put-object', '--body', file.name,
@@ -199,6 +320,7 @@ class TestBucketLogging(unittest.TestCase):
             key='testbucketlogging', status_int=204)
 
     def test_head_object_not_found(self):
+        self._configure()
         self.assertRaisesRegex(
             CliError, 'Not Found', run_awscli_s3api,
             'head-object', bucket=self.bucket, key='testbucketlogging')
@@ -207,6 +329,7 @@ class TestBucketLogging(unittest.TestCase):
             key='testbucketlogging', status_int=404, error_code='NoSuchKey')
 
     def test_get_object_acl(self):
+        self._configure()
         with tempfile.NamedTemporaryFile() as file:
             run_awscli_s3api(
                 'put-object', '--body', file.name,
@@ -223,6 +346,7 @@ class TestBucketLogging(unittest.TestCase):
             key='testbucketlogging')
 
     def test_put_object_acl(self):
+        self._configure()
         with tempfile.NamedTemporaryFile() as file:
             run_awscli_s3api(
                 'put-object', '--body', file.name,
@@ -239,6 +363,7 @@ class TestBucketLogging(unittest.TestCase):
             key='testbucketlogging')
 
     def test_get_object_tagging(self):
+        self._configure()
         with tempfile.NamedTemporaryFile() as file:
             run_awscli_s3api(
                 'put-object', '--body', file.name,
@@ -255,6 +380,7 @@ class TestBucketLogging(unittest.TestCase):
             key='testbucketlogging')
 
     def test_put_object_tagging(self):
+        self._configure()
         with tempfile.NamedTemporaryFile() as file:
             run_awscli_s3api(
                 'put-object', '--body', file.name,
@@ -272,6 +398,7 @@ class TestBucketLogging(unittest.TestCase):
             key='testbucketlogging')
 
     def test_delete_object_tagging(self):
+        self._configure()
         with tempfile.NamedTemporaryFile() as file:
             run_awscli_s3api(
                 'put-object', '--body', file.name,

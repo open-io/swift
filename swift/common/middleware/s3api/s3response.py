@@ -410,10 +410,14 @@ class CredentialsNotSupported(ErrorResponse):
     _msg = 'This request does not support credentials.'
 
 
-class CrossLocationLoggingProhibited(ErrorResponse):
+class CrossLocationLoggingProhibitted(ErrorResponse):
     _status = '403 Forbidden'
-    _msg = 'Cross location logging not allowed. Buckets in one geographic ' \
-           'location cannot log information to a bucket in another location.'
+    _msg = 'Cross S3 location logging not allowed.'
+
+    def __init__(self, source, target, *args, msg=None, **kwargs):
+        ErrorResponse.__init__(
+            self, *args, msg=msg, source_bucket_location=source,
+            target_bucket_location=target, **kwargs)
 
 
 class EntityTooSmall(ErrorResponse):
@@ -560,13 +564,12 @@ class InvalidStorageClass(ErrorResponse):
 
 class InvalidTargetBucketForLogging(ErrorResponse):
     _status = '400 Bad Request'
-    _msg = 'The target bucket for logging does not exist, is not owned by ' \
-           'you, or does not have the appropriate grants for the ' \
-           'log-delivery group.'
+    _msg = 'The owner for the bucket to be logged and ' \
+           'the target bucket must be the same.'
 
-    def __init__(self, bucket, msg=None, *args, **kwargs):
-        ErrorResponse.__init__(self, msg, target_bucket=bucket, *args,
-                               **kwargs)
+    def __init__(self, bucket, *args, msg=None, **kwargs):
+        ErrorResponse.__init__(
+            self, *args, msg=msg, target_bucket=bucket, **kwargs)
 
 
 class InvalidToken(ErrorResponse):

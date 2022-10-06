@@ -73,13 +73,15 @@ def run_awscli_s3api(command, *params, bucket=None, key=None, **kwargs):
     return run_awscli('s3api', *params, **kwargs)
 
 
-def run_openiocli(*params, namespace=None, account=None):
+def run_openiocli(*params, namespace=None, account=None, json_format=True):
     cmd = ('openio',)
     if namespace:
         cmd += ('--ns', namespace)
     if account:
         cmd += ('--account', account)
-    cmd += params + ('-f', 'json')
+    cmd += params
+    if json_format:
+        cmd += ('-f', 'json')
     print(*cmd)
     try:
         out = subprocess.check_output(cmd, stderr=subprocess.PIPE)

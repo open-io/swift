@@ -24,7 +24,7 @@ import unittest
 
 from oio.common.easy_value import is_hexa
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api
+    run_awscli_s3api, run_openiocli
 
 from swift.common.middleware.s3api.tools.log_deliverer import LogDeliverer
 
@@ -91,8 +91,10 @@ class TestBucketLogDelivery(unittest.TestCase):
             log_files += files
         self.assertListEqual(sorted(file_names), sorted(log_files))
 
-    def _check_objects_existence(self, logging_bucket, file_names):
-        data = run_awscli_s3api('list-objects', bucket=logging_bucket)
+    def _check_objects_existence(self, logging_bucket, file_names,
+                                 profile=None):
+        data = run_awscli_s3api(
+            'list-objects', bucket=logging_bucket, profile=profile)
         if data:
             keys = [obj['Key'] for obj in data['Contents']]
         else:
@@ -118,7 +120,8 @@ class TestBucketLogDelivery(unittest.TestCase):
                 self.fail(f'Object starts with {object_prefix} is missing')
         for existing_obj in existing_objects:
             data = run_awscli_s3api(
-                'get-object-acl', bucket=logging_bucket, key=existing_obj)
+                'get-object-acl', bucket=logging_bucket, key=existing_obj,
+                profile=profile)
             self.assertCountEqual({
                 'Owner': {
                     'DisplayName': 'logger:.log_delivery',
@@ -197,21 +200,30 @@ class TestBucketLogDelivery(unittest.TestCase):
         run_awscli_s3('mb', bucket=bucket)
         try:
             logging_bucket = random_str(10)
-            logging_conf = deepcopy(LOGGING_CONF)
-            logging_conf['LoggingEnabled']['TargetBucket'] = logging_bucket
-            run_awscli_s3api(
-                'put-bucket-logging',
-                '--bucket-logging-status', json.dumps(logging_conf),
-                bucket=bucket)
-            file_names = (
-                f'prefix_{bucket}.log-2038-01-19-03-14-08',
-            )
-            self._create_files(file_names)
-            self._scan_and_check(no_longer_useful=1)
-            self._check_files_existence(())
-            self.assertRaisesRegex(
-                CliError, 'Not Found', run_awscli_s3api,
-                'head-bucket', bucket=logging_bucket)
+            run_awscli_s3('mb', bucket=logging_bucket)
+            try:
+                logging_conf = deepcopy(LOGGING_CONF)
+                logging_conf['LoggingEnabled']['TargetBucket'] = logging_bucket
+                run_awscli_s3api(
+                    'put-bucket-logging',
+                    '--bucket-logging-status', json.dumps(logging_conf),
+                    bucket=bucket)
+                file_names = (
+                    f'prefix_{bucket}.log-2038-01-19-03-14-08',
+                )
+                self._create_files(file_names)
+                run_awscli_s3('rb', bucket=logging_bucket)
+                self._scan_and_check(no_longer_useful=1)
+                self._check_files_existence(())
+                self.assertRaisesRegex(
+                    CliError, 'Not Found', run_awscli_s3api,
+                    'head-bucket', bucket=logging_bucket)
+            finally:
+                try:
+                    run_awscli_s3('rb', bucket=logging_bucket)
+                except CliError as exc:
+                    if 'NoSuchBucket' not in str(exc):
+                        raise
         finally:
             run_awscli_s3('rb', bucket=bucket)
 
@@ -237,6 +249,93 @@ class TestBucketLogDelivery(unittest.TestCase):
                 self._check_objects_existence(logging_bucket, ())
             finally:
                 run_awscli_s3('rb', bucket=logging_bucket)
+        finally:
+            run_awscli_s3('rb', bucket=bucket)
+
+    def test_cross_account(self):
+        bucket = random_str(10)
+        run_awscli_s3('mb', bucket=bucket)
+        try:
+            logging_bucket = random_str(10)
+            run_awscli_s3('mb', bucket=logging_bucket)
+            try:
+                logging_conf = deepcopy(LOGGING_CONF)
+                logging_conf['LoggingEnabled']['TargetBucket'] = logging_bucket
+                run_awscli_s3api(
+                    'put-bucket-logging',
+                    '--bucket-logging-status', json.dumps(logging_conf),
+                    bucket=bucket)
+                run_awscli_s3('rb', bucket=logging_bucket)
+                run_awscli_s3('mb', bucket=logging_bucket, profile='a2adm')
+                try:
+                    run_awscli_s3api(
+                        'put-bucket-acl',
+                        '--grant-write',
+                        'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+                        '--grant-read-acp',
+                        'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+                        bucket=logging_bucket, profile='a2adm')
+                    file_names = (
+                        f'prefix_{bucket}.log-2038-01-19-03-14-08',
+                    )
+                    self._create_files(file_names)
+                    self._scan_and_check(no_longer_useful=1)
+                    self._check_files_existence(())
+                    self._check_objects_existence(
+                        logging_bucket, (), profile='a2adm')
+                finally:
+                    run_awscli_s3(
+                        'rb', '--force', bucket=logging_bucket,
+                        profile='a2adm')
+            finally:
+                try:
+                    run_awscli_s3('rb', '--force', bucket=logging_bucket)
+                except CliError as exc:
+                    if 'NoSuchBucket' not in str(exc):
+                        raise
+        finally:
+            run_awscli_s3('rb', bucket=bucket)
+
+    def test_cross_location(self):
+        bucket = random_str(10)
+        run_awscli_s3('mb', bucket=bucket)
+        try:
+            logging_bucket = random_str(10)
+            run_awscli_s3('mb', bucket=logging_bucket)
+            try:
+                run_awscli_s3api(
+                    'put-bucket-acl',
+                    '--grant-write',
+                    'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+                    '--grant-read-acp',
+                    'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
+                    bucket=logging_bucket)
+                logging_conf = deepcopy(LOGGING_CONF)
+                logging_conf['LoggingEnabled']['TargetBucket'] = logging_bucket
+                run_awscli_s3api(
+                    'put-bucket-logging',
+                    '--bucket-logging-status', json.dumps(logging_conf),
+                    bucket=bucket)
+                file_names = (
+                    f'prefix_{bucket}.log-2038-01-19-03-14-08',
+                )
+                self._create_files(file_names)
+                region = run_openiocli(
+                    'bucket', 'show', logging_bucket, '-c', 'region',
+                    account='AUTH_demo')['region']
+                run_openiocli(
+                    'bucket', 'set', logging_bucket, '--region', 'LOGGING',
+                    account='AUTH_demo', json_format=False)
+                try:
+                    self._scan_and_check(no_longer_useful=1)
+                finally:
+                    run_openiocli(
+                        'bucket', 'set', logging_bucket, '--region', region,
+                        account='AUTH_demo', json_format=False)
+                self._check_files_existence(())
+                self._check_objects_existence(logging_bucket, ())
+            finally:
+                run_awscli_s3('rb', '--force', bucket=logging_bucket)
         finally:
             run_awscli_s3('rb', bucket=bucket)
 

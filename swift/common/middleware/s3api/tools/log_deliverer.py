@@ -36,8 +36,8 @@ from oio.common.logger import get_logger, redirect_stdio
 from oio.common.utils import drop_privileges, paths_gen
 from oio.container.client import ContainerClient
 
-from swift.common.middleware.s3api.subresource import Group, User, \
-    decode_grants
+from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
+    Group, User, decode_grants
 
 
 PERMISSIONS_MAPPING = {
@@ -302,6 +302,14 @@ class LogDeliverer(object):
         try:
             try:
                 account = self.bucket_client.bucket_get_owner(bucket)
+                info = self.bucket_client.bucket_show(bucket, account=account)
+                region = info['region']
+                if region.lower() != self.bucket_client.region.lower():
+                    self.logger.warning(
+                        '[%s] Bucket %s/%s does not belong to the region %s: '
+                        '%s', log_file, account, bucket,
+                        self.bucket_client.region, region)
+                    return LogFileState.NO_LONGER_USEFUL, None, None, None
             except NotFound as exc:
                 self.logger.warning(
                     '[%s] Bucket %s does not belong to anyone, '
@@ -344,6 +352,72 @@ class LogDeliverer(object):
                 'for the bucket %s/%s: %s', log_file, account, bucket, exc)
             return LogFileState.FAILED, None, None, None
 
+    def _check_dest_bucket(self, log_file, account, bucket):
+        try:
+            try:
+                dest_account = self.bucket_client.bucket_get_owner(bucket)
+                if dest_account != account:
+                    self.logger.warning(
+                        '[%s] Destination bucket %s does not belong '
+                        'to the account %s: %s', log_file, bucket, account,
+                        dest_account)
+                    return LogFileState.NO_LONGER_USEFUL
+                info = self.bucket_client.bucket_show(bucket, account=account)
+                region = info['region']
+                if region.lower() != self.bucket_client.region.lower():
+                    self.logger.warning(
+                        '[%s] Destination bucket %s/%s does not belong '
+                        'to the region %s: %s', log_file, account, bucket,
+                        self.bucket_client.region, region)
+                    return LogFileState.NO_LONGER_USEFUL
+            except NotFound as exc:
+                self.logger.warning(
+                    '[%s] Destination bucket %s does not belong to anyone, '
+                    'maybe it no longer exists: %s', log_file, bucket, exc)
+                return LogFileState.NO_LONGER_USEFUL
+            try:
+                meta = self.container_client.container_get_properties(
+                    account, bucket)
+            except NotFound as exc:
+                self.logger.warning(
+                    '[%s] Destination bucket %s/%s no longer exists: %s',
+                    log_file, account, bucket, exc)
+                return LogFileState.NO_LONGER_USEFUL
+            bucket_acl = meta['properties'].get(
+                'X-Container-Sysmeta-S3Api-Acl')
+            if not bucket_acl:
+                self.logger.error(
+                    '[%s] Missing ACL for the destination bucket %s/%s',
+                    log_file, account, bucket)
+                return LogFileState.FAILED
+            # Check if the LogDelivery group is allowed to send objects
+            # to this bucket
+            # TODO(ADU): Check bucket policies when available
+            bucket_acl = json.loads(bucket_acl)
+            read_acp = False
+            write = False
+            for grant in decode_grants(bucket_acl['Grant']):
+                if grant.allow(LOG_DELIVERY_USER, 'FULL_CONTROL'):
+                    break
+                if not read_acp:
+                    read_acp = grant.allow(LOG_DELIVERY_USER, 'READ_ACP')
+                if not write:
+                    write = grant.allow(LOG_DELIVERY_USER, 'WRITE')
+                if read_acp and write:
+                    break
+            else:
+                self.logger.warning(
+                    '[%s] Log delivery user does not have sufficient rights '
+                    'to the destination bucket %s/%s',
+                    log_file, account, bucket)
+                return LogFileState.NO_LONGER_USEFUL
+            return None
+        except OioException as exc:
+            self.logger.error(
+                '[%s] Failed to check destination bucket %s/%s: %s',
+                log_file, account, bucket, exc)
+            return LogFileState.FAILED
+
     def process_log_file(self, log_file):
         status, bucket, archive_date = self._parse_log_file_name(log_file)
         if status is not None:
@@ -354,8 +428,12 @@ class LogDeliverer(object):
         if status is not None:
             return status
 
-        # Upload the log file to the destination bucket
         dest_bucket = logging_status['Bucket']
+        status = self._check_dest_bucket(log_file, account, dest_bucket)
+        if status is not None:
+            return status
+
+        # Upload the log file to the destination bucket
         dest_prefix = logging_status['Prefix']
         dest_key = f'{dest_prefix}{archive_date}-{uuid.uuid4().hex.upper()}'
         dest_grants = logging_status['Grant']
