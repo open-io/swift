@@ -427,6 +427,7 @@ class BucketController(Controller):
         """
         self.set_s3api_command(req, 'create-bucket')
 
+        location = self.conf.location
         xml = req.xml(MAX_PUT_BUCKET_BODY_SIZE)
         if xml:
             # check location
@@ -450,6 +451,8 @@ class BucketController(Controller):
                 raise BadEndpoint
             req.headers[sysmeta_header('container', 'storage-domain')] = \
                 req.storage_domain
+
+        req.environ.setdefault('oio.query', {})['region'] = location
 
         object_lock_enabled = req.environ.get(
             'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED', 'False')

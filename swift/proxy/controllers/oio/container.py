@@ -293,15 +293,16 @@ class ContainerController(SwiftContainerController):
         # TODO container update metadata
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
+        oio_params = req.environ.get('oio.query', {})  # e.g. region
         perfdata = req.environ.get('swift.perfdata')
         created = self.app.storage.container_create(
             self.account_name, self.container_name,
             properties=properties, system=system,
-            headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+            headers=oio_headers, cache=oio_cache, perfdata=perfdata,
+            **oio_params)
         if created:
             return HTTPCreated(request=req)
-        else:
-            return HTTPNoContent(request=req)
+        return HTTPNoContent(request=req)
 
     @public
     @cors_validation

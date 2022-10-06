@@ -68,7 +68,7 @@ function run_sds() {
   if [ -n "${REMOTE_ACCOUNT}" ]; then
     args="${args} -f third_party/oio-sds/etc/bootstrap-option-remote-account.yml"
   fi
-  oio-reset.sh -v -v -N "$OIO_NS" \
+  oio-reset.sh -v -v -N "$OIO_NS" -r "RegionOne" \
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
     -f third_party/oio-sds/etc/bootstrap-option-cache.yml ${args}

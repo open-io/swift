@@ -37,7 +37,11 @@ class UniqueBucketController(BucketController):
             raise ServiceUnavailable('Bucket DB is read-only')
 
         # We are about to create a container, reserve its name.
-        can_create = req.bucket_db.reserve(req.container_name, req.account)
+        # See the comment in the superclass about the region:
+        # we currently don't support LocationConstraint, we have to create
+        # the bucket on the local region.
+        can_create = req.bucket_db.reserve(req.container_name, req.account,
+                                           region=self.conf.location)
         if not can_create:
             ct_owner = req.bucket_db.get_owner(req.container_name)
             if ct_owner == req.account:
@@ -52,7 +56,8 @@ class UniqueBucketController(BucketController):
 
         # Container creation succeeded,
         # confirm reservation by creating the bucket.
-        if not req.bucket_db.create(req.container_name, req.account):
+        if not req.bucket_db.create(req.container_name, req.account,
+                                    region=self.conf.location):
             # Try to rollback by deleting the new container
             try:
                 resp = req.get_response(self.app, method='DELETE')
@@ -81,11 +86,13 @@ class UniqueBucketController(BucketController):
         except NoSuchBucket:
             # In some cases, the root container may be deleted,
             # but the bucket may not
-            req.bucket_db.delete(req.container_name, req.account)
+            req.bucket_db.delete(req.container_name, req.account,
+                                 region=self.conf.location)
             raise
 
         if resp.is_success:
             # Root container deletion succeeded, delete the bucket
-            req.bucket_db.delete(req.container_name, req.account)
+            req.bucket_db.delete(req.container_name, req.account,
+                                 region=self.conf.location)
 
         return resp

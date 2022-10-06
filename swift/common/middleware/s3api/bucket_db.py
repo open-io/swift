@@ -43,7 +43,7 @@ class DummyBucketDb(object):
             return None
         return owner
 
-    def reserve(self, bucket, owner, timeout=30):
+    def reserve(self, bucket, owner, timeout=30, **kwargs):
         """
         Reserve a bucket. The bucket entry must not already
         exist in the database.
@@ -59,7 +59,7 @@ class DummyBucketDb(object):
         self._bucket_db[bucket] = (owner, deadline)
         return True
 
-    def create(self, bucket, owner):
+    def create(self, bucket, owner, **kwargs):
         """
         Create a new bucket.
 
@@ -70,7 +70,7 @@ class DummyBucketDb(object):
         self._bucket_db[bucket] = (owner, None)
         return True
 
-    def delete(self, bucket, owner):
+    def delete(self, bucket, owner, **kwargs):
         """
         Delete the specified bucket.
         """
@@ -129,7 +129,7 @@ class OioBucketDb(object):
                                   bucket, exc)
             raise ServiceUnavailable from exc
 
-    def reserve(self, bucket, owner):
+    def reserve(self, bucket, owner, **kwargs):
         """
         Reserve a bucket. The bucket entry must not already
         exist in the database.
@@ -140,7 +140,7 @@ class OioBucketDb(object):
         :returns: True if the bucket has been reserved, False otherwise
         """
         try:
-            self.bucket_client.bucket_reserve(bucket, owner)
+            self.bucket_client.bucket_reserve(bucket, owner, **kwargs)
             return True
         except ClientException as exc:
             if isinstance(exc, BadRequest) and 'Too many buckets' in str(exc):
@@ -157,7 +157,7 @@ class OioBucketDb(object):
                     bucket, owner, exc)
             raise ServiceUnavailable from exc
 
-    def create(self, bucket, owner):
+    def create(self, bucket, owner, **kwargs):
         """
         Create a new bucket.
 
@@ -166,7 +166,7 @@ class OioBucketDb(object):
         :returns: True if the bucket has been create
         """
         try:
-            self.bucket_client.bucket_create(bucket, owner)
+            self.bucket_client.bucket_create(bucket, owner, **kwargs)
             return True
         except ClientException as exc:
             if isinstance(exc, BadRequest) and 'Too many buckets' in str(exc):
@@ -183,7 +183,7 @@ class OioBucketDb(object):
                     bucket, owner, exc)
             raise ServiceUnavailable from exc
 
-    def delete(self, bucket, owner):
+    def delete(self, bucket, owner, **kwargs):
         """
         Delete the specified bucket.
 
@@ -192,7 +192,9 @@ class OioBucketDb(object):
         :returns: True if the bucket has been delete
         """
         try:
-            self.bucket_client.bucket_delete(bucket, owner, force=True)
+            kwargs.pop('force', None)
+            self.bucket_client.bucket_delete(bucket, owner, force=True,
+                                             **kwargs)
             return True
         except ClientException as exc:
             if self.logger:
