@@ -5,8 +5,8 @@
 
 [submodule "ceph-s3tests"]
 	path = third_party/ceph-s3tests
-	url = https://github.com/open-io/ceph-s3-tests.git
-	branch = master
+	url = ../ceph-s3-tests.git
+	branch = dev/lmetzger/cross-account-acl-tests
 
 [submodule "ceph-s3tests-reports"]
 	path = third_party/ceph-s3tests-reports
