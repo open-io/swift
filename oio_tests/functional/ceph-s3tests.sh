@@ -16,7 +16,7 @@ sleep 3
 # Debug: try to connect, wait 5s, diconnect immediatly after connection is established
 nc -vzw 5 localhost 5000
 
-openio account set AUTH_demo --max-buckets 500
+openio account set AUTH_demo --max-buckets 1000
 
 S3TEST_CONF=ceph-s3tests.conf nosetests \
   -a '!fails_on_aws' -v \
