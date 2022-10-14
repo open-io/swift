@@ -298,6 +298,23 @@ class TestS3Mpu(unittest.TestCase):
             "head-object", "--part-number", "1", bucket=self.bucket, key=path2)
         self.assertEqual(size, data.get('ContentLength', -1))
 
+    def test_head_with_partnb_on_non_mpu_object(self):
+        object = 'obj'
+        run_awscli_s3api("put-object", bucket=self.bucket, key=object)
+        run_awscli_s3api(
+            "head-object", "--part-number", "1", bucket=self.bucket, key=object
+            )
+        self.assertRaisesRegex(
+            CliError,
+            "Range Not Satisfiable",
+            run_awscli_s3api,
+            "head-object",
+            "--part-number",
+            "2",
+            bucket=self.bucket,
+            key=object,
+        )
+
     def test_mpu_with_docker(self):
         self._test_mpu("docker/registry/v2/repositories/hello/_uploads/333633b0-503f-4b2a-9b43-e56ec6445ef3/data")  # noqa
 

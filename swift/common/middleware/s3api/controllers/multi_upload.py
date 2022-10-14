@@ -329,7 +329,7 @@ class PartController(Controller):
             if part_number == 1:
                 if slo_resp.is_success and req.method == 'HEAD':
                     # Clear body
-                    slo_resp.body = ''
+                    slo_resp.body = b''
                 return slo_resp
             else:
                 close_if_possible(slo_resp.app_iter)

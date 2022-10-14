@@ -323,9 +323,13 @@ class ContainerController(SwiftContainerController):
                 req.headers.pop(key, None)
         if len(self.container_name) > constraints.MAX_CONTAINER_NAME_LENGTH:
             resp = HTTPBadRequest(request=req)
-            resp.body = 'Container name length of %d longer than %d' % \
-                        (len(self.container_name),
-                         constraints.MAX_CONTAINER_NAME_LENGTH)
+            resp.body = (
+                "Container name length of %d longer than %d"
+                % (
+                    len(self.container_name),
+                    constraints.MAX_CONTAINER_NAME_LENGTH,
+                )
+            ).encode("utf-8")
             return resp
 
         account_info = get_account_info(req.environ, self.app)
@@ -343,8 +347,10 @@ class ContainerController(SwiftContainerController):
                                     req)
             if not is_success(container_info.get('status')):
                 resp = HTTPForbidden(request=req)
-                resp.body = 'Reached container limit of %s' % \
-                    self.app.max_containers_per_account
+                resp.body = (
+                    "Reached container limit of %s"
+                    % self.app.max_containers_per_account
+                ).encode("utf-8")
                 return resp
 
         headers = self.generate_request_headers(req, transfer=True)
