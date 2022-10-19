@@ -21,6 +21,6 @@ openio account set AUTH_demo --max-buckets 1000
 S3TEST_CONF=ceph-s3tests.conf nosetests \
   -a '!fails_on_aws' -v \
   --with-xunit --xunit-file=tests_report.xml \
-  s3tests_boto3.functional.test_s3
+  s3tests_boto3.functional.test_s3 s3tests_boto3.functional.test_s3_cross_account_acl
 
 mv tests_report.xml ../../
