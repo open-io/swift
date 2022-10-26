@@ -21,7 +21,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_container_existence, check_bucket_storage_domain, \
     set_s3_operation_rest
 from swift.common.middleware.s3api.iam import check_iam_access
-from swift.common.middleware.s3api.etree import fromstring, \
+from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
     MalformedXML, NoSuchCORSConfiguration, CORSInvalidRequest, ErrorResponse
@@ -58,7 +58,7 @@ def get_cors(app, conf, req, method, origin):
     body = sysmeta.get('s3api-cors')
     rules = []
     if body:
-        data = fromstring(body, "CorsConfiguration")
+        data = fromstring(body.encode('utf-8'), "CorsConfiguration")
         # We have to iterate over each rule to find a match with origin.
         rules += data.findall('CORSRule')
     # Add CORS rules from the configuration
@@ -203,7 +203,7 @@ class CorsController(Controller):
         # forbid wildcard for ExposeHeader
         check_cors_rule(data)
 
-        req.headers[BUCKET_CORS_HEADER] = xml
+        req.headers[BUCKET_CORS_HEADER] = tostring(data, xml_declaration=False)
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 

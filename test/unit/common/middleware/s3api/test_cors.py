@@ -22,6 +22,7 @@ from swift.common.swob import Request, HTTPNoContent, HTTPNotFound
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
 from swift.common.middleware.s3api.controllers.cors import BUCKET_CORS_HEADER
+from swift.common.middleware.s3api.etree import fromstring, tostring
 
 RULE = {
     "AllowedOrigin": "http://www.example.com",
@@ -80,8 +81,10 @@ class TestSwift3Cors(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         return status, headers, body
 
-    def _cors_PUT(self, path, cors):
-        xml = build_xml(cors)
+    def _cors_PUT(self, path, cors, xml=None):
+        if xml is None:
+            xml = build_xml(cors)
+
         req = Request.blank('%s?cors' % path,
                             environ={'REQUEST_METHOD': 'PUT'},
                             body=xml,
@@ -184,6 +187,35 @@ class TestSwift3Cors(S3ApiTestCase):
 
         ret = self._cors_GET('/test-cors')
         self.assertEqual(ret[2], xml)
+
+    def test_put_get_xml_declaration(self):
+        self.swift.register('POST', '/v1/AUTH_test/test-cors',
+                            HTTPNoContent, {}, None)
+
+        xml = build_xml(RULE)
+        data = fromstring(xml)
+        xml_with_declaration = tostring(data, xml_declaration=True)
+        ret = self._cors_PUT(
+            '/test-cors', cors=RULE, xml=xml_with_declaration)
+        self.assertEqual(ret[0], '200 OK')
+
+        xml_without_declaration = tostring(data, xml_declaration=False)
+        self.swift.register('HEAD', '/v1/AUTH_test/test-cors',
+                            HTTPNoContent,
+                            {BUCKET_CORS_HEADER: xml_without_declaration},
+                            None)
+
+        ret = self._cors_GET('/test-cors')
+        self.assertEqual(ret[2], xml_without_declaration)
+
+        self.swift.register('HEAD', '/v1/AUTH_test/test-cors',
+                            HTTPNoContent,
+                            {BUCKET_CORS_HEADER: xml_with_declaration},
+                            None)
+        ret = self._options('/test-cors/obj',
+                            {'Origin': 'http://example.com:80',
+                             'Access-Control-Request-Method': 'POST'})
+        self.assertEqual(ret[0], '403 Forbidden')
 
     def test_options_missing_origin(self):
         ret = self._options('/test-cors/obj')
