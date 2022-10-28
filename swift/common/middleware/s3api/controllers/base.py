@@ -102,10 +102,10 @@ def check_bucket_storage_domain(func):
                     self.conf.default_storage_domain)
                 if req.storage_domain != storage_domain:
                     if req.storage_domain.startswith("s3-website"):
-                        requested_root_url = req.storage_domain.replace(
-                            "s3-website.", "", 1)
-                        root_url = storage_domain.replace("s3.", "", 1)
-                        if requested_root_url != root_url:
+                        req.is_website = True
+                        req.storage_domain = req.storage_domain.replace(
+                            "-website.", "", 1)
+                        if req.storage_domain != storage_domain:
                             raise BadEndpoint
                     else:
                         raise BadEndpoint

@@ -377,7 +377,7 @@ class BucketController(Controller):
         """
         suffix_doc, error_doc = get_website_conf(self.app, req)
         if suffix_doc is not None:
-            if req.storage_domain.startswith("s3-website"):
+            if req.is_website:
                 try:
                     resp = req.get_response(
                         self.app,

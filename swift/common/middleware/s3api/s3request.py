@@ -721,6 +721,7 @@ class S3Request(swob.Request):
         self.access_key, self.signature = self._parse_auth_info()
         self.container_name, self.object_name = self._parse_uri()
         self.storage_class = self._get_storage_class()
+        self.is_website = False
         self._validate_headers()
         if not self._is_anonymous:
             # Lock in string-to-sign now, before we start messing
