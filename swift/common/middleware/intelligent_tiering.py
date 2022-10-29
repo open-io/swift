@@ -410,6 +410,26 @@ class IntelligentTieringMiddleware(object):
         return rules
 
     @staticmethod
+    def _iam_generate_allow_rule(container_name, allow_bucket_creation=True):
+        statement = []
+        rules = {'Statement': statement}
+        statement.append({
+            'Sid': 'IntelligentTieringAllowEverything',
+            'Action': 's3:*',
+            'Effect': 'Allow',
+            'Resource': [ARN_S3_PREFIX + container_name,
+                         ARN_S3_PREFIX + container_name + '/*']
+        })
+        if not allow_bucket_creation:
+            statement.append({
+                'Sid': 'IntelligentTieringDenyBucketCreation',
+                'Action': 's3:CreateBucket',
+                'Effect': 'Deny',
+                'Resource': [ARN_S3_PREFIX + container_name]
+            })
+        return rules
+
+    @staticmethod
     # pylint: disable=protected-access
     def _add_or_replace_rule_in_matcher(matcher, rules_to_add):
         """
@@ -437,6 +457,14 @@ class IntelligentTieringMiddleware(object):
         matcher = None
         if tiering_callback:
             matcher = tiering_callback(req)
+        else:  # No IAM middleware
+            # Accept all other operations and leave verification to ACLs.
+            # When there is no IAM middleware, only fast owner users can
+            # create buckets.
+            matcher = IamRulesMatcher(
+                self._iam_generate_allow_rule(
+                    req.container_name, req.environ.get('swift_owner')),
+                logger=self.logger)
 
         if matcher:
             self._add_or_replace_rule_in_matcher(matcher, it_rules)
