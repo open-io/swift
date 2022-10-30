@@ -21,6 +21,17 @@ pip install -r requirements.txt
 cd ../..
 mv third_party/ceph-s3tests-reports/output/ceph-s3.out.yaml ceph-s3tests-attributes.yaml
 
-run_functional_test s3-custom-encryption.cfg.in ceph-s3tests.sh
+# IAM, with rules in a fdb database
+RULES_FILE="$PWD/etc/iam-rules-sample.json"
+CONN_STR="fdb://127.0.0.1:6379"
+for USER in $(jq -r --raw-output 'keys | .[]' $RULES_FILE)
+do
+  RULE="$(jq -c ".\"$USER\"" $RULES_FILE)"
+  ACCOUNT="AUTH_$(echo "$USER" | cut -d ':' -f 1)"
+  openio-admin iam put-user-policy --policy-name "default" "$ACCOUNT" "$USER" "$RULE"
+done
+
+sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-custom-encryption.cfg.in > etc/s3-custom-encryption.cfg
+run_functional_test s3-custom-encryption.cfg ceph-s3tests.sh
 
 exit $RET

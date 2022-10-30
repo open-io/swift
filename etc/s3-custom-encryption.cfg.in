@@ -12,7 +12,7 @@ sds_namespace = OPENIO
 sds_proxy_url = http://127.0.0.1:6000
 
 [pipeline:main]
-pipeline = catch_errors cache listing_formats s3api tempauth proxy-logging copy slo versioned_writes symlink keymaster encryption proxy-server
+pipeline = catch_errors cache listing_formats iam s3api tempauth proxy-logging copy slo versioned_writes symlink keymaster encryption proxy-server
 
 [app:proxy-server]
 use = egg:swift#oio_proxy
@@ -54,6 +54,11 @@ use = egg:swift#slo
 [filter:staticweb]
 use = egg:swift#staticweb
 
+[filter:iam]
+use = egg:swift#oioiam
+log_level = DEBUG
+connection = %IAM_RULES_CONN%
+
 [filter:s3api]
 use = egg:swift#s3api
 location = RegionOne
@@ -75,6 +80,7 @@ user_demo_demo = DEMO_PASS .admin
 # Unpriviledged users of the account AUTH_demo
 user_demo_user1 = USER_PASS
 user_demo_user2 = USER_PASS
+user_demo_user3 = USER_PASS
 
 user_tester2_tester2 = TESTER2 .admin
 
