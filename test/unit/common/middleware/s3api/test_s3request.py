@@ -1165,6 +1165,89 @@ class TestRequest(S3ApiTestCase):
         error = raised.exception.body.decode('utf8')
         self.assertEqual(error, s3request.SIGV4_ERROR_INCOMPLETE_BODY)
 
+    def test_parse_host(self):
+        headers = {'Authorization': 'AWS test:tester:hmac',
+                   'X-Amz-Date': self.get_date_header()}
+        environ = {
+            'HTTP_HOST': 's3.sbg.perf.cloud.ovh.net',
+            'REQUEST_METHOD': 'GET'}
+        req = Request.blank('/', environ=environ, headers=headers)
+        s3_req = S3Request(
+            req.environ, conf=Config({
+                'storage_domains': {'alternate.domain': None,
+                                    's3.sbg.perf.cloud.ovh.net': None}}))
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "mybucket.s3.sbg.perf.cloud.ovh.net", ["s3.sbg.perf.cloud.ovh.net"]
+        )
+        self.assertEqual("s3.sbg.perf.cloud.ovh.net", storage_domain)
+        self.assertEqual("mybucket", bucket)
+        self.assertEqual(False, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "mybucket.s3-website.sbg.perf.cloud.ovh.net",
+            ["s3.sbg.perf.cloud.ovh.net"],
+        )
+        self.assertEqual("s3.sbg.perf.cloud.ovh.net", storage_domain)
+        self.assertEqual("mybucket", bucket)
+        self.assertEqual(True, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "s3.sbg.perf.cloud.ovh.net", ["s3.sbg.perf.cloud.ovh.net"]
+        )
+        self.assertEqual("s3.sbg.perf.cloud.ovh.net", storage_domain)
+        self.assertEqual(None, bucket)
+        self.assertEqual(False, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "s3-website.sbg.perf.cloud.ovh.net", ["s3.sbg.perf.cloud.ovh.net"]
+        )
+        self.assertEqual("s3.sbg.perf.cloud.ovh.net", storage_domain)
+        self.assertEqual(None, bucket)
+        self.assertEqual(True, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "test.sbg.perf.cloud.ovh.net", ["s3.sbg.perf.cloud.ovh.net"]
+        )
+        self.assertEqual(None, storage_domain)
+        self.assertEqual(None, bucket)
+        self.assertEqual(None, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "bad.domain", ["s3.sbg.perf.cloud.ovh.net"]
+        )
+        self.assertEqual(None, storage_domain)
+        self.assertEqual(None, bucket)
+        self.assertEqual(None, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "mybucket.localhost", ["localhost"]
+        )
+        self.assertEqual("localhost", storage_domain)
+        self.assertEqual("mybucket", bucket)
+        self.assertEqual(False, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "mybucket.s3-website.localhost", ["localhost"]
+        )
+        self.assertEqual("localhost", storage_domain)
+        self.assertEqual("mybucket", bucket)
+        self.assertEqual(True, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "localhost", ["localhost"]
+        )
+        self.assertEqual("localhost", storage_domain)
+        self.assertEqual(None, bucket)
+        self.assertEqual(False, is_website)
+
+        storage_domain, bucket, is_website = s3_req._parse_host(
+            "s3-website.localhost", ["localhost"]
+        )
+        self.assertEqual("localhost", storage_domain)
+        self.assertEqual(None, bucket)
+        self.assertEqual(True, is_website)
+
 
 class TestSigV4Request(S3ApiTestCase):
     def setUp(self):

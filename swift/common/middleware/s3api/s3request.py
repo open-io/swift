@@ -717,11 +717,16 @@ class S3Request(swob.Request):
         self._timestamp = None
         self._secret = None
         self._chunk_signature_valid = True
+        given_domain = None
+        if 'HTTP_HOST' in self.environ:
+            given_domain = self.environ['HTTP_HOST']
+        elif 'SERVER_NAME' in self.environ:
+            given_domain = self.environ['SERVER_NAME']
         (
             self.storage_domain,
             self.bucket_in_host,
             self.is_website,
-        ) = self._parse_host()
+        ) = self._parse_host(given_domain, self.conf.storage_domains)
         self.access_key, self.signature = self._parse_auth_info()
         self.container_name, self.object_name = self._parse_uri()
         self.storage_class = self._get_storage_class()
@@ -826,21 +831,16 @@ class S3Request(swob.Request):
                 self.headers['X-Amz-Content-SHA256'] ==
                 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD')
 
-    def _parse_host(self):
-        if not self.conf.storage_domains:
+    def _parse_host(self, given_domain, storage_domains):
+        if not given_domain:
             return None, None, None
-
-        if 'HTTP_HOST' in self.environ:
-            given_domain = self.environ['HTTP_HOST']
-        elif 'SERVER_NAME' in self.environ:
-            given_domain = self.environ['SERVER_NAME']
-        else:
+        if not storage_domains:
             return None, None, None
         port = ''
         if ':' in given_domain:
             given_domain, port = given_domain.rsplit(':', 1)
 
-        for storage_domain in self.conf.storage_domains:
+        for storage_domain in storage_domains:
             domain = storage_domain
             if storage_domain.startswith('s3.'):
                 domain = storage_domain[len('s3.'):]
