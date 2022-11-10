@@ -30,7 +30,8 @@ from swift.common.middleware.s3api.etree import Element, SubElement, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, NoSuchKey, ErrorResponse, MalformedXML, \
-    UserKeyMustBeSpecified, AccessDenied, MissingRequestBodyError
+    UserKeyMustBeSpecified, AccessDenied, MissingRequestBodyError, \
+    NoSuchVersion
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE
@@ -202,8 +203,12 @@ class MultiObjectDeleteController(Controller):
                         return key, version, {'code': 'SLODeleteError',
                                               'message':
                                               'Unexpected swift response'}
-            except NoSuchKey:
-                pass
+            except (NoSuchKey, NoSuchVersion):
+                if self.has_bucket_or_object_read_permission(req) is False:
+                    e = AccessDenied()
+                    return key, version, {'versionid': version,
+                                          'code': e.__class__.__name__,
+                                          'message': e._msg}
             except ErrorResponse as e:
                 return key, version, {'versionid': version,
                                       'code': e.__class__.__name__,

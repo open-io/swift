@@ -20,7 +20,7 @@ from swift.common.utils import close_if_possible, public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_storage_domain, \
-    set_s3_operation_rest
+    set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -78,6 +78,7 @@ class TaggingController(Controller):
     @public
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:GetObjectTagging', 's3:GetBucketTagging')
     def GET(self, req):  # pylint: disable=invalid-name
         """
@@ -110,6 +111,7 @@ class TaggingController(Controller):
     @public
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:PutObjectTagging', 's3:PutBucketTagging')
     def PUT(self, req):  # pylint: disable=invalid-name
         """
@@ -140,6 +142,7 @@ class TaggingController(Controller):
     @public
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:DeleteObjectTagging', 's3:DeleteBucketTagging')
     def DELETE(self, req):  # pylint: disable=invalid-name
         """

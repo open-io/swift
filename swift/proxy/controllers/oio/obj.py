@@ -850,8 +850,10 @@ class ObjectController(BaseObjectController):
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
         except exceptions.NoSuchObject:
-            # Swift doesn't consider this case as an error
-            pass
+            # Let the S3 middleware handle the error
+            if req.environ.get('swift.source') == 'S3':
+                return HTTPNotFound(request=req)
+            # else -- Swift doesn't consider this case as an error
         except exceptions.Forbidden:
             raise HTTPForbidden(request=req)
         resp = HTTPNoContent(request=req)

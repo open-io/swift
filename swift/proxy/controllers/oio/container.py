@@ -38,7 +38,8 @@ from swift.common.request_helpers import is_sys_or_user_meta, get_param, \
 from swift.proxy.controllers.container import ContainerController \
     as SwiftContainerController
 from swift.proxy.controllers.base import clear_info_cache, \
-    delay_denial, cors_validation, get_account_info, set_info_cache
+    delay_denial, cors_validation, get_account_info, set_info_cache, \
+    _get_info_from_caches, headers_from_container_info
 
 from oio.common import exceptions
 
@@ -105,8 +106,12 @@ class ContainerController(SwiftContainerController):
             'X-Container-Object-Count': system.get('sys.m2.objects', 0),
             'X-Container-Bytes-Used': system.get('sys.m2.usage', 0),
             'X-Timestamp': Timestamp(ctime).normal,
-            # FIXME: save modification time somewhere
-            'X-PUT-Timestamp': Timestamp(ctime).normal,
+            'X-Backend-Timestamp': Timestamp(ctime).normal,
+            # FIXME: save modification/deletion time somewhere
+            'X-Put-Timestamp': Timestamp(ctime).normal,
+            'X-Backend-Put-Timestamp': Timestamp(ctime).normal,
+            'X-Backend-Delete-Timestamp': Timestamp(ctime).normal,
+            'X-Backend-Status-Changed-At': Timestamp(ctime).normal,
         })
         for (k, v) in meta['properties'].items():
             if v and (k.lower() in self.pass_through_headers or
@@ -152,16 +157,31 @@ class ContainerController(SwiftContainerController):
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
-        result = self.app.storage.object_list(
-            self.account_name, self.container_name, prefix=prefix,
-            limit=limit, delimiter=delimiter, marker=marker,
-            version_marker=version_marker, end_marker=end_marker,
-            properties=True, versions=opts.get('versions', False),
-            deleted=opts.get('deleted', False),
-            force_master=opts.get('force_master', False),
-            headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+        if limit > 0:
+            result = self.app.storage.object_list(
+                self.account_name, self.container_name, prefix=prefix,
+                limit=limit, delimiter=delimiter, marker=marker,
+                version_marker=version_marker, end_marker=end_marker,
+                properties=True, versions=opts.get('versions', False),
+                deleted=opts.get('deleted', False),
+                force_master=opts.get('force_master', False),
+                headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+            resp_headers = self.get_metadata_resp_headers(result)
+        else:
+            # As an empty list is necessarily expected, use the cache
+            # to avoid an unnecessary request
+            result = {'objects': []}
+            info = _get_info_from_caches(self.app, req.environ,
+                                         self.account_name,
+                                         self.container_name)
+            if info:
+                resp_headers = headers_from_container_info(info)
+            else:
+                info = self.app.storage.container_get_properties(
+                    self.account_name, self.container_name,
+                    headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+                resp_headers = self.get_metadata_resp_headers(info)
 
-        resp_headers = self.get_metadata_resp_headers(result)
         resp = self.create_listing(req, resp_headers, result, **opts)
         return resp
 

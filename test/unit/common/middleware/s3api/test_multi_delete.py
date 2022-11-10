@@ -115,12 +115,13 @@ class TestS3ApiMultiDelete(S3ApiTestCase):
         elem = fromstring(body)
         self.assertEqual(len(elem.findall('Deleted')), 5)
         self.assertEqual(len(elem.findall('Error')), 0)
-        self.assertEqual(self.swift.calls, [
+        expected_calls = [
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket/Key1?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key1'),
             ('HEAD', '/v1/AUTH_test/bucket/Key2?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key2'),
+            ('GET', '/v1/AUTH_test/bucket?limit=0'),
             ('HEAD', '/v1/AUTH_test/bucket/Key3?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key3?multipart-manifest=delete'),
             ('HEAD', '/v1/AUTH_test/bucket/Key4?symlink=get'),
@@ -128,7 +129,10 @@ class TestS3ApiMultiDelete(S3ApiTestCase):
              '/v1/AUTH_test/bucket/Key4?async=on&multipart-manifest=delete'),
             ('HEAD', '/v1/AUTH_test/bucket/business/caf\xc3\xa9?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/business/caf\xc3\xa9'),
-        ])
+        ]
+        if self.s3api.conf.s3_acl:
+            expected_calls.insert(5, ('HEAD', '/v1/AUTH_test/bucket'))
+        self.assertEqual(self.swift.calls, expected_calls)
 
     @s3acl
     def test_object_multi_DELETE_with_error(self):
@@ -185,16 +189,20 @@ class TestS3ApiMultiDelete(S3ApiTestCase):
                  '/bucket+segments/obj1: 403 Forbidden',
                  '/bucket+segments/obj2: 403 Forbidden']))]
         )
-        self.assertEqual(self.swift.calls, [
+        expected_calls = [
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket/Key1?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key1'),
             ('HEAD', '/v1/AUTH_test/bucket/Key2?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key2'),
+            ('GET', '/v1/AUTH_test/bucket?limit=0'),
             ('HEAD', '/v1/AUTH_test/bucket/Key3?symlink=get'),
             ('HEAD', '/v1/AUTH_test/bucket/Key4?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key4?multipart-manifest=delete'),
-        ])
+        ]
+        if self.s3api.conf.s3_acl:
+            expected_calls.insert(5, ('HEAD', '/v1/AUTH_test/bucket'))
+        self.assertEqual(self.swift.calls, expected_calls)
 
     @s3acl
     def test_object_multi_DELETE_with_non_json(self):
@@ -407,7 +415,7 @@ class TestS3ApiMultiDelete(S3ApiTestCase):
         elem = fromstring(body)
         self.assertEqual(len(elem.findall('Deleted')), 3)
 
-        self.assertEqual(self.swift.calls, [
+        expected_calls = [
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket/Key1'
              '?symlink=get&version-id=%s' % t1.normal),
@@ -417,9 +425,13 @@ class TestS3ApiMultiDelete(S3ApiTestCase):
              '?symlink=get&version-id=%s' % t2.normal),
             ('DELETE', '/v1/AUTH_test/bucket/Key2'
              '?symlink=get&version-id=%s' % t2.normal),
+            ('GET', '/v1/AUTH_test/bucket?limit=0'),
             ('HEAD', '/v1/AUTH_test/bucket/Key3?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/Key3'),
-        ])
+        ]
+        if self.s3api.conf.s3_acl:
+            expected_calls.insert(5, ('HEAD', '/v1/AUTH_test/bucket'))
+        self.assertEqual(self.swift.calls, expected_calls)
 
     @s3acl
     def test_object_multi_DELETE_with_invalid_md5(self):
@@ -570,7 +582,15 @@ class TestS3ApiMultiDelete(S3ApiTestCase):
         status, headers, body = self._test_object_multi_DELETE('test:write')
         self.assertEqual(status.split()[0], '200')
         elem = fromstring(body)
-        self.assertEqual(len(elem.findall('Deleted')), len(self.keys))
+        deleted = elem.findall('Deleted')
+        self.assertEqual(len(deleted), 1)
+        self.assertEqual(deleted[0].find('Key').text, self.keys[0])
+        errors = elem.findall('Error')
+        self.assertEqual(len(errors), 1)
+        errror = errors[0]
+        self.assertEqual(errror.find('Key').text, self.keys[1])
+        self.assertEqual(errror.find('Code').text, 'AccessDenied')
+        self.assertEqual(errror.find('Message').text, 'Access Denied.')
 
     @s3acl(s3acl_only=True)
     def test_object_multi_DELETE_with_fullcontrol_permission(self):

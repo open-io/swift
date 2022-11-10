@@ -13,12 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import functools
 
+from swift.common.middleware.s3api.acl_handlers import get_acl_handler
+from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
+from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
+    check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
-    InvalidRequest, BadEndpoint, NoSuchBucket
+    InvalidRequest, BadEndpoint, NoSuchBucket, AccessDenied, NoSuchKey, \
+    NoSuchVersion
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER
 from swift.common.middleware.s3api.utils import camel_to_snake
+from swift.common.swob import str_to_wsgi
+from swift.common.utils import drain_and_close
 
 
 def bucket_operation(func=None, err_resp=None, err_msg=None):
@@ -135,6 +143,27 @@ def set_s3_operation_rest(resource_type, object_resource_type=None,
     return _set_s3_operation
 
 
+def handle_no_such_key(func):
+    """
+    Check whether a user can know that an object does not exist.
+    """
+    @functools.wraps(func)
+    def wrapped(self, req):
+        try:
+            return func(self, req)
+        except (NoSuchKey, NoSuchVersion) as exc:
+            internal_req = \
+                req.environ.get('REMOTE_USER') == '.wsgi.pre_authed' \
+                and req.environ.get('swift.authorize_override') is True
+            if internal_req:
+                raise
+            if self.has_bucket_or_object_read_permission(req) is False:
+                raise AccessDenied from exc
+            raise
+
+    return wrapped
+
+
 class Controller(object):
     """
     Base WSGI controller class for the middleware
@@ -168,6 +197,58 @@ class Controller(object):
         if not self.conf.log_s3_operation:
             return
         req.environ.setdefault('swift.log_info', []).append(self.operation)
+
+    def has_bucket_or_object_read_permission(self, req):
+        """
+        To know that the object does not exist, the user must
+        - either have a bucket policy (not yet implemented) that allows
+          them to read the object,
+        - or have permission to list the objects in the bucket.
+        Otherwise access is denied so as not to indicate whether
+        the object exists or not.
+        """
+        if req.is_website:
+            # FIXME(ADU): There are still a lot of changes around the
+            # handling of some requests and some errors. To avoid
+            # unnecessary changes, I suggest looking at this point
+            # when most of these changes are made.
+            return None
+        if not req.is_object_request:
+            return None
+        try:
+            # Check if the user is allowed to list the bucket content
+            subreq = copy.copy(req)
+            subreq.environ = copy.copy(req.environ)
+            subreq.method = 'GET'
+            # Account has been replaced with the bucket account
+            subreq.container_name = str_to_wsgi(
+                req.environ['s3api.info']['bucket'])
+            subreq.object_name = None
+            subreq.params = {}
+
+            # Reset the permissions of user policies and ACLs
+            # for this new request
+            subreq.environ.pop(IAM_EXPLICIT_ALLOW, None)
+            subreq.environ.pop(ACL_EXPLICIT_ALLOW, None)
+            acl_handler = get_acl_handler(subreq.controller_name)(
+                subreq, self.logger)
+            subreq.set_acl_handler(acl_handler)
+
+            check_iam_access('s3:ListBucket')(
+                lambda x, req: None)(None, subreq)
+            resp = subreq.get_response(self.app, query={'limit': 0})
+            drain_and_close(resp)
+            # The user can list the bucket, so the user can know
+            # that the object does not exist
+            return True
+        except AccessDenied:
+            # The user cannot list the bucket, so the user should
+            # not know that the object does not exist
+            return False
+        except Exception:
+            # To avoid returning information to the user, in case
+            # of error while checking, access is denied by default
+            return False
 
 
 class UnsupportedController(Controller):

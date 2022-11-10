@@ -81,7 +81,7 @@ from six.moves.urllib.parse import quote, urlparse
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
-    check_bucket_storage_domain, set_s3_operation_rest
+    check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
@@ -209,6 +209,7 @@ class PartController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:PutObject')
     def PUT(self, req):
         """
@@ -288,6 +289,7 @@ class PartController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
@@ -300,6 +302,7 @@ class PartController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
@@ -556,6 +559,7 @@ class UploadsController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:PutObject')
     def POST(self, req):
         """
@@ -641,6 +645,7 @@ class UploadController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:ListMultipartUploadParts')
     def GET(self, req):
         """
@@ -756,6 +761,7 @@ class UploadController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:AbortMultipartUpload')
     def DELETE(self, req):
         """
@@ -806,6 +812,7 @@ class UploadController(Controller):
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
+    @handle_no_such_key
     @check_iam_access('s3:PutObject')
     def POST(self, req):
         """

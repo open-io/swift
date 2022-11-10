@@ -504,7 +504,9 @@ class TestS3ApiObj(S3ApiTestCase):
         self.assertEqual(elem.find('Code').text, 'NoSuchVersion')
         self.assertEqual(elem.find('Key').text, 'object')
         self.assertEqual(elem.find('VersionId').text, 'A')
-        expected_calls = []
+        expected_calls = [('GET', '/v1/AUTH_test/bucket?limit=0')]
+        if self.s3api.conf.s3_acl:
+            expected_calls.insert(0, ('HEAD', '/v1/AUTH_test/bucket'))
         # NB: No actual backend GET!
         self.assertEqual(expected_calls, self.swift.calls)
 

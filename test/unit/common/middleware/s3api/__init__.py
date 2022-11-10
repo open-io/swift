@@ -100,6 +100,8 @@ class S3ApiTestCase(unittest.TestCase):
                             swob.HTTPOk, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_test/bucket',
                             swob.HTTPNoContent, {}, None)
+        self.swift.register('GET', '/v1/AUTH_test/bucket', swob.HTTPOk,
+                            {}, "")  # Allow to list bucket
         self.swift.register('PUT', '/v1/AUTH_test/bucket',
                             swob.HTTPCreated, {}, None)
         self.swift.register('POST', '/v1/AUTH_test/bucket',
