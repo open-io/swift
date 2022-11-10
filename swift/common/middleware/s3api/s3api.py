@@ -141,6 +141,7 @@ https://github.com/swiftstack/s3compat in detail.
 
 """
 
+import copy
 from cgi import parse_header
 import json
 from paste.deploy import loadwsgi
@@ -149,7 +150,7 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.constraints import valid_api_version
 from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
-from swift.common.swob import wsgi_to_str
+from swift.common.swob import wsgi_to_str, str_to_wsgi
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
@@ -161,12 +162,15 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
 from swift.common.middleware.s3api.s3request import get_request_class
 from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
-    InvalidRequest, Redirect, AllAccessDisabled
+    InvalidRequest, Redirect, AllAccessDisabled, NoSuchKey, AccessDenied
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
-    list_from_csv, parse_auto_storage_policies
+    list_from_csv, parse_auto_storage_policies, drain_and_close
 from swift.common.middleware.s3api.utils import Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
+from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
+from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
+    check_iam_access
 from swift.common.registry import register_swift_info, \
     register_sensitive_header, register_sensitive_param
 
@@ -467,7 +471,12 @@ class S3ApiMiddleware(object):
                     req.storage_class)
                 if auto_storage_policies:
                     env['swift.auto_storage_policies'] = auto_storage_policies
-            resp = self.handle_request(req)
+            try:
+                resp = self.handle_request(req)
+            except NoSuchKey as exc:
+                if self._can_know_that_the_object_does_not_exist(req) is True:
+                    raise
+                raise AccessDenied from exc
         except NotS3Request:
             path_info = env.get('PATH_INFO')
             internal_req = env.get('REMOTE_USER') == '.wsgi.pre_authed' \
@@ -529,6 +538,58 @@ class S3ApiMiddleware(object):
                                    req.controller.resource_type())
 
         return res
+
+    def _can_know_that_the_object_does_not_exist(self, req):
+        """
+        To know that the object does not exist, the user must
+        - either have a bucket policy (not yet implemented) that allows
+          them to read the object,
+        - or have permission to list the objects in the bucket.
+        Otherwise access is denied so as not to indicate whether
+        the object exists or not.
+        """
+        if req.is_website:
+            # FIXME(ADU): There are still a lot of changes around the
+            # handling of some requests and some errors. To avoid
+            # unnecessary changes, I suggest looking at this point
+            # when most of these changes are made.
+            return None
+        if not req.is_object_request:
+            return None
+        try:
+            # Check if the user cans list the bucket
+            subreq = copy.copy(req)
+            subreq.environ = copy.copy(req.environ)
+            subreq.method = 'GET'
+            # Account has been replaced with the bucket account
+            subreq.container_name = str_to_wsgi(
+                req.environ['s3api.info']['bucket'])
+            subreq.object_name = None
+            subreq.params = {}
+
+            # Reset the permissions of user policies and ACLs
+            # for this new request
+            subreq.environ.pop(IAM_EXPLICIT_ALLOW, None)
+            subreq.environ.pop(ACL_EXPLICIT_ALLOW, None)
+            acl_handler = get_acl_handler(subreq.controller_name)(
+                subreq, self.logger)
+            subreq.set_acl_handler(acl_handler)
+
+            check_iam_access('s3:ListBucket')(
+                lambda x, req: None)(None, subreq)
+            resp = subreq.get_response(self.app, query={'limit': 0})
+            drain_and_close(resp)
+            # The user can list the bucket, so the user can know
+            # that the object does not exist
+            return True
+        except AccessDenied:
+            # The user cannot list the bucket, so the user should
+            # not know that the object does not exist
+            return False
+        except Exception:
+            # To avoid returning information to the user, in case
+            # of error while checking, access is denied by default
+            return False
 
     def check_pipeline(self, wsgi_conf):
         """

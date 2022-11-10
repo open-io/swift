@@ -745,6 +745,7 @@ class S3Request(swob.Request):
             self.signature_version = None
             self.string_to_sign = None
         self.account = None
+        self.user_account = None
         self.user_id = None
 
         # Avoids that swift.swob.Response replaces Location header value
@@ -1909,6 +1910,9 @@ class S3Request(swob.Request):
 
         _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
                                         2, 3, True)
+        # Keep the user's account name because the request's account name
+        # may change if it is a request to a bucket in another account
+        self.user_account = self.account
 
     def get_account_info(self, app):
         """
@@ -2006,6 +2010,9 @@ class S3AclRequest(S3Request):
 
         _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
                                         2, 3, True)
+        # Keep the user's account name because the request's account name
+        # may change if it is a request to a bucket in another account
+        self.user_account = self.account
 
         if 'HTTP_X_USER_NAME' in sw_resp.environ:
             # keystone
