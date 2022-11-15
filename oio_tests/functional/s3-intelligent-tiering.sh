@@ -157,7 +157,7 @@ test_intelligent_tiering() {
     OUT=$(${AWSA1ADM} s3api get-bucket-intelligent-tiering-configuration \
       --bucket ${SHARED_BUCKET} --id myid 2>&1)
   fi
-  echo $OUT | grep "\"Status\": \"Locked\""
+  echo $OUT | grep "\"Status\": \"Archiving\""
   echo $OUT | grep "\"AccessTier\": \"OVH_ARCHIVE\""
 
   # user2 cannot fetch the bucket intelligent-tiering-configuration

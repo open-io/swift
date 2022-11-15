@@ -81,6 +81,14 @@ BUCKET_ALLOWED_TRANSITIONS = {
     BUCKET_STATE_FLUSHED: (),
 }
 
+# Mapping of Status that is retrieved with a GET request
+GET_BUCKET_STATE_OUTPUT = {
+    # Status Locked is replaced with Archiving
+    BUCKET_STATE_LOCKED: BUCKET_STATE_ARCHIVING,
+    # Status Draining is replaced with Archived
+    BUCKET_STATE_DRAINING: BUCKET_STATE_ARCHIVED,
+}
+
 # Default authorized actions.
 # Written like in a conf (strings comma separated)
 DEFAULT_IAM_CREATE_BUCKET_ACTIONS = BUCKET_STATE_NONE

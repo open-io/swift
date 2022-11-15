@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.intelligent_tiering import GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.etree import Element, SubElement, \
@@ -149,7 +150,9 @@ class IntelligentTieringController(Controller):
             tiering_conf_xml = fromstring(conf.encode('utf-8'))
 
             for elem in tiering_conf_xml.iter("Status"):
-                elem.text = result.get('bucket_status')
+                elem.text = GET_BUCKET_STATE_OUTPUT.get(
+                    result.get('bucket_status'), result.get('bucket_status')
+                )
             conf_elements.append(tiering_conf_xml)
 
         body = tostring(func(conf_elements))
