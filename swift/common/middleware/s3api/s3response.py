@@ -307,6 +307,11 @@ class AccountProblem(ErrorResponse):
            'operation from completing successfully.'
 
 
+class AllAccessDisabled(ErrorResponse):
+    _status = '403 Forbidden'
+    _msg = 'All access to this Amazon S3 resource has been disabled.'
+
+
 class AmbiguousGrantByEmailAddress(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'The e-mail address you provided is associated with more than ' \

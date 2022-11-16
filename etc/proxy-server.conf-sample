@@ -812,6 +812,13 @@ use = egg:swift#s3api
 # Enable or disable website.
 #enable_website = true
 
+# Key to the account metadata telling if an account is enabled or disabled.
+# This will be prefixed internally with "X-Account-Meta-", and is
+# case-insensitive.
+#account_enabled_key = enabled
+# Check the account is enabled before handling an S3 request
+#check_account_enabled = false
+
 [filter:s3token]
 # s3token middleware authenticates with keystone using the s3 credentials
 # provided in the request header. Please put s3token between s3api

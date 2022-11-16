@@ -161,7 +161,7 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
 from swift.common.middleware.s3api.s3request import get_request_class
 from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
-    InvalidRequest, Redirect
+    InvalidRequest, Redirect, AllAccessDisabled
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
@@ -258,6 +258,8 @@ class S3ApiMiddleware(object):
         # Set default values if they are not configured
         self.conf.s3_only = config_true_value(
             wsgi_conf.get('s3_only', False))
+        self.conf.account_enabled_key = \
+            wsgi_conf.get('account_enabled_key', 'enabled').lower()
         self.conf.allow_no_owner = config_true_value(
             wsgi_conf.get('allow_no_owner', False))
         self.conf.location = wsgi_conf.get('location', 'us-east-1')
@@ -279,6 +281,8 @@ class S3ApiMiddleware(object):
             raise ValueError('Missing storage classes list')
         self.conf.ignore_storage_class_header = config_true_value(
             wsgi_conf.get('ignore_storage_class_header', True))
+        self.conf.check_account_enabled = config_true_value(
+            wsgi_conf.get('check_account_enabled', False))
         self.conf.check_bucket_storage_domain = config_true_value(
             wsgi_conf.get('check_bucket_storage_domain', False))
         # Used only if "check_bucket_storage_domain" is enabled.
@@ -501,6 +505,9 @@ class S3ApiMiddleware(object):
 
     def handle_request(self, req):
         self.logger.debug('Calling S3Api Middleware')
+        if (self.conf.check_account_enabled
+                and not req.is_account_enabled(self.app)):
+            raise AllAccessDisabled
         try:
             controller = req.controller(self.app, self.conf, self.logger)
         except S3NotImplemented:

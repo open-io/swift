@@ -1426,6 +1426,20 @@ class S3Request(swob.Request):
                 account = self.account
         return account
 
+    def is_account_enabled(self, app):
+        """
+        Tell if this request's account is enabled.
+
+        An account is enabled by default. Account metadata is usually saved
+        in a cache, therefore there is a delay when enabling or disabling
+        an account.
+        """
+        acct_info = self.get_account_info(app)
+        if not acct_info or 'meta' not in acct_info:
+            return True
+        enabled = acct_info['meta'].get(self.conf.account_enabled_key, 'true')
+        return enabled == 'true'
+
     def to_swift_req(self, method, container, obj, query=None,
                      body=None, headers=None):
         """

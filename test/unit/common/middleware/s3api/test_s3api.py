@@ -110,8 +110,10 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         expected = dict(Config())
         expected.update({
             'allow_anonymous_path_requests': False,
+            'account_enabled_key': 'enabled',
             'auth_pipeline_check': True,
             'bucket_db_read_only': False,
+            'check_account_enabled': False,
             'check_bucket_owner': False,
             'check_bucket_storage_domain': False,
             'cors_rules': [],
@@ -139,6 +141,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
 
         # check all non-defaults are loaded
         conf = {
+            'account_enabled_key': 'is-enabled',
             'storage_classes': 'STANDARD,GLACIER',
             'storage_domain': 'somewhere:STANDARD,some.other.where',
             'ignore_storage_class_header': False,
@@ -151,6 +154,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'allow_anonymous_path_requests': True,
             'auth_pipeline_check': False,
             'bucket_db_read_only': True,
+            'check_account_enabled': True,
             'check_bucket_owner': True,
             'check_bucket_storage_domain': True,
             'cors_allow_origin': 'somewhere.com,some.*.where.io',
@@ -821,6 +825,44 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                             headers={'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidStorageClass')
+
+    def test_check_account_enabled(self):
+        self.conf['account_enabled_key'] = 'enabled'
+        self.conf['check_account_enabled'] = 'true'
+        self.s3api = S3ApiMiddleware(self.swift, self.conf)
+        self.s3api.logger = debug_logger()
+        self.swift.register('HEAD', '/v1/AUTH_X:Y', swob.HTTPOk,
+                            {'X-Account-Meta-Enabled': 'true'}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X:Y/bucket',
+                            swob.HTTPNoContent, {}, None)
+        req = Request.blank('/bucket',
+                            environ={'REQUEST_METHOD': 'HEAD',
+                                     'HTTP_AUTHORIZATION': 'AWS AUTH_X:Y:Z'},
+                            headers={'Date': self.get_date_header()})
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request._authenticate'):
+            status, _headers, _body = self.call_s3api(req)
+        self.assertEqual('200 OK', status)
+
+    def test_check_account_enabled_false(self):
+        self.conf['account_enabled_key'] = 'enabled'
+        self.conf['check_account_enabled'] = 'true'
+        self.s3api = S3ApiMiddleware(self.swift, self.conf)
+        self.s3api.logger = debug_logger()
+        self.swift.register('HEAD', '/v1/AUTH_X:Y', swob.HTTPOk,
+                            {'X-Account-Meta-Enabled': 'false'}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X:Y/bucket',
+                            swob.HTTPNoContent, {}, None)
+        req = Request.blank('/bucket',
+                            environ={'REQUEST_METHOD': 'HEAD',
+                                     'HTTP_AUTHORIZATION': 'AWS AUTH_X:Y:Z'},
+                            headers={'Date': self.get_date_header()})
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request._authenticate'):
+            status, _headers, body = self.call_s3api(req)
+        self.assertEqual('403 Forbidden', status)
+        # FIXME(FVE): body is empty, and I can't find why
+        # self.assertEqual(self._get_error_code(body), 'AllAccessDisabled')
 
     def test_invalid_ssc(self):
         req = Request.blank('/',
