@@ -15,6 +15,7 @@
 
 import json
 from dict2xml import dict2xml
+from functools import partial, wraps
 from swift.common.http import is_success
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import (
@@ -28,19 +29,25 @@ from swift.common.middleware.s3api.controllers.base import (
     bucket_operation,
     check_bucket_storage_domain,
     check_container_existence,
+    handle_no_such_key,
     set_s3_operation_rest,
 )
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import (
     fromstring,
     DocumentInvalid,
     XMLSyntaxError,
 )
 from swift.common.middleware.s3api.s3response import (
+    AccessDenied,
+    BadRequest,
     HTTPOk,
     HTTPNoContent,
     MalformedXML,
+    NoSuchKey,
     NoSuchWebsiteConfiguration,
     S3NotImplemented,
+    S3Response,
 )
 from swift.common.swob import str_to_wsgi
 
@@ -167,3 +174,118 @@ class WebsiteController(Controller):
             out, ensure_ascii=True, separators=(",", ":"), sort_keys=True
         )
         return json_output
+
+
+def set_s3_operation_website(func):
+    """
+    A decorator to set the specified operation name to the s3api.info fields
+    and append it to the swift.log_info fields, if the log_s3_operation
+    parameter is enabled.
+    """
+    @wraps(func)
+    def _set_s3_operation(self, req, *args, **kwargs):
+        meth = req.method
+        self.set_s3_operation(req, f'WEBSITE.{meth}.OBJECT')
+        return func(self, req, *args, **kwargs)
+
+    return _set_s3_operation
+
+
+class S3WebsiteController(Controller):
+    """
+    Handles requests on static website
+    """
+
+    def _handle_object_requests(self, req, suffix_doc, error_doc):
+        """
+        Handles request to an object, if an error 404 or 405 occurs and an
+        error document is set in the website configuration, then respond with
+        custom error otherwise respond with default error.
+        """
+        try:
+            resp = req.get_response(
+                self.app, obj=suffix_doc, method=req.method
+            )
+            return resp
+        except (BadRequest, AccessDenied, NoSuchKey) as err:
+            if error_doc is not None:
+                # Custom error document
+                resp = req.get_response(
+                    self.app, obj=error_doc, method=req.method
+                )
+                return convert_response(
+                    req,
+                    resp,
+                    200,
+                    partial(
+                        S3Response,
+                        app_iter=resp.app_iter,
+                        status=err.status_int,
+                    ),
+                )
+            else:
+                # Default error
+                raise
+
+    def GETorHEAD(self, req):
+        suffix_doc, error_doc = get_website_conf(self.app, req)
+        if suffix_doc is not None:
+            if req.is_object_request:
+                # Handle request on an object
+                try:
+                    resp = req.get_response(self.app, method=req.method)
+                    return resp
+                except NoSuchKey:
+                    # Add index document to prefix
+                    if req.object_name.endswith("/"):
+                        suffix_doc = req.object_name + suffix_doc
+                    else:
+                        suffix_doc = req.object_name + "/" + suffix_doc
+                    return self._handle_object_requests(
+                        req, suffix_doc, error_doc
+                    )
+                except AccessDenied as err:
+                    if error_doc is not None:
+                        # Custom error document
+                        resp = req.get_response(
+                            self.app, obj=error_doc, method=req.method
+                        )
+                        return convert_response(
+                            req,
+                            resp,
+                            200,
+                            partial(
+                                S3Response,
+                                app_iter=resp.app_iter,
+                                status=err.status_int,
+                            ),
+                        )
+                    else:
+                        # Default error
+                        raise
+            else:
+                # Handle request on a bucket
+                return self._handle_object_requests(req, suffix_doc, error_doc)
+        raise NoSuchWebsiteConfiguration
+
+    @set_s3_operation_website
+    @public
+    @check_bucket_storage_domain
+    @handle_no_such_key
+    @fill_cors_headers
+    def HEAD(self, req):
+        """
+        Handle HEAD request
+        """
+        return self.GETorHEAD(req)
+
+    @set_s3_operation_website
+    @public
+    @check_bucket_storage_domain
+    @handle_no_such_key
+    @fill_cors_headers
+    def GET(self, req):
+        """
+        Handle GET request
+        """
+        return self.GETorHEAD(req)

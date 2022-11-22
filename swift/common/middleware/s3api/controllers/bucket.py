@@ -35,18 +35,17 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.controllers.cors import \
     CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
     fill_cors_headers
-from swift.common.middleware.s3api.controllers.website import get_website_conf
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import \
-    AccessDenied, BadRequest, HTTPOk, S3NotImplemented, InvalidArgument, \
+    HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
-    BadEndpoint, VersionedBucketNotEmpty, S3Response
+    BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    convert_response, sysmeta_header
+    sysmeta_header
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
@@ -383,34 +382,6 @@ class BucketController(Controller):
         """
         Handle GET Bucket (List Objects) request
         """
-        if req.is_website:
-            suffix_doc, error_doc = get_website_conf(self.app, req)
-            if suffix_doc is not None:
-                try:
-                    resp = req.get_response(
-                        self.app,
-                        obj=suffix_doc,
-                        method="GET",
-                    )
-                    return resp
-                except (BadRequest, AccessDenied, NoSuchKey) as err:
-                    if error_doc is not None:
-                        resp = req.get_response(
-                            self.app, obj=error_doc, method="GET"
-                        )
-                        return convert_response(
-                            req,
-                            resp,
-                            200,
-                            partial(
-                                S3Response,
-                                app_iter=resp.app_iter,
-                                status=err.status_int
-                            ),
-                        )
-                    else:
-                        raise
-
         tag_max_keys = req.get_validated_param(
             'max-keys', self.conf.max_bucket_listing)
         # TODO: Separate max_bucket_listing and default_bucket_listing

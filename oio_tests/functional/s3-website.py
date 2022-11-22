@@ -311,8 +311,8 @@ class TestS3Website(unittest.TestCase):
         # request website
         r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
 
-        # check 403 because website is not enable and bucket is private
-        self.assertEqual(r.status_code, 403)
+        # check 404 because website is not enable
+        self.assertEqual(r.status_code, 404)
 
     def test_deleted_conf(self):
         self._put_index()
@@ -340,8 +340,8 @@ class TestS3Website(unittest.TestCase):
 
         r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
 
-        # check 403 because website is not enable and bucket is private
-        self.assertEqual(r.status_code, 403)
+        # check 404 because website is not enable
+        self.assertEqual(r.status_code, 404)
         self.assertNotEqual(r.text, self.index_body)
         self.assertNotEqual(r.text, self.error_body)
 

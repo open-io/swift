@@ -49,7 +49,7 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     TaggingController, UniqueBucketController, CorsController, \
     LifecycleController, IntelligentTieringController, BucketLockController, \
     ObjectLockRetentionController, ObjectLockLegalHoldController, \
-    WebsiteController, ReplicationController
+    S3WebsiteController, WebsiteController, ReplicationController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
@@ -1330,6 +1330,9 @@ class S3Request(swob.Request):
 
     @property
     def controller(self):
+        if self.is_website:
+            return S3WebsiteController
+
         if self.is_service_request:
             return ServiceController
 
@@ -1992,6 +1995,9 @@ class S3AclRequest(S3Request):
 
     @property
     def controller(self):
+        if self.is_website:
+            return S3WebsiteController
+
         if 'acl' in self.params and not self.is_service_request:
             return S3AclController
         return super(S3AclRequest, self).controller

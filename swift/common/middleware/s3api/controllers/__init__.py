@@ -42,7 +42,7 @@ from swift.common.middleware.s3api.controllers.replication import \
 from swift.common.middleware.s3api.controllers.versioning import \
     VersioningController
 from swift.common.middleware.s3api.controllers.website import \
-    WebsiteController
+    S3WebsiteController, WebsiteController
 from swift.common.middleware.s3api.controllers.tagging import \
     TaggingController
 from swift.common.middleware.s3api.controllers.unique_bucket import \
@@ -61,6 +61,7 @@ __all__ = [
     'CorsController',
     'MultiObjectDeleteController',
     'PartController',
+    'S3WebsiteController',
     'UploadsController',
     'UploadController',
     'IntelligentTieringController',
