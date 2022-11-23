@@ -154,6 +154,7 @@ from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
+from swift.common.middleware.s3api.controllers import S3WebsiteController
 from swift.common.middleware.s3api.controllers.cors import check_cors_rule
 from swift.common.middleware.s3api.etree import Element
 from swift.common.middleware.s3api.exception import NotS3Request, \
@@ -527,8 +528,16 @@ class S3ApiMiddleware(object):
                                        req.controller.resource_type())
             res = handler(req)
         else:
-            raise MethodNotAllowed(req.method,
-                                   req.controller.resource_type())
+            if isinstance(controller, S3WebsiteController):
+                raise MethodNotAllowed(
+                    req.method,
+                    "OBJECT" if req.is_object_request else "BUCKET",
+                )
+            else:
+                raise MethodNotAllowed(
+                    req.method,
+                    req.controller.resource_type()
+                )
 
         return res
 

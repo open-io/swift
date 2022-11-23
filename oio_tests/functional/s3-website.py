@@ -365,6 +365,153 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(r.text, self.error_body)
 
+    def test_HEAD_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.head(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+        )
+        self.assertEqual(r.status_code, 200)
+
+    def test_PUT_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.put(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+        )
+        self.assertEqual(r.status_code, 405)
+
+    def test_POST_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.post(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+        )
+        self.assertEqual(r.status_code, 405)
+
+    def test_DELETE_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.delete(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+        )
+        self.assertEqual(r.status_code, 405)
+
+    def test_HEAD_object_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.head(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+            + self.index_key
+        )
+        self.assertEqual(r.status_code, 200)
+
+    def test_PUT_object_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.put(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+            + self.index_key
+        )
+        self.assertEqual(r.status_code, 405)
+
+    def test_POST_object_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.post(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+            + self.index_key
+        )
+        self.assertEqual(r.status_code, 405)
+
+    def test_DELETE_object_request(self):
+        self._put_index()
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.delete(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+            + self.index_key
+        )
+        self.assertEqual(r.status_code, 405)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
