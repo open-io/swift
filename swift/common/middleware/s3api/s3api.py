@@ -162,7 +162,8 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
 from swift.common.middleware.s3api.s3request import get_request_class
 from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InternalError, MethodNotAllowed, S3ResponseBase, S3NotImplemented, \
-    InvalidRequest, Redirect, AllAccessDisabled
+    InvalidRequest, Redirect, AllAccessDisabled, WebsiteErrorResponse, \
+    WebsiteMethodNotAllowed
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
@@ -494,6 +495,11 @@ class S3ApiMiddleware(object):
                 self.logger.exception(err_resp)
             env.setdefault('s3api.info', {})['error_code'] = err_resp._code
             resp = err_resp
+        except WebsiteErrorResponse as err_resp:
+            if isinstance(err_resp, InternalError):
+                self.logger.exception(err_resp)
+            env.setdefault('s3api.info', {})['error_code'] = err_resp._code
+            resp = err_resp
         except Exception as e:
             self.logger.exception(e)
             resp = InternalError(reason=str(e))
@@ -529,7 +535,7 @@ class S3ApiMiddleware(object):
             res = handler(req)
         else:
             if isinstance(controller, S3WebsiteController):
-                raise MethodNotAllowed(
+                raise WebsiteMethodNotAllowed(
                     req.method,
                     "OBJECT" if req.is_object_request else "BUCKET",
                 )

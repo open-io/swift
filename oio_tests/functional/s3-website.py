@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import lxml.html
 import os
 import requests
 from tempfile import mkstemp
@@ -126,6 +127,15 @@ class TestS3Website(unittest.TestCase):
             key=key,
             storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
+
+    def _findValueInElementList(self, tree, tag):
+        value = ""
+        for element in tree:
+            value = element.text_content()
+            if value.startswith(tag):
+                value = value[len(tag) :]
+                break
+        return value
 
     def test_without_website_subdomain(self):
         self._put_index()
@@ -401,6 +411,25 @@ class TestS3Website(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 405)
 
+        data = lxml.html.fromstring(r.text)
+
+        code = self._findValueInElementList(data[1][1], "Code: ")
+        self.assertEqual(code, "MethodNotAllowed")
+
+        message = self._findValueInElementList(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified method is not allowed against this resource.",
+        )
+
+        method = self._findValueInElementList(data[1][1], "Method: ")
+        self.assertEqual(method, "PUT")
+
+        resource_type = self._findValueInElementList(
+            data[1][1], "ResourceType: "
+        )
+        self.assertEqual(resource_type, "BUCKET")
+
     def test_POST_request(self):
         self._put_index()
         run_awscli_s3(
@@ -419,6 +448,25 @@ class TestS3Website(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 405)
 
+        data = lxml.html.fromstring(r.text)
+
+        code = self._findValueInElementList(data[1][1], "Code: ")
+        self.assertEqual(code, "MethodNotAllowed")
+
+        message = self._findValueInElementList(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified method is not allowed against this resource.",
+        )
+
+        method = self._findValueInElementList(data[1][1], "Method: ")
+        self.assertEqual(method, "POST")
+
+        resource_type = self._findValueInElementList(
+            data[1][1], "ResourceType: "
+        )
+        self.assertEqual(resource_type, "BUCKET")
+
     def test_DELETE_request(self):
         self._put_index()
         run_awscli_s3(
@@ -436,6 +484,25 @@ class TestS3Website(unittest.TestCase):
             + "/"
         )
         self.assertEqual(r.status_code, 405)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._findValueInElementList(data[1][1], "Code: ")
+        self.assertEqual(code, "MethodNotAllowed")
+
+        message = self._findValueInElementList(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified method is not allowed against this resource.",
+        )
+
+        method = self._findValueInElementList(data[1][1], "Method: ")
+        self.assertEqual(method, "DELETE")
+
+        resource_type = self._findValueInElementList(
+            data[1][1], "ResourceType: "
+        )
+        self.assertEqual(resource_type, "BUCKET")
 
     def test_HEAD_object_request(self):
         self._put_index()
@@ -475,6 +542,25 @@ class TestS3Website(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 405)
 
+        data = lxml.html.fromstring(r.text)
+
+        code = self._findValueInElementList(data[1][1], "Code: ")
+        self.assertEqual(code, "MethodNotAllowed")
+
+        message = self._findValueInElementList(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified method is not allowed against this resource.",
+        )
+
+        method = self._findValueInElementList(data[1][1], "Method: ")
+        self.assertEqual(method, "PUT")
+
+        resource_type = self._findValueInElementList(
+            data[1][1], "ResourceType: "
+        )
+        self.assertEqual(resource_type, "OBJECT")
+
     def test_POST_object_request(self):
         self._put_index()
         run_awscli_s3(
@@ -494,6 +580,25 @@ class TestS3Website(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 405)
 
+        data = lxml.html.fromstring(r.text)
+
+        code = self._findValueInElementList(data[1][1], "Code: ")
+        self.assertEqual(code, "MethodNotAllowed")
+
+        message = self._findValueInElementList(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified method is not allowed against this resource.",
+        )
+
+        method = self._findValueInElementList(data[1][1], "Method: ")
+        self.assertEqual(method, "POST")
+
+        resource_type = self._findValueInElementList(
+            data[1][1], "ResourceType: "
+        )
+        self.assertEqual(resource_type, "OBJECT")
+
     def test_DELETE_object_request(self):
         self._put_index()
         run_awscli_s3(
@@ -512,6 +617,26 @@ class TestS3Website(unittest.TestCase):
             + self.index_key
         )
         self.assertEqual(r.status_code, 405)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._findValueInElementList(data[1][1], "Code: ")
+        self.assertEqual(code, "MethodNotAllowed")
+
+        message = self._findValueInElementList(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified method is not allowed against this resource.",
+        )
+
+        method = self._findValueInElementList(data[1][1], "Method: ")
+        self.assertEqual(method, "DELETE")
+
+        resource_type = self._findValueInElementList(
+            data[1][1], "ResourceType: "
+        )
+        self.assertEqual(resource_type, "OBJECT")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

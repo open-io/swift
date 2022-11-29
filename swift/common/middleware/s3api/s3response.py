@@ -19,6 +19,7 @@ try:
 except ImportError:
     from collections import MutableMapping  # py2
 from functools import partial
+from lxml import etree
 
 from swift.common import header_key_dict
 from swift.common import swob
@@ -871,3 +872,71 @@ class BrokenMPU(ErrorResponse):
     # This is very much a Swift-ism, and we wish we didn't need it
     _status = '409 Conflict'
     _msg = 'Multipart upload has broken segment data.'
+
+
+class WebsiteErrorResponse(S3ResponseBase, swob.HTTPException):
+    _status = ""
+    _code = ""
+
+    def __init__(self, msg=None, *args, **kwargs):
+        if msg:
+            self._msg = msg
+
+        self.info = kwargs.copy()
+        for reserved_key in ("headers", "body"):
+            self.info.pop(reserved_key, None)
+
+        swob.HTTPException.__init__(
+            self,
+            status=kwargs.pop("status", self._status),
+            app_iter=self._body_iter(),
+            content_type="text/html; charset=utf-8",
+            *args,
+            **kwargs,
+        )
+        self.headers = HeaderKeyDict(self.headers)
+
+    def _body_iter(self):
+        response_elem = etree.Element("html")
+        response_head = etree.SubElement(response_elem, "head")
+        etree.SubElement(response_head, "title").text = self._status
+        response_body = etree.SubElement(response_elem, "body")
+        etree.SubElement(response_body, "h1").text = self._status
+        ul = etree.SubElement(response_body, "ul")
+        list_elements = {
+            "Code": self._code,
+            "Message": self._msg,
+        }
+
+        for key, value in self.info.items():
+            tag = re.sub(r"\W", "", snake_to_camel(key))
+            list_elements[tag] = value
+
+        if "swift.trans_id" in self.environ:
+            request_id = self.environ["swift.trans_id"]
+            list_elements["RequestId"] = request_id
+
+        for key, value in list_elements.items():
+            etree.SubElement(ul, "li").text = key + ": " + str(value)
+
+        yield etree.tostring(
+            response_elem, method="html", pretty_print=True, encoding="utf-8"
+        )
+
+
+class WebsiteMethodNotAllowed(WebsiteErrorResponse):
+    _status = "405 Method Not Allowed"
+    _msg = "The specified method is not allowed against this resource."
+    _code = "MethodNotAllowed"
+    _headers = {"Allow": ", ".join(["GET", "HEAD", "OPTIONS"])}
+
+    def __init__(self, method, resource_type, msg=None, *args, **kwargs):
+        WebsiteErrorResponse.__init__(
+            self,
+            msg=msg,
+            headers=self._headers,
+            method=method,
+            resource_type=resource_type,
+            *args,
+            **kwargs,
+        )
