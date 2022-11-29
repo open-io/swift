@@ -730,6 +730,11 @@ class NoSuchVersion(ErrorResponse):
                                *args, **kwargs)
 
 
+class ReplicationConfigurationNotFoundError(ErrorResponse):
+    _status = '404 Not Found'
+    _msg = 'There is no replication configuration for this bucket.'
+
+
 class NoSuchWebsiteConfiguration(ErrorResponse):
     _status = '404 Not Found'
     _msg = 'The specified bucket does not have a website configuration.'

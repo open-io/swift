@@ -29,8 +29,8 @@ Filter =
   element Prefix { xsd:string } |
   element Tag { Tag } |
   element And {
-      element Prefix { xsd:string }? &
-      element Tag { Tag }+
+    element Prefix { xsd:string }? &
+    element Tag { Tag }+
   }
 
 Tag =

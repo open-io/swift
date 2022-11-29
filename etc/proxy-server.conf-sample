@@ -804,6 +804,9 @@ use = egg:swift#s3api
 # Enable or disable Bucket Logging to save S3 access logs.
 #enable_access_logging = true
 
+# Enable or disable Bucket Replication.
+#enable_bucket_replication = true
+
 # Enable or disable Object Lock.
 # Object Lock depends on versioning so if versioning is not enabled
 # then Object Lock is disabled no matter this flag value

@@ -70,6 +70,7 @@ SUPPORTED_ACTIONS = {
     "s3:GetObjectLegalHold": RT_OBJECT,
     "s3:GetObjectRetention": RT_OBJECT,
     "s3:GetObjectTagging": RT_OBJECT,
+    "s3:GetReplicationConfiguration": RT_BUCKET,
     "s3:ListBucket": RT_BUCKET,
     "s3:ListBucketMultipartUploads": RT_BUCKET,
     "s3:ListMultipartUploadParts": RT_OBJECT,
@@ -87,6 +88,7 @@ SUPPORTED_ACTIONS = {
     "s3:PutObjectLegalHold": RT_OBJECT,
     "s3:PutObjectRetention": RT_OBJECT,
     "s3:PutObjectTagging": RT_OBJECT,
+    "s3:PutReplicationConfiguration": RT_BUCKET,
 }
 
 IAM_ACTION = 'swift.iam.action'

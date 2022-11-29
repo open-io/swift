@@ -49,7 +49,7 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     TaggingController, UniqueBucketController, CorsController, \
     LifecycleController, IntelligentTieringController, BucketLockController, \
     ObjectLockRetentionController, ObjectLockLegalHoldController, \
-    WebsiteController
+    WebsiteController, ReplicationController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
@@ -1360,6 +1360,8 @@ class S3Request(swob.Request):
             return ObjectLockLegalHoldController
         if 'partNumber' in self.params:
             return PartController
+        if 'replication' in self.params:
+            return ReplicationController
         if 'uploadId' in self.params:
             return UploadController
         if 'uploads' in self.params:

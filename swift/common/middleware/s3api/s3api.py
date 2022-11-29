@@ -386,6 +386,8 @@ class S3ApiMiddleware(object):
 
         self.conf.enable_access_logging = config_true_value(
             wsgi_conf.get('enable_access_logging', True))
+        self.conf.enable_bucket_replication = config_true_value(
+            wsgi_conf.get('enable_bucket_replication', True))
         self.conf.enable_object_lock = config_true_value(
             wsgi_conf.get('enable_object_lock', True))
         self.conf.enable_website = config_true_value(

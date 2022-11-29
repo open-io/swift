@@ -1,0 +1,54 @@
+include "common.rnc"
+
+start =
+  element ReplicationConfiguration {
+    element Role { xsd:string }&
+    element Rule {
+      element DeleteMarkerReplication {
+        element Status { "Enabled" | "Disabled" }
+      }? &
+      element Destination {
+        element AccessControlTranslation {
+          element Owner { "Destination" }
+        }? &
+        element Account { xsd:string }? &
+        element Bucket { xsd:string } &
+        element EncryptionConfiguration {
+          element ReplicaKmsKeyId { xsd:string }?
+        }? &
+        element Metrics {
+          element EventThreshold {
+            element Minutes { xsd:integer }?
+          }? &
+          element Status { "Enabled" | "Disabled" }
+        }? &
+        element ReplicationTime {
+          element Status { "Enabled" | "Disabled" } &
+          element Time {
+            element Minutes { xsd:integer }?
+          }
+        }? &
+        element StorageClass {
+          "STANDARD" | "REDUCED_REDUNDANCY" | "STANDARD_IA" |
+          "ONEZONE_IA" | "INTELLIGENT_TIERING" | "GLACIER" |
+          "DEEP_ARCHIVE" | "OUTPOSTS" | "GLACIER_IR"
+        }?
+      } &
+      element ExistingObjectReplication {
+        element Status { "Enabled" | "Disabled" }
+      }? &
+      element Filter { Filter }? &
+      element ID { xsd:string }? &
+      element Prefix { xsd:string }? &
+      element Priority { xsd:integer }? &
+      element SourceSelectionCriteria {
+        element ReplicaModifications {
+          element Status { "Enabled" | "Disabled" }
+        }? &
+        element SseKmsEncryptedObjects {
+          element Status { "Enabled" | "Disabled" }
+        }?
+      }? &
+      element Status { "Enabled" | "Disabled" }
+    }+
+  }

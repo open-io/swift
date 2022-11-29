@@ -133,6 +133,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'auto_storage_policies': {},
             'storage_class_by_policy': {},
             'enable_access_logging': True,
+            'enable_bucket_replication': True,
             'enable_object_lock': True,
             'enable_website': True,
         })
@@ -173,6 +174,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'ratelimit_as_client_error': True,
             'auto_storage_policies_STANDARD': 'EC',
             'enable_access_logging': False,
+            'enable_bucket_replication': False,
             'enable_object_lock': False,
             'enable_website': False,
         }

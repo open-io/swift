@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <include href="common.rng"/>
+  <start>
+    <element name="ReplicationConfiguration">
+      <interleave>
+        <element name="Role">
+          <data type="string"/>
+        </element>
+        <oneOrMore>
+          <element name="Rule">
+            <interleave>
+              <optional>
+                <element name="DeleteMarkerReplication">
+                  <element name="Status">
+                    <choice>
+                      <value>Enabled</value>
+                      <value>Disabled</value>
+                    </choice>
+                  </element>
+                </element>
+              </optional>
+              <element name="Destination">
+                <interleave>
+                  <optional>
+                    <element name="AccessControlTranslation">
+                      <element name="Owner">
+                        <value>Destination</value>
+                      </element>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="Account">
+                      <data type="string"/>
+                    </element>
+                  </optional>
+                  <element name="Bucket">
+                    <data type="string"/>
+                  </element>
+                  <optional>
+                    <element name="EncryptionConfiguration">
+                      <optional>
+                        <element name="ReplicaKmsKeyId">
+                          <data type="string"/>
+                        </element>
+                      </optional>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="Metrics">
+                      <interleave>
+                        <optional>
+                          <element name="EventThreshold">
+                            <optional>
+                              <element name="Minutes">
+                                <data type="integer"/>
+                              </element>
+                            </optional>
+                          </element>
+                        </optional>
+                        <element name="Status">
+                          <choice>
+                            <value>Enabled</value>
+                            <value>Disabled</value>
+                          </choice>
+                        </element>
+                      </interleave>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="ReplicationTime">
+                      <interleave>
+                        <element name="Status">
+                          <choice>
+                            <value>Enabled</value>
+                            <value>Disabled</value>
+                          </choice>
+                        </element>
+                        <element name="Time">
+                          <optional>
+                            <element name="Minutes">
+                              <data type="integer"/>
+                            </element>
+                          </optional>
+                        </element>
+                      </interleave>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="StorageClass">
+                      <choice>
+                        <value>STANDARD</value>
+                        <value>REDUCED_REDUNDANCY</value>
+                        <value>STANDARD_IA</value>
+                        <value>ONEZONE_IA</value>
+                        <value>INTELLIGENT_TIERING</value>
+                        <value>GLACIER</value>
+                        <value>DEEP_ARCHIVE</value>
+                        <value>OUTPOSTS</value>
+                        <value>GLACIER_IR</value>
+                      </choice>
+                    </element>
+                  </optional>
+                </interleave>
+              </element>
+              <optional>
+                <element name="ExistingObjectReplication">
+                  <element name="Status">
+                    <choice>
+                      <value>Enabled</value>
+                      <value>Disabled</value>
+                    </choice>
+                  </element>
+                </element>
+              </optional>
+              <optional>
+                <element name="Filter">
+                  <ref name="Filter"/>
+                </element>
+              </optional>
+              <optional>
+                <element name="ID">
+                  <data type="string"/>
+                </element>
+              </optional>
+              <optional>
+                <element name="Prefix">
+                  <data type="string"/>
+                </element>
+              </optional>
+              <optional>
+                <element name="Priority">
+                  <data type="integer"/>
+                </element>
+              </optional>
+              <optional>
+                <element name="SourceSelectionCriteria">
+                  <interleave>
+                    <optional>
+                      <element name="ReplicaModifications">
+                        <element name="Status">
+                          <choice>
+                            <value>Enabled</value>
+                            <value>Disabled</value>
+                          </choice>
+                        </element>
+                      </element>
+                    </optional>
+                    <optional>
+                      <element name="SseKmsEncryptedObjects">
+                        <element name="Status">
+                          <choice>
+                            <value>Enabled</value>
+                            <value>Disabled</value>
+                          </choice>
+                        </element>
+                      </element>
+                    </optional>
+                  </interleave>
+                </element>
+              </optional>
+              <element name="Status">
+                <choice>
+                  <value>Enabled</value>
+                  <value>Disabled</value>
+                </choice>
+              </element>
+            </interleave>
+          </element>
+        </oneOrMore>
+      </interleave>
+    </element>
+  </start>
+</grammar>
