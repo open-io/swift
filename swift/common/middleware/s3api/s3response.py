@@ -878,9 +878,18 @@ class WebsiteErrorResponse(S3ResponseBase, swob.HTTPException):
     _status = ""
     _code = ""
 
-    def __init__(self, msg=None, *args, **kwargs):
+    def __init__(
+        self,
+        msg=None,
+        error_document_err=None,
+        error_document_key=None,
+        *args,
+        **kwargs
+    ):
         if msg:
             self._msg = msg
+        self._error_document_err = error_document_err
+        self._error_document_key = error_document_key
 
         self.info = kwargs.copy()
         for reserved_key in ("headers", "body"):
@@ -897,31 +906,80 @@ class WebsiteErrorResponse(S3ResponseBase, swob.HTTPException):
         self.headers = HeaderKeyDict(self.headers)
 
     def _body_iter(self):
+        """
+        Return a generator for the body of an error response.
+        Html structure is as following:
+        <html>
+        <head><title>[_status]</title></head>
+        <body>
+        <h1>[_status]</h1>
+        <ul>
+        <li>Code: [_code]</li>
+        <li>Message: [_msg]</li>
+        <li>[additional infos form kwargs]</li>
+        <li>RequestId: [request_id]</li>
+        </ul>
+        [section if unable to retrieve a custom error document]
+        <hr/>
+        </body>
+        </html>
+        """
         response_elem = etree.Element("html")
         response_head = etree.SubElement(response_elem, "head")
         etree.SubElement(response_head, "title").text = self._status
         response_body = etree.SubElement(response_elem, "body")
         etree.SubElement(response_body, "h1").text = self._status
-        ul = etree.SubElement(response_body, "ul")
         list_elements = {
             "Code": self._code,
             "Message": self._msg,
         }
-
         for key, value in self.info.items():
             tag = re.sub(r"\W", "", snake_to_camel(key))
             list_elements[tag] = value
-
         if "swift.trans_id" in self.environ:
             request_id = self.environ["swift.trans_id"]
             list_elements["RequestId"] = request_id
+        self._add_ul(response_body, list_elements)
 
-        for key, value in list_elements.items():
-            etree.SubElement(ul, "li").text = key + ": " + str(value)
+        if self._error_document_err:
+            self._complete_body_with_error_document_error(response_body)
+
+        etree.SubElement(response_body, "hr")
 
         yield etree.tostring(
             response_elem, method="html", pretty_print=True, encoding="utf-8"
         )
+
+    def _complete_body_with_error_document_error(self, response_body):
+        """
+        Html structure of section if unable to retrieve a custom error document
+        <h3>An Error Occurred While Attempting to Retrieve a Custom Error
+        Document</h3>
+        <ul>
+        <li>Code: [error code from request to error document]</li>
+        <li>Message: [message from request to error document]</li>
+        <li>Key: [object name of error document if error is NoSuchKey]</li>
+        </ul>
+        """
+
+        etree.SubElement(
+            response_body, "h3"
+        ).text = "An Error Occurred While Attempting to Retrieve a Custom " \
+            "Error Document"
+        list_elements = {}
+        if isinstance(self._error_document_err, NoSuchKey):
+            list_elements["Code"] = "NoSuchKey"
+            list_elements["Message"] = "The specified key does not exist."
+            list_elements["Key"] = self._error_document_key
+        if isinstance(self._error_document_err, AccessDenied):
+            list_elements["Code"] = "AccessDenied"
+            list_elements["Message"] = "Access Denied"
+        self._add_ul(response_body, list_elements)
+
+    def _add_ul(self, parent, list_elements):
+        ul = etree.SubElement(parent, "ul")
+        for key, value in list_elements.items():
+            etree.SubElement(ul, "li").text = key + ": " + str(value)
 
 
 class WebsiteMethodNotAllowed(WebsiteErrorResponse):
@@ -937,6 +995,65 @@ class WebsiteMethodNotAllowed(WebsiteErrorResponse):
             headers=self._headers,
             method=method,
             resource_type=resource_type,
+            *args,
+            **kwargs,
+        )
+
+
+class WebsiteNoSuchWebsiteConfiguration(WebsiteErrorResponse):
+    _status = "404 Not Found"
+    _msg = "The specified bucket does not have a website configuration."
+    _code = "NoSuchWebsiteConfiguration"
+
+    def __init__(self, bucket_name, msg=None, *args, **kwargs):
+        WebsiteErrorResponse.__init__(
+            self, msg=msg, bucket_name=bucket_name, *args, **kwargs
+        )
+
+
+class WebsiteAccessDenied(WebsiteErrorResponse):
+    _status = "403 Forbidden"
+    _msg = "Access Denied."
+    _code = "Forbidden"
+
+    def __init__(
+        self,
+        msg=None,
+        error_document_err=None,
+        error_document_key=None,
+        *args,
+        **kwargs
+    ):
+        WebsiteErrorResponse.__init__(
+            self,
+            msg=msg,
+            error_document_err=error_document_err,
+            error_document_key=error_document_key,
+            *args,
+            **kwargs,
+        )
+
+
+class WebsiteNoSuchKey(WebsiteErrorResponse):
+    _status = "404 Not Found"
+    _msg = "The specified key does not exist."
+    _code = "NoSuchKey"
+
+    def __init__(
+        self,
+        key,
+        msg=None,
+        error_document_err=None,
+        error_document_key=None,
+        *args,
+        **kwargs
+    ):
+        WebsiteErrorResponse.__init__(
+            self,
+            msg=msg,
+            error_document_err=error_document_err,
+            error_document_key=error_document_key,
+            key=key,
             *args,
             **kwargs,
         )

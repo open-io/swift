@@ -48,6 +48,9 @@ from swift.common.middleware.s3api.s3response import (
     NoSuchWebsiteConfiguration,
     S3NotImplemented,
     S3Response,
+    WebsiteAccessDenied,
+    WebsiteNoSuchKey,
+    WebsiteNoSuchWebsiteConfiguration,
 )
 from swift.common.swob import str_to_wsgi
 
@@ -196,6 +199,20 @@ class S3WebsiteController(Controller):
     Handles requests on static website
     """
 
+    def _render(self, req, obj=None, err=None):
+        """
+        Renders an object.
+        If object is an error document, then convert the response status code.
+        """
+        resp = req.get_response(self.app, obj=obj, method=req.method)
+        if err:
+            return convert_response(
+                req, resp, 200, partial(
+                    S3Response, app_iter=resp.app_iter, status=err.status_int
+                )
+            )
+        return resp
+
     def _handle_object_requests(self, req, suffix_doc, error_doc):
         """
         Handles request to an object, if an error 404 or 405 occurs and an
@@ -203,70 +220,68 @@ class S3WebsiteController(Controller):
         custom error otherwise respond with default error.
         """
         try:
-            resp = req.get_response(
-                self.app, obj=suffix_doc, method=req.method
-            )
-            return resp
+            return self._render(req, obj=suffix_doc)
         except (BadRequest, AccessDenied, NoSuchKey) as err:
-            if error_doc is not None:
-                # Custom error document
-                resp = req.get_response(
-                    self.app, obj=error_doc, method=req.method
-                )
-                return convert_response(
-                    req,
-                    resp,
-                    200,
-                    partial(
-                        S3Response,
-                        app_iter=resp.app_iter,
-                        status=err.status_int,
-                    ),
-                )
-            else:
+            if error_doc is None:
                 # Default error
-                raise
+                if isinstance(err, AccessDenied):
+                    raise WebsiteAccessDenied()
+                elif isinstance(err, NoSuchKey):
+                    raise WebsiteNoSuchKey(suffix_doc)
+                else:
+                    raise
+            else:
+                # Custom error document
+                try:
+                    return self._render(req, obj=error_doc, err=err)
+                except (BadRequest, AccessDenied, NoSuchKey) as error_doc_err:
+                    # Default error with info about issue with error document
+                    if isinstance(err, AccessDenied):
+                        raise WebsiteAccessDenied(
+                            error_document_err=error_doc_err,
+                            error_document_key=error_doc,
+                        )
+                    elif isinstance(err, NoSuchKey):
+                        raise WebsiteNoSuchKey(
+                            suffix_doc,
+                            error_document_err=error_doc_err,
+                            error_document_key=error_doc,
+                        )
+                    else:
+                        raise err
 
     def GETorHEAD(self, req):
         suffix_doc, error_doc = get_website_conf(self.app, req)
-        if suffix_doc is not None:
-            if req.is_object_request:
-                # Handle request on an object
+        if suffix_doc is None:
+            raise WebsiteNoSuchWebsiteConfiguration(req.container_name)
+        if req.is_object_request:
+            # Handle request on an object
+            try:
+                return self._render(req)
+            except NoSuchKey:
+                # Add index document to prefix
+                if req.object_name.endswith("/"):
+                    suffix_doc = req.object_name + suffix_doc
+                else:
+                    suffix_doc = req.object_name + "/" + suffix_doc
+                return self._handle_object_requests(
+                    req, suffix_doc, error_doc
+                )
+            except AccessDenied as err:
+                if error_doc is None:
+                    # Default error
+                    raise WebsiteAccessDenied()
+                # Custom error document
                 try:
-                    resp = req.get_response(self.app, method=req.method)
-                    return resp
-                except NoSuchKey:
-                    # Add index document to prefix
-                    if req.object_name.endswith("/"):
-                        suffix_doc = req.object_name + suffix_doc
-                    else:
-                        suffix_doc = req.object_name + "/" + suffix_doc
-                    return self._handle_object_requests(
-                        req, suffix_doc, error_doc
+                    return self._render(req, obj=error_doc, err=err)
+                except (BadRequest, AccessDenied, NoSuchKey) as error_doc_err:
+                    raise WebsiteAccessDenied(
+                        error_document_err=error_doc_err,
+                        error_document_key=error_doc,
                     )
-                except AccessDenied as err:
-                    if error_doc is not None:
-                        # Custom error document
-                        resp = req.get_response(
-                            self.app, obj=error_doc, method=req.method
-                        )
-                        return convert_response(
-                            req,
-                            resp,
-                            200,
-                            partial(
-                                S3Response,
-                                app_iter=resp.app_iter,
-                                status=err.status_int,
-                            ),
-                        )
-                    else:
-                        # Default error
-                        raise
-            else:
-                # Handle request on a bucket
-                return self._handle_object_requests(req, suffix_doc, error_doc)
-        raise NoSuchWebsiteConfiguration
+        else:
+            # Handle request on a bucket
+            return self._handle_object_requests(req, suffix_doc, error_doc)
 
     @set_s3_operation_website
     @public

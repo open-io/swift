@@ -112,7 +112,7 @@ class TestS3Website(unittest.TestCase):
             storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
-    def _put_error(self, key=""):
+    def _put_error(self, acl="public-read", key=""):
         if key == "":
             key = self.error_key
         run_awscli_s3api(
@@ -120,7 +120,7 @@ class TestS3Website(unittest.TestCase):
             "--body",
             self.error_path,
             "--acl",
-            "public-read",
+            acl,
             "--content-type",
             "text/html",
             bucket=self.bucket,
@@ -128,7 +128,7 @@ class TestS3Website(unittest.TestCase):
             storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
-    def _findValueInElementList(self, tree, tag):
+    def _find_value_in_element_list(self, tree, tag):
         value = ""
         for element in tree:
             value = element.text_content()
@@ -277,6 +277,120 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertNotEqual(r.text, self.error_body)
 
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "NoSuchKey")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified key does not exist.",
+        )
+
+        object_name = self._find_value_in_element_list(data[1][1], "Key: ")
+        self.assertEqual(object_name, self.index_key)
+
+    def test_custom_404_AccessDenied(self):
+        self._put_error(acl="private")
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            "--error-document",
+            self.error_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket
+        )
+
+        # check 404 because object does not exist, error response is default
+        # because custom error object is not public read
+        self.assertEqual(r.status_code, 404)
+        self.assertNotEqual(r.text, self.error_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "NoSuchKey")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified key does not exist.",
+        )
+
+        object_name = self._find_value_in_element_list(data[1][1], "Key: ")
+        self.assertEqual(object_name, self.index_key)
+
+        self.assertEqual(
+            data[1][2].text,
+            "An Error Occurred While Attempting to Retrieve a Custom Error " \
+                "Document",
+        )
+
+        error_code = self._find_value_in_element_list(data[1][3], "Code: ")
+        self.assertEqual(error_code, "AccessDenied")
+
+        error_message = self._find_value_in_element_list(data[1][3], "Message: ")
+        self.assertEqual(error_message, "Access Denied")
+
+    def test_object_custom_404_AccessDenied(self):
+        self._put_error(acl="private")
+        prefix = "subfolder"
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            "--error-document",
+            self.error_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+            + prefix
+        )
+
+        # check 404 because object does not exist, error response is default
+        # because custom error object is not public read
+        self.assertEqual(r.status_code, 404)
+        self.assertNotEqual(r.text, self.error_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "NoSuchKey")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified key does not exist.",
+        )
+
+        object_name = self._find_value_in_element_list(data[1][1], "Key: ")
+        self.assertEqual(object_name, prefix + "/" + self.index_key)
+
+        self.assertEqual(
+            data[1][2].text,
+            "An Error Occurred While Attempting to Retrieve a Custom Error " \
+                "Document",
+        )
+
+        error_code = self._find_value_in_element_list(data[1][3], "Code: ")
+        self.assertEqual(error_code, "AccessDenied")
+
+        error_message = self._find_value_in_element_list(data[1][3], "Message: ")
+        self.assertEqual(error_message, "Access Denied")
+
     def test_custom_403(self):
         self._put_index(acl="private")
         self._put_error()
@@ -315,6 +429,118 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertNotEqual(r.text, self.error_body)
 
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "Forbidden")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "Access Denied.",
+        )
+
+    def test_custom_403_NoSuchKey(self):
+        self._put_index(acl="private")
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            "--error-document",
+            self.error_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket
+        )
+
+        # check 403 because object is not public-read, error response is
+        # default because custom error object does not exist
+        self.assertEqual(r.status_code, 403)
+        self.assertNotEqual(r.text, self.error_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "Forbidden")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "Access Denied.",
+        )
+
+        self.assertEqual(
+            data[1][2].text,
+            "An Error Occurred While Attempting to Retrieve a Custom Error " \
+                "Document",
+        )
+
+        error_code = self._find_value_in_element_list(data[1][3], "Code: ")
+        self.assertEqual(error_code, "NoSuchKey")
+
+        error_message = self._find_value_in_element_list(data[1][3], "Message: ")
+        self.assertEqual(error_message, "The specified key does not exist.")
+
+        error_key = self._find_value_in_element_list(data[1][3], "Key: ")
+        self.assertEqual(error_key, self.error_key)
+
+    def test_object_custom_403_NoSuchKey(self):
+        self._put_index()
+        prefix = "subfolder"
+        self._put_index(prefix=prefix, acl="private")
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            "--error-document",
+            self.error_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
+            + self.bucket
+            + "/"
+            + prefix
+        )
+
+        # check 403 because object is not public-read, error response is
+        # default because custom error object does not exist
+        self.assertEqual(r.status_code, 403)
+        self.assertNotEqual(r.text, self.error_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "Forbidden")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "Access Denied.",
+        )
+
+        self.assertEqual(
+            data[1][2].text,
+            "An Error Occurred While Attempting to Retrieve a Custom Error " \
+                "Document",
+        )
+
+        error_code = self._find_value_in_element_list(data[1][3], "Code: ")
+        self.assertEqual(error_code, "NoSuchKey")
+
+        error_message = self._find_value_in_element_list(data[1][3], "Message: ")
+        self.assertEqual(error_message, "The specified key does not exist.")
+
+        error_key = self._find_value_in_element_list(data[1][3], "Key: ")
+        self.assertEqual(error_key, self.error_key)
+
     def test_no_website_conf(self):
         self._put_index()
 
@@ -323,6 +549,20 @@ class TestS3Website(unittest.TestCase):
 
         # check 404 because website is not enable
         self.assertEqual(r.status_code, 404)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "NoSuchWebsiteConfiguration")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified bucket does not have a website configuration.",
+        )
+
+        bucket_name = self._find_value_in_element_list(data[1][1], "BucketName: ")
+        self.assertEqual(bucket_name, self.bucket)
 
     def test_deleted_conf(self):
         self._put_index()
@@ -354,6 +594,17 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertNotEqual(r.text, self.index_body)
         self.assertNotEqual(r.text, self.error_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "NoSuchWebsiteConfiguration")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(
+            message,
+            "The specified bucket does not have a website configuration.",
+        )
 
     def test_error_key_with_special_character(self):
         error_key_with_special_character = "error😀"
@@ -413,19 +664,19 @@ class TestS3Website(unittest.TestCase):
 
         data = lxml.html.fromstring(r.text)
 
-        code = self._findValueInElementList(data[1][1], "Code: ")
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
         self.assertEqual(code, "MethodNotAllowed")
 
-        message = self._findValueInElementList(data[1][1], "Message: ")
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
             message,
             "The specified method is not allowed against this resource.",
         )
 
-        method = self._findValueInElementList(data[1][1], "Method: ")
+        method = self._find_value_in_element_list(data[1][1], "Method: ")
         self.assertEqual(method, "PUT")
 
-        resource_type = self._findValueInElementList(
+        resource_type = self._find_value_in_element_list(
             data[1][1], "ResourceType: "
         )
         self.assertEqual(resource_type, "BUCKET")
@@ -450,19 +701,19 @@ class TestS3Website(unittest.TestCase):
 
         data = lxml.html.fromstring(r.text)
 
-        code = self._findValueInElementList(data[1][1], "Code: ")
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
         self.assertEqual(code, "MethodNotAllowed")
 
-        message = self._findValueInElementList(data[1][1], "Message: ")
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
             message,
             "The specified method is not allowed against this resource.",
         )
 
-        method = self._findValueInElementList(data[1][1], "Method: ")
+        method = self._find_value_in_element_list(data[1][1], "Method: ")
         self.assertEqual(method, "POST")
 
-        resource_type = self._findValueInElementList(
+        resource_type = self._find_value_in_element_list(
             data[1][1], "ResourceType: "
         )
         self.assertEqual(resource_type, "BUCKET")
@@ -487,19 +738,19 @@ class TestS3Website(unittest.TestCase):
 
         data = lxml.html.fromstring(r.text)
 
-        code = self._findValueInElementList(data[1][1], "Code: ")
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
         self.assertEqual(code, "MethodNotAllowed")
 
-        message = self._findValueInElementList(data[1][1], "Message: ")
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
             message,
             "The specified method is not allowed against this resource.",
         )
 
-        method = self._findValueInElementList(data[1][1], "Method: ")
+        method = self._find_value_in_element_list(data[1][1], "Method: ")
         self.assertEqual(method, "DELETE")
 
-        resource_type = self._findValueInElementList(
+        resource_type = self._find_value_in_element_list(
             data[1][1], "ResourceType: "
         )
         self.assertEqual(resource_type, "BUCKET")
@@ -544,19 +795,19 @@ class TestS3Website(unittest.TestCase):
 
         data = lxml.html.fromstring(r.text)
 
-        code = self._findValueInElementList(data[1][1], "Code: ")
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
         self.assertEqual(code, "MethodNotAllowed")
 
-        message = self._findValueInElementList(data[1][1], "Message: ")
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
             message,
             "The specified method is not allowed against this resource.",
         )
 
-        method = self._findValueInElementList(data[1][1], "Method: ")
+        method = self._find_value_in_element_list(data[1][1], "Method: ")
         self.assertEqual(method, "PUT")
 
-        resource_type = self._findValueInElementList(
+        resource_type = self._find_value_in_element_list(
             data[1][1], "ResourceType: "
         )
         self.assertEqual(resource_type, "OBJECT")
@@ -582,19 +833,19 @@ class TestS3Website(unittest.TestCase):
 
         data = lxml.html.fromstring(r.text)
 
-        code = self._findValueInElementList(data[1][1], "Code: ")
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
         self.assertEqual(code, "MethodNotAllowed")
 
-        message = self._findValueInElementList(data[1][1], "Message: ")
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
             message,
             "The specified method is not allowed against this resource.",
         )
 
-        method = self._findValueInElementList(data[1][1], "Method: ")
+        method = self._find_value_in_element_list(data[1][1], "Method: ")
         self.assertEqual(method, "POST")
 
-        resource_type = self._findValueInElementList(
+        resource_type = self._find_value_in_element_list(
             data[1][1], "ResourceType: "
         )
         self.assertEqual(resource_type, "OBJECT")
@@ -620,19 +871,19 @@ class TestS3Website(unittest.TestCase):
 
         data = lxml.html.fromstring(r.text)
 
-        code = self._findValueInElementList(data[1][1], "Code: ")
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
         self.assertEqual(code, "MethodNotAllowed")
 
-        message = self._findValueInElementList(data[1][1], "Message: ")
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
             message,
             "The specified method is not allowed against this resource.",
         )
 
-        method = self._findValueInElementList(data[1][1], "Method: ")
+        method = self._find_value_in_element_list(data[1][1], "Method: ")
         self.assertEqual(method, "DELETE")
 
-        resource_type = self._findValueInElementList(
+        resource_type = self._find_value_in_element_list(
             data[1][1], "ResourceType: "
         )
         self.assertEqual(resource_type, "OBJECT")
