@@ -19,6 +19,7 @@ from dict2xml import dict2xml
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, object_operation, \
     set_s3_operation_rest, handle_no_such_key
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -70,6 +71,7 @@ class BucketLockController(Controller):
 
     @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:GetBucketObjectLockConfiguration")
@@ -99,6 +101,7 @@ class BucketLockController(Controller):
 
     @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:PutBucketObjectLockConfiguration")
@@ -198,6 +201,7 @@ class ObjectLockLegalHoldController(Controller):
 
     @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
     @public
+    @fill_cors_headers
     @object_operation
     @check_bucket_storage_domain
     @handle_no_such_key
@@ -239,6 +243,7 @@ class ObjectLockLegalHoldController(Controller):
 
     @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
     @public
+    @fill_cors_headers
     @object_operation
     @check_bucket_storage_domain
     @handle_no_such_key
@@ -285,6 +290,7 @@ class ObjectLockRetentionController(Controller):
 
     @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
     @public
+    @fill_cors_headers
     @object_operation
     @check_bucket_storage_domain
     @handle_no_such_key
@@ -326,6 +332,7 @@ class ObjectLockRetentionController(Controller):
 
     @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
     @public
+    @fill_cors_headers
     @object_operation
     @check_bucket_storage_domain
     @handle_no_such_key

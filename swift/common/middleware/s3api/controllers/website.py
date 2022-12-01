@@ -94,6 +94,7 @@ class WebsiteController(Controller):
 
     @set_s3_operation_rest('WEBSITE')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_container_existence
@@ -113,6 +114,7 @@ class WebsiteController(Controller):
 
     @set_s3_operation_rest('WEBSITE')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_container_existence
@@ -133,6 +135,7 @@ class WebsiteController(Controller):
 
     @set_s3_operation_rest('WEBSITE')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_container_existence
@@ -307,9 +310,9 @@ class S3WebsiteController(Controller):
 
     @set_s3_operation_website
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
-    @fill_cors_headers
     def HEAD(self, req):
         """
         Handle HEAD request
@@ -318,9 +321,9 @@ class S3WebsiteController(Controller):
 
     @set_s3_operation_website
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
-    @fill_cors_headers
     def GET(self, req):
         """
         Handle GET request

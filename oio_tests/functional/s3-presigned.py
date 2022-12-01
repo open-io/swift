@@ -18,26 +18,12 @@
 # they are not OpenIO SDS specific.
 
 import random
+import requests
 import unittest
 
-import boto3
-import requests
-
-from botocore.config import Config
 from botocore.exceptions import ClientError
 
-
-ENDPOINT_URL = "http://localhost:5000"
-
-
-def get_client(endpoint_url=ENDPOINT_URL, signature_version="s3v4",
-               addressing_style="path", region_name="RegionOne"):
-    client_config = Config(signature_version=signature_version,
-                           region_name=region_name,
-                           s3={"addressing_style": addressing_style})
-    client = boto3.client(service_name='s3', endpoint_url=endpoint_url,
-                          config=client_config)
-    return client
+from oio_tests.functional.common import get_boto3_client
 
 
 class TestPresignedUrls(unittest.TestCase):
@@ -49,7 +35,7 @@ class TestPresignedUrls(unittest.TestCase):
     def setUpClass(cls):
         super(TestPresignedUrls, cls).setUpClass()
         cls.bucket = "presigned-%06d" % (random.randint(0, 999999), )
-        cls.client = get_client()
+        cls.client = get_boto3_client()
 
     @classmethod
     def tearDownClass(cls):
@@ -89,7 +75,7 @@ class TestPresignedUrls(unittest.TestCase):
                           self.client.head_object, Bucket=self.bucket, Key=key)
 
     def test_delete_object_v2_sign(self):
-        sigv2_client = get_client(signature_version='s3')
+        sigv2_client = get_boto3_client(signature_version='s3')
         return self._test_delete_object(sigv2_client)
 
     def test_delete_object_v4_sign(self):
@@ -111,7 +97,7 @@ class TestPresignedUrls(unittest.TestCase):
             pass
 
     def test_upload_object_v2_sign(self):
-        sigv2_client = get_client(signature_version='s3')
+        sigv2_client = get_boto3_client(signature_version='s3')
         return self._test_upload_object(sigv2_client)
 
     def test_upload_object_v4_sign(self):

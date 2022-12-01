@@ -31,16 +31,13 @@ from swift.common.middleware.versioned_writes.object_versioning import \
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
-from swift.common.middleware.s3api.controllers.cors import \
-    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
-    fill_cors_headers
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, KeyTooLongError, HTTPOk, CORSForbidden, \
-    CORSInvalidAccessControlRequest, CORSOriginMissing, BadRequest
+    PreconditionFailed, KeyTooLongError, BadRequest
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE
@@ -194,9 +191,9 @@ class ObjectController(Controller):
 
     @set_s3_operation_rest('OBJECT')
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
-    @fill_cors_headers
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
@@ -212,9 +209,9 @@ class ObjectController(Controller):
 
     @set_s3_operation_rest_for_get_object
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
-    @fill_cors_headers
     @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
@@ -224,9 +221,9 @@ class ObjectController(Controller):
 
     @set_s3_operation_rest_for_put_object
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
-    @fill_cors_headers
     @check_iam_access("s3:PutObject")
     def PUT(self, req):
         """
@@ -327,9 +324,9 @@ class ObjectController(Controller):
 
     @set_s3_operation_rest('OBJECT')
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
-    @fill_cors_headers
     @check_iam_access("s3:DeleteObject")
     def DELETE(self, req):
         """
@@ -382,25 +379,3 @@ class ObjectController(Controller):
             # else -- it's gone! Success.
             return HTTPNoContent()
         return resp
-
-    @set_s3_operation_rest('PREFLIGHT')
-    @public
-    @check_bucket_storage_domain
-    def OPTIONS(self, req):
-        origin = req.headers.get('Origin')
-        if not origin:
-            raise CORSOriginMissing()
-
-        method = req.headers.get('Access-Control-Request-Method')
-        if method not in CORS_ALLOWED_HTTP_METHOD:
-            raise CORSInvalidAccessControlRequest(method=method)
-
-        rule = get_cors(self.app, self.conf, req, method, origin)
-        # FIXME(mbo): we should raise also NoSuchCORSConfiguration
-        if rule is None:
-            raise CORSForbidden(method)
-
-        resp = HTTPOk(body=None)
-        del resp.headers['Content-Type']
-
-        return cors_fill_headers(req, resp, rule)

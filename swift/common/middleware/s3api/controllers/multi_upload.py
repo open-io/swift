@@ -79,9 +79,11 @@ from swift.common.request_helpers import get_container_update_override_key, \
 
 from six.moves.urllib.parse import quote, urlparse
 
+from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
@@ -206,6 +208,7 @@ class PartController(Controller):
 
     @set_s3_operation_rest_for_put_part
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
@@ -286,6 +289,7 @@ class PartController(Controller):
 
     @set_s3_operation_rest('PART')
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
@@ -299,6 +303,7 @@ class PartController(Controller):
 
     @set_s3_operation_rest('PART')
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
@@ -380,6 +385,24 @@ class PartController(Controller):
         slo_resp.headers['X-Amz-Mp-Parts-Count'] = len(slo)
         return slo_resp
 
+    @set_s3_operation_rest('PREFLIGHT')
+    @public
+    @object_operation  # required
+    @check_bucket_storage_domain
+    def OPTIONS(self, req):
+        # Here, we need to handle the request
+        resp = handle_options_request(self.app, self.conf, req)
+
+        # If CORS are handled without errors, we check if uploadId is present
+        if 'uploadId' not in req.params:
+            raise InvalidArgument(
+                None, None,
+                msg='This operation does not accept partNumber without '
+                    'uploadId')
+
+        # Then if everything is OK, we can return the response
+        return resp
+
 
 class UploadsController(Controller):
     """
@@ -392,6 +415,7 @@ class UploadsController(Controller):
     """
     @set_s3_operation_rest('UPLOADS')
     @public
+    @fill_cors_headers
     @bucket_operation(err_resp=InvalidRequest,
                       err_msg="Key is not expected for the GET method "
                               "?uploads subresource")
@@ -556,6 +580,7 @@ class UploadsController(Controller):
 
     @set_s3_operation_rest('UPLOADS')
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
@@ -642,6 +667,7 @@ class UploadController(Controller):
     """
     @set_s3_operation_rest('UPLOAD')
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
@@ -758,6 +784,7 @@ class UploadController(Controller):
 
     @set_s3_operation_rest('UPLOAD')
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain
@@ -809,6 +836,7 @@ class UploadController(Controller):
 
     @set_s3_operation_rest('UPLOAD')
     @public
+    @fill_cors_headers
     @object_operation
     @check_container_existence
     @check_bucket_storage_domain

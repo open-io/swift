@@ -32,9 +32,7 @@ from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest
-from swift.common.middleware.s3api.controllers.cors import \
-    CORS_ALLOWED_HTTP_METHOD, cors_fill_headers, get_cors, \
-    fill_cors_headers
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -42,7 +40,6 @@ from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
-    CORSForbidden, CORSInvalidAccessControlRequest, CORSOriginMissing, \
     BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header
@@ -150,8 +147,8 @@ class BucketController(Controller):
 
     @set_s3_operation_rest('BUCKET')
     @public
-    @check_bucket_storage_domain
     @fill_cors_headers
+    @check_bucket_storage_domain
     @check_iam_access("s3:ListBucket")
     def HEAD(self, req):
         """
@@ -375,8 +372,8 @@ class BucketController(Controller):
 
     @set_s3_operation_rest_for_list_objects
     @public
-    @check_bucket_storage_domain
     @fill_cors_headers
+    @check_bucket_storage_domain
     @check_iam_access("s3:ListBucket")
     def GET(self, req):
         """
@@ -487,8 +484,8 @@ class BucketController(Controller):
 
     @set_s3_operation_rest('BUCKET')
     @public
-    @check_bucket_storage_domain
     @fill_cors_headers
+    @check_bucket_storage_domain
     @check_iam_access("s3:DeleteBucket")
     def DELETE(self, req):
         """
@@ -507,25 +504,3 @@ class BucketController(Controller):
         Handle POST Bucket request
         """
         raise S3NotImplemented()
-
-    @set_s3_operation_rest('PREFLIGHT')
-    @public
-    @check_bucket_storage_domain
-    def OPTIONS(self, req):
-        origin = req.headers.get('Origin')
-        if not origin:
-            raise CORSOriginMissing()
-
-        method = req.headers.get('Access-Control-Request-Method')
-        if method not in CORS_ALLOWED_HTTP_METHOD:
-            raise CORSInvalidAccessControlRequest(method=method)
-
-        rule = get_cors(self.app, self.conf, req, method, origin)
-        # FIXME(mbo): we should raise also NoSuchCORSConfiguration
-        if rule is None:
-            raise CORSForbidden(method)
-
-        resp = HTTPOk(body=None)
-        del resp.headers['Content-Type']
-
-        return cors_fill_headers(req, resp, rule)

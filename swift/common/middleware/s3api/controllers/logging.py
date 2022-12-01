@@ -19,6 +19,7 @@ from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, tostring, fromstring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -45,6 +46,7 @@ class LoggingStatusController(Controller):
     """
     @set_s3_operation_rest('LOGGING_STATUS')
     @public
+    @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
     @check_bucket_storage_domain
     @check_iam_access('s3:GetBucketLogging')
@@ -75,6 +77,7 @@ class LoggingStatusController(Controller):
 
     @set_s3_operation_rest('LOGGING_STATUS')
     @public
+    @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
     @check_bucket_storage_domain
     @check_iam_access('s3:PutBucketLogging')

@@ -16,6 +16,7 @@
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, check_container_existence, \
     set_s3_operation_rest
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -147,6 +148,7 @@ class ReplicationController(Controller):
 
     @set_s3_operation_rest('REPLICATION')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_container_existence
@@ -171,6 +173,7 @@ class ReplicationController(Controller):
 
     @set_s3_operation_rest('REPLICATION')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_container_existence
@@ -189,6 +192,7 @@ class ReplicationController(Controller):
 
     @set_s3_operation_rest('REPLICATION')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_container_existence

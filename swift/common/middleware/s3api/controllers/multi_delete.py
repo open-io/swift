@@ -25,6 +25,7 @@ from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -69,6 +70,7 @@ class MultiObjectDeleteController(Controller):
 
     @set_s3_operation_batch_delete_object
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     def POST(self, req):

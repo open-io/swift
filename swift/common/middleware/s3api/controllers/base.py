@@ -16,6 +16,7 @@
 import copy
 import functools
 
+from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
@@ -26,7 +27,7 @@ from swift.common.middleware.s3api.s3response import S3NotImplemented, \
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER
 from swift.common.middleware.s3api.utils import camel_to_snake
 from swift.common.swob import str_to_wsgi
-from swift.common.utils import drain_and_close
+from swift.common.utils import drain_and_close, public
 
 
 def bucket_operation(func=None, err_resp=None, err_msg=None):
@@ -249,6 +250,12 @@ class Controller(object):
             # To avoid returning information to the user, in case
             # of error while checking, access is denied by default
             return False
+
+    @set_s3_operation_rest('PREFLIGHT')
+    @public
+    @check_bucket_storage_domain
+    def OPTIONS(self, req):
+        return handle_options_request(self.app, self.conf, req)
 
 
 class UnsupportedController(Controller):

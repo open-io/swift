@@ -15,6 +15,7 @@
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -42,6 +43,7 @@ class LifecycleController(Controller):
 
     @set_s3_operation_rest('LIFECYCLE')
     @public
+    @fill_cors_headers
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
     @check_bucket_storage_domain
     @check_iam_access('s3:GetLifecycleConfiguration')
@@ -58,6 +60,7 @@ class LifecycleController(Controller):
 
     @set_s3_operation_rest('LIFECYCLE')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access('s3:PutLifecycleConfiguration')
@@ -78,6 +81,7 @@ class LifecycleController(Controller):
 
     @set_s3_operation_rest('LIFECYCLE')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     # No specific permission for DELETE

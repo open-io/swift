@@ -216,6 +216,7 @@ class TestSwift3Cors(S3ApiTestCase):
                             {'Origin': 'http://example.com:80',
                              'Access-Control-Request-Method': 'POST'})
         self.assertEqual(ret[0], '403 Forbidden')
+        self.assertIn(b'CORSResponse', ret[2])
 
     def test_options_missing_origin(self):
         ret = self._options('/test-cors/obj')
@@ -243,7 +244,7 @@ class TestSwift3Cors(S3ApiTestCase):
                             {'Origin': 'http://example.com:80',
                              'Access-Control-Request-Method': 'POST'})
         self.assertEqual(ret[0], '403 Forbidden')
-        self.assertIn(b'CORSForbidden', ret[2])
+        self.assertIn(b'CORSResponse', ret[2])
 
     def test_options_notfound_method(self):
         xml = build_xml(RULE)
@@ -253,7 +254,7 @@ class TestSwift3Cors(S3ApiTestCase):
                             {'Origin': 'http://www.example.com',
                              'Access-Control-Request-Method': 'GET'})
         self.assertEqual(ret[0], '403 Forbidden')
-        self.assertIn(b'CORSForbidden', ret[2])
+        self.assertIn(b'CORSResponse', ret[2])
 
     def test_options_invalid_method(self):
         xml = build_xml(RULE)
@@ -305,6 +306,8 @@ class TestSwift3Cors(S3ApiTestCase):
                             {'Origin': 'https://subexample.com',
                              'Access-Control-Request-Method': 'POST'})
         self.assertEqual(ret[0], '403 Forbidden')
+        self.assertIn(b'CORSResponse: This CORS request is not allowed.',
+                      ret[2])
 
     def test_options_multiple_rules(self):
         r1 = RULE.copy()

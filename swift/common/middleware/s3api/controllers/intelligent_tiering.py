@@ -16,6 +16,7 @@
 from swift.common.middleware.intelligent_tiering import GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -112,6 +113,7 @@ class IntelligentTieringController(Controller):
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:GetIntelligentTieringConfiguration")
@@ -161,6 +163,7 @@ class IntelligentTieringController(Controller):
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:PutIntelligentTieringConfiguration")
@@ -203,6 +206,7 @@ class IntelligentTieringController(Controller):
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access("s3:DeleteIntelligentTieringConfiguration")

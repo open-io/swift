@@ -376,11 +376,24 @@ class VersionedBucketNotEmpty(BucketNotEmpty):
 
 
 class CORSForbidden(ErrorResponse):
+    _code = 'AccessForbidden'
     _status = '403 Forbidden'
     _msg = 'CORSResponse: This CORS request is not allowed. This is usually ' \
            'because the evalution of Origin, request method / ' \
            'Access-Control-Request-Method or Access-Control-Request-Headers ' \
            'are not whitelisted by the resource\'s CORS spec.'
+
+    def __init__(self, method, *args, **kwargs):
+        if not method:
+            raise InternalError()
+        ErrorResponse.__init__(self, None, method=method,
+                               resourcetype="BUCKET", *args, **kwargs)
+
+
+class CORSBucketNotFound(ErrorResponse):
+    _code = 'AccessForbidden'
+    _status = '403 Forbidden'
+    _msg = 'CORSResponse: Bucket not found'
 
     def __init__(self, method, *args, **kwargs):
         if not method:

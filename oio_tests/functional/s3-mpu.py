@@ -15,11 +15,12 @@
 # limitations under the License.
 
 import json
+import requests
 import tempfile
 import unittest
 
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
-    run_awscli_s3, run_awscli_s3api, CliError
+    run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client
 
 
 ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
@@ -303,7 +304,7 @@ class TestS3Mpu(unittest.TestCase):
         run_awscli_s3api("put-object", bucket=self.bucket, key=object)
         run_awscli_s3api(
             "head-object", "--part-number", "1", bucket=self.bucket, key=object
-            )
+        )
         self.assertRaisesRegex(
             CliError,
             "Range Not Satisfiable",
@@ -323,6 +324,104 @@ class TestS3Mpu(unittest.TestCase):
 
     def test_mpu_with_random_chars(self):
         self._test_mpu(random_str(32, chars=RANDOM_UTF8_CHARS))
+
+    def test_mpu_presigned_cors(self):
+        """
+        Specific test case: CORS with presigned URLs when upload a part.
+        """
+        boto_client = get_boto3_client()
+        obj = random_str(10)
+        headers = {
+            "Access-Control-Request-Method": "PUT",
+            "Origin": "http://openio.io",
+            "Access-Control-Request-Headers": "Authorization",
+        }
+
+        # Create MPU
+        data = run_awscli_s3api(
+            "create-multipart-upload", bucket=self.bucket, key=obj)
+        upload_id = data['UploadId']
+
+        # Generate presigned URL for one part
+        params = {
+            "Bucket": self.bucket,
+            "Key": obj,
+            'UploadId': upload_id,
+            'PartNumber': 1,  # We only validate it works for 1 part
+        }
+        presigned_url = boto_client.generate_presigned_url(
+            ClientMethod="upload_part",
+            Params=params,
+        )
+
+        # Check CORS on bucket without configured CORS
+        response = requests.options(presigned_url, headers=headers)
+        self.assertEqual(403, response.status_code)
+        self.assertIn("CORSResponse: This CORS request is not allowed",
+                      response.text)
+
+        # Configure CORS for this bucket
+        run_awscli_s3api(
+            'put-bucket-cors',
+            '--cors-configuration', """
+                {
+                    "CORSRules": [
+                        {
+                            "AllowedHeaders": ["Authorization"],
+                            "AllowedOrigins": ["http://openio.io"],
+                            "AllowedMethods": ["PUT"]
+                        }
+                    ]
+                }
+            """,
+            bucket=self.bucket
+        )
+
+        # Check invalid origin
+        headers_bad_origin = headers.copy()
+        headers_bad_origin["Origin"] = "http://www.ovh.com"
+        response = requests.options(presigned_url, headers=headers_bad_origin)
+        self.assertEqual(403, response.status_code)
+        self.assertIn("CORSResponse: This CORS request is not allowed.",
+                      response.text)
+
+        # Check invalid method
+        headers_bad_method = headers.copy()
+        headers_bad_method["Access-Control-Request-Method"] = "GET"
+        response = requests.options(presigned_url, headers=headers_bad_method)
+        self.assertEqual(403, response.status_code)
+        self.assertIn("CORSResponse: This CORS request is not allowed.",
+                      response.text)
+
+        # Check valid CORS on bucket with configured CORS
+        response = requests.options(presigned_url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("http://openio.io",
+                         response.headers["Access-Control-Allow-Origin"])
+        self.assertEqual("Authorization",
+                         response.headers["Access-Control-Allow-Headers"])
+        self.assertEqual("PUT",
+                         response.headers["Access-Control-Allow-Methods"])
+        self.assertEqual("true",
+                         response.headers["Access-Control-Allow-Credentials"])
+
+        # Check CORS headers are set during upload of one part with CORS
+        response = requests.put(presigned_url, data=obj, headers=headers)
+        self.assertEqual("http://openio.io",
+                         response.headers["Access-Control-Allow-Origin"])
+        self.assertEqual("Authorization",
+                         response.headers["Access-Control-Allow-Headers"])
+        self.assertEqual("PUT",
+                         response.headers["Access-Control-Allow-Methods"])
+        self.assertEqual("true",
+                         response.headers["Access-Control-Allow-Credentials"])
+
+        # Check CORS headers are not set during upload of one part without CORS
+        response = requests.put(presigned_url, data=obj)
+        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
+        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
+        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
 
 
 if __name__ == "__main__":

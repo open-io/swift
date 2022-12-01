@@ -17,6 +17,7 @@ from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk
 from swift.common.middleware.s3api.etree import tostring
@@ -35,6 +36,7 @@ class S3AclController(Controller):
     """
     @set_s3_operation_rest('ACL', 'OBJECT_ACL')
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
     @check_iam_access('s3:GetObjectAcl', 's3:GetBucketAcl')
@@ -53,6 +55,7 @@ class S3AclController(Controller):
 
     @set_s3_operation_rest('ACL', 'OBJECT_ACL')
     @public
+    @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
     @check_iam_access('s3:PutObjectAcl', 's3:PutBucketAcl')

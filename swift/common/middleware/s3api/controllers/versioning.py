@@ -20,6 +20,7 @@ from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, tostring, \
     fromstring, XMLSyntaxError, DocumentInvalid, SubElement
 from swift.common.middleware.s3api.s3response import HTTPOk, \
@@ -39,6 +40,7 @@ class VersioningController(Controller):
     """
     @set_s3_operation_rest('VERSIONING')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access('s3:GetBucketVersioning')
@@ -60,6 +62,7 @@ class VersioningController(Controller):
 
     @set_s3_operation_rest('VERSIONING')
     @public
+    @fill_cors_headers
     @bucket_operation
     @check_bucket_storage_domain
     @check_iam_access('s3:PutBucketVersioning')
