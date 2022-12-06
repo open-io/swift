@@ -21,7 +21,7 @@ import time
 import unittest
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api
+    run_awscli_s3api, get_boto3_client
 
 
 def parse_iso8601(val):
@@ -110,6 +110,32 @@ class TestS3BasicTest(unittest.TestCase):
                          [{'Prefix': 'file'}, {'Prefix': 'ville'}])
         self.assertEqual(data['Contents'][0]['Key'], 'test')
         self.assertEqual(len(data['Contents']), 1)
+
+    def test_list_url_encoding(self):
+        key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
+        client = get_boto3_client()
+        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
+        client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+        resp = requests.get(f'http://{self.bucket}.localhost:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m&encoding-type=url')
+        self.assertIn(
+            b'<Marker>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.m</Marker>',
+            resp.content)
+        self.assertIn(
+            b'<Key>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Key>',
+            resp.content)
+
+    def test_list_no_url_encoding(self):
+        key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
+        client = get_boto3_client()
+        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
+        client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+        resp = requests.get(f'http://{self.bucket}.localhost:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m')
+        self.assertIn(
+            b'<Marker>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.m</Marker>',
+            resp.content)
+        self.assertIn(
+            b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
+            resp.content)
 
     def test_get_object_with_range(self):
         key = "file"

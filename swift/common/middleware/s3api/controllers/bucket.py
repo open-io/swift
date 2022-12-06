@@ -16,10 +16,12 @@
 from base64 import standard_b64encode as b64encode
 from base64 import standard_b64decode as b64decode
 import functools
+import re
 
 import six
-from six.moves.urllib.parse import quote, quote_plus
+from six.moves.urllib.parse import quote_plus
 from functools import partial
+from xml.sax import saxutils
 
 from swift.common import swob
 from swift.common.http import HTTP_OK
@@ -48,6 +50,9 @@ from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
+_VALID_XML_CHAR_REGEXP = re.compile(  # ordered by presumed frequency
+    '[^\u0020-\uD7FF\u0009\u000A\u000D\uE000-\uFFFD\U00010000-\U0010FFFF]')
+_FAKE_TEXT_REGEX = re.compile(b'fake[0-9]+text')
 
 
 def set_s3_operation_rest_for_list_objects(func):
@@ -64,6 +69,27 @@ def set_s3_operation_rest_for_list_objects(func):
         return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
 
     return _set_s3_operation
+
+
+def _escape_xml_text(to_be_escaped_later, text):
+    if not text:
+        return text
+    if to_be_escaped_later is None:
+        return quote_plus(text.encode("utf-8"), safe="/")
+    i = len(to_be_escaped_later)
+    to_be_escaped_later.append(text)
+    return f'fake{i}text'
+
+
+def _replace_fake_text(to_be_escaped_later, m):
+    i = int(m.group(0)[4:-4])
+    escaped_name = saxutils.escape(to_be_escaped_later[i])
+    return re.sub(_VALID_XML_CHAR_REGEXP, _char_to_char_reference,
+                  escaped_name).encode('utf-8')
+
+
+def _char_to_char_reference(m):
+    return '&#x%x;' % ord(m.group(0))
 
 
 class BucketController(Controller):
@@ -137,9 +163,13 @@ class BucketController(Controller):
 
     def _parse_request_options(self, req, max_keys):
         encoding_type = req.params.get('encoding-type')
-        if encoding_type is not None and encoding_type != 'url':
-            err_msg = 'Invalid Encoding Method specified in Request'
-            raise InvalidArgument('encoding-type', encoding_type, err_msg)
+        if encoding_type is not None:
+            if encoding_type != 'url':
+                err_msg = 'Invalid Encoding Method specified in Request'
+                raise InvalidArgument('encoding-type', encoding_type, err_msg)
+            url_encoding = True
+        else:
+            url_encoding = False
 
         # in order to judge that truncated is valid, check whether
         # max_keys + 1 th element exists in swift.
@@ -189,20 +219,16 @@ class BucketController(Controller):
             if 'marker' in req.params:
                 query['marker'] = swob.wsgi_to_str(req.params['marker'])
 
-        return encoding_type, query, listing_type, fetch_owner
+        return url_encoding, query, listing_type, fetch_owner
 
-    def _build_versions_result(self, req, objects, encoding_type,
-                               tag_max_keys, is_truncated):
+    def _build_versions_result(self, req, objects, url_encoding,
+                               escape_xml_text, tag_max_keys, is_truncated):
         elem = Element('ListVersionsResult')
         SubElement(elem, 'Name').text = req.container_name
         prefix = swob.wsgi_to_str(req.params.get('prefix'))
-        if prefix and encoding_type == 'url':
-            prefix = quote(prefix)
-        SubElement(elem, 'Prefix').text = prefix
+        SubElement(elem, 'Prefix').text = escape_xml_text(prefix)
         key_marker = swob.wsgi_to_str(req.params.get('key-marker'))
-        if key_marker and encoding_type == 'url':
-            key_marker = quote(key_marker)
-        SubElement(elem, 'KeyMarker').text = key_marker
+        SubElement(elem, 'KeyMarker').text = escape_xml_text(key_marker)
         SubElement(elem, 'VersionIdMarker').text = swob.wsgi_to_str(
             req.params.get('version-id-marker'))
         if is_truncated:
@@ -218,55 +244,47 @@ class BucketController(Controller):
         SubElement(elem, 'MaxKeys').text = str(tag_max_keys)
         delimiter = swob.wsgi_to_str(req.params.get('delimiter'))
         if delimiter is not None:
-            if encoding_type == 'url':
-                delimiter = quote(delimiter)
-            SubElement(elem, 'Delimiter').text = delimiter
-        if encoding_type == 'url':
-            SubElement(elem, 'EncodingType').text = encoding_type
+            SubElement(elem, 'Delimiter').text = escape_xml_text(delimiter)
+        if url_encoding:
+            SubElement(elem, 'EncodingType').text = 'url'
         SubElement(elem, 'IsTruncated').text = \
             'true' if is_truncated else 'false'
         return elem
 
-    def _build_base_listing_element(self, req, encoding_type):
+    def _build_base_listing_element(self, req, escape_xml_text):
         elem = Element('ListBucketResult')
         SubElement(elem, 'Name').text = req.container_name
         prefix = swob.wsgi_to_str(req.params.get('prefix'))
-        if prefix and encoding_type == 'url':
-            prefix = quote(prefix)
-        SubElement(elem, 'Prefix').text = prefix
+        SubElement(elem, 'Prefix').text = escape_xml_text(prefix)
         return elem
 
-    def _build_list_bucket_result_type_one(self, req, objects, encoding_type,
-                                           tag_max_keys, is_truncated):
-        elem = self._build_base_listing_element(req, encoding_type)
+    def _build_list_bucket_result_type_one(
+            self, req, objects, url_encoding, escape_xml_text,
+            tag_max_keys, is_truncated):
+        elem = self._build_base_listing_element(req, escape_xml_text)
         marker = swob.wsgi_to_str(req.params.get('marker'))
-        if marker and encoding_type == 'url':
-            marker = quote(marker)
-        SubElement(elem, 'Marker').text = marker
+        SubElement(elem, 'Marker').text = escape_xml_text(marker)
         if is_truncated and 'delimiter' in req.params:
             if 'name' in objects[-1]:
                 name = objects[-1]['name']
             else:
                 name = objects[-1]['subdir']
-            if encoding_type == 'url':
-                name = quote(name.encode('utf-8'))
-            SubElement(elem, 'NextMarker').text = name
+            SubElement(elem, 'NextMarker').text = escape_xml_text(name)
         # XXX: really? no NextMarker when no delimiter??
         SubElement(elem, 'MaxKeys').text = str(tag_max_keys)
         delimiter = swob.wsgi_to_str(req.params.get('delimiter'))
         if delimiter:
-            if encoding_type == 'url':
-                delimiter = quote(delimiter)
-            SubElement(elem, 'Delimiter').text = delimiter
-        if encoding_type == 'url':
-            SubElement(elem, 'EncodingType').text = encoding_type
+            SubElement(elem, 'Delimiter').text = escape_xml_text(delimiter)
+        if url_encoding:
+            SubElement(elem, 'EncodingType').text = 'url'
         SubElement(elem, 'IsTruncated').text = \
             'true' if is_truncated else 'false'
         return elem
 
-    def _build_list_bucket_result_type_two(self, req, objects, encoding_type,
-                                           tag_max_keys, is_truncated):
-        elem = self._build_base_listing_element(req, encoding_type)
+    def _build_list_bucket_result_type_two(
+            self, req, objects, url_encoding, escape_xml_text,
+            tag_max_keys, is_truncated):
+        elem = self._build_base_listing_element(req, escape_xml_text)
         if is_truncated:
             if 'name' in objects[-1]:
                 SubElement(elem, 'NextContinuationToken').text = \
@@ -279,37 +297,27 @@ class BucketController(Controller):
                 swob.wsgi_to_str(req.params['continuation-token'])
         start_after = swob.wsgi_to_str(req.params.get('start-after'))
         if start_after is not None:
-            if encoding_type == 'url':
-                start_after = quote(start_after)
-            SubElement(elem, 'StartAfter').text = start_after
+            SubElement(elem, 'StartAfter').text = escape_xml_text(start_after)
         SubElement(elem, 'KeyCount').text = str(len(objects))
         SubElement(elem, 'MaxKeys').text = str(tag_max_keys)
         delimiter = swob.wsgi_to_str(req.params.get('delimiter'))
         if delimiter:
-            if encoding_type == 'url':
-                delimiter = quote(delimiter)
-            SubElement(elem, 'Delimiter').text = delimiter
-        if encoding_type == 'url':
-            SubElement(elem, 'EncodingType').text = encoding_type
+            SubElement(elem, 'Delimiter').text = escape_xml_text(delimiter)
+        if url_encoding:
+            SubElement(elem, 'EncodingType').text = 'url'
         SubElement(elem, 'IsTruncated').text = \
             'true' if is_truncated else 'false'
         return elem
 
-    def _add_subdir(self, elem, o, encoding_type):
+    def _add_subdir(self, elem, o, escape_xml_text):
         common_prefixes = SubElement(elem, 'CommonPrefixes')
         name = o['subdir']
-        if encoding_type == 'url':
-            name = quote_plus(name.encode("utf-8"), safe="/")
-        SubElement(common_prefixes, 'Prefix').text = name
+        SubElement(common_prefixes, 'Prefix').text = escape_xml_text(name)
 
-    def _add_object(self, req, elem, o, encoding_type, listing_type,
+    def _add_object(self, req, elem, o, escape_xml_text, listing_type,
                     fetch_owner):
         name = o['name']
-        if encoding_type == 'url':
-            escaped_name = quote_plus(name.encode("utf-8"), safe="/")
-        else:
-            escaped_name = ''.join([x if x.isprintable() else
-                                   '&#x%X' % ord(x) for x in name])
+        escaped_name = escape_xml_text(name)
 
         if listing_type == 'object-versions':
             if o['content_type'] == DELETE_MARKER_CONTENT_TYPE:
@@ -357,13 +365,13 @@ class BucketController(Controller):
             SubElement(contents, 'StorageClass').text = \
                 req.storage_policy_to_class(o.get('storage_policy'))
 
-    def _add_objects_to_result(self, req, elem, objects, encoding_type,
+    def _add_objects_to_result(self, req, elem, objects, escape_xml_text,
                                listing_type, fetch_owner):
         for o in objects:
             if 'subdir' in o:
-                self._add_subdir(elem, o, encoding_type)
+                self._add_subdir(elem, o, escape_xml_text)
             else:
-                self._add_object(req, elem, o, encoding_type, listing_type,
+                self._add_object(req, elem, o, escape_xml_text, listing_type,
                                  fetch_owner)
 
     @set_s3_operation_rest_for_list_objects
@@ -408,7 +416,7 @@ class BucketController(Controller):
         # TODO: Separate max_bucket_listing and default_bucket_listing
         max_keys = min(tag_max_keys, self.conf.max_bucket_listing)
 
-        encoding_type, query, listing_type, fetch_owner = \
+        url_encoding, query, listing_type, fetch_owner = \
             self._parse_request_options(req, max_keys)
 
         resp = req.get_response(self.app, query=query)
@@ -418,17 +426,37 @@ class BucketController(Controller):
         is_truncated = max_keys > 0 and len(objects) > max_keys
         objects = objects[:max_keys]
 
+        # When the response is not URL-encoded, reference characters must be
+        # used for non valid XML characters.
+        # But the 'lxml' module does not support these non valid XML
+        # characters.
+        # The trick is therefore to put a fake text which is replaced at the
+        # end by the real text correctly escaped.
+        if url_encoding:
+            to_be_escaped_later = None
+        else:
+            to_be_escaped_later = []
+        escape_xml_text = partial(_escape_xml_text, to_be_escaped_later)
+
         if listing_type == 'object-versions':
             func = self._build_versions_result
         elif listing_type == 'version-2':
             func = self._build_list_bucket_result_type_two
         else:
             func = self._build_list_bucket_result_type_one
-        elem = func(req, objects, encoding_type, tag_max_keys, is_truncated)
+        elem = func(req, objects, url_encoding, escape_xml_text, tag_max_keys,
+                    is_truncated)
         self._add_objects_to_result(
-            req, elem, objects, encoding_type, listing_type, fetch_owner)
+            req, elem, objects, escape_xml_text, listing_type, fetch_owner)
 
         body = tostring(elem)
+        if to_be_escaped_later is not None:
+            # Replace with the real text correctly escaped
+            body = re.sub(
+                _FAKE_TEXT_REGEX,
+                partial(_replace_fake_text, to_be_escaped_later),
+                body)
+
         resp = HTTPOk(body=body, content_type='application/xml')
         return resp
 

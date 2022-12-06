@@ -29,20 +29,7 @@ from botocore.exceptions import ClientError
 from minio import Minio
 from minio.credentials.providers import AWSConfigProvider
 
-
-ENDPOINT_URL = "http://localhost:5000"
-
-
-def get_boto_client(endpoint_url=ENDPOINT_URL, signature_version="s3v4",
-                    addressing_style="path", region_name="RegionOne",
-                    profile="user1"):
-    client_config = Config(signature_version=signature_version,
-                           region_name=region_name,
-                           s3={"addressing_style": addressing_style})
-    session = boto3.Session(profile_name=profile)
-    client = session.client(service_name='s3', endpoint_url=endpoint_url,
-                            config=client_config)
-    return client
+from oio_tests.functional.common import ENDPOINT_URL, get_boto3_client
 
 
 def get_minio_client(endpoint_url=ENDPOINT_URL, region_name="RegionOne",
@@ -62,8 +49,8 @@ class TestForcedParams(unittest.TestCase):
     def setUpClass(cls):
         super(TestForcedParams, cls).setUpClass()
         cls.bucket = "user1bucket"
-        cls.client = get_boto_client(profile="user1")
-        cls.admin_client = get_boto_client(profile="default")
+        cls.client = get_boto3_client(profile="user1")
+        cls.admin_client = get_boto3_client(profile="default")
         cls.admin_client.create_bucket(Bucket=cls.bucket)
 
     @classmethod
@@ -139,15 +126,16 @@ class TestForcedParams(unittest.TestCase):
             self.assertNotEqual(version, head_res['VersionId'])
 
     def test_force_version_v2_sign(self):
-        sigv2_client = get_boto_client(profile="default",
-                                       signature_version='s3')
+        sigv2_client = get_boto3_client(profile="default",
+                                        signature_version='s3')
         return self._test_upload_object_forced_version(sigv2_client)
 
     def test_force_version_v4_sign(self):
         return self._test_upload_object_forced_version(self.admin_client)
 
     def test_force_version_v2_sign_not_reseller(self):
-        sigv2_client = get_boto_client(profile="user1", signature_version='s3')
+        sigv2_client = get_boto3_client(profile="user1",
+                                        signature_version='s3')
         return self._test_upload_object_forced_version(sigv2_client,
                                                        is_reseller=False)
 
