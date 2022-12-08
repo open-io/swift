@@ -836,19 +836,23 @@ class TestDatabaseBroker(unittest.TestCase):
         qpath = os.path.join(self.testdir, 'dev', 'quarantined', 'tests', 'db')
         with patch('swift.common.db.renamer', lambda a, b,
                    fsync: b):
-            # Test malformed database
-            copy(os.path.join(os.path.dirname(__file__),
-                              'malformed_example.db'),
-                 os.path.join(dbpath, '1.db'))
-            broker = DatabaseBroker(os.path.join(dbpath, '1.db'))
-            broker.db_type = 'test'
-            with self.assertRaises(sqlite3.DatabaseError) as raised, \
-                    broker.get() as conn:
-                conn.execute('SELECT * FROM test')
-            self.assertEqual(
-                str(raised.exception),
-                'Quarantined %s to %s due to malformed database' %
-                (dbpath, qpath))
+            if sqlite3.sqlite_version_info < (3, 38, 1):
+                # sqlite3 auto repair database since version 3.38.1
+                # corrected in: https://www.sqlite.org/src/info/5e95df261cce275a # noqa: E501
+                # Test malformed database on for old sqlite3 versions
+                copy(os.path.join(os.path.dirname(__file__),
+                                  'malformed_example.db'),
+                     os.path.join(dbpath, '1.db'))
+                broker = DatabaseBroker(os.path.join(dbpath, '1.db'))
+                broker.db_type = 'test'
+                with self.assertRaises(sqlite3.DatabaseError) as raised, \
+                        broker.get() as conn:
+                    conn.execute('SELECT * FROM test')
+                self.assertEqual(
+                    str(raised.exception),
+                    'Quarantined %s to %s due to malformed database' %
+                    (dbpath, qpath))
+
             # Test malformed schema database
             copy(os.path.join(os.path.dirname(__file__),
                               'malformed_schema_example.db'),
