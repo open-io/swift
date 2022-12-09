@@ -48,9 +48,7 @@ from swift.common.middleware.s3api.s3response import (
     NoSuchWebsiteConfiguration,
     S3NotImplemented,
     S3Response,
-    WebsiteAccessDenied,
-    WebsiteNoSuchKey,
-    WebsiteNoSuchWebsiteConfiguration,
+    WebsiteErrorResponse,
 )
 from swift.common.swob import str_to_wsgi
 
@@ -225,9 +223,9 @@ class S3WebsiteController(Controller):
             if error_doc is None:
                 # Default error
                 if isinstance(err, AccessDenied):
-                    raise WebsiteAccessDenied()
+                    raise WebsiteErrorResponse(AccessDenied)
                 elif isinstance(err, NoSuchKey):
-                    raise WebsiteNoSuchKey(suffix_doc)
+                    raise WebsiteErrorResponse(NoSuchKey, key=suffix_doc)
                 else:
                     raise
             else:
@@ -237,13 +235,15 @@ class S3WebsiteController(Controller):
                 except (BadRequest, AccessDenied, NoSuchKey) as error_doc_err:
                     # Default error with info about issue with error document
                     if isinstance(err, AccessDenied):
-                        raise WebsiteAccessDenied(
+                        raise WebsiteErrorResponse(
+                            AccessDenied,
                             error_document_err=error_doc_err,
                             error_document_key=error_doc,
                         )
                     elif isinstance(err, NoSuchKey):
-                        raise WebsiteNoSuchKey(
-                            suffix_doc,
+                        raise WebsiteErrorResponse(
+                            NoSuchKey,
+                            key=suffix_doc,
                             error_document_err=error_doc_err,
                             error_document_key=error_doc,
                         )
@@ -253,7 +253,9 @@ class S3WebsiteController(Controller):
     def GETorHEAD(self, req):
         suffix_doc, error_doc = get_website_conf(self.app, req)
         if suffix_doc is None:
-            raise WebsiteNoSuchWebsiteConfiguration(req.container_name)
+            raise WebsiteErrorResponse(
+                NoSuchWebsiteConfiguration, bucket_name=req.container_name
+            )
         if req.is_object_request:
             # Handle request on an object
             try:
@@ -270,12 +272,13 @@ class S3WebsiteController(Controller):
             except AccessDenied as err:
                 if error_doc is None:
                     # Default error
-                    raise WebsiteAccessDenied()
+                    raise WebsiteErrorResponse(AccessDenied)
                 # Custom error document
                 try:
                     return self._render(req, obj=error_doc, err=err)
                 except (BadRequest, AccessDenied, NoSuchKey) as error_doc_err:
-                    raise WebsiteAccessDenied(
+                    raise WebsiteErrorResponse(
+                        AccessDenied,
                         error_document_err=error_doc_err,
                         error_document_key=error_doc,
                     )

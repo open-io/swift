@@ -876,22 +876,26 @@ class BrokenMPU(ErrorResponse):
 
 class WebsiteErrorResponse(S3ResponseBase, swob.HTTPException):
     _status = ""
+    _msg = ""
     _code = ""
+    _error_document_err = None
+    _error_document_key = None
 
     def __init__(
         self,
-        msg=None,
-        error_document_err=None,
-        error_document_key=None,
+        error_response,
         *args,
         **kwargs
     ):
-        if msg:
-            self._msg = msg
-        self._error_document_err = error_document_err
-        self._error_document_key = error_document_key
+        self._status = error_response._status
+        self._msg = error_response._msg
+        self._code = error_response._code
+        if not self._code:
+            self._code = error_response.__name__
 
         self.info = kwargs.copy()
+        self._error_document_err = self.info.pop("error_document_err", None)
+        self._error_document_key = self.info.pop("error_document_key", None)
         for reserved_key in ("headers", "body"):
             self.info.pop(reserved_key, None)
 
@@ -967,93 +971,13 @@ class WebsiteErrorResponse(S3ResponseBase, swob.HTTPException):
         ).text = "An Error Occurred While Attempting to Retrieve a Custom " \
             "Error Document"
         list_elements = {}
+        list_elements["Code"] = self._error_document_err._code
+        list_elements["Message"] = self._error_document_err._msg
         if isinstance(self._error_document_err, NoSuchKey):
-            list_elements["Code"] = "NoSuchKey"
-            list_elements["Message"] = "The specified key does not exist."
             list_elements["Key"] = self._error_document_key
-        if isinstance(self._error_document_err, AccessDenied):
-            list_elements["Code"] = "AccessDenied"
-            list_elements["Message"] = "Access Denied"
         self._add_ul(response_body, list_elements)
 
     def _add_ul(self, parent, list_elements):
         ul = etree.SubElement(parent, "ul")
         for key, value in list_elements.items():
             etree.SubElement(ul, "li").text = key + ": " + str(value)
-
-
-class WebsiteMethodNotAllowed(WebsiteErrorResponse):
-    _status = "405 Method Not Allowed"
-    _msg = "The specified method is not allowed against this resource."
-    _code = "MethodNotAllowed"
-    _headers = {"Allow": ", ".join(["GET", "HEAD", "OPTIONS"])}
-
-    def __init__(self, method, resource_type, msg=None, *args, **kwargs):
-        WebsiteErrorResponse.__init__(
-            self,
-            msg=msg,
-            headers=self._headers,
-            method=method,
-            resource_type=resource_type,
-            *args,
-            **kwargs,
-        )
-
-
-class WebsiteNoSuchWebsiteConfiguration(WebsiteErrorResponse):
-    _status = "404 Not Found"
-    _msg = "The specified bucket does not have a website configuration."
-    _code = "NoSuchWebsiteConfiguration"
-
-    def __init__(self, bucket_name, msg=None, *args, **kwargs):
-        WebsiteErrorResponse.__init__(
-            self, msg=msg, bucket_name=bucket_name, *args, **kwargs
-        )
-
-
-class WebsiteAccessDenied(WebsiteErrorResponse):
-    _status = "403 Forbidden"
-    _msg = "Access Denied."
-    _code = "Forbidden"
-
-    def __init__(
-        self,
-        msg=None,
-        error_document_err=None,
-        error_document_key=None,
-        *args,
-        **kwargs
-    ):
-        WebsiteErrorResponse.__init__(
-            self,
-            msg=msg,
-            error_document_err=error_document_err,
-            error_document_key=error_document_key,
-            *args,
-            **kwargs,
-        )
-
-
-class WebsiteNoSuchKey(WebsiteErrorResponse):
-    _status = "404 Not Found"
-    _msg = "The specified key does not exist."
-    _code = "NoSuchKey"
-
-    def __init__(
-        self,
-        key,
-        msg=None,
-        error_document_err=None,
-        error_document_key=None,
-        *args,
-        **kwargs
-    ):
-        WebsiteErrorResponse.__init__(
-            self,
-            msg=msg,
-            error_document_err=error_document_err,
-            error_document_key=error_document_key,
-            key=key,
-            *args,
-            **kwargs,
-        )

@@ -337,7 +337,7 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(error_code, "AccessDenied")
 
         error_message = self._find_value_in_element_list(data[1][3], "Message: ")
-        self.assertEqual(error_message, "Access Denied")
+        self.assertEqual(error_message, "Access Denied.")
 
     def test_object_custom_404_AccessDenied(self):
         self._put_error(acl="private")
@@ -389,7 +389,7 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(error_code, "AccessDenied")
 
         error_message = self._find_value_in_element_list(data[1][3], "Message: ")
-        self.assertEqual(error_message, "Access Denied")
+        self.assertEqual(error_message, "Access Denied.")
 
     def test_custom_403(self):
         self._put_index(acl="private")
@@ -432,7 +432,7 @@ class TestS3Website(unittest.TestCase):
         data = lxml.html.fromstring(r.text)
 
         code = self._find_value_in_element_list(data[1][1], "Code: ")
-        self.assertEqual(code, "Forbidden")
+        self.assertEqual(code, "AccessDenied")
 
         message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
@@ -465,7 +465,7 @@ class TestS3Website(unittest.TestCase):
         data = lxml.html.fromstring(r.text)
 
         code = self._find_value_in_element_list(data[1][1], "Code: ")
-        self.assertEqual(code, "Forbidden")
+        self.assertEqual(code, "AccessDenied")
 
         message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
@@ -518,7 +518,7 @@ class TestS3Website(unittest.TestCase):
         data = lxml.html.fromstring(r.text)
 
         code = self._find_value_in_element_list(data[1][1], "Code: ")
-        self.assertEqual(code, "Forbidden")
+        self.assertEqual(code, "AccessDenied")
 
         message = self._find_value_in_element_list(data[1][1], "Message: ")
         self.assertEqual(
