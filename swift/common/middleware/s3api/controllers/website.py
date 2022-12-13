@@ -22,7 +22,7 @@ from swift.common.middleware.s3api.utils import (
     convert_response,
     sysmeta_header,
 )
-from swift.common.utils import public
+from swift.common.utils import drain_and_close, public
 
 from swift.common.middleware.s3api.controllers.base import (
     Controller,
@@ -41,6 +41,7 @@ from swift.common.middleware.s3api.etree import (
 from swift.common.middleware.s3api.s3response import (
     AccessDenied,
     BadRequest,
+    Found,
     HTTPOk,
     HTTPNoContent,
     MalformedXML,
@@ -197,12 +198,12 @@ class S3WebsiteController(Controller):
     Handles requests on static website
     """
 
-    def _render(self, req, obj=None, err=None):
+    def _render(self, req, obj=None, err=None, method=None):
         """
         Renders an object.
         If object is an error document, then convert the response status code.
         """
-        resp = req.get_response(self.app, obj=obj, method=req.method)
+        resp = req.get_response(self.app, obj=obj, method=method)
         if err:
             return convert_response(
                 req, resp, 200, partial(
@@ -211,14 +212,14 @@ class S3WebsiteController(Controller):
             )
         return resp
 
-    def _handle_object_requests(self, req, suffix_doc, error_doc):
+    def _handle_object_requests(self, req, suffix_doc, error_doc, method=None):
         """
         Handles request to an object, if an error 404 or 405 occurs and an
         error document is set in the website configuration, then respond with
         custom error otherwise respond with default error.
         """
         try:
-            return self._render(req, obj=suffix_doc)
+            return self._render(req, obj=suffix_doc, method=method)
         except (BadRequest, AccessDenied, NoSuchKey) as err:
             if error_doc is None:
                 # Default error
@@ -231,7 +232,9 @@ class S3WebsiteController(Controller):
             else:
                 # Custom error document
                 try:
-                    return self._render(req, obj=error_doc, err=err)
+                    return self._render(
+                        req, obj=error_doc, err=err, method=method
+                    )
                 except (BadRequest, AccessDenied, NoSuchKey) as error_doc_err:
                     # Default error with info about issue with error document
                     if isinstance(err, AccessDenied):
@@ -250,6 +253,44 @@ class S3WebsiteController(Controller):
                     else:
                         raise err
 
+    def _handle_folder_requests(self, req, suffix_doc, error_doc):
+        """
+        Handles request to a folder, add index document to the object requested
+        before request.
+        If object requested does not end with "/" and request is success, send
+        302 redirection response.
+        """
+        # Add index document to prefix
+        if req.object_name.endswith("/"):
+            suffix_doc = req.object_name + suffix_doc
+            return self._handle_object_requests(req, suffix_doc, error_doc)
+        else:
+            suffix_doc = req.object_name + "/" + suffix_doc
+            resp = self._handle_object_requests(
+                req, suffix_doc, error_doc, method="HEAD"
+            )
+            # If index document is found in req.object_name folder,
+            # return a 302 status code
+            if resp.status_int == 200:
+                drain_and_close(resp)
+                if req.bucket_in_host:
+                    raise WebsiteErrorResponse(
+                        Found,
+                        headers={"Location": "/" + req.object_name + "/"},
+                    )
+                else:
+                    raise WebsiteErrorResponse(
+                        Found,
+                        headers={
+                            "Location": "/" +
+                            req.container_name +
+                            "/" +
+                            req.object_name +
+                            "/"
+                        },
+                    )
+            return resp
+
     def GETorHEAD(self, req):
         suffix_doc, error_doc = get_website_conf(self.app, req)
         if suffix_doc is None:
@@ -261,14 +302,7 @@ class S3WebsiteController(Controller):
             try:
                 return self._render(req)
             except NoSuchKey:
-                # Add index document to prefix
-                if req.object_name.endswith("/"):
-                    suffix_doc = req.object_name + suffix_doc
-                else:
-                    suffix_doc = req.object_name + "/" + suffix_doc
-                return self._handle_object_requests(
-                    req, suffix_doc, error_doc
-                )
+                return self._handle_folder_requests(req, suffix_doc, error_doc)
             except AccessDenied as err:
                 if error_doc is None:
                     # Default error

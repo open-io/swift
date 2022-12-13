@@ -22,7 +22,6 @@ import unittest
 
 from oio_tests.functional.common import (
     CliError,
-    random_str,
     run_awscli_s3api,
     run_awscli_s3,
 )
@@ -33,6 +32,7 @@ class TestS3Website(unittest.TestCase):
     def setUpClass(cls):
         with open("/etc/hosts", "a") as file:
             file.write("127.0.0.1       s3-website.sbg.perf.cloud.ovh.net\n")
+            file.write("127.0.0.1       test-bucket.s3-website.sbg.perf.cloud.ovh.net\n")
             file.write("127.0.0.1       s3.sbg.perf.cloud.ovh.net\n")
 
     @classmethod
@@ -44,7 +44,7 @@ class TestS3Website(unittest.TestCase):
             file.writelines(lines[:-2])
 
     def setUp(self):
-        self.bucket = random_str(10)
+        self.bucket = "test-bucket"
         self.region = "RegionOne"
         self.index_key = "index.html"
         self.error_key = "error.html"
@@ -148,7 +148,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
+        r = requests.get(
+            "http://s3.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/",
+            allow_redirects=False,
+        )
 
         # check website page
         self.assertEqual(r.status_code, 403)
@@ -164,7 +167,12 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/",
+            allow_redirects=False,
+        )
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -181,7 +189,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
+        )
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -199,11 +210,59 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/" + prefix)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/" +
+            prefix,
+            allow_redirects=False
+        )
 
         # check website page
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.text, self.index_body)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/" + self.bucket + "/" + prefix + "/")
+        self.assertNotEqual(r.text, self.index_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "Found")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(message, "Resource Found.")
+
+    def test_object_in_a_prefix_without_slash_virtual_hosted_style(self):
+        prefix = "subfolder"
+        self._put_index(prefix=prefix)
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://" +
+            self.bucket +
+            ".s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            prefix,
+            allow_redirects=False,
+        )
+
+        # check website page
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/" + prefix + "/")
+        self.assertNotEqual(r.text, self.index_body)
+
+        data = lxml.html.fromstring(r.text)
+
+        code = self._find_value_in_element_list(data[1][1], "Code: ")
+        self.assertEqual(code, "Found")
+
+        message = self._find_value_in_element_list(data[1][1], "Message: ")
+        self.assertEqual(message, "Resource Found.")
 
     def test_object_in_a_prefix_with_slash(self):
         prefix = "subfolder"
@@ -217,7 +276,14 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/" + prefix)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/" +
+            prefix +
+            "/",
+            allow_redirects=False,
+        )
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -235,7 +301,12 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/",
+            allow_redirects=False
+        )
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -254,7 +325,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False
+        )
 
         # check 404 because object does not exist
         self.assertEqual(r.status_code, 404)
@@ -271,7 +345,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
+        )
 
         # check 404 because object does not exist
         self.assertEqual(r.status_code, 404)
@@ -305,7 +382,8 @@ class TestS3Website(unittest.TestCase):
 
         # request website
         r = requests.get(
-            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
         )
 
         # check 404 because object does not exist, error response is default
@@ -357,7 +435,8 @@ class TestS3Website(unittest.TestCase):
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
             + "/"
-            + prefix
+            + prefix,
+            allow_redirects=False,
         )
 
         # check 404 because object does not exist, error response is default
@@ -405,7 +484,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
+        )
 
         # check 403 because object is not public-read
         self.assertEqual(r.status_code, 403)
@@ -423,7 +505,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
+        )
 
         # check 403 because object is not public-read
         self.assertEqual(r.status_code, 403)
@@ -454,7 +539,8 @@ class TestS3Website(unittest.TestCase):
 
         # request website
         r = requests.get(
-            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
         )
 
         # check 403 because object is not public-read, error response is
@@ -507,7 +593,8 @@ class TestS3Website(unittest.TestCase):
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
             + "/"
-            + prefix
+            + prefix,
+            allow_redirects=False,
         )
 
         # check 403 because object is not public-read, error response is
@@ -545,7 +632,10 @@ class TestS3Website(unittest.TestCase):
         self._put_index()
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
+        )
 
         # check 404 because website is not enable
         self.assertEqual(r.status_code, 404)
@@ -576,7 +666,12 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/",
+            allow_redirects=False,
+        )
 
         # check website page
         self.assertEqual(r.status_code, 200)
@@ -588,7 +683,12 @@ class TestS3Website(unittest.TestCase):
             storage_domain="s3.sbg.perf.cloud.ovh.net",
         )
 
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket + "/")
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/",
+            allow_redirects=False,
+        )
 
         # check 404 because website is not enable
         self.assertEqual(r.status_code, 404)
@@ -620,7 +720,10 @@ class TestS3Website(unittest.TestCase):
         )
 
         # request website
-        r = requests.get("http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket)
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket,
+            allow_redirects=False,
+        )
 
         # check 404 because object does not exist
         self.assertEqual(r.status_code, 404)
@@ -640,7 +743,8 @@ class TestS3Website(unittest.TestCase):
         r = requests.head(
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
-            + "/"
+            + "/",
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 200)
 
@@ -658,7 +762,8 @@ class TestS3Website(unittest.TestCase):
         r = requests.put(
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
-            + "/"
+            + "/",
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
 
@@ -695,7 +800,8 @@ class TestS3Website(unittest.TestCase):
         r = requests.post(
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
-            + "/"
+            + "/",
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
 
@@ -732,7 +838,8 @@ class TestS3Website(unittest.TestCase):
         r = requests.delete(
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
-            + "/"
+            + "/",
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
 
@@ -770,7 +877,8 @@ class TestS3Website(unittest.TestCase):
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
             + "/"
-            + self.index_key
+            + self.index_key,
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 200)
 
@@ -789,7 +897,8 @@ class TestS3Website(unittest.TestCase):
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
             + "/"
-            + self.index_key
+            + self.index_key,
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
 
@@ -827,7 +936,8 @@ class TestS3Website(unittest.TestCase):
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
             + "/"
-            + self.index_key
+            + self.index_key,
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
 
@@ -865,7 +975,8 @@ class TestS3Website(unittest.TestCase):
             "http://s3-website.sbg.perf.cloud.ovh.net:5000/"
             + self.bucket
             + "/"
-            + self.index_key
+            + self.index_key,
+            allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
 

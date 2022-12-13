@@ -771,6 +771,11 @@ class PermanentRedirect(ErrorResponse):
            'endpoint.'
 
 
+class Found(ErrorResponse):
+    _status = '302 Moved Temporarily'
+    _msg = 'Resource Found.'
+
+
 class PreconditionFailed(ErrorResponse):
     _status = '412 Precondition Failed'
     _msg = 'At least one of the preconditions you specified did not hold.'
