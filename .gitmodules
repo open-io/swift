@@ -1,6 +1,6 @@
 [submodule "oio-sds"]
 	path = third_party/oio-sds
-	url = https://github.com/open-io/oio-sds.git
+	url = ssh://git@stash.ovh.net:7999/openio/oio-sds.git
 	branch = master
 
 [submodule "ceph-s3tests"]

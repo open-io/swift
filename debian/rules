@@ -26,6 +26,7 @@ override_dh_virtualenv:
 	  --index-url https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
 	# fix shebangs
 	find $(DESTDIR)$(PREFIX)/bin/ -type f -exec sed -i "s@${DESTDIR}@@" {} \;
+	./third_party/oio-sds/tools/patch-python-modules.sh "${DESTDIR}${PREFIX}"
 
 .PHONY: override_dh_strip override_dh_shlibdeps
 

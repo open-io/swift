@@ -13,7 +13,9 @@ jobs:
 
       - name: Clone external-packages
         script:
+          - test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
           - eval $(worker key install --env-git proj-ssh-openio)
+          - git submodule update --init --remote
           - git clone {{ .cds.proj.STASH_URL }}/openio/external-packages.git /external-packages
 
       - name: Build package and upload

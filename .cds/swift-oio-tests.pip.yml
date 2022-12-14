@@ -33,6 +33,7 @@ jobs:
           git submodule update --init --remote
           cd third_party/oio-sds && pip install -e . && cd ../..
           pip install -e .
+          ./third_party/oio-sds/tools/patch-python-modules.sh
           rabbitmq-plugins enable rabbitmq_management
           wget -q https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb
           wget -q https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-server_${FDB_VERSION}-1_amd64.deb
