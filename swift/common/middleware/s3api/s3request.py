@@ -160,7 +160,7 @@ class StreamingInput(object):
                  chunk_validator):
         self._input = reader
         self._validator = chunk_validator
-        self._raw_to_read = raw_content_length
+        self._raw_to_read = raw_content_length  # Can be None
         self._to_read = content_length
         self._raw_buffer = ''
         self._processed_content = ''
@@ -206,8 +206,9 @@ class StreamingInput(object):
 
         while True:
             # Check if there is enough processed data available
-            if len(self._processed_content) >= _size or (
-                    self._raw_to_read == 0 and len(self._raw_buffer) == 0):
+            if (len(self._processed_content) >= _size
+                    or (self._raw_to_read == 0 and len(self._raw_buffer) == 0)
+                    or self._last_chunk_size == 0):
                 read_chunk = self._processed_content[0:_size]
                 self._processed_content = self._processed_content[_size:]
                 self._to_read -= len(read_chunk)
@@ -220,10 +221,12 @@ class StreamingInput(object):
 
             # Add data to buffer to process
             data = self._input.read(size).decode('utf8')
-            self._raw_to_read -= len(data)
+            if self._raw_to_read is not None:
+                self._raw_to_read -= len(data)
             self._raw_buffer += data
             # Check if counters are consistent
-            if self._to_read < 0 or self._raw_to_read < 0:
+            if self._to_read < 0 or (self._raw_to_read is not None
+                                     and self._raw_to_read < 0):
                 # to much received data
                 self.close()
                 raise swob.HTTPForbidden(msg=SIGV4_ERROR_INCOMPLETE_BODY)

@@ -1586,6 +1586,24 @@ class TestStreamingInput(S3ApiTestCase):
         wrapped.close()
         self.assertTrue(wrapped._input.closed)
 
+    def test_good_no_content_length(self):
+        def chunk_validator(chunk, signature):
+            return signature == 'ok'
+
+        raw = '9;chunk-signature=ok\r\n123456789\r\n' \
+              '0;chunk-signature=ok\r\n\r\n'.encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), None, 9, chunk_validator)
+        self.assertEqual(b'1234', wrapped.read(4))
+        self.assertEqual(b'56', wrapped.read(2))
+        # trying to read past the end gets us whatever's left
+        self.assertEqual(b'789', wrapped.read(4))
+        # can continue trying to read -- but it'll be empty
+        self.assertEqual(b'', wrapped.read(2))
+
+        self.assertFalse(wrapped._input.closed)
+        wrapped.close()
+        self.assertTrue(wrapped._input.closed)
+
     def test_wrong_signature_first_chunk(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
