@@ -253,43 +253,38 @@ class S3WebsiteController(Controller):
                     else:
                         raise err
 
-    def _handle_folder_requests(self, req, suffix_doc, error_doc):
+    def _handle_folder_redirect(self, req, suffix_doc, error_doc):
         """
-        Handles request to a folder, add index document to the object requested
-        before request.
-        If object requested does not end with "/" and request is success, send
-        302 redirection response.
+        Handles request to a folder that does not end with "/", add index
+        document to the object requested before request.
+        If request succeed, send 302 redirection response.
         """
         # Add index document to prefix
-        if req.object_name.endswith("/"):
-            suffix_doc = req.object_name + suffix_doc
-            return self._handle_object_requests(req, suffix_doc, error_doc)
-        else:
-            suffix_doc = req.object_name + "/" + suffix_doc
-            resp = self._handle_object_requests(
-                req, suffix_doc, error_doc, method="HEAD"
-            )
-            # If index document is found in req.object_name folder,
-            # return a 302 status code
-            if resp.status_int == 200:
-                drain_and_close(resp)
-                if req.bucket_in_host:
-                    raise WebsiteErrorResponse(
-                        Found,
-                        headers={"Location": "/" + req.object_name + "/"},
-                    )
-                else:
-                    raise WebsiteErrorResponse(
-                        Found,
-                        headers={
-                            "Location": "/" +
-                            req.container_name +
-                            "/" +
-                            req.object_name +
-                            "/"
-                        },
-                    )
-            return resp
+        suffix_doc = req.object_name + "/" + suffix_doc
+        resp = self._handle_object_requests(
+            req, suffix_doc, error_doc, method="HEAD"
+        )
+        # If index document is found in req.object_name folder,
+        # return a 302 status code
+        if resp.status_int == 200:
+            drain_and_close(resp)
+            if req.bucket_in_host:
+                raise WebsiteErrorResponse(
+                    Found,
+                    headers={"Location": "/" + req.object_name + "/"},
+                )
+            else:
+                raise WebsiteErrorResponse(
+                    Found,
+                    headers={
+                        "Location": "/" +
+                        req.container_name +
+                        "/" +
+                        req.object_name +
+                        "/"
+                    },
+                )
+        return resp
 
     def GETorHEAD(self, req):
         suffix_doc, error_doc = get_website_conf(self.app, req)
@@ -298,11 +293,16 @@ class S3WebsiteController(Controller):
                 NoSuchWebsiteConfiguration, bucket_name=req.container_name
             )
         if req.is_object_request:
+            # If object requested ends with "/", it is considered as a folder,
+            # handle request on folder + index document
+            if req.object_name.endswith("/"):
+                suffix_doc = req.object_name + suffix_doc
+                return self._handle_object_requests(req, suffix_doc, error_doc)
             # Handle request on an object
             try:
                 return self._render(req)
             except NoSuchKey:
-                return self._handle_folder_requests(req, suffix_doc, error_doc)
+                return self._handle_folder_redirect(req, suffix_doc, error_doc)
             except AccessDenied as err:
                 if error_doc is None:
                     # Default error

@@ -70,12 +70,26 @@ class TestS3Website(unittest.TestCase):
     </body>
 </html>
 """
+        self.other_object_body = """
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Other object</title>
+    </head>
+    <body>
+        <p>test 2</p>
+    </body>
+</html>
+"""
         self.index_file, self.index_path = mkstemp()
         with os.fdopen(self.index_file, "w") as file:
             file.write(self.index_body)
         self.error_file, self.error_path = mkstemp()
         with os.fdopen(self.error_file, "w") as file:
             file.write(self.error_body)
+        self.other_object_file, self.other_object_path = mkstemp()
+        with os.fdopen(self.other_object_file, "w") as file:
+            file.write(self.other_object_body)
         run_awscli_s3("mb", bucket=self.bucket, storage_domain="s3.sbg.perf.cloud.ovh.net")
 
     def tearDown(self):
@@ -93,6 +107,7 @@ class TestS3Website(unittest.TestCase):
                 raise
         os.remove(self.index_path)
         os.remove(self.error_path)
+        os.remove(self.other_object_path)
 
     def _put_index(self, acl="public-read", prefix="", key=""):
         if key == "":
@@ -119,6 +134,20 @@ class TestS3Website(unittest.TestCase):
             "put-object",
             "--body",
             self.error_path,
+            "--acl",
+            acl,
+            "--content-type",
+            "text/html",
+            bucket=self.bucket,
+            key=key,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+    def _put_other_object(self, key, acl="public-read"):
+        run_awscli_s3api(
+            "put-object",
+            "--body",
+            self.other_object_path,
             "--acl",
             acl,
             "--content-type",
@@ -288,6 +317,61 @@ class TestS3Website(unittest.TestCase):
         # check website page
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.text, self.index_body)
+
+    def test_object_in_folder_and_an_object_with_folder_name(self):
+        prefix = "subfolder"
+        # put object with the same name as the folder
+        self._put_other_object(key="subfolder/")
+        self._put_index(prefix=prefix)
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/" +
+            prefix +
+            "/",
+            allow_redirects=False,
+        )
+
+        # check website page
+        self.assertEqual(r.status_code, 200)
+        self.assertNotEqual(r.text, self.other_object_body)
+        self.assertEqual(r.text, self.index_body)
+
+    def test_404_object_in_folder_and_an_object_with_folder_name(self):
+        prefix = "subfolder"
+        # put object with the same name as the folder
+        self._put_other_object(key="subfolder/")
+        # index document is not uploaded in folder
+        run_awscli_s3(
+            "website",
+            "--index-document",
+            self.index_key,
+            bucket=self.bucket,
+            storage_domain="s3.sbg.perf.cloud.ovh.net",
+        )
+
+        # request website
+        r = requests.get(
+            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" +
+            self.bucket +
+            "/" +
+            prefix +
+            "/",
+            allow_redirects=False,
+        )
+
+        # check 404 because index doesn't exist and it doesn't try to get the
+        # object that ends with "/"
+        self.assertEqual(r.status_code, 404)
 
     def test_index_key_with_special_character(self):
         index_key_with_special_character = "index😀"
