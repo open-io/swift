@@ -234,11 +234,11 @@ def fill_cors_headers(func):
                                  req.method, origin)
         try:
             resp = func(*args, **kwargs)
-            if cors_rule:
+            if cors_rule is not None:
                 cors_fill_headers(req, resp, cors_rule)
             return resp
         except ErrorResponse as err_resp:
-            if cors_rule:
+            if cors_rule is not None:
                 cors_fill_headers(req, err_resp, cors_rule)
             raise
     return cors_fill_headers_wrapper
