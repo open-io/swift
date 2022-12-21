@@ -26,3 +26,4 @@ boto3
 dict2xml
 oio
 pika
+importlib-metadata<5.0.0  # To be removed when we are up to date on the upstream and/or when we use Python>=3.8
