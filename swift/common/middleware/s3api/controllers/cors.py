@@ -25,7 +25,8 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
-    MalformedXML, NoSuchCORSConfiguration, ErrorResponse
+    MalformedXML, NoSuchCORSConfiguration, CORSInvalidAccessControlRequest, \
+    ErrorResponse
 
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
@@ -43,17 +44,22 @@ def fill_cors_headers(func):
         controller = args[0]
         req = args[1]
         origin = req.headers.get('Origin')
+        method = req.headers.get('Access-Control-Request-Method')
+        if method is None:
+            method = req.method
+        if method not in CORS_ALLOWED_HTTP_METHOD:
+            raise CORSInvalidAccessControlRequest(method=method)
         cors_rule = None
         if origin:
             cors_rule = get_cors(controller.app, controller.conf, req,
-                                 req.method, origin)
+                                 method, origin)
         try:
             resp = func(*args, **kwargs)
-            if cors_rule:
+            if cors_rule is not None:
                 cors_fill_headers(req, resp, cors_rule)
             return resp
         except ErrorResponse as err_resp:
-            if cors_rule:
+            if cors_rule is not None:
                 cors_fill_headers(req, err_resp, cors_rule)
             raise
     return cors_fill_headers_wrapper

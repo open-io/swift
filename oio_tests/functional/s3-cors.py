@@ -245,6 +245,123 @@ class TestS3Cors(unittest.TestCase):
             expected_message=message
         )
 
+    def test_non_options_requests(self):
+        # Create bucket
+        run_awscli_s3('mb', bucket=self.bucket_name)
+
+        # Create object
+        key = random_str(20)
+        run_awscli_s3api("put-object", bucket=self.bucket_name, key=key)
+
+        # Configure CORS for this bucket
+        run_awscli_s3api(
+            'put-bucket-cors',
+            '--cors-configuration', """
+                {
+                    "CORSRules": [
+                        {
+                            "ExposeHeaders": ["Access-Control-Allow-Origin"],
+                            "AllowedHeaders": ["Authorization"],
+                            "AllowedOrigins": ["http://openio.io"],
+                            "AllowedMethods": ["GET"]
+                        }
+                    ]
+                }
+            """,
+            bucket=self.bucket_name
+        )
+
+        url = run_awscli_s3('presign', bucket=self.bucket_name, key=key)
+        url = url.strip()  # remove trailing \n
+
+        # Check with no CORS headers in request
+        headers = None
+        response = requests.get(url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
+        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
+        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+
+        # Check with only method in headers
+        # (nothing expected as origin not provided)
+        headers = {
+            "Access-Control-Request-Method": "GET",
+        }
+        response = requests.get(url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
+        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
+        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+
+        # Check with only origin in headers
+        headers = {
+            "Origin": "http://openio.io",
+        }
+        response = requests.get(url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("http://openio.io",
+                         response.headers["Access-Control-Allow-Origin"])
+        # Note: not present on AWS
+        self.assertEqual("Authorization",
+                         response.headers["Access-Control-Allow-Headers"])
+        self.assertEqual("GET",
+                         response.headers["Access-Control-Allow-Methods"])
+        self.assertEqual("Access-Control-Allow-Origin",
+                         response.headers["Access-Control-Expose-Headers"])
+        self.assertEqual("true",
+                         response.headers["Access-Control-Allow-Credentials"])
+
+        # Check with method + origin
+        headers = {
+            "Access-Control-Request-Method": "GET",
+            "Origin": "http://openio.io",
+        }
+        response = requests.options(url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("http://openio.io",
+                         response.headers["Access-Control-Allow-Origin"])
+        # Note: not present on AWS
+        self.assertEqual("Authorization",
+                         response.headers["Access-Control-Allow-Headers"])
+        self.assertEqual("GET",
+                         response.headers["Access-Control-Allow-Methods"])
+        self.assertEqual("Access-Control-Allow-Origin",
+                         response.headers["Access-Control-Expose-Headers"])
+        self.assertEqual("true",
+                         response.headers["Access-Control-Allow-Credentials"])
+
+        # Check with wrong method + correct origin
+        # (should returns 200 but no CORS headers filled)
+        headers = {
+            "Access-Control-Request-Method": "PUT",
+            "Origin": "http://openio.io",
+        }
+        response = requests.get(url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
+        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
+        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+
+        # Check with wrong origin + correct method
+        # (should returns 200 but no CORS headers filled)
+        headers = {
+            "Access-Control-Request-Method": "GET",
+            "Origin": "http://example.com",
+        }
+        response = requests.get(url, headers=headers)
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
+        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
+        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
+        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
