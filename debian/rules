@@ -21,6 +21,7 @@ override_dh_virtualenv:
 	  --use-system-packages \
 	  --builtin-venv \
 	  --upgrade-pip \
+	  --preinstall "setuptools>=48.0.0" \
 	  --preinstall wheel \
 	  --requirements debian/requirements.txt \
 	  --index-url https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
