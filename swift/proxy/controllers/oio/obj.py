@@ -35,7 +35,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
     HTTPNotFound, HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
     HTTPNoContent, Response, HTTPInternalServerError, multi_range_iterator, \
-    HTTPServiceUnavailable, HTTPException
+    HTTPServiceUnavailable, HTTPException, str_to_wsgi, wsgi_quote
 from swift.common.request_helpers import is_sys_or_user_meta, \
     is_object_transient_sysmeta, resolve_etag_is_at_header
 from swift.common.wsgi import make_subrequest
@@ -455,10 +455,17 @@ class ObjectController(BaseObjectController):
         # We cannot use bulk-delete here,
         # because we are at the end of the pipeline, after 'bulk'.
         for part in manifest:
-            path = '/'.join(('', 'v1', self.account_name)) + part['name']
+            # part['name'] includes the container name, but it is safe
+            # to quote the whole thing since container names allow
+            # only ascii characters (which won't be quoted).
+            path = ('/'.join(('', 'v1', self.account_name))
+                    + wsgi_quote(str_to_wsgi(part['name'])))
             try:
                 del_req = make_subrequest(req.environ, 'DELETE', path=path)
-                del_req.get_response(self.app)
+                resp = del_req.get_response(self.app)
+                if resp.status_int != 204:
+                    raise Exception(
+                        f"{resp.status}: {resp.body.decode('utf-8')}")
             except Exception as exc:
                 self.app.logger.warn('Failed to delete SLO part %s: %s',
                                      path, exc)
