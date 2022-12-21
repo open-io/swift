@@ -41,6 +41,11 @@ jobs:
           systemctl stop foundationdb.service
           systemctl disable foundationdb.service
 
+          echo "RateLimitBurst=0" >> /etc/systemd/journald.conf
+          echo '$SystemLogRateLimitInterval 0' >> /etc/rsyslog.conf
+          systemctl restart systemd-journald.service
+          systemctl restart rsyslog.service
+
       - name: Run oio functional tests
         script:
           - pgrep rsyslogd || rsyslogd &
