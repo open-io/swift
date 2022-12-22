@@ -60,7 +60,8 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     BadDigest, AuthorizationHeaderMalformed, SlowDown, \
     AuthorizationQueryParametersError, ServiceUnavailable, BrokenMPU, \
     NoSuchVersion, BadRequest, OperationAborted, XAmzContentSHA256Mismatch, \
-    InvalidChunkSizeError, IncompleteBody
+    InvalidChunkSizeError, IncompleteBody, WebsiteErrorResponse, \
+    PermanentRedirect
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import utf8encode, \
     S3Timestamp, mktime, MULTIUPLOAD_SUFFIX
@@ -1331,6 +1332,14 @@ class S3Request(swob.Request):
     @property
     def controller(self):
         if self.is_website:
+            if self.bucket_in_host is None:
+                self.environ['swift.leave_relative_location'] = False
+                raise WebsiteErrorResponse(
+                    PermanentRedirect,
+                    headers={"Location": self.conf.landing_page},
+                    code="WebsiteRedirect",
+                    message="Request does not contain a bucket name.",
+                )
             return S3WebsiteController
 
         if self.is_service_request:
@@ -1996,6 +2005,14 @@ class S3AclRequest(S3Request):
     @property
     def controller(self):
         if self.is_website:
+            if self.bucket_in_host is None:
+                self.environ['swift.leave_relative_location'] = False
+                raise WebsiteErrorResponse(
+                    PermanentRedirect,
+                    headers={"Location": self.conf.landing_page},
+                    code="WebsiteRedirect",
+                    message="Request does not contain a bucket name.",
+                )
             return S3WebsiteController
 
         if 'acl' in self.params and not self.is_service_request:

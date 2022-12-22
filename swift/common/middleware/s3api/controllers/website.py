@@ -232,9 +232,7 @@ class S3WebsiteController(Controller):
             else:
                 # Custom error document
                 try:
-                    return self._render(
-                        req, obj=error_doc, err=err, method=method
-                    )
+                    return self._render(req, obj=error_doc, err=err)
                 except (BadRequest, AccessDenied, NoSuchKey) as error_doc_err:
                     # Default error with info about issue with error document
                     if isinstance(err, AccessDenied):
@@ -268,22 +266,9 @@ class S3WebsiteController(Controller):
         # return a 302 status code
         if resp.status_int == 200:
             drain_and_close(resp)
-            if req.bucket_in_host:
-                raise WebsiteErrorResponse(
-                    Found,
-                    headers={"Location": "/" + req.object_name + "/"},
-                )
-            else:
-                raise WebsiteErrorResponse(
-                    Found,
-                    headers={
-                        "Location": "/" +
-                        req.container_name +
-                        "/" +
-                        req.object_name +
-                        "/"
-                    },
-                )
+            raise WebsiteErrorResponse(
+                Found, headers={"Location": "/" + req.object_name + "/"}
+            )
         return resp
 
     def GETorHEAD(self, req):
