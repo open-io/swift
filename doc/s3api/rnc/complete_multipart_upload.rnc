@@ -1,7 +1,11 @@
 start =
   element CompleteMultipartUpload {
     element Part {
-      element PartNumber { xsd:int } &
-      element ETag { xsd:string }
+      element ChecksumCRC32 { xsd:string }? &
+      element ChecksumCRC32C { xsd:string }? &
+      element ChecksumSHA1 { xsd:string }? &
+      element ChecksumSHA256 { xsd:string }? &
+      element ETag { xsd:string } &
+      element PartNumber { xsd:int }
     }+
   }

@@ -901,6 +901,9 @@ class UploadController(Controller):
                         upload_id, part_number),
                     'etag': etag})
                 s3_etag_hasher.update(binascii.a2b_hex(etag))
+
+                # TODO(ADU): Handle the ChecksumCRC32, ChecksumCRC32C,
+                #            ChecksumSHA1 and ChecksumSHA256 tags
         except (XMLSyntaxError, DocumentInvalid):
             # NB: our schema definitions catch uploads with no parts here
             raise MalformedXML()
