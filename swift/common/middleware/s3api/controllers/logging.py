@@ -62,9 +62,11 @@ class LoggingStatusController(Controller):
                 logging_status['Bucket']
             SubElement(enabled_elem, 'TargetPrefix').text = \
                 logging_status['Prefix']
-            grants_elem = SubElement(enabled_elem, 'TargetGrants')
-            for grant in decode_grants(logging_status['Grant']):
-                grants_elem.append(grant.elem())
+            grants = logging_status['Grant']
+            if len(grants) > 0:
+                grants_elem = SubElement(enabled_elem, 'TargetGrants')
+                for grant in decode_grants(grants):
+                    grants_elem.append(grant.elem())
         # else:
         #     logging disabled
         body = tostring(elem)
