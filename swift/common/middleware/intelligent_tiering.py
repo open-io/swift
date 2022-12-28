@@ -177,7 +177,7 @@ class RabbitMQClient(object):
 
         return connection, channel
 
-    def _send_message(self, account, bucket, action):
+    def _send_message(self, account, bucket, action, bucket_size=None):
         connection, channel = None, None
         try:
             connection, channel = self._connect()
@@ -185,6 +185,8 @@ class RabbitMQClient(object):
                     "account": account,
                     "bucket": bucket,
                     "action": action}
+            if bucket_size:
+                data["size"] = bucket_size
             channel.basic_publish(exchange=self.exchange,
                                   routing_key=self.queue,
                                   body=json.dumps(data))
@@ -201,8 +203,9 @@ class RabbitMQClient(object):
                 except Exception as exc:
                     self.logger.exception('Failed to disconnect: %s', str(exc))
 
-    def start_archiving(self, account, bucket):
-        self._send_message(account, bucket, RABBITMQ_MSG_ARCHIVING)
+    def start_archiving(self, account, bucket, bucket_size=None):
+        self._send_message(
+            account, bucket, RABBITMQ_MSG_ARCHIVING, bucket_size)
 
     def start_restoring(self, account, bucket):
         self._send_message(account, bucket, RABBITMQ_MSG_RESTORING)
@@ -333,8 +336,16 @@ class IntelligentTieringMiddleware(object):
         if action == TIERING_ACTION_TIER_ARCHIVE:
             new_status = BUCKET_STATE_LOCKED
             if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
+                bucket_size = None
+                bucket_db = req.environ.get('s3api.bucket_db', None)
+                if bucket_db:
+                    bucket_info = bucket_db.show(
+                        req.container_name,
+                        req.account)
+                    bucket_size = bucket_info.get('bytes')
                 self.rabbitmq_client.start_archiving(req.account,
-                                                     req.container_name)
+                                                     req.container_name,
+                                                     bucket_size)
                 self._set_archiving_status(req, current_status, new_status)
             else:
                 raise BadRequest('Archiving is not allowed in the state %s' %
