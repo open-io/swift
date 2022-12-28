@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 OpenStack Foundation
+# Copyright (c) 2016-2023 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ from swift.proxy.controllers.oio.account import AccountController
 from swift.proxy.controllers.oio.container import ContainerController
 from swift.proxy.controllers.oio.obj import ObjectControllerRouter
 from swift.proxy.server import Application as SwiftApplication
-from swift.common.utils import config_true_value, parse_auto_storage_policies
+from swift.common.utils import config_auto_int_value, config_true_value, \
+    parse_auto_storage_policies
 
 from oio import ObjectStorageApi
 
@@ -85,6 +86,9 @@ class Application(SwiftApplication):
         # Fix boolean parameter
         sds_conf['autocreate'] = config_true_value(
             sds_conf.get('autocreate', 'true'))
+        # Fix parameter key, cast from str to int
+        sds_conf['refresh_delay'] = config_auto_int_value(
+            sds_conf.pop('endpoint_refresh_delay', None), 60)
 
         # NOTE(FVE): passing self.logger is different from passing just logger.
         # If logger is None, self.logger will be properly instantiated by the

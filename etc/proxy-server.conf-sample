@@ -357,6 +357,12 @@ use = egg:swift#proxy
 #sds_read_timeout=20
 #sds_write_timeout=20
 #
+# Account service endpoint refresh delay, in seconds. Can be set to
+# a negative number to refresh the endpoint only in case of error.
+# This setting will affect s3api (bucket_db), oioiam, proxy_server middlewares
+# (maybe other middlewares in the future).
+#sds_endpoint_refresh_delay=60
+#
 # When a static large object manifest is overwritten, swift's default behavior
 # is to keep the parts, in case another manifest references them. It is the
 # container owner's responsability to delete them.
@@ -555,7 +561,7 @@ user_test5_tester5 = testing5 service
 [filter:iam]
 use = egg:swift#oioiam
 
-# Load IAM user policies from a JSON file or from a Redis database.
+# Load IAM user policies from a JSON file or from OpenIO's account service.
 #
 # The file must contain a JSON object, with one IAM policy document per
 # user ID. Example for tempauth user "admin" from account "admin":
@@ -577,7 +583,7 @@ use = egg:swift#oioiam
 #   }
 # }
 #
-# When using a Redis database, the rules can be manipulated with the
+# When using the account service, the rules can be manipulated with the
 # following commands:
 # - openio-admin iam set-user-policy
 # - openio-admin iam get-user-policy
@@ -591,33 +597,17 @@ use = egg:swift#oioiam
 # Load IAM user policies from a JSON file.
 #connection = file:///etc/swift/iam_rules.json
 
-# Load IAM user policies from a Redis database.
+# Load IAM user policies from OpenIO's account service (no hostname required).
 #connection = oio://
-
-# Load IAM user policies from a Redis database, with Redis Sentinel enabled.
-connection = redis+sentinel://10.0.1.24:6012,10.0.1.27:6012,10.0.1.25:6012?sentinel_name=IAM-master-1
-
-# Required parameters when using Redis Sentinel:
-# - sentinel_name
-
-# Available connection parameters:
-# - socket_timeout
-# - socket_connect_timeout
-# - socket_keepalive
-# - retry_on_timeout
-# - max_connections
-# - sentinel_socket_timeout
-# - sentinel_socket_connect_timeout
-# - sentinel_socket_keepalive
-# - sentinel_retry_on_timeout
-# - sentinel_max_connections
-# - key_prefix ("IAM:" by default)
 
 # Keep this number of rules in cache
 #cache_size = 1000
 
 # Keep rules in cache for this long (seconds)
 #cache_ttl = 30
+
+# Force a specific oioproxy URL (used to locate account services)
+#sds_proxy_url=
 
 [filter:s3api]
 use = egg:swift#s3api

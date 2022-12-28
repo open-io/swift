@@ -1,4 +1,4 @@
-# Copyright (c) 2020 OpenStack Foundation.
+# Copyright (c) 2020-2023 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@ import time
 from swift.common.middleware.s3api.s3response import ServiceUnavailable, \
     TooManyBuckets
 
-from swift.common.utils import config_true_value, parse_connection_string
+from swift.common.utils import config_auto_int_value, config_true_value, \
+    parse_connection_string
 
 from oio.account.bucket_client import BucketClient
 from oio.common.exceptions import ClientException, NotFound, BadRequest, \
@@ -319,6 +320,8 @@ def get_bucket_db(conf, logger=None):
             klass = OioBucketDb
             db_kwargs['namespace'] = conf.get('sds_namespace')
             db_kwargs['proxy_url'] = conf.get('sds_proxy_url')
+            db_kwargs['refresh_delay'] = config_auto_int_value(
+                conf.get('sds_endpoint_refresh_delay'), 60)
         else:
             raise ValueError('bucket_db: unknown scheme: %r' % scheme)
     else:

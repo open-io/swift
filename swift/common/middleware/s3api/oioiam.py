@@ -1,6 +1,6 @@
 # Copyright (c) 2020 OpenStack Foundation.
 # Copyright (C) 2020 OpenIO SAS
-# Copyright (C) 2021 OVHcloud
+# Copyright (C) 2021-2023 OVHcloud
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from oio.common.utils import parse_conn_str
 from swift.common.middleware.s3api.iam import IamMiddleware, \
     StaticIamMiddleware
 from swift.common.middleware.s3api.s3response import ServiceUnavailable
+from swift.common.utils import config_auto_int_value
 
 
 class OioIamMiddleware(IamMiddleware):
@@ -39,9 +40,13 @@ class OioIamMiddleware(IamMiddleware):
         namespace = conf.get('sds_namespace')
         if namespace:
             iam_conf['namespace'] = namespace
+        refresh_delay = config_auto_int_value(
+            conf.get("sds_endpoint_refresh_delay"), 60)
         self.iam_client = IamClient(
             iam_conf, proxy_endpoint=conf.get('sds_proxy_url'),
-            logger=self.logger)
+            logger=self.logger,
+            refresh_delay=refresh_delay,
+        )
 
     def load_rules_for_user(self, account, user):
         if not (account and user):

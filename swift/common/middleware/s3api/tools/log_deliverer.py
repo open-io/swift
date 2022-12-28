@@ -1,4 +1,4 @@
-# Copyright (c) 2022 OpenStack Foundation
+# Copyright (c) 2022-2023 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ from oio.container.client import ContainerClient
 
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
     Group, User, decode_grants
+from swift.common.utils import config_auto_int_value
 
 
 PERMISSIONS_MAPPING = {
@@ -91,12 +92,15 @@ class LogDeliverer(object):
             raise ValueError('Cannot delete files from the log directory')
         self.log_prefix = self.conf.get(
             's3_log_prefix', self.DEFAULT_S3_LOG_PREFIX)
+        refresh_delay = config_auto_int_value(
+            conf.get("sds_endpoint_refresh_delay"), 60)
 
         oio_namespace = self.conf.get('oio_namespace')
         if not oio_namespace:
             raise ValueError('Missing OpenIO namespace')
         self.bucket_client = BucketClient(
-            {'namespace': oio_namespace}, logger=self.logger)
+            {'namespace': oio_namespace}, logger=self.logger,
+            refresh_delay=refresh_delay)
         self.container_client = ContainerClient(
             {'namespace': oio_namespace}, logger=self.logger)
 
