@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2022 OpenStack Foundation
+# Copyright (c) 2022-2023 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ class TestBucketLogging(unittest.TestCase):
             Rule('SYSLOG_IDENTIFIER', f's3access-{self.bucket}'))
 
     def tearDown(self):
+        self.journal_reader = None
         try:
             run_awscli_s3('rb', '--force', bucket=self.bucket)
         except CliError as exc:
@@ -174,8 +175,9 @@ class TestBucketLogging(unittest.TestCase):
     def _check_log_message(self, operation, method, path,
                            key='-', status_int=200, error_code='-'):
         time.sleep(1)
+        self.journal_reader.wait(5)
         log_entry = self.journal_reader.next()
-        self.assertIsNotNone(log_entry)
+        self.assertIsNotNone(log_entry, "No log message read from journal")
         log_message = log_entry.data['MESSAGE']
         regex = r'^demo:demo ' + self.bucket + r' \[[0-9]{2}\/[A-Za-z]{3}' \
             + r'\/[0-9]{4}:[0-9]{2}:[0-9]{2}:[0-9]{2} \+0000\]' \
@@ -190,12 +192,19 @@ class TestBucketLogging(unittest.TestCase):
             + r'botocore\/[0-9]{1,3}(\.[0-9]{1,3}){1,2}" - - SigV[24] - ' \
             + r'AuthHeader ' + self.bucket + '\.localhost:5000 - -$'
         try:
-            self.assertIsNotNone(re.match(regex, log_message))
+            match = re.match(regex, log_message)
+            self.assertIsNotNone(
+                match,
+                "Log message did not match regex: {log_message!r}"
+            )
         except Exception:
             print(log_message)
             print(regex)
             raise
-        self.assertIsNone(self.journal_reader.next())
+        self.assertIsNone(
+            self.journal_reader.next(),
+            "Read more than one message from journal"
+        )
 
     def test_head_bucket(self):
         self._configure()
