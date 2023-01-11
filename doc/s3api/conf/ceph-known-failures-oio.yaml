@@ -171,8 +171,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_list_multipart_upload_owner:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_logging_toggle:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_multipart_copy_invalid_range:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_multipart_resend_first_finishes_last:
