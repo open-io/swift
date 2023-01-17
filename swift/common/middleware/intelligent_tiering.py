@@ -177,7 +177,8 @@ class RabbitMQClient(object):
 
         return connection, channel
 
-    def _send_message(self, account, bucket, action, bucket_size=None):
+    def _send_message(self, account, bucket, action, bucket_size=None,
+                      bucket_region=None):
         connection, channel = None, None
         try:
             connection, channel = self._connect()
@@ -187,6 +188,9 @@ class RabbitMQClient(object):
                     "action": action}
             if bucket_size:
                 data["size"] = bucket_size
+            if bucket_region:
+                data["region"] = bucket_region
+
             channel.basic_publish(exchange=self.exchange,
                                   routing_key=self.queue,
                                   body=json.dumps(data))
@@ -203,12 +207,16 @@ class RabbitMQClient(object):
                 except Exception as exc:
                     self.logger.exception('Failed to disconnect: %s', str(exc))
 
-    def start_archiving(self, account, bucket, bucket_size=None):
+    def start_archiving(self, account, bucket, bucket_size=None,
+                        bucket_region=None):
         self._send_message(
-            account, bucket, RABBITMQ_MSG_ARCHIVING, bucket_size)
+            account, bucket, RABBITMQ_MSG_ARCHIVING, bucket_size,
+            bucket_region)
 
-    def start_restoring(self, account, bucket):
-        self._send_message(account, bucket, RABBITMQ_MSG_RESTORING)
+    def start_restoring(self, account, bucket, bucket_size, bucket_region):
+        self._send_message(
+            account, bucket, RABBITMQ_MSG_RESTORING, bucket_size,
+            bucket_region)
 
     def start_archive_deletion(self, account, bucket):
         self._send_message(account, bucket, RABBITMQ_MSG_DELETION)
@@ -332,20 +340,24 @@ class IntelligentTieringMiddleware(object):
             raise BadRequest('AccessTier must be one of %s' %
                              TIERING_TIER_ACTIONS)
 
+        bucket_db = req.environ.get('s3api.bucket_db', None)
+        bucket_size = None
+        bucket_region = None
+        if bucket_db:
+            bucket_info = bucket_db.show(
+                req.container_name,
+                req.account)
+            bucket_size = bucket_info.get('bytes')
+            bucket_region = bucket_info.get('region')
+
         # ARCHIVE
         if action == TIERING_ACTION_TIER_ARCHIVE:
             new_status = BUCKET_STATE_LOCKED
             if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
-                bucket_size = None
-                bucket_db = req.environ.get('s3api.bucket_db', None)
-                if bucket_db:
-                    bucket_info = bucket_db.show(
-                        req.container_name,
-                        req.account)
-                    bucket_size = bucket_info.get('bytes')
                 self.rabbitmq_client.start_archiving(req.account,
                                                      req.container_name,
-                                                     bucket_size)
+                                                     bucket_size,
+                                                     bucket_region)
                 self._set_archiving_status(req, current_status, new_status)
             else:
                 raise BadRequest('Archiving is not allowed in the state %s' %
@@ -356,7 +368,9 @@ class IntelligentTieringMiddleware(object):
             new_status = BUCKET_STATE_RESTORING
             if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
                 self.rabbitmq_client.start_restoring(req.account,
-                                                     req.container_name)
+                                                     req.container_name,
+                                                     bucket_size,
+                                                     bucket_region)
                 self._set_archiving_status(req, current_status, new_status)
             else:
                 raise BadRequest('Restoring is not allowed in the state %s' %

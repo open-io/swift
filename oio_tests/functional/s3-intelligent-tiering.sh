@@ -108,7 +108,7 @@ test_intelligent_tiering() {
     # TODO: When RabbitMQ version >= 3.7, add <ackmode=ack_requeue_false>
     # to consume the message
     OUT=$(rabbitmqadmin get queue=pca --format=long)
-    echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 222}"
+    echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 222, \"region\": \"REGIONONE\"}"
   fi
 
   # user1 cannot create anymore (Intelligent-tiering deny)
