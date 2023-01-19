@@ -489,6 +489,10 @@ class InvalidAccessKeyId(ErrorResponse):
     _status = '403 Forbidden'
     _msg = 'The AWS Access Key Id you provided does not exist in our records.'
 
+    def __init__(self, access_key_id, msg=None, *args, **kwargs):
+        ErrorResponse.__init__(
+            self, msg, AWS_access_key_id=access_key_id, *args, **kwargs)
+
 
 class InvalidArgument(ErrorResponse):
     _status = '400 Bad Request'

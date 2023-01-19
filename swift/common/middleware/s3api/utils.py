@@ -71,6 +71,10 @@ def utf8decode(s):
     return s
 
 
+def is_not_ascii(s):
+    return not isinstance(s, str) or any(ord(c) > 127 for c in s)
+
+
 def validate_bucket_name(name, dns_compliant_bucket_names):
     """
     Validates the name of the bucket against S3 criteria,

@@ -61,13 +61,12 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     AuthorizationQueryParametersError, ServiceUnavailable, BrokenMPU, \
     NoSuchVersion, BadRequest, OperationAborted, XAmzContentSHA256Mismatch, \
     InvalidChunkSizeError, IncompleteBody, WebsiteErrorResponse, \
-    PermanentRedirect
+    PermanentRedirect, InvalidAccessKeyId
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import utf8encode, \
-    S3Timestamp, mktime, MULTIUPLOAD_SUFFIX
+    S3Timestamp, mktime, sysmeta_header, validate_bucket_name, \
+    Config, is_not_ascii, MULTIUPLOAD_SUFFIX
 from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
-from swift.common.middleware.s3api.utils import sysmeta_header, \
-    validate_bucket_name, Config
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
 
 # List of sub-resources that must be maintained as part of the HMAC
@@ -960,10 +959,10 @@ class S3Request(swob.Request):
         """
         if self._is_query_auth:
             self._validate_expire_param()
-            return self._parse_query_authentication()
+            access, sig = self._parse_query_authentication()
         elif self._is_header_auth:
             self._validate_dates()
-            return self._parse_header_authentication()
+            access, sig = self._parse_header_authentication()
         elif self.bucket_db and self._is_allowed_anonymous_request():
             # This is an anonymous request, we will have to resolve the
             # account name from the bucket name thanks to the bucket DB.
@@ -972,6 +971,10 @@ class S3Request(swob.Request):
             # if this request is neither query auth nor header auth
             # s3api regard this as not s3 request
             raise NotS3Request()
+
+        if is_not_ascii(access):
+            raise InvalidAccessKeyId(access)
+        return access, sig
 
     def _get_storage_class(self):
         """

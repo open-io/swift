@@ -154,6 +154,33 @@ class TestS3BasicTest(unittest.TestCase):
             bucket=self.bucket, key=key)
         self.assertEqual(111, data['ContentLength'])
 
+    def test_non_ascii_access_key_in_presigned_url(self):
+        bucket_name = random_str(20)
+        # Create bucket
+        run_awscli_s3(
+            'mb', profile="default", bucket=bucket_name)
+
+        # Create object
+        key = random_str(20)
+        run_awscli_s3api(
+            "put-object", profile="default", bucket=bucket_name, key=key)
+
+        url = run_awscli_s3(
+            'presign', profile="default", bucket=bucket_name, key=key)
+        url = url.strip()  # remove trailing \n
+        # Add the non ascii character
+        url = url.replace("demo%3Ademo", "\xc3\x83")
+        headers = None
+        response = requests.get(url, headers=headers)
+        self.assertIn("InvalidAccessKeyId", response.text)
+        self.assertIn(
+            "The AWS Access Key Id you provided does not exist in our records",
+            response.text)
+        self.assertIn("\xc3\x83", response.text)
+        # Delete the bucket created
+        run_awscli_s3(
+            'rb', '--force', profile="default", bucket=bucket_name)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
