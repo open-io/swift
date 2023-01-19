@@ -2035,6 +2035,12 @@ class S3AclRequest(S3Request):
 
         sw_resp = sw_req.get_response(app)
 
+        auth_resp = sw_req.environ.get('swift.authorize',
+                                       lambda req: None)(sw_req)
+        if auth_resp:
+            if (auth_resp.body.decode("utf-8") == "Account not found"):
+                raise InvalidAccessKeyId(self.access_key)
+
         if not sw_req.remote_user:
             raise SignatureDoesNotMatch(
                 **self.signature_does_not_match_kwargs())
@@ -2055,7 +2061,6 @@ class S3AclRequest(S3Request):
             # tempauth
             self.user_id = self.access_key
 
-        sw_req.environ.get('swift.authorize', lambda req: None)(sw_req)
         self.environ['swift_owner'] = sw_req.environ.get('swift_owner', False)
         self.environ['reseller_request'] = sw_req.environ.get(
             'reseller_request', False)

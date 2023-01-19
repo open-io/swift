@@ -174,6 +174,7 @@ To generate a curl command line from the above::
 """
 
 from __future__ import print_function
+import functools
 
 import json
 from time import time
@@ -290,9 +291,9 @@ class TempAuth(object):
         service_token = env.get('HTTP_X_SERVICE_TOKEN')
         if s3 or (token and token.startswith(self.reseller_prefix)):
             # Note: Empty reseller_prefix will match all tokens.
-            groups = self.get_groups(env, token)
+            groups, err_body = self.get_groups(env, token)
             if service_token:
-                service_groups = self.get_groups(env, service_token)
+                service_groups, err_body = self.get_groups(env, service_token)
                 if groups and service_groups:
                     groups += ',' + service_groups
             if groups:
@@ -326,7 +327,8 @@ class TempAuth(object):
                 # Because I'm not certain if I'm the definitive auth for empty
                 # reseller_prefixed tokens, I won't overwrite swift.authorize.
                 elif 'swift.authorize' not in env:
-                    env['swift.authorize'] = self.denied_response
+                    env['swift.authorize'] = functools.partial(
+                        self.denied_response, body=err_body)
         else:
             if self._is_definitive_auth(env.get('PATH_INFO', '')):
                 # Handle anonymous access to accounts I'm the definitive
@@ -439,6 +441,7 @@ class TempAuth(object):
                   identifier for that user.
         """
         groups = None
+        err_body = None
         memcache_client = cache_from_env(env)
         if not memcache_client:
             raise Exception('Memcache required')
@@ -455,23 +458,25 @@ class TempAuth(object):
             env.get('swift3.auth_details')
         if s3_auth_details:
             if 'check_signature' not in s3_auth_details:
-                self.logger.warning(
-                    'Swift3 did not provide a check_signature function; '
-                    'upgrade Swift3 if you want to use it with tempauth')
-                return None
+                err_body = 'Swift3 did not provide a check_signature function;'
+                'upgrade Swift3 if you want to use it with tempauth'
+                self.logger.warning(err_body)
+                return None, err_body
             account_user = s3_auth_details['access_key']
             if account_user not in self.users:
-                return None
+                err_body = "Account not found"
+                return None, err_body
             user = self.users[account_user]
             account = account_user.split(':', 1)[0]
             account_id = user['url'].rsplit('/', 1)[-1]
             if not s3_auth_details['check_signature'](user['key']):
-                return None
+                err_body = "Signature does not match"
+                return None, err_body
             env['PATH_INFO'] = env['PATH_INFO'].replace(
                 account_user, account_id, 1)
             groups = self._get_user_groups(account, account_user, account_id)
 
-        return groups
+        return groups, err_body
 
     def account_acls(self, req):
         """
@@ -656,17 +661,17 @@ class TempAuth(object):
 
         return self.denied_response(req)
 
-    def denied_response(self, req):
+    def denied_response(self, req, body=None):
         """
         Returns a standard WSGI response callable with the status of 403 or 401
         depending on whether the REMOTE_USER is set or not.
         """
         if req.remote_user:
             self.logger.increment('forbidden')
-            return HTTPForbidden(request=req)
+            return HTTPForbidden(request=req, body=body)
         else:
             self.logger.increment('unauthorized')
-            return HTTPUnauthorized(request=req)
+            return HTTPUnauthorized(request=req, body=body)
 
     def handle(self, env, start_response):
         """

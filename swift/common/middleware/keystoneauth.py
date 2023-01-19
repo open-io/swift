@@ -548,7 +548,11 @@ class KeystoneAuth(object):
                                   (self._get_account_prefix(account) in
                                    self.reseller_prefixes))
         if not is_authoritative_authz:
-            return self.denied_response(req)
+            err_body = None
+            if req.environ.get("s3token.error"):
+                if "Not Found" in req.environ.get("s3token.error"):
+                    err_body = "Account not found"
+            return self.denied_response(req, body=err_body)
 
         referrers, roles = swift_acl.parse_acl(getattr(req, 'acl', None))
         authorized = self._authorize_unconfirmed_identity(req, obj, referrers,
@@ -581,16 +585,16 @@ class KeystoneAuth(object):
                 return True
             return False
 
-    def denied_response(self, req):
+    def denied_response(self, req, body=None):
         """Deny WSGI Response.
 
         Returns a standard WSGI response callable with the status of 403 or 401
         depending on whether the REMOTE_USER is set or not.
         """
         if req.remote_user:
-            return HTTPForbidden(request=req)
+            return HTTPForbidden(request=req, body=body)
         else:
-            return HTTPUnauthorized(request=req)
+            return HTTPUnauthorized(request=req, body=body)
 
 
 def filter_factory(global_conf, **local_conf):

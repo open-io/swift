@@ -229,7 +229,7 @@ class S3Token(object):
                 self.keystoneclient = None
                 self._secret_cache_duration = 0
 
-    def _deny_request(self, code):
+    def _deny_request(self, code, reason=None):
         error_cls, message = {
             'AccessDenied': (HTTPUnauthorized, 'Access denied'),
             'InvalidURI': (HTTPBadRequest,
@@ -243,6 +243,7 @@ class S3Token(object):
         if six.PY3:
             error_msg = error_msg.encode()
         resp.body = error_msg
+        resp.message = reason
         return resp
 
     def _json_request(self, creds_json, trans_id):
@@ -260,7 +261,7 @@ class S3Token(object):
         if response.status_code < 200 or response.status_code >= 300:
             self._logger.debug('Keystone reply error: status=%s reason=%s',
                                response.status_code, response.reason)
-            raise self._deny_request('AccessDenied')
+            raise self._deny_request('AccessDenied', reason=response.reason)
 
         return response
 
@@ -378,6 +379,7 @@ class S3Token(object):
                     msg = ('Received error, deferring rejection based on '
                            'error: %s')
                     self._logger.debug(msg, e_resp.status)
+                    environ["s3token.error"] = [e_resp.message]
                     return self._app(environ, start_response)
                 else:
                     msg = 'Received error, rejecting request with error: %s'

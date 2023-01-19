@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import json
 import unittest
 from base64 import b64encode as _b64encode
@@ -253,8 +254,16 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.headers.get('Www-Authenticate'),
                          'Swift realm="account"')
         self.assertEqual(local_app.calls, 1)
-        self.assertEqual(req.environ['swift.authorize'],
-                         local_auth.denied_response)
+        body = None
+        self.assertEqual(req.environ['swift.authorize'].func,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).func)
+        self.assertEqual(req.environ['swift.authorize'].args,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).args)
+        self.assertEqual(req.environ['swift.authorize'].keywords,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).keywords)
 
     def test_auth_reseller_prefix_with_s3_deny(self):
         # Ensures that when we have a reseller prefix and using a middleware
@@ -323,8 +332,16 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.status_int, 401)
         self.assertEqual(local_app.calls, 1)
         self.assertEqual(req.environ['PATH_INFO'], '/v1/s3:s3')
-        self.assertEqual(req.environ['swift.authorize'],
-                         local_auth.denied_response)
+        body = "Signature does not match"
+        self.assertEqual(req.environ['swift.authorize'].func,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).func)
+        self.assertEqual(req.environ['swift.authorize'].args,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).args)
+        self.assertEqual(req.environ['swift.authorize'].keywords,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).keywords)
 
     def test_auth_with_s3api_authorization_invalid(self):
         local_app = FakeApp()
@@ -341,8 +358,16 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.status_int, 401)
         self.assertEqual(local_app.calls, 1)
         self.assertEqual(req.environ['PATH_INFO'], '/v1/s3:s3')
-        self.assertEqual(req.environ['swift.authorize'],
-                         local_auth.denied_response)
+        body = "Signature does not match"
+        self.assertEqual(req.environ['swift.authorize'].func,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).func)
+        self.assertEqual(req.environ['swift.authorize'].args,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).args)
+        self.assertEqual(req.environ['swift.authorize'].keywords,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).keywords)
 
     def test_auth_with_old_swift3_details(self):
         local_app = FakeApp()
@@ -358,8 +383,16 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.status_int, 401)
         self.assertEqual(local_app.calls, 1)
         self.assertEqual(req.environ['PATH_INFO'], '/v1/s3:s3')
-        self.assertEqual(req.environ['swift.authorize'],
-                         local_auth.denied_response)
+        body = "Swift3 did not provide a check_signature function;"
+        self.assertEqual(req.environ['swift.authorize'].func,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).func)
+        self.assertEqual(req.environ['swift.authorize'].args,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).args)
+        self.assertEqual(req.environ['swift.authorize'].keywords,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).keywords)
 
     def test_auth_with_old_s3api_details(self):
         local_app = FakeApp()
@@ -375,8 +408,16 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.status_int, 401)
         self.assertEqual(local_app.calls, 1)
         self.assertEqual(req.environ['PATH_INFO'], '/v1/s3:s3')
-        self.assertEqual(req.environ['swift.authorize'],
-                         local_auth.denied_response)
+        body = "Swift3 did not provide a check_signature function;"
+        self.assertEqual(req.environ['swift.authorize'].func,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).func)
+        self.assertEqual(req.environ['swift.authorize'].args,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).args)
+        self.assertEqual(req.environ['swift.authorize'].keywords,
+                         functools.partial(local_auth.denied_response,
+                                           body=body).keywords)
 
     def test_auth_no_reseller_prefix_no_token(self):
         # Check that normally we set up a call back to our authorize.
