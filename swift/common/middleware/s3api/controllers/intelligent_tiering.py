@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dict2xml import dict2xml
 from swift.common.middleware.intelligent_tiering import GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
@@ -32,7 +33,8 @@ MAX_TIERING_BODY_SIZE = 64 * 1024  # Arbitrary
 MAX_TIERING_ID_SIZE = 64  # Arbitrary
 
 TIERING_CALLBACK = 'swift.callback.tiering.apply'
-TIERING_HEADER_PREFIX = sysmeta_header('bucket', 'intelligent-tiering-')
+TIERING_HEADER_PREFIX = sysmeta_header('container', 'intelligent-tiering-')
+TIERING_ARCHIVING_STATUS = sysmeta_header('container', 'archiving-status')
 
 
 def header_name_from_id(tiering_id):
@@ -48,7 +50,7 @@ def header_name_prefix():
     Compute the prefix of the header which will contain the whole
     tiering configuration document.
     """
-    return sysmeta_header('container', 'intelligent-tiering-')
+    return TIERING_HEADER_PREFIX
 
 
 def xml_conf_to_dict(tiering_conf_xml):
@@ -125,15 +127,25 @@ class IntelligentTieringController(Controller):
         configurations = []
         resp = req.get_response(self.app, method='HEAD')
         tiering_id = req.params.get('id')
+
+        archiving_status = resp.sysmeta_headers.get(TIERING_ARCHIVING_STATUS)
         if tiering_id:
             # GetBucketIntelligentTieringConfiguration
             func = lambda objs: objs[0]
             body = resp.sysmeta_headers.get(header_name_from_id(tiering_id),
                                             None)
             if body is None:
-                return HTTPNotFound("No intelligent tiering configuration "
-                                    f"with id {tiering_id}.")
-            configurations.append(body)
+                if archiving_status is None:
+                    return HTTPNotFound(
+                        "No intelligent tiering configuration "
+                        f"with id {tiering_id}.")
+                else:
+                    generated_body = dict2xml(
+                        {'IntelligentTieringConfiguration':
+                            {'Status': archiving_status}})
+                    configurations.append(generated_body)
+            else:
+                configurations.append(body)
 
         else:
             # ListBucketIntelligentTieringConfiguration
