@@ -56,7 +56,6 @@ jobs:
           - ./oio_tests/run_tests.sh '{{.cds.env.TEST_SUITE}}'
 
       - name: Analyze Ceph S3 tests results
-        optional: true
         script:
             - '[ "{{.cds.env.TEST_SUITE}}" = "ceph-s3tests" ] || exit 0'
             - . $HOME/swiftenv/bin/activate
