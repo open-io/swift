@@ -167,8 +167,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_lifecycle_set_noncurrent:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_list_buckets_invalid_auth:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_list_multipart_upload_owner:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_multipart_copy_invalid_range:
