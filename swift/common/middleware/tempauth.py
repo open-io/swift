@@ -458,8 +458,8 @@ class TempAuth(object):
             env.get('swift3.auth_details')
         if s3_auth_details:
             if 'check_signature' not in s3_auth_details:
-                err_body = 'Swift3 did not provide a check_signature function;'
-                'upgrade Swift3 if you want to use it with tempauth'
+                err_body = 's3api did not provide a check_signature function;'
+                'upgrade s3api if you want to use it with tempauth'
                 self.logger.warning(err_body)
                 return None, err_body
             account_user = s3_auth_details['access_key']

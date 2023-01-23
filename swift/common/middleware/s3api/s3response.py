@@ -108,7 +108,7 @@ def translate_swift_to_s3(key, val, storage_policy_to_class=None):
 
 class S3ResponseBase(object):
     """
-    Base class for swift3 responses.
+    Base class for s3api responses.
     """
     pass
 

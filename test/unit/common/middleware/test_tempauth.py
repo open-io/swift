@@ -383,7 +383,7 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.status_int, 401)
         self.assertEqual(local_app.calls, 1)
         self.assertEqual(req.environ['PATH_INFO'], '/v1/s3:s3')
-        body = "Swift3 did not provide a check_signature function;"
+        body = "s3api did not provide a check_signature function;"
         self.assertEqual(req.environ['swift.authorize'].func,
                          functools.partial(local_auth.denied_response,
                                            body=body).func)
@@ -408,7 +408,7 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(resp.status_int, 401)
         self.assertEqual(local_app.calls, 1)
         self.assertEqual(req.environ['PATH_INFO'], '/v1/s3:s3')
-        body = "Swift3 did not provide a check_signature function;"
+        body = "s3api did not provide a check_signature function;"
         self.assertEqual(req.environ['swift.authorize'].func,
                          functools.partial(local_auth.denied_response,
                                            body=body).func)
