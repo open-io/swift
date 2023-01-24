@@ -4,6 +4,25 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NO_COLOR='\033[0m'
 
+function install_foundationdb() {
+  FDB_VERSION=${1:-${FDB_VERSION:-"6.3.23"}}
+  fdbtag="fdb-${FDB_VERSION}"
+  if ! worker cache pull $fdbtag
+  then
+    mkdir fdb-packages
+    cd fdb-packages
+    wget -q \
+      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb" \
+      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-server_${FDB_VERSION}-1_amd64.deb"
+    cd ..
+    worker cache push $fdbtag fdb-packages
+  fi
+  dpkg -i fdb-packages/*.deb
+  systemctl stop foundationdb.service
+  systemctl disable foundationdb.service
+  rm -rf fdb-packages
+}
+
 function install_deps() {
   if [ -n "${SKIP_BUILD}" ]; then
     return
@@ -64,14 +83,15 @@ function compile_sds() {
 
 function run_sds() {
   export G_DEBUG_LEVEL=D PATH="$PATH:/tmp/oio/bin" LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/tmp/oio/lib"
-  args=""
+  args="$*"
   if [ -n "${REMOTE_ACCOUNT}" ]; then
     args="${args} -f third_party/oio-sds/etc/bootstrap-option-remote-account.yml"
   fi
   oio-reset.sh -v -v -N "$OIO_NS" -r "RegionOne" \
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
-    -f third_party/oio-sds/etc/bootstrap-option-cache.yml ${args}
+    -f third_party/oio-sds/etc/bootstrap-option-cache.yml \
+    ${args}
   openio cluster wait || (openio cluster list --stats; openioctl.sh status2; sudo tail -n 100 /var/log/syslog; return 1)
 }
 

@@ -34,12 +34,9 @@ jobs:
           cd third_party/oio-sds && pip install -e . && cd ../..
           pip install -e .
           ./third_party/oio-sds/tools/patch-python-modules.sh
+          . ./oio_tests/functional/common.sh
+          install_foundationdb "${FDB_VERSION}"
           rabbitmq-plugins enable rabbitmq_management
-          wget -q https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb
-          wget -q https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-server_${FDB_VERSION}-1_amd64.deb
-          dpkg -i foundationdb-clients_6.3.23-1_amd64.deb foundationdb-server_6.3.23-1_amd64.deb
-          systemctl stop foundationdb.service
-          systemctl disable foundationdb.service
 
           echo "RateLimitBurst=0" >> /etc/systemd/journald.conf
           echo '$SystemLogRateLimitInterval 0' >> /etc/rsyslog.conf
