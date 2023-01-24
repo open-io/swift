@@ -27,14 +27,9 @@ jobs:
           - coverage combine
           - coverage report --skip-empty --ignore-errors > coverage-report-py.txt
           - worker upload --tag='{{.cds.version}}' {{.cds.workspace}}/coverage-report-py.txt
-          - coverage xml --skip-empty --ignore-errors -o coverage-py.xml
-          - coverage html --skip-empty --ignore-errors -d coverage-report-py
-          - coverage json --omit="/usr/lib/python3*" --ignore-errors -o coverage-report-py-full.json
+          - coverage html --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" --skip-empty --ignore-errors -d coverage-report-py
+          - coverage json --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" --ignore-errors -o coverage-report-py-full.json
           - jq -f .cds/python-coverage-filter.jq coverage-report-py-full.json > coverage-report-py.json
-
-      - coverage:
-          format: cobertura
-          path: '{{.cds.workspace}}/coverage-py.xml'
 
       - name: Download test result artifacts
         artifactDownload:
@@ -115,5 +110,5 @@ jobs:
       - name: Publish code coverage reports on Artifactory
         optional: true
         OVH_Serve_Static_Files:
-          destination: 'coverage/{{ .git.branch | replace "dev/" "develop/" | replace "feature/oio-backend" "master" | trunc 7 | replace "develop" "dev" }}/{{.cds.version}}'
+          destination: 'coverage/{{ .git.branch | replace "dev/" "develop/" | replace "feature/oio-backend" "master" | trunc 7 | replace "develop" "dev" }}/{{.cds.version}}/'
           source: coverage
