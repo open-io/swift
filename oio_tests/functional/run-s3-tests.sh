@@ -25,7 +25,6 @@ run_functional_test s3-default.cfg \
     s3-multipart.sh \
     s3-mpu.py \
     s3-s3cmd.sh \
-    s3-website.py \
     bucket-logging.py \
     bucket-log-deliverer.py \
     s3-acl.py

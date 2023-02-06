@@ -313,6 +313,9 @@ class S3WebsiteController(Controller):
     @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
+    # FIXME(adu): Remove when the management of user policies
+    # and ACLs has been rewritten
+    @check_iam_access("s3:GetObject")
     def HEAD(self, req):
         """
         Handle HEAD request
@@ -324,6 +327,9 @@ class S3WebsiteController(Controller):
     @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
+    # FIXME(adu): Remove when the management of user policies
+    # and ACLs has been rewritten
+    @check_iam_access("s3:GetObject")
     def GET(self, req):
         """
         Handle GET request

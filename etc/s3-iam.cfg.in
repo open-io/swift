@@ -64,7 +64,7 @@ use = egg:swift#s3api
 location = RegionOne
 force_swift_request_proxy_log = true
 log_level = DEBUG
-storage_domain = localhost
+storage_domain = s3.sbg.perf.cloud.ovh.net,localhost
 s3_acl = true
 check_bucket_owner = true
 # min_segment_size = 8
@@ -73,6 +73,7 @@ allow_anonymous_path_requests = true
 s3_only = true
 landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
 enable_object_lock = true
+enable_website = true
 
 [filter:tempauth]
 use = egg:swift#tempauth

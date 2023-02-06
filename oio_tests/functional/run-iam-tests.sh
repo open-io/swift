@@ -19,7 +19,8 @@ run_functional_test s3-iam.cfg \
   s3-forced-params.py \
   s3-iam.sh \
   s3-tagging.sh \
-  s3-versioning.py
+  s3-versioning.py \
+  s3-website.py
 
 # Check if already failed
 if [ "$RET" -ne "0" ]; then
