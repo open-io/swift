@@ -68,6 +68,8 @@ import time
 
 import six
 
+from datetime import datetime
+
 from swift.common import constraints
 from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, \
     str_to_wsgi, wsgi_to_str
@@ -848,6 +850,33 @@ class UploadController(Controller):
         """
         upload_id = get_param(req, 'uploadId')
         resp = _get_upload_info(req, self.app, upload_id)
+
+        info = req.get_container_info(self.app)
+        sysmeta_info = info.get('sysmeta', {})
+
+        if 's3api-lock-bucket-defaultretention' in sysmeta_info:
+            header = sysmeta_header('object',
+                                    'retention-RetainUntilDate')
+
+            req_timestamp = S3Timestamp.now()
+            future_timestamp = req_timestamp.timestamp + \
+                86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
+            obj_date = datetime.fromtimestamp(future_timestamp)
+            format_date = obj_date.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
+            req.headers[header] = format_date
+        if 's3api-lock-bucket-defaultmode' in sysmeta_info:
+            header = sysmeta_header('object', 'retention-Mode')
+            req.headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
+        if 'x-amz-object-lock-mode' in req.headers:
+            header = sysmeta_header('object', 'retention-Mode')
+            req.headers[header] = req.headers['x-amz-object-lock-mode']
+        if 'x-amz-object-lock-retain-until-date' in req.headers:
+            header = sysmeta_header('object', 'retention-RetainUntilDate')
+            req.headers[header] = \
+                req.headers['x-amz-object-lock-retain-until-date']
+        if 'x-amz-object-lock-legal-hold' in req.headers:
+            header = sysmeta_header('object', 'legal-hold' + '-' + 'status')
+            req.headers[header] = req.headers['x-amz-object-lock-legal-hold']
 
         # Use the same storage class for the manifest
         storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
