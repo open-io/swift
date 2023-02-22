@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import datetime, timedelta
 import json
 import requests
 import tempfile
@@ -32,6 +33,18 @@ class TestS3Mpu(unittest.TestCase):
         self.bucket = random_str(10)
         data = run_awscli_s3api("create-bucket", bucket=self.bucket)
         self.assertEqual('/%s' % self.bucket, data['Location'])
+        self.bucket_object_lock = random_str(10)
+        data = run_awscli_s3api(
+            "create-bucket",
+            "--object-lock-enabled-for-bucket",
+            bucket=self.bucket_object_lock)
+        self.assertEqual('/%s' % self.bucket_object_lock, data['Location'])
+        data = run_awscli_s3api(
+            "put-object-lock-configuration",
+            '--object-lock-configuration',
+            '{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention":'
+            ' { "Mode": "GOVERNANCE", "Days": 1 } } }',
+            bucket=self.bucket_object_lock)
 
     def tearDown(self):
         try:
@@ -40,16 +53,16 @@ class TestS3Mpu(unittest.TestCase):
             if 'NoSuchBucket' not in str(exc):
                 raise
 
-    def _create_multipart_upload(self, path, *params):
+    def _create_multipart_upload(self, bucket, path, *params):
         data = run_awscli_s3api(
             "create-multipart-upload", *params,
-            bucket=self.bucket, key=path)
+            bucket=bucket, key=path)
         self.assertIn('UploadId', data)
         return data
 
     def test_nonascii_key(self):
         path = "éè/éè"
-        data = self._create_multipart_upload(path)
+        data = self._create_multipart_upload(self.bucket, path)
         self.assertEqual(path, data['Key'])
 
     def test_create_abort_mpu(self):
@@ -57,7 +70,7 @@ class TestS3Mpu(unittest.TestCase):
             "list-multipart-uploads", bucket=self.bucket)
         self.assertEqual('', listing)
         path = random_str(10)
-        data = self._create_multipart_upload(path)
+        data = self._create_multipart_upload(self.bucket, path)
         listing = run_awscli_s3api(
             "list-multipart-uploads", bucket=self.bucket)
         self.assertEqual(1, len(listing['Uploads']))
@@ -74,7 +87,7 @@ class TestS3Mpu(unittest.TestCase):
     def test_complete_mpu_with_headers(self):
         path = random_str(10)
         content_type = random_str(10)
-        data = self._create_multipart_upload(path,
+        data = self._create_multipart_upload(self.bucket, path,
                                              "--content-type", content_type,
                                              "--acl", "public-read")
         upload_id = data['UploadId']
@@ -106,9 +119,9 @@ class TestS3Mpu(unittest.TestCase):
         self.assertEqual(content_type, data['ContentType'])
 
     def test_list_mpus_with_params(self):
-        self._create_multipart_upload("sub/" + random_str(10))
-        self._create_multipart_upload("sub/" + random_str(10))
-        self._create_multipart_upload("other_" + random_str(10))
+        self._create_multipart_upload(self.bucket, "sub/" + random_str(10))
+        self._create_multipart_upload(self.bucket, "sub/" + random_str(10))
+        self._create_multipart_upload(self.bucket, "other_" + random_str(10))
 
         listing = run_awscli_s3api(
             "list-multipart-uploads", bucket=self.bucket)
@@ -138,7 +151,7 @@ class TestS3Mpu(unittest.TestCase):
 
     def test_list_parts_for_mpu(self):
         path = random_str(10)
-        data = self._create_multipart_upload(path)
+        data = self._create_multipart_upload(self.bucket, path)
 
         for idx in range(1, 11):
             run_awscli_s3api(
@@ -422,6 +435,71 @@ class TestS3Mpu(unittest.TestCase):
         self.assertNotIn("Access-Control-Allow-Headers", response.headers)
         self.assertNotIn("Access-Control-Allow-Methods", response.headers)
         self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+
+    def test_mpu_object_lock(self):
+        path = random_str(10)
+        data = self._create_multipart_upload(self.bucket_object_lock, path)
+        upload_id = data['UploadId']
+        mpu_parts = []
+        part = run_awscli_s3api(
+            "upload-part",
+            "--part-number", "1",
+            "--upload-id", upload_id,
+            "--body", "/etc/magic",
+            bucket=self.bucket_object_lock, key=path)
+        mpu_parts.append({"ETag": part['ETag'], "PartNumber": 1})
+
+        final = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload",
+            json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket_object_lock, key=path)
+        self.assertEqual(final['Key'], path)
+
+        data = run_awscli_s3api(
+            "get-object-retention",
+            bucket=self.bucket_object_lock, key=path)
+        self.assertIn('Retention', data)
+        retention = data['Retention']
+        self.assertIn('Mode', retention)
+        self.assertEqual('GOVERNANCE', retention['Mode'])
+        self.assertIn('RetainUntilDate', retention)
+        until_date = datetime.strptime(
+            retention['RetainUntilDate'], '%Y-%m-%dT%H:%M:%S.%fZ')
+        expected_limit = datetime.now() + timedelta(days=1)
+        delta = until_date - expected_limit
+        self.assertLess(delta.total_seconds(), 30)
+
+    def test_mpu_object_lock_abort(self):
+        path = random_str(10)
+        data = self._create_multipart_upload(self.bucket_object_lock, path)
+        upload_id = data['UploadId']
+        mpu_parts = []
+        part = run_awscli_s3api(
+            "upload-part",
+            "--part-number", "1",
+            "--upload-id", upload_id,
+            "--body", "/etc/magic",
+            bucket=self.bucket_object_lock, key=path)
+        mpu_parts.append({"ETag": part['ETag'], "PartNumber": 1})
+
+        parts = run_awscli_s3api(
+            "list-parts",
+            "--upload-id", upload_id,
+            bucket=self.bucket_object_lock, key=path)
+        self.assertIn('Parts', parts)
+        self.assertEqual(1, len(parts['Parts']))
+
+        run_awscli_s3api(
+            "abort-multipart-upload",
+            "--upload-id", upload_id,
+            bucket=self.bucket_object_lock, key=path)
+
+        uploads = run_awscli_s3api(
+            "list-multipart-uploads",
+            bucket=self.bucket_object_lock)
+        self.assertEqual('', uploads)
 
 
 if __name__ == "__main__":

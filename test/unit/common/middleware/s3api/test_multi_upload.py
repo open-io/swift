@@ -968,6 +968,72 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '404')
         self.assertEqual(self._get_error_code(body), 'NoSuchBucket')
 
+    @patch('swift.common.middleware.s3api.controllers.'
+           'multi_upload.unique_id', lambda: 'X')
+    def test_object_multipart_upload_initiate_object_lock_invalid_args(self):
+        def do_test(extra_headers, expected_message):
+            headers = {
+                'Authorization': 'AWS test:tester:hmac',
+                'Date': self.get_date_header(),
+            }
+            headers.update(extra_headers)
+            req = Request.blank(
+                '/bucket/object?uploads',
+                environ={'REQUEST_METHOD': 'POST'},
+                headers=headers)
+            status, _, body = self.call_s3api(req)
+            self.assertEqual(status.split()[0], '400')
+            self.assertEqual(self._get_error_code(body), 'InvalidArgument')
+            self.assertEqual(self._get_error_message(body), expected_message)
+
+        # Only object-lock-retain-until-date set
+        do_test(
+            {
+                'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00Z'
+            },
+            'x-amz-object-lock-retain-until-date and x-amz-object-lock-mode '
+            'must both be supplied'
+        )
+        # Only object-lock-mode set
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE'
+            },
+            'x-amz-object-lock-retain-until-date and x-amz-object-lock-mode '
+            'must both be supplied'
+        )
+        # Invalid date format
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE',
+                'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00'
+            },
+            'Expected format YYYY-MM-DDThh:mm:ssZ'
+        )
+        # Date must be in future
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE',
+                'x-amz-object-lock-retain-until-date': '1987-10-01T20:30:00Z'
+            },
+            'The retain until date must be in the future!'
+        )
+        # Invalid worm mode
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'FOO',
+                'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00Z'
+            },
+            'Unknown wormMode directive.'
+        )
+        # Invalid legal hold
+        do_test(
+            {
+                'x-amz-object-lock-legal-hold': 'FOO'
+            },
+            'Legal Hold must be either of \'ON\' or \'OFF\''
+        )
+
     @s3acl
     def test_object_multipart_upload_complete_error(self):
         malformed_xml = 'malformed_XML'

@@ -886,6 +886,68 @@ class TestS3ApiObj(S3ApiTestCase):
         do_test('some/source')
 
     @s3acl
+    def test_object_PUT_copy_object_lock_invalid_argument(self):
+        def do_test(extra_headers, expected_message):
+            date_header = self.get_date_header()
+            timestamp = mktime(date_header)
+            headers = {'Date': date_header}
+            headers.update(extra_headers)
+            status, _, body = self._test_object_PUT_copy(
+                swob.HTTPOk, put_header=headers,
+                timestamp=timestamp, src_path='/some/source')
+            self.assertEqual(status.split()[0], '400')
+            self.assertEqual(self._get_error_code(body), 'InvalidArgument')
+            self.assertEqual(self._get_error_message(body), expected_message)
+
+        # Only object-lock-retain-until-date set
+        do_test(
+            {
+                'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00Z'
+            },
+            'x-amz-object-lock-retain-until-date and x-amz-object-lock-mode '
+            'must both be supplied'
+        )
+        # Only object-lock-mode set
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE'
+            },
+            'x-amz-object-lock-retain-until-date and x-amz-object-lock-mode '
+            'must both be supplied'
+        )
+        # Invalid date format
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE',
+                'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00'
+            },
+            'Expected format YYYY-MM-DDThh:mm:ssZ'
+        )
+        # Date must be in future
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE',
+                'x-amz-object-lock-retain-until-date': '1987-10-01T20:30:00Z'
+            },
+            'The retain until date must be in the future!'
+        )
+        # Invalid worm mode
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'FOO',
+                'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00Z'
+            },
+            'Unknown wormMode directive.'
+        )
+        # Invalid legal hold
+        do_test(
+            {
+                'x-amz-object-lock-legal-hold': 'FOO'
+            },
+            'Legal Hold must be either of \'ON\' or \'OFF\''
+        )
+
+    @s3acl
     def test_object_PUT_copy_metadata_replace(self):
         date_header = self.get_date_header()
         timestamp = mktime(date_header)

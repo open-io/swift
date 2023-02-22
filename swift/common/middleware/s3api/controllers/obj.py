@@ -15,7 +15,6 @@
 
 import functools
 import json
-from datetime import datetime
 from swift.common import constraints
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
@@ -40,7 +39,8 @@ from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     PreconditionFailed, KeyTooLongError, BadRequest
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
-    HEADER_RETENION_DATE
+    HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
+    object_lock_validate_headers
 
 
 def version_id_param(req):
@@ -246,27 +246,11 @@ class ObjectController(Controller):
             tagging = tagging_header_to_xml(
                 req.headers.pop(HTTP_HEADER_TAGGING_KEY))
             req.headers[OBJECT_TAGGING_HEADER] = tagging
-        if 's3api-lock-bucket-defaultretention' in sysmeta_info:
-            header = sysmeta_header('object',
-                                    'retention-RetainUntilDate')
-            future_timestamp = req_timestamp.timestamp + \
-                86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
-            obj_date = datetime.fromtimestamp(future_timestamp)
-            format_date = obj_date.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
-            req.headers[header] = format_date
-        if 's3api-lock-bucket-defaultmode' in sysmeta_info:
-            header = sysmeta_header('object', 'retention-Mode')
-            req.headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
-        if 'x-amz-object-lock-mode' in req.headers:
-            header = sysmeta_header('object', 'retention-Mode')
-            req.headers[header] = req.headers['x-amz-object-lock-mode']
-        if 'x-amz-object-lock-retain-until-date' in req.headers:
-            header = sysmeta_header('object', 'retention-RetainUntilDate')
-            req.headers[header] = \
-                req.headers['x-amz-object-lock-retain-until-date']
-        if 'x-amz-object-lock-legal-hold' in req.headers:
-            header = sysmeta_header('object', 'legal-hold' + '-' + 'status')
-            req.headers[header] = req.headers['x-amz-object-lock-legal-hold']
+
+        # Object lock
+        object_lock_validate_headers(req.headers)
+        object_lock_populate_sysmeta_headers(
+            req.headers, sysmeta_info, req_timestamp)
 
         req.check_copy_source(self.app)
         if not req.headers.get('Content-Type'):

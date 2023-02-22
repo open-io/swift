@@ -97,6 +97,9 @@ from swift.common.middleware.s3api.utils import unique_id, \
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
+from swift.common.middleware.s3api.controllers.object_lock import \
+    HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_DATE, HEADER_RETENION_MODE, \
+    object_lock_populate_sysmeta_headers, object_lock_validate_headers
 
 DEFAULT_MAX_PARTS_LISTING = 1000
 DEFAULT_MAX_UPLOADS = 1000
@@ -597,6 +600,7 @@ class UploadsController(Controller):
 
         # Create a unique S3 upload id from UUID to avoid duplicates.
         upload_id = unique_id()
+        object_lock_validate_headers(req.headers)
 
         seg_container = req.container_name + MULTIUPLOAD_SUFFIX
         content_type = req.headers.get('Content-Type')
@@ -642,6 +646,11 @@ class UploadsController(Controller):
 
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)
+
+        info = req.get_container_info(self.app)
+        sysmeta_info = info.get('sysmeta', {})
+
+        object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
 
         req.get_response(self.app, 'PUT', seg_container, obj, body='')
 
@@ -869,9 +878,17 @@ class UploadController(Controller):
                 # As heartbeat is enabled, the headers are sent before calling
                 # SLO, we will reuse the version-id of the MPU placeholder
                 version_id = val
+        sysmeta_headers_to_keep = [
+            key.lower() for key in (
+                OBJECT_TAGGING_HEADER,
+                HEADER_RETENION_DATE,
+                HEADER_RETENION_MODE,
+                HEADER_LEGAL_HOLD_STATUS
+            )
+        ]
         for key, val in resp.sysmeta_headers.items():
             _key = key.lower()
-            if _key == OBJECT_TAGGING_HEADER.lower():
+            if _key in sysmeta_headers_to_keep:
                 headers[key] = val
 
         hct_header = sysmeta_header('object', 'has-content-type')

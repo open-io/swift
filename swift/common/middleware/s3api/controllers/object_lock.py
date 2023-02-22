@@ -28,8 +28,8 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidRetentionPeriod, MalformedXML, \
     NoSuchObjectLockConfiguration, ObjectLockConfigurationNotFoundError
 
-from swift.common.middleware.s3api.utils import convert_response, \
-    sysmeta_header
+from swift.common.middleware.s3api.utils import S3Timestamp, convert_response,\
+    mktime, sysmeta_header
 from swift.common.swob import HTTPNotFound
 from swift.common.utils import public
 
@@ -56,6 +56,71 @@ def header_name_from_id(lock_id):
     Generate the header name for object lock.
     """
     return sysmeta_header('container', 'lock-bucket-' + lock_id)
+
+
+def object_lock_validate_headers(headers):
+    """
+    Validate object lock related headers
+    """
+    mode = headers.get('x-amz-object-lock-mode')
+    until_date = headers.get('x-amz-object-lock-retain-until-date')
+    legal_hold = headers.get('x-amz-object-lock-legal-hold')
+
+    # Ensure none or both options are set but not just one
+    if (int(mode is None) + int(until_date is None)) == 1:
+        raise InvalidArgument(
+            None,
+            None,
+            'x-amz-object-lock-retain-until-date and '
+            'x-amz-object-lock-mode must both be supplied'
+        )
+    if legal_hold not in (None, 'OFF', 'ON'):
+        raise InvalidArgument(
+            None, None, 'Legal Hold must be either of \'ON\' or \'OFF\'')
+
+    if mode not in (None, 'COMPLIANCE', 'GOVERNANCE'):
+        raise InvalidArgument(
+            None, None, 'Unknown wormMode directive.')
+
+    if until_date:
+        try:
+            timestamp = mktime(until_date, '%Y-%m-%dT%H:%M:%SZ')
+        except ValueError:
+            raise InvalidArgument(
+                None, None, 'Expected format YYYY-MM-DDThh:mm:ssZ')
+        # Validate date
+        now = S3Timestamp.now()
+        if (timestamp < now.timestamp):
+            raise InvalidArgument(
+                None, None, 'The retain until date must be in the future!')
+
+
+def object_lock_populate_sysmeta_headers(
+        headers, sysmeta_info, timestamp=S3Timestamp.now()):
+    """
+    Populate sysmeta headers with bucket retention or header provided values
+    """
+    if 's3api-lock-bucket-defaultretention' in sysmeta_info:
+        header = sysmeta_header('object',
+                                'retention-RetainUntilDate')
+        future_timestamp = timestamp.timestamp + \
+            86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
+        obj_date = datetime.fromtimestamp(future_timestamp)
+        format_date = obj_date.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
+        headers[header] = format_date
+    if 's3api-lock-bucket-defaultmode' in sysmeta_info:
+        header = sysmeta_header('object', 'retention-Mode')
+        headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
+    if 'x-amz-object-lock-mode' in headers:
+        header = sysmeta_header('object', 'retention-Mode')
+        headers[header] = headers['x-amz-object-lock-mode']
+    if 'x-amz-object-lock-retain-until-date' in headers:
+        header = sysmeta_header('object', 'retention-RetainUntilDate')
+        headers[header] = \
+            headers['x-amz-object-lock-retain-until-date']
+    if 'x-amz-object-lock-legal-hold' in headers:
+        header = sysmeta_header('object', 'legal-hold' + '-' + 'status')
+        headers[header] = headers['x-amz-object-lock-legal-hold']
 
 
 MISSING_LOCK_CONFIGURATION = 'Bucket is missing Object Lock Configuration'
