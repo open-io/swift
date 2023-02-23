@@ -838,7 +838,7 @@ class SignatureDoesNotMatch(ErrorResponse):
 
 class ServiceUnavailable(ErrorResponse):
     _status = '503 Service Unavailable'
-    _msg = 'Please reduce your request rate.'
+    _msg = 'Service is unable to handle request.'
 
 
 class SlowDown(ErrorResponse):
