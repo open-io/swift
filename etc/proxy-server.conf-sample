@@ -757,6 +757,10 @@ use = egg:swift#s3api
 # status ints. Turn this on to return 429 instead.
 # ratelimit_as_client_error = false
 
+# Make retry after configurable, with a default value of 1s. It indicates how
+# long (in second) the user agent should wait before making a follow-up request.
+# retry_after = 1
+
 # Expose S3 operation in swift log
 # log_s3_operation = True
 

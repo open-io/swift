@@ -330,6 +330,8 @@ class S3ApiMiddleware(object):
                              'all domains, * must be the only entry')
         self.conf.ratelimit_as_client_error = config_true_value(
             wsgi_conf.get('ratelimit_as_client_error', False))
+        self.conf.retry_after = config_positive_int_value(
+            wsgi_conf.get('retry_after', 1))
         self.conf.log_s3_operation = config_true_value(
             wsgi_conf.get('log_s3_operation', True))
         self.conf.allow_anonymous_path_requests = config_true_value(

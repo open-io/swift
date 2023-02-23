@@ -168,6 +168,7 @@ class Config(dict):
         'allow_no_owner': False,
         'allowable_clock_skew': 900,
         'ratelimit_as_client_error': False,
+        'retry_after': 1,
     }
 
     def __init__(self, base=None):

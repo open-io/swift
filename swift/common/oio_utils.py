@@ -77,7 +77,7 @@ def handle_service_busy(fnc):
             return fnc(self, req, *args, **kwargs)
         except (ServiceBusy, ServiceUnavailable) as err:
             headers = {}
-            headers['Retry-After'] = '1'
+            headers['Retry-After'] = str(self.app.retry_after)
             return HTTPServiceUnavailable(request=req, headers=headers,
                                           body=err.message)
     return _service_busy_wrapper
@@ -112,7 +112,7 @@ def handle_oio_timeout(fnc):
         except (DeadlineReached, OioNetworkException) as exc:
             headers = {}
             # TODO(FVE): choose the value according to the timeout
-            headers['Retry-After'] = '1'
+            headers['Retry-After'] = str(self.app.retry_after)
             return HTTPServiceUnavailable(request=req, headers=headers,
                                           body=str(exc))
     return _oio_timeout_wrapper
