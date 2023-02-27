@@ -1856,7 +1856,9 @@ class S3Request(swob.Request):
             else:
                 raise AccessDenied()
         if status == HTTP_SERVICE_UNAVAILABLE:
-            raise ServiceUnavailable()
+            raise ServiceUnavailable(headers={
+                'Retry-After': str(resp.headers.get('Retry-After',
+                                                    self.conf.retry_after))})
         if status == HTTP_CLIENT_CLOSED_REQUEST:
             raise RequestTimeout(reason='Client Closed Request')
         if status in (HTTP_RATE_LIMITED, HTTP_TOO_MANY_REQUESTS):
@@ -1967,7 +1969,9 @@ class S3Request(swob.Request):
         elif info['status'] == 404:
             raise NoSuchBucket(self.container_name)
         elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
-            raise ServiceUnavailable()
+            raise ServiceUnavailable(headers={
+                'Retry-After': str(info.get('Retry-After',
+                                            self.conf.retry_after))})
         else:
             raise InternalError(
                 'unexpected status code %d' % info['status'])

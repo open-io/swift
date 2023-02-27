@@ -738,6 +738,16 @@ class TestFuncs(BaseTest):
         self.assertEqual(
             resp,
             headers_to_container_info(headers.items(), 200))
+        resp['status'] = 503
+        resp['Retry-After'] = None
+        self.assertEqual(
+            resp,
+            headers_to_container_info(headers.items(), 503))
+        headers['Retry-After'] = '1'
+        resp['Retry-After'] = '1'
+        self.assertEqual(
+            resp,
+            headers_to_container_info(headers.items(), 503))
 
     def test_headers_from_container_info(self):
         self.assertIsNone(headers_from_container_info(None))

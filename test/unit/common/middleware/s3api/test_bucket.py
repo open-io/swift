@@ -1214,6 +1214,8 @@ class TestS3ApiBucket(S3ApiTestCase):
                                      'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status, '503 Service Unavailable')
+        self.assertIn('Retry-After', headers)
+        self.assertEqual(headers['Retry-After'], '1')
         # The last call was PUT not POST for acl set
         self.assertEqual(self.swift.calls, [
             ('PUT', '/v1/AUTH_test/bucket'),
@@ -1468,6 +1470,8 @@ class TestS3ApiBucket(S3ApiTestCase):
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
+        self.assertIn('Retry-After', headers)
+        self.assertEqual(headers['Retry-After'], '1')
         self.assertEqual(status.split()[0], '503')
         called = [(method, path) for method, path, _ in
                   self.swift.calls_with_headers]

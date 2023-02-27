@@ -178,7 +178,7 @@ def headers_to_container_info(headers, status_int=HTTP_OK):
     Construct a cacheable dict of container info based on response headers.
     """
     headers, meta, sysmeta = _prep_headers_to_info(headers, 'container')
-    return {
+    info = {
         'status': status_int,
         'read_acl': headers.get('x-container-read'),
         'write_acl': headers.get('x-container-write'),
@@ -203,6 +203,9 @@ def headers_to_container_info(headers, status_int=HTTP_OK):
         'delete_timestamp': headers.get('x-backend-delete-timestamp'),
         'status_changed_at': headers.get('x-backend-status-changed-at'),
     }
+    if status_int == 503:  # Service unavailable
+        info['Retry-After'] = headers.get('retry-after')
+    return info
 
 
 def headers_from_container_info(info):
