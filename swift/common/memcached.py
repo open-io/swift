@@ -287,7 +287,7 @@ class MemcacheRing(object):
         self._client_cache[server].put((fp, sock))
 
     def set(self, key, value, serialize=True, time=0,
-            min_compress_len=0):
+            min_compress_len=0, server_key=None):
         """
         Set a key/value pair in memcache
 
@@ -303,6 +303,7 @@ class MemcacheRing(object):
                                  implementation ignores it.
         """
         key = md5hash(key)
+        server_key = md5hash(server_key) if server_key else key
         timeout = sanitize_timeout(time)
         flags = 0
         if serialize and self._allow_pickle:
@@ -316,7 +317,7 @@ class MemcacheRing(object):
         elif not isinstance(value, bytes):
             value = str(value).encode('utf-8')
 
-        for (server, fp, sock) in self._get_conns(key):
+        for (server, fp, sock) in self._get_conns(server_key):
             try:
                 with Timeout(self._io_timeout):
                     sock.sendall(set_msg(key, flags, timeout, value))
@@ -341,7 +342,7 @@ class MemcacheRing(object):
             except (Exception, Timeout) as e:
                 self._exception_occurred(server, e, sock=sock, fp=fp)
 
-    def get(self, key):
+    def get(self, key, server_key=None):
         """
         Gets the object specified by key.  It will also unserialize the object
         before returning if it is serialized in memcache with JSON, or if it
@@ -351,8 +352,9 @@ class MemcacheRing(object):
         :returns: value of the key in memcache
         """
         key = md5hash(key)
+        server_key = md5hash(server_key) if server_key else key
         value = None
-        for (server, fp, sock) in self._get_conns(key):
+        for (server, fp, sock) in self._get_conns(server_key):
             try:
                 with Timeout(self._io_timeout):
                     sock.sendall(b'get ' + key + b'\r\n')
@@ -379,7 +381,7 @@ class MemcacheRing(object):
             except (Exception, Timeout) as e:
                 self._exception_occurred(server, e, sock=sock, fp=fp)
 
-    def incr(self, key, delta=1, time=0):
+    def incr(self, key, delta=1, time=0, server_key=None):
         """
         Increments a key which has a numeric value by delta.
         If the key can't be found, it's added as delta or 0 if delta < 0.
@@ -397,12 +399,13 @@ class MemcacheRing(object):
         :raises MemcacheConnectionError:
         """
         key = md5hash(key)
+        server_key = md5hash(server_key) if server_key else key
         command = b'incr'
         if delta < 0:
             command = b'decr'
         delta = str(abs(int(delta))).encode('ascii')
         timeout = sanitize_timeout(time)
-        for (server, fp, sock) in self._get_conns(key):
+        for (server, fp, sock) in self._get_conns(server_key):
             try:
                 with Timeout(self._io_timeout):
                     sock.sendall(b' '.join([
@@ -434,7 +437,7 @@ class MemcacheRing(object):
                 self._exception_occurred(server, e, sock=sock, fp=fp)
         raise MemcacheConnectionError("No Memcached connections succeeded.")
 
-    def decr(self, key, delta=1, time=0):
+    def decr(self, key, delta=1, time=0, server_key=None):
         """
         Decrements a key which has a numeric value by delta. Calls incr with
         -delta.
@@ -447,7 +450,7 @@ class MemcacheRing(object):
         :returns: result of decrementing
         :raises MemcacheConnectionError:
         """
-        return self.incr(key, delta=-delta, time=time)
+        return self.incr(key, delta=-delta, time=time, server_key=server_key)
 
     def delete(self, key, server_key=None):
         """
