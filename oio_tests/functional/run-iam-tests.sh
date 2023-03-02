@@ -14,8 +14,8 @@ RET=0
 
 # IAM, with static file
 RULES_FILE="$PWD/etc/iam-rules-sample.json"
-sed -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" etc/s3-iam.cfg.in > etc/s3-iam.cfg
-run_functional_test s3-iam.cfg \
+sed -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" etc/s3-default.cfg.in > etc/s3-default.cfg
+run_functional_test s3-default.cfg \
   s3-forced-params.py \
   s3-iam.sh \
   s3-tagging.sh \
@@ -36,8 +36,8 @@ do
   openio-admin iam put-user-policy --policy-name "default" "$ACCOUNT" "$USER" "$RULE"
 done
 
-sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-iam.cfg.in > etc/s3-iam.cfg
-run_functional_test s3-iam.cfg s3-iam.sh \
+sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-default.cfg.in > etc/s3-default.cfg
+run_functional_test s3-default.cfg s3-iam.sh \
   s3-object-lock.sh
 
 # TODO(FVE): gridinit_cmd stop

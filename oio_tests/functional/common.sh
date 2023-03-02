@@ -204,6 +204,8 @@ EOF
 
 function configure_oioswift() {
     sed -i "s/%USER%/$(id -un)/g" "$1"
+    RULES_FILE="$PWD/etc/iam-rules-sample.json"
+    sed -i "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" "$1"
 }
 
 function run_script() {

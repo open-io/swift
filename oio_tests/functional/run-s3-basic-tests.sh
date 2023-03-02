@@ -17,6 +17,7 @@ RET=0
 
 # Run all suites in the same environment.
 # They do not share buckets so this should be OK.
+cp etc/s3-default.cfg.in etc/s3-default.cfg
 run_functional_test s3-default.cfg \
     s3-acl-metadata.sh \
     buckets-listing.sh \

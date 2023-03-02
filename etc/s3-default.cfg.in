@@ -6,6 +6,8 @@ log_facility = LOG_LOCAL0
 log_level = DEBUG
 eventlet_debug = true
 sds_default_account = AUTH_demo
+
+cors_allow_origin = https://ovh.com
 sds_namespace = OPENIO
 sds_proxy_url = http://127.0.0.1:6000
 
@@ -16,6 +18,8 @@ pipeline = catch_errors bucket-logging cache listing_formats iam s3api tempauth 
 use = egg:swift#oio_proxy
 allow_account_management = true
 account_autocreate = true
+sds_namespace = OPENIO
+sds_proxy_url = http://127.0.0.1:6000
 log_name = OIO,NS,oioswift,1
 sds_connection_timeout=5
 sds_read_timeout=20
@@ -43,6 +47,8 @@ use = egg:swift#healthcheck
 [filter:cache]
 use = egg:swift#oiomemcache
 memcache_servers = 127.0.0.1:11211
+oio_cache = true
+oio_cache_ttl = 3600
 
 [filter:listing_formats]
 use = egg:swift#listing_formats
@@ -57,21 +63,25 @@ use = egg:swift#staticweb
 use = egg:swift#oioiam
 log_level = DEBUG
 connection = %IAM_RULES_CONN%
-#connection = oio://
 
 [filter:s3api]
 use = egg:swift#s3api
 location = RegionOne
 force_swift_request_proxy_log = true
 log_level = DEBUG
-storage_domain = s3.sbg.perf.cloud.ovh.net,localhost
+ignore_storage_class_header = False
+storage_classes = STANDARD,STANDARD_IA
+storage_domain = s3.sbg.perf.cloud.ovh.net,localhost,standard.ia:STANDARD_IA
+check_bucket_storage_domain = true
 s3_acl = true
 check_bucket_owner = true
-# min_segment_size = 8
+#min_segment_size = 8
 bucket_db_connection = oio://
 allow_anonymous_path_requests = true
 s3_only = true
 landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
+auto_storage_policies_STANDARD = EC21,TWOCOPIES:0,EC21:100000
+auto_storage_policies_STANDARD_IA = SINGLE
 enable_object_lock = true
 enable_website = true
 
