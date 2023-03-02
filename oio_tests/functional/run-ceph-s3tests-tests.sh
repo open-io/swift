@@ -23,7 +23,7 @@ mv third_party/ceph-s3tests-reports/output/ceph-s3.out.yaml ceph-s3tests-attribu
 
 # IAM, with rules in a fdb database
 RULES_FILE="$PWD/etc/iam-rules-sample.json"
-CONN_STR="fdb://127.0.0.1:6379"
+CONN_STR="oio://127.0.0.1:6379"
 for USER in $(jq -r --raw-output 'keys | .[]' $RULES_FILE)
 do
   RULE="$(jq -c ".\"$USER\"" $RULES_FILE)"
