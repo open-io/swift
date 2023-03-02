@@ -96,10 +96,12 @@ def object_lock_validate_headers(headers):
 
 
 def object_lock_populate_sysmeta_headers(
-        headers, sysmeta_info, timestamp=S3Timestamp.now()):
+        headers, sysmeta_info, timestamp=None):
     """
     Populate sysmeta headers with bucket retention or header provided values
     """
+    if timestamp is None:
+        timestamp = S3Timestamp.now()
     if 's3api-lock-bucket-defaultretention' in sysmeta_info:
         header = sysmeta_header('object',
                                 'retention-RetainUntilDate')
