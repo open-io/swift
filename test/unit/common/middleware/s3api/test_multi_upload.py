@@ -1008,7 +1008,15 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                 'x-amz-object-lock-mode': 'COMPLIANCE',
                 'x-amz-object-lock-retain-until-date': '2114-10-01T20:30:00'
             },
-            'Expected format YYYY-MM-DDThh:mm:ssZ'
+            'The retain until date must be provided in ISO 8601 format'
+        )
+        do_test(
+            {
+                'x-amz-object-lock-mode': 'COMPLIANCE',
+                'x-amz-object-lock-retain-until-date':
+                '2114-10-01T20:30:00.1234567890Z'
+            },
+            'The retain until date must be provided in ISO 8601 format'
         )
         # Date must be in future
         do_test(

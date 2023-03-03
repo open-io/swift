@@ -16,6 +16,7 @@
 import json
 from datetime import datetime
 from dict2xml import dict2xml
+from re import compile, sub
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, object_operation, \
     set_s3_operation_rest, handle_no_such_key
@@ -42,6 +43,9 @@ HEADER_LEGAL_HOLD_STATUS = sysmeta_header('object', 'Legal-Hold-Status')
 HEADER_RETENION_MODE = sysmeta_header('object', 'Retention-Mode')
 HEADER_RETENION_DATE = sysmeta_header('object', 'Retention-Retainuntildate')
 
+_TIMESTAMP_PRECISION_REGEX = compile(r"(?:|\.(?P<digits>\d*))Z$")
+UNTIL_DATE_ALLOWED_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
 
 def filter_objectlock_meta(meta, filter_key):
     """
@@ -56,6 +60,14 @@ def header_name_from_id(lock_id):
     Generate the header name for object lock.
     """
     return sysmeta_header('container', 'lock-bucket-' + lock_id)
+
+
+def _normalize_timestamp_precision(m):
+    digits = m.group('digits')
+    digits = digits if digits else ''
+    if len(digits) <= 9:
+        digits = digits[:6]
+    return f".{digits:0<6}Z"
 
 
 def object_lock_validate_headers(headers):
@@ -83,14 +95,23 @@ def object_lock_validate_headers(headers):
             None, None, 'Unknown wormMode directive.')
 
     if until_date:
+        # Remove nanoseconds parts if any
+        until_date = sub(
+            _TIMESTAMP_PRECISION_REGEX,
+            _normalize_timestamp_precision,
+            until_date)
         try:
-            timestamp = mktime(until_date, '%Y-%m-%dT%H:%M:%SZ')
+            timestamp = mktime(until_date, UNTIL_DATE_ALLOWED_DATE_FORMAT)
         except ValueError:
             raise InvalidArgument(
-                None, None, 'Expected format YYYY-MM-DDThh:mm:ssZ')
+                None,
+                None,
+                "The retain until date must be provided in ISO 8601 format",
+            )
+
         # Validate date
         now = S3Timestamp.now()
-        if (timestamp < now.timestamp):
+        if timestamp < now.timestamp:
             raise InvalidArgument(
                 None, None, 'The retain until date must be in the future!')
 
