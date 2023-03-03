@@ -102,6 +102,11 @@ class BucketController(Controller):
 
         # No cache to check if the container is really empty
         oiocache = req.environ.pop('oio.cache', None)
+        # Do not request a slave to decide whether or not to delete the bucket
+        # (a slave may be out of sync).
+        oio_query = req.environ.setdefault('oio.query', {})
+        force_master = oio_query.get('force_master')
+        oio_query['force_master'] = True
         try:
             resp = req.get_response(self.app, 'HEAD')
             if int(resp.sw_headers['X-Container-Object-Count']) > 0:
@@ -118,7 +123,13 @@ class BucketController(Controller):
             pass
         finally:
             req.environ['oio.cache'] = oiocache
+            if force_master is None:
+                oio_query.pop('force_master', None)
+            else:
+                oio_query['force_master'] = force_master
 
+        # Request the master for an up-to-date list
+        oio_query['force_master'] = True
         try:
             while True:
                 # delete all segments
@@ -144,6 +155,11 @@ class BucketController(Controller):
             return
         except (BucketNotEmpty, InternalError):
             raise ServiceUnavailable()
+        finally:
+            if force_master is None:
+                oio_query.pop('force_master', None)
+            else:
+                oio_query['force_master'] = force_master
 
     @set_s3_operation_rest('BUCKET')
     @public

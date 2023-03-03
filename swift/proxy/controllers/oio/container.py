@@ -179,6 +179,7 @@ class ContainerController(SwiftContainerController):
             else:
                 info = self.app.storage.container_get_properties(
                     self.account_name, self.container_name,
+                    force_master=opts.get('force_master', False),
                     headers=oio_headers, cache=oio_cache, perfdata=perfdata)
                 resp_headers = self.get_metadata_resp_headers(info)
 
@@ -252,13 +253,15 @@ class ContainerController(SwiftContainerController):
         return self.GETorHEAD(req)
 
     def get_container_head_resp(self, req):
-        headers = dict()
+        headers = {}
+        opts = req.environ.get('oio.query', {})
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         meta = self.app.storage.container_get_properties(
-            self.account_name, self.container_name, headers=oio_headers,
-            cache=oio_cache, perfdata=perfdata)
+            self.account_name, self.container_name,
+            force_master=opts.get('force_master', False),
+            headers=oio_headers, cache=oio_cache, perfdata=perfdata)
         headers.update(self.get_metadata_resp_headers(meta))
         return HTTPNoContent(request=req, headers=headers, charset='utf-8')
 
