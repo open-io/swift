@@ -28,6 +28,7 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     HTTPOk, InvalidArgument, InvalidBucketState, InvalidRequest, \
     InvalidRetentionPeriod, MalformedXML, \
     NoSuchObjectLockConfiguration, ObjectLockConfigurationNotFoundError
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 from swift.common.middleware.s3api.utils import S3Timestamp, convert_response,\
     mktime, sysmeta_header
@@ -158,6 +159,7 @@ class BucketLockController(Controller):
     operation_id = 'Object-Lock'
 
     @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -188,6 +190,7 @@ class BucketLockController(Controller):
         return HTTPOk(body=xml_out, content_type='application/xml')
 
     @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -288,6 +291,7 @@ class ObjectLockLegalHoldController(Controller):
     """
 
     @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -330,6 +334,7 @@ class ObjectLockLegalHoldController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation

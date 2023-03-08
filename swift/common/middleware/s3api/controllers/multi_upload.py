@@ -80,6 +80,7 @@ from swift.common.request_helpers import get_container_update_override_key, \
 from six.moves.urllib.parse import quote, urlparse
 
 from swift.common.cors import handle_options_request
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
@@ -210,6 +211,7 @@ class PartController(Controller):
         return part_number
 
     @set_s3_operation_rest_for_put_part
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -291,6 +293,7 @@ class PartController(Controller):
         return resp
 
     @set_s3_operation_rest('PART')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -305,6 +308,7 @@ class PartController(Controller):
         return self.GETorHEAD(req)
 
     @set_s3_operation_rest('PART')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -389,6 +393,7 @@ class PartController(Controller):
         return slo_resp
 
     @set_s3_operation_rest('PREFLIGHT')
+    @ratelimit_bucket
     @public
     @object_operation  # required
     @check_bucket_storage_domain
@@ -417,6 +422,7 @@ class UploadsController(Controller):
     Those APIs are logged as UPLOADS operations in the S3 server log.
     """
     @set_s3_operation_rest('UPLOADS')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=InvalidRequest,
@@ -582,6 +588,7 @@ class UploadsController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('UPLOADS')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -675,6 +682,7 @@ class UploadController(Controller):
     Those APIs are logged as UPLOAD operations in the S3 server log.
     """
     @set_s3_operation_rest('UPLOAD')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -792,6 +800,7 @@ class UploadController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('UPLOAD')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -844,6 +853,7 @@ class UploadController(Controller):
         return HTTPNoContent()
 
     @set_s3_operation_rest('UPLOAD')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation

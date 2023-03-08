@@ -15,6 +15,7 @@
 
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers import BucketController
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import \
     check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
@@ -27,6 +28,7 @@ class UniqueBucketController(BucketController):
     """
 
     @set_s3_operation_rest('BUCKET')
+    @ratelimit_bucket
     @public
     def PUT(self, req):
         """
@@ -70,6 +72,7 @@ class UniqueBucketController(BucketController):
         return resp
 
     @set_s3_operation_rest('BUCKET')
+    @ratelimit_bucket
     @public
     @check_bucket_storage_domain
     def DELETE(self, req):

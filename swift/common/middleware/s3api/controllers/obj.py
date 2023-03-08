@@ -28,6 +28,7 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -190,6 +191,7 @@ class ObjectController(Controller):
         return resp
 
     @set_s3_operation_rest('OBJECT')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -208,6 +210,7 @@ class ObjectController(Controller):
         return resp
 
     @set_s3_operation_rest_for_get_object
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -220,6 +223,7 @@ class ObjectController(Controller):
         return self.GETorHEAD(req)
 
     @set_s3_operation_rest_for_put_object
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -270,6 +274,7 @@ class ObjectController(Controller):
         return resp
 
     @set_s3_operation_rest('OBJECT')
+    @ratelimit_bucket
     @public
     def POST(self, req):
         raise S3NotImplemented()
@@ -307,6 +312,7 @@ class ObjectController(Controller):
             container_info.get('sysmeta', {}).get('versions-enabled', False))
 
     @set_s3_operation_rest('OBJECT')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

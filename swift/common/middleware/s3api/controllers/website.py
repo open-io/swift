@@ -38,6 +38,7 @@ from swift.common.middleware.s3api.etree import (
     DocumentInvalid,
     XMLSyntaxError,
 )
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.s3response import (
     AccessDenied,
     BadRequest,
@@ -93,6 +94,7 @@ class WebsiteController(Controller):
     """
 
     @set_s3_operation_rest('WEBSITE')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -113,6 +115,7 @@ class WebsiteController(Controller):
         return HTTPOk(body=xml_out, content_type="application/xml")
 
     @set_s3_operation_rest('WEBSITE')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -134,6 +137,7 @@ class WebsiteController(Controller):
         return convert_response(req, resp, 204, HTTPOk)
 
     @set_s3_operation_rest('WEBSITE')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -309,6 +313,7 @@ class S3WebsiteController(Controller):
             return self._handle_object_requests(req, suffix_doc, error_doc)
 
     @set_s3_operation_website
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -323,6 +328,7 @@ class S3WebsiteController(Controller):
         return self.GETorHEAD(req)
 
     @set_s3_operation_website
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

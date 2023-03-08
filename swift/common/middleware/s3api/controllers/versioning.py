@@ -18,6 +18,7 @@ from swift.common.middleware.s3api.utils import convert_response
 from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -39,6 +40,7 @@ class VersioningController(Controller):
     Those APIs are logged as VERSIONING operations in the S3 server log.
     """
     @set_s3_operation_rest('VERSIONING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -61,6 +63,7 @@ class VersioningController(Controller):
         return HTTPOk(body=body, content_type=None)
 
     @set_s3_operation_rest('VERSIONING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation

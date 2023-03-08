@@ -609,6 +609,15 @@ use = egg:swift#oioiam
 # Force a specific oioproxy URL (used to locate account services)
 #sds_proxy_url=
 
+[filter:bucket_ratelimit]
+use = egg:swift#bucket_ratelimit
+# log_level = DEBUG
+# Maximum bucket requests per second.
+# Default to -1 (no limit).
+# bucket_ratelimit = -1
+# Period of time over which the rate is calculated.
+# sampling_period = 1
+
 [filter:s3api]
 use = egg:swift#s3api
 
