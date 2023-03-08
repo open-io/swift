@@ -25,6 +25,7 @@ from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, S3NotImplemented
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.swob import HTTPNotFound
 from swift.common.utils import public
 
@@ -114,6 +115,7 @@ class IntelligentTieringController(Controller):
         return elem
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -174,6 +176,7 @@ class IntelligentTieringController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -229,6 +232,7 @@ class IntelligentTieringController(Controller):
                                 204, HTTPOk)
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation

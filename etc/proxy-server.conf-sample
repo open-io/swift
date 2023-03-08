@@ -609,6 +609,22 @@ use = egg:swift#oioiam
 # Force a specific oioproxy URL (used to locate account services)
 #sds_proxy_url=
 
+[filter:bucket_ratelimit]
+use = egg:swift#bucket_ratelimit
+# Group of S3 operations
+#group.[GROUP] = [OPERATION1],[OPERATION2]
+# Maximum bucket requests per second.
+# Default to -1 (no limit).
+#ratelimit = -1
+# Maximum requests per second for all operations in the group
+#ratelimit.[GROUP] = [RATELIMIT]
+# Period of time (in second) over which the rate is calculated.
+#sampling_period = 1
+# The amount of time the bucket ratelimit is cached.
+#bucket_ratelimit_ttl = 60
+# The increments will be made when processing the request.
+#asynchronous_increment = true
+
 [filter:s3api]
 use = egg:swift#s3api
 

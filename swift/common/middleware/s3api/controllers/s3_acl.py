@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from swift.common.utils import public
-
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -35,6 +35,7 @@ class S3AclController(Controller):
     Those APIs are logged as ACL operations in the S3 server log.
     """
     @set_s3_operation_rest('ACL', 'OBJECT_ACL')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -54,6 +55,7 @@ class S3AclController(Controller):
         return resp
 
     @set_s3_operation_rest('ACL', 'OBJECT_ACL')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

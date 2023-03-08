@@ -36,6 +36,7 @@ from swift.common.middleware.s3api.s3response import HTTPOk, \
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 
 def set_s3_operation_batch_delete_object(func):
@@ -69,6 +70,7 @@ class MultiObjectDeleteController(Controller):
         return tostring(elem)
 
     @set_s3_operation_batch_delete_object
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation

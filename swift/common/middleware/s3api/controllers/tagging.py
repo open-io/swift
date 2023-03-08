@@ -28,6 +28,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument
 from swift.common.middleware.s3api.utils import sysmeta_header
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 
@@ -76,6 +77,7 @@ class TaggingController(Controller):
     """
 
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_container_existence
@@ -110,6 +112,7 @@ class TaggingController(Controller):
                       headers=headers)
 
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_container_existence
@@ -142,6 +145,7 @@ class TaggingController(Controller):
         return resp
 
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_container_existence

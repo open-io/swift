@@ -21,6 +21,7 @@ from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 
 class LocationController(Controller):
@@ -29,6 +30,7 @@ class LocationController(Controller):
     S3 server log.
     """
     @set_s3_operation_rest('LOCATION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation

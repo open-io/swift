@@ -43,6 +43,7 @@ from swift.common.middleware.s3api.s3response import \
     BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
@@ -162,6 +163,7 @@ class BucketController(Controller):
                 oio_query['force_master'] = force_master
 
     @set_s3_operation_rest('BUCKET')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -387,6 +389,7 @@ class BucketController(Controller):
                                  fetch_owner)
 
     @set_s3_operation_rest_for_list_objects
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -445,6 +448,7 @@ class BucketController(Controller):
         return resp
 
     @set_s3_operation_rest('BUCKET')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_iam_access("s3:CreateBucket")
@@ -499,6 +503,7 @@ class BucketController(Controller):
         return resp
 
     @set_s3_operation_rest('BUCKET')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

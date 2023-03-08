@@ -574,6 +574,11 @@ class S3ApiMiddleware(object):
                                 'to support multi-part upload, please add it '
                                 'in pipeline')
 
+        # Check Bucket Ratelimit middleware position: when enabled,
+        # must be before s3api
+        if 'bucket_ratelimit' in pipeline:
+            self.check_filter_order(pipeline, ['bucket_ratelimit', 's3api'])
+
         # Check IAM middleware position: when enabled, must be before s3api
         if 'iam' in pipeline:
             self.check_filter_order(pipeline, ['iam', 's3api'])

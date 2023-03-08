@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, check_container_existence, \
     set_s3_operation_rest
@@ -147,6 +148,7 @@ class ReplicationController(Controller):
             self._validate_rule(rule)
 
     @set_s3_operation_rest('REPLICATION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -172,6 +174,7 @@ class ReplicationController(Controller):
         return convert_response(req, resp, 204, HTTPOk)
 
     @set_s3_operation_rest('REPLICATION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -191,6 +194,7 @@ class ReplicationController(Controller):
         return HTTPOk(body=body, content_type="application/xml")
 
     @set_s3_operation_rest('REPLICATION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
