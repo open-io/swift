@@ -184,7 +184,7 @@ class IntelligentTieringController(Controller):
         Handles PutBucketIntelligentTieringConfiguration
         """
         # Check ACLs
-        req.get_response(self.app, method='HEAD')
+        resp = req.get_response(self.app, method='HEAD')
 
         # At least 1 object must be in the bucket to archive it.
         if req.bucket_db:
@@ -204,6 +204,18 @@ class IntelligentTieringController(Controller):
             raise BadRequest("Invalid or missing parameter: id")
         elif tiering_id != tiering_dict['Id']:
             raise BadRequest("Invalid parameter: id doesn't match document Id")
+
+        # Only one configuration can exist at a time
+        existing_tiering_headers = {
+            h.lower() for h, _ in resp.sysmeta_headers.items()
+            if h.lower().startswith(TIERING_HEADER_PREFIX)
+        }
+        header = f"{TIERING_HEADER_PREFIX}{tiering_id}"
+        if existing_tiering_headers and header not in existing_tiering_headers:
+            raise BadRequest(
+                "Invalid parameter: id doesn't match existing tiering "
+                "configuration"
+            )
 
         # May raise exceptions
         self.apply_tiering(req, tiering_dict)

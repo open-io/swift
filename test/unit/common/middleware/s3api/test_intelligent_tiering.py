@@ -37,6 +37,17 @@ TIERING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
    </Tiering>
 </IntelligentTieringConfiguration>
 """
+TIERING_XML_2 = b"""<?xml version="1.0" encoding="UTF-8"?>
+<IntelligentTieringConfiguration
+      xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+   <Id>myid2</Id>
+   <Status>Enabled</Status>
+   <Tiering>
+      <AccessTier>ARCHIVE_ACCESS</AccessTier>
+      <Days>999</Days>
+   </Tiering>
+</IntelligentTieringConfiguration>
+"""
 TIERING_XML_WITHOUT_ID = b"""<?xml version="1.0" encoding="UTF-8"?>
 <IntelligentTieringConfiguration
       xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -165,6 +176,43 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertIn(TIERING_HEADER, calls[1].headers)
         self.assertEqual(TIERING_XML.decode('utf-8'),
                          calls[1].headers[TIERING_HEADER])
+
+    @patch(MOCK_BUCKET_DB_SHOW, return_value={"objects": 10})
+    def test_PUT_two_configurations(self, _mock):
+        self.swift.register('POST', '/v1/AUTH_test/test-tiering',
+                            HTTPNoContent, {}, None)
+        req = Request.blank('/test-tiering?intelligent-tiering&id=myid',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     TIERING_CALLBACK: tiering_callback_ok},
+                            body=TIERING_XML,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _headers, body = self.call_s3api(req)
+
+        self.assertEqual('200 OK', status)
+        self.assertFalse(body)  # empty -> False
+        calls = self.swift.calls_with_headers
+        self.assertEqual(2, len(calls))  # HEAD container, PUT container
+        self.assertIn(TIERING_HEADER, calls[1].headers)
+        self.assertEqual(TIERING_XML.decode('utf-8'),
+                         calls[1].headers[TIERING_HEADER])
+
+        req = Request.blank('/test-tiering?intelligent-tiering&id=myid2',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     TIERING_CALLBACK: tiering_callback_ok},
+                            body=TIERING_XML_2,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _headers, body = self.call_s3api(req)
+        self.assertEqual('400 Bad Request', status)
+        self.assertEqual('BadRequest', self._get_error_code(body))
+        self.assertEqual(
+            'Invalid parameter: id doesn\'t match existing tiering '
+            'configuration',
+            self._get_error_message(body)
+        )
 
     @patch(MOCK_BUCKET_DB_SHOW, return_value={"objects": 10})
     def test_PUT_invalid_bucket_state(self, _mock):
