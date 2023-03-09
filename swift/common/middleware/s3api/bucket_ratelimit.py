@@ -35,6 +35,7 @@ class BucketRateLimitMiddleware(object):
 
     def __init__(self, app, conf, logger=None):
         self.app = app
+        self.conf = conf
         self.logger = logger or get_logger(conf, log_route='bucketratelimit')
         self.bucket_ratelimit = int(conf.get('bucket_ratelimit', 0))
         self.sampling_period = int(conf.get('sampling_period', 1))
@@ -46,21 +47,61 @@ class BucketRateLimitMiddleware(object):
         self.memcache_servers, self.memcache_client = \
             configure_memcache_client(conf, logger=self.logger)
 
-    def ratelimit_callback(self, bucket, _operation):
-        if not self.memcache_client:
-            self.logger.warning(
-                ('Warning: Cannot ratelimit without a memcached client'))
-            return
+        self.operations_group = {}
+        self._get_group_ratelimit()
 
-        if self.bucket_ratelimit < 0:
-            # Ratelimit is disabled (no limit)
-            return
+    def _get_group_ratelimit(self):
+        """Gather ratelimit value defined for group of operation
 
-        if self.bucket_ratelimit == 0:
-            # No bucket requests are allowed
-            raise SlowDown()
+        :raises ValueError: operation appearing into two different groups
+        :raises ValueError: missing ratelimit value for an operation group
+        """
+        # Get groups ratelimit
+        if self.conf is not None:
+            groups = {}
+            g_ratelimits = {}
+            for item in self.conf.keys():
+                if item.startswith("bucket_ratelimit."):
+                    g_ratelimits[item[17:]] = int(self.conf.get(item))
+                if item.startswith("group."):
+                    groups[item[6:]] = self.conf.get(item).split(",")
+            for group, operations in groups.items():
+                for op in operations:
+                    if op in self.operations_group:
+                        # operation already listed in another group
+                        raise ValueError(
+                            "GroupRatelimit: operation appears "
+                            "to be in two different groups, "
+                            "please check the group configuration."
+                        )
+                    if group not in g_ratelimits:
+                        raise ValueError(
+                            f"GroupRatelimit: missing ratelimit "
+                            f"value for group {group}., "
+                            "please check the group configuration."
+                        )
+                    # For each operation sets its group ratelimit value
+                    self.operations_group[op] = (g_ratelimits[group], group)
 
-        key_prefix = f"{RATELIMIT_KEY_PREFIX}:{bucket}:"
+    def _get_rate(
+        self,
+        key_prefix,
+        name,
+        ratelimit_type="bucket",
+        log_route="BucketRatelimit"
+    ):
+        """
+        Calculate the rate of requests per sec
+
+        :param key_prefix: memcache prefix key
+        :type key_prefix: str
+        :param ratelimit_type: group or bucket ratelimit
+        :type ratelimit_type: str
+        :param name: name of the bucket/group
+        :type name: str
+        :return: (rate, current_key)
+        :rtype: tuple
+        """
         now = int(time.time())
         elapsed = now % self.sampling_period
         current_period = now - elapsed
@@ -75,20 +116,50 @@ class BucketRateLimitMiddleware(object):
             current_counter = int(values[1] or 0)
         except Exception as exc:
             self.logger.error(
-                "BucketRatelimit: failed to fetch the counters "
-                "for the bucket %s (%s)", exc)
+                "%s: failed to fetch the counters "
+                "for the %s %s (%s)", log_route, ratelimit_type, name, exc)
             return
-
         rate = (
             previous_counter
             * ((self.sampling_period - elapsed) / self.sampling_period)
             + current_counter
         ) / self.sampling_period
-        if rate >= self.bucket_ratelimit:
+        return rate, current_key
+
+    def ratelimit_callback(self, bucket, operation):
+        if not self.memcache_client:
+            self.logger.warning(
+                ('Warning: Cannot ratelimit without a memcached client'))
+            return
+        ratelimit, group = self.operations_group.get(operation, (0, None))
+
+        if group is None:
+            ratelimit = self.bucket_ratelimit
+
+        if ratelimit < 0:
+            # Ratelimit is disabled (no limit)
+            return
+
+        if ratelimit == 0:
+            # No bucket requests are allowed
+            raise SlowDown()
+
+        key_prefix = f"{RATELIMIT_KEY_PREFIX}:{bucket}:"
+        name = bucket
+        rate, current_key = self._get_rate(key_prefix, name)
+        log_route = "BucketRatelimit"
+        if group:
+            group_key_prefix = f"{RATELIMIT_KEY_PREFIX}:{group}:{bucket}:"
+            ratelimit_type = "group"
+            name = group
+            log_route = "GroupRatelimit"
+            rate, g_current_key = self._get_rate(
+                group_key_prefix, name, ratelimit_type)
+        if rate >= ratelimit:
             # Refuse the request
             self.logger.debug(
-                "BucketRatelimit: ratelimit the bucket %s, rate %fr/s "
-                "over %dr/s", bucket, rate, self.bucket_ratelimit)
+                "%s: ratelimit the %s %s, rate %fr/s "
+                "over %dr/s", log_route, ratelimit_type, name, rate, ratelimit)
             # When the period is full, it is no longer useful to increment
             # the counter, otherwise the next preriod may not also access
             # the bucket.
@@ -103,6 +174,17 @@ class BucketRateLimitMiddleware(object):
                 "BucketRatelimit: failed to increment the counter %s "
                 "for the bucket %s (%s)", current_key, bucket, exc)
             return
+        if group:
+            try:
+                self.memcache_client.incr(
+                    g_current_key,
+                    server_key=group_key_prefix, time=self.key_timeout)
+            except Exception as exc:
+                self.logger.warning(
+                    "GroupRatelimit: failed to increment the counter %s "
+                    "in the group %s for the bucket %s (%s)", current_key,
+                    group, bucket, exc)
+                return
 
     def __call__(self, env, start_response):
         """
