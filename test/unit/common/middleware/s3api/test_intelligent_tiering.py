@@ -242,8 +242,8 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
 
         status, _headers, body = self.call_s3api(req)
 
-        self.assertEqual('400 Bad Request', status)
-        self.assertEqual('BadRequest', self._get_error_code(body))
+        self.assertEqual('404 Not Found', status)
+        self.assertEqual('NoSuchBucket', self._get_error_code(body))
         calls = self.swift.calls_with_headers
         self.assertEqual(1, len(calls))  # HEAD container
 

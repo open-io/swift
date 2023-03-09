@@ -50,9 +50,17 @@ class FakeReq(object):
         self.user_id = user_id
         self.container_name = container_name
         self.environ = env or {}
+        self.bucket_db = None
 
     def get_container_info(self):
         raise S3NotImplemented()
+
+    def get_bucket_info(self, _app):
+        return {
+            'account': self.account,
+            'bytes': 42,
+            "objects": 2
+        }
 
 
 class TestIntelligentTiering(unittest.TestCase):
@@ -134,7 +142,7 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_SET_ARCHIVING_STATUS)
     def test_PUT_archive_ok(self, mocked_set_status, mocked_rabbit):
         self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
-                                     'archive')
+                                     'archive', 42, None)
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
 
         # Test with Status=None
@@ -206,7 +214,7 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_SET_ARCHIVING_STATUS)
     def test_PUT_restore_ok(self, mocked_set_status, mocked_rabbit):
         self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
-                                     'restore')
+                                     'restore', 42, None)
         self.expected_set_status_args = (self.req, BUCKET_STATE_ARCHIVED,
                                          BUCKET_STATE_RESTORING)
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'

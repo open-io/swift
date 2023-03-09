@@ -473,7 +473,7 @@ def get_container_info(env, app, swift_source=None, read_caches=True):
             # populated the cache for us. If they did, just use what's there.
             #
             # See similar comment in get_account_info() for justification.
-            info = _get_info_from_infocache(env, account, container)
+            info = get_info_from_infocache(env, account, container)
         if info is None:
             info = set_info_cache(app, env, account, container, resp)
 
@@ -564,7 +564,7 @@ def get_account_info(env, app, swift_source=None):
         # memcache". That's because we're trying to avoid superfluous
         # network traffic, and checking in memcache prior to setting in
         # memcache would defeat the purpose.
-        info = _get_info_from_infocache(env, account)
+        info = get_info_from_infocache(env, account)
         if info is None:
             info = set_info_cache(app, env, account, None, resp)
 
@@ -582,7 +582,7 @@ def get_account_info(env, app, swift_source=None):
     return info
 
 
-def get_cache_key(account, container=None, obj=None, shard=None):
+def get_cache_key(account, container=None, obj=None, shard=None, bucket=None):
     """
     Get the keys for both memcache and env['swift.infocache'] (cache_key)
     where info about accounts, containers, and objects is cached
@@ -609,8 +609,11 @@ def get_cache_key(account, container=None, obj=None, shard=None):
     account = to_native(account)
     container = to_native(container)
     obj = to_native(obj)
+    bucket = to_native(bucket)
 
-    if shard:
+    if bucket:
+        cache_key = 'bucket-%s' % bucket
+    elif shard:
         if not (account and container):
             raise ValueError('Shard cache key requires account and container')
         if obj:
@@ -726,7 +729,7 @@ def clear_info_cache(app, env, account, container=None, shard=None):
         memcache.delete(cache_key)
 
 
-def _get_info_from_infocache(env, account, container=None):
+def get_info_from_infocache(env, account=None, container=None, bucket=None):
     """
     Get cached account or container information from request-environment
     cache (swift.infocache).
@@ -737,10 +740,29 @@ def _get_info_from_infocache(env, account, container=None):
 
     :returns: a dictionary of cached info on cache hit, None on miss
     """
-    cache_key = get_cache_key(account, container)
+    cache_key = get_cache_key(account, container, bucket=bucket)
     if 'swift.infocache' in env and cache_key in env['swift.infocache']:
         return env['swift.infocache'][cache_key]
     return None
+
+
+def set_info_in_infocache(env, info, account=None, container=None,
+                          bucket=None):
+    """
+    Cache info only in env.
+
+    :param  env: the environment used by the current request
+    :param  info: information to save in cache
+    :param  account: the unquoted account name or None
+    :param  container: the unquoted container name or None
+    :param  bucket: the unquoted bucket name or None
+    """
+    cache_key = get_cache_key(account, container, bucket=bucket)
+    infocache = env.setdefault('swift.infocache', {})
+    if info is None:
+        infocache.pop(cache_key, None)
+    else:
+        infocache[cache_key] = info
 
 
 def _get_info_from_memcache(app, env, account, container=None):
@@ -796,7 +818,7 @@ def _get_info_from_caches(app, env, account, container=None):
     :returns: the cached info or None if not cached
     """
 
-    info = _get_info_from_infocache(env, account, container)
+    info = get_info_from_infocache(env, account, container)
     if info is None:
         info = _get_info_from_memcache(app, env, account, container)
     return info

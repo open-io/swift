@@ -187,15 +187,11 @@ class IntelligentTieringController(Controller):
         resp = req.get_response(self.app, method='HEAD')
 
         # At least 1 object must be in the bucket to archive it.
-        if req.bucket_db:
-            info = req.bucket_db.show(req.container_name, req.account,
-                                      use_cache=False)
-            if not info:
-                raise BadRequest("Bucket does not exist")
-            if info.get('objects', 0) < 1:
-                raise BadRequest("Bucket is empty")
-            if info.get('bytes', 0) < 1:
-                raise BadRequest("Bucket size must be at least 1 byte")
+        info = req.get_bucket_info(self.app, read_caches=False)
+        if info['objects'] < 1:
+            raise BadRequest("Bucket is empty")
+        if info['bytes'] < 1:
+            raise BadRequest("Bucket size must be at least 1 byte")
 
         tiering_id = req.params.get('id')
         body = req.xml(MAX_TIERING_BODY_SIZE)

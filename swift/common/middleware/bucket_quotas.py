@@ -91,7 +91,7 @@ class BucketQuotaMiddleware(object):
         rules = {'Statement': []}
 
         if req.object_name and req.method in ('PUT'):
-            info = req.bucket_db.show(req.container_name, req.account)
+            info = req.get_bucket_info(self.app)
 
             if 'quota_bytes' in self.conf and \
                     int(self.conf['quota_bytes']) >= 0 and \

@@ -38,7 +38,8 @@ from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
     HTTP_CLIENT_CLOSED_REQUEST
 
 from swift.common.constraints import check_utf8, valid_api_version
-from swift.proxy.controllers.base import get_account_info, get_container_info
+from swift.proxy.controllers.base import get_account_info, \
+    get_container_info, get_info_from_infocache, set_info_in_infocache
 from swift.common.request_helpers import check_path_header
 
 from swift.common.middleware.s3api.controllers import ServiceController, \
@@ -1975,6 +1976,62 @@ class S3Request(swob.Request):
         else:
             raise InternalError(
                 'unexpected status code %d' % info['status'])
+
+    def get_bucket_name(self):
+        bucket = self.environ.get('s3api.info', {}).get('bucket')
+        if not bucket and self.container_name:
+            if self.container_name.endswith(MULTIUPLOAD_SUFFIX):
+                bucket = self.container_name[:-len(MULTIUPLOAD_SUFFIX)]
+            else:
+                bucket = self.container_name
+            bucket = swob.wsgi_to_str(bucket)
+        if not bucket:
+            return None
+        return bucket
+
+    def get_bucket_info(self, app, read_caches=True):
+        """
+        Retrieve bucket information using (if possible) the cache
+        in the request environment.
+
+        :raises NoSuchBucket:
+        """
+        bucket = self.get_bucket_name()
+        if bucket is None:
+            raise ValueError('Not a bucket request')
+
+        bucket_info = None
+        if read_caches:
+            # Check in environment cache and in memcache (in that order)
+            bucket_info = get_info_from_infocache(self.environ, bucket=bucket)
+
+        if bucket_info is None:
+            if self.bucket_db:
+                bucket_info = self.bucket_db.show(
+                    bucket, use_cache=read_caches)
+            else:
+                container_name = self.container_name
+                try:
+                    self.container_name = swob.str_to_wsgi(bucket)
+                    container_info = self.get_container_info(
+                        app, read_caches=read_caches)
+                except NoSuchBucket:
+                    pass
+                finally:
+                    self.container_name = container_name
+                if container_info:
+                    bucket_info = {
+                        "account": self.account,
+                        "ctime": container_info.get("created_at"),
+                        "mtime": container_info.get("status_changed_at"),
+                        "bytes": container_info.get("bytes", 0),
+                        "objects": container_info.get("object_count", 0),
+                    }
+            set_info_in_infocache(self.environ, bucket_info, bucket=bucket)
+
+        if bucket_info is None:
+            raise NoSuchBucket(bucket)
+        return bucket_info
 
     def gen_multipart_manifest_delete_query(self, app, obj=None, version=None):
         if not self.conf.allow_multipart_uploads:

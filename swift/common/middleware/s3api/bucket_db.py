@@ -294,7 +294,7 @@ class BucketDbWrapper(object):
         self.cache.pop(bucket, None)
         return self.bucket_db.delete(bucket=bucket, owner=owner, **kwargs)
 
-    def show(self, bucket, owner, **kwargs):
+    def show(self, bucket, owner=None, **kwargs):
         res = self.bucket_db.show(bucket=bucket, owner=owner, **kwargs)
         return res
 

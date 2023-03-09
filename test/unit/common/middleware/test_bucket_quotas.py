@@ -21,6 +21,7 @@ from test.debug_logger import debug_logger
 from test.unit.common.middleware.s3api import S3ApiTestCase
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
+from swift.common.middleware.s3api.s3request import S3Request
 
 
 MOCK_BUCKET_DB_SHOW = "swift.common.middleware.s3api.bucket_db." \
@@ -34,7 +35,7 @@ RULES_DENY = {'Statement': [{
 }
 
 
-class FakeReq(object):
+class FakeReq(S3Request):
     def __init__(self,
                  method,
                  account=None,
@@ -42,12 +43,14 @@ class FakeReq(object):
                  object_name=None,
                  content_length=None,
                  bucket_db=None):
+        self.environ = {}
+        self.headers = {}
         self.method = method
         self.account = account
         self.container_name = container_name
         self.object_name = object_name
         self.content_length = content_length
-        self.bucket_db = bucket_db
+        self.environ['s3api.bucket_db'] = bucket_db
 
 
 class TestBucketQuotas(S3ApiTestCase):

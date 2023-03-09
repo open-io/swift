@@ -24,8 +24,8 @@ from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, tostring, fromstring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
-    NoLoggingStatusForKey, MalformedXML, NoSuchBucket, \
-    CrossLocationLoggingProhibitted, InvalidTargetBucketForLogging
+    NoLoggingStatusForKey, MalformedXML, CrossLocationLoggingProhibitted, \
+    InvalidTargetBucketForLogging
 from swift.common.middleware.s3api.subresource import Grant, decode_grants
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
@@ -97,11 +97,13 @@ class LoggingStatusController(Controller):
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc)) from exc
 
-        if logging_status:
+        if len(logging_status):
             enabled = logging_status.find('LoggingEnabled')
             target_bucket = enabled.find('TargetBucket').text
+            source_info = req.get_bucket_info(self.app)
             if req.bucket_db:
-                target_info = req.bucket_db.show(target_bucket, req.account)
+                target_info = req.bucket_db.show(
+                    target_bucket, source_info['account'])
                 if not target_info:
                     target_owner = req.bucket_db.get_owner(target_bucket)
                     if target_owner:
@@ -109,13 +111,9 @@ class LoggingStatusController(Controller):
                     raise InvalidTargetBucketForLogging(
                         target_bucket,
                         msg='The target bucket for logging does not exist')
-                source_info = req.bucket_db.show(
-                    req.container_name, req.account)
-                if not source_info:
-                    raise NoSuchBucket(req.container_name)
-                target_location = target_info.get('region', '')
                 source_location = source_info.get('region', '')
-                if target_location != source_location:
+                target_location = target_info.get('region', '')
+                if source_location != target_location:
                     raise CrossLocationLoggingProhibitted(
                         source_location.lower(), target_location.lower())
 

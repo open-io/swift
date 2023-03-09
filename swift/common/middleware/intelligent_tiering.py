@@ -340,15 +340,9 @@ class IntelligentTieringMiddleware(object):
             raise BadRequest('AccessTier must be one of %s' %
                              TIERING_TIER_ACTIONS)
 
-        bucket_db = req.environ.get('s3api.bucket_db', None)
-        bucket_size = None
-        bucket_region = None
-        if bucket_db:
-            bucket_info = bucket_db.show(
-                req.container_name,
-                req.account)
-            bucket_size = bucket_info.get('bytes')
-            bucket_region = bucket_info.get('region')
+        bucket_info = req.get_bucket_info(self.app)
+        bucket_size = bucket_info.get('bytes')
+        bucket_region = bucket_info.get('region')
 
         # ARCHIVE
         if action == TIERING_ACTION_TIER_ARCHIVE:
