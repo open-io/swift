@@ -111,6 +111,20 @@ def set_msg(key, flags, timeout, value):
     ]) + (b'\r\n' + value + b'\r\n')
 
 
+def add_msg(key, timeout, value):
+    if not isinstance(key, bytes):
+        raise TypeError('key must be bytes')
+    if not isinstance(value, bytes):
+        raise TypeError('value must be bytes')
+    return b' '.join([
+        b'add',
+        key,
+        b'0',
+        str(timeout).encode('ascii'),
+        str(len(value)).encode('ascii'),
+    ]) + (b'\r\n' + value + b'\r\n')
+
+
 class MemcacheConnectionError(Exception):
     pass
 
@@ -381,6 +395,37 @@ class MemcacheRing(object):
             except (Exception, Timeout) as e:
                 self._exception_occurred(server, e, sock=sock, fp=fp)
 
+    def add(self, key, value=0, time=0, server_key=None):
+        """
+        If the key does not exist, it's added with the value.
+        Note: The data memcached stores as the result of incr/decr is
+        an unsigned int. A value below 0 is stored as 0.
+
+        :param key: key
+        :param value: value to associate with the key (will be cast to an int)
+        :param time: the time to live
+        :returns: True if the key was added
+        :raises MemcacheConnectionError:
+        """
+        key = md5hash(key)
+        server_key = md5hash(server_key) if server_key else key
+        timeout = sanitize_timeout(time)
+        value = int(value)
+        if value < 0:
+            value = 0
+        value = str(value).encode('ascii')
+        msg = add_msg(key, timeout, value)
+        for (server, fp, sock) in self._get_conns(server_key):
+            try:
+                with Timeout(self._io_timeout):
+                    sock.sendall(msg)
+                    line = fp.readline().strip().split()
+                    self._return_conn(server, fp, sock)
+                    return line[0].upper() != b'NOT_STORED'
+            except (Exception, Timeout) as e:
+                self._exception_occurred(server, e, sock=sock, fp=fp)
+        raise MemcacheConnectionError("No Memcached connections succeeded.")
+
     def incr(self, key, delta=1, time=0, server_key=None):
         """
         Increments a key which has a numeric value by delta.
@@ -562,3 +607,42 @@ class MemcacheRing(object):
                     return values
             except (Exception, Timeout) as e:
                 self._exception_occurred(server, e, sock=sock, fp=fp)
+
+    def add_multi(self, mapping, server_key, time=0):
+        """
+        If the keys does not exist, it's added with the values.
+        Note: The data memcached stores as the result of incr/decr is
+        an unsigned int. A value below 0 is stored as 0.
+
+        :param mapping: keys with the values to associate
+                        (will be cast to an int)
+        :param time: the time to live
+        :returns: dict indicating whether the key has been added
+        :raises MemcacheConnectionError:
+        """
+        server_key = md5hash(server_key)
+        timeout = sanitize_timeout(time)
+        keys_to_add = []
+        for real_key, value in mapping.items():
+            key = md5hash(real_key)
+            value = int(value)
+            if value < 0:
+                value = 0
+            value = str(value).encode('ascii')
+            keys_to_add.append((real_key, add_msg(key, timeout, value)))
+        added = {}
+        for (server, fp, sock) in self._get_conns(server_key):
+            try:
+                with Timeout(self._io_timeout):
+                    sock.sendall(b''.join(
+                        key_info[1] for key_info in keys_to_add))
+                    keys_to_add_copy = keys_to_add.copy()
+                    for key_info in keys_to_add_copy:
+                        line = fp.readline().strip().split()
+                        added[key_info[0]] = line[0].upper() != b'NOT_STORED'
+                        keys_to_add.remove(key_info)
+                    self._return_conn(server, fp, sock)
+                    return added
+            except (Exception, Timeout) as e:
+                self._exception_occurred(server, e, sock=sock, fp=fp)
+        raise MemcacheConnectionError("No Memcached connections succeeded.")
