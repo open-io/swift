@@ -342,31 +342,31 @@ class MemcacheRing(object):
         elif serialize:
             if isinstance(value, bytes):
                 value = value.decode('utf8')
-            value = json.dumps(value).encode('ascii')
+            value = json.dumps(value, separators=(",", ":")).encode('ascii')
             flags |= JSON_FLAG
         elif not isinstance(value, bytes):
             value = str(value).encode('utf-8')
-
+        if 0 <= self.item_size_warning_threshold <= len(value):
+            self.logger.warning(
+                "Item size larger than warning threshold: "
+                "%d (%s) >= %d (%s)", len(value),
+                human_readable(len(value)),
+                self.item_size_warning_threshold,
+                human_readable(self.item_size_warning_threshold))
+        msg = set_msg(key, flags, timeout, value)
         for (server, fp, sock) in self._get_conns(server_key):
             try:
                 with Timeout(self._io_timeout):
-                    sock.sendall(set_msg(key, flags, timeout, value))
+                    sock.sendall(msg)
                     # Wait for the set to complete
-                    msg = fp.readline().strip()
-                    if msg != b'STORED':
+                    line = fp.readline().strip()
+                    if line != b'STORED':
                         if not six.PY2:
-                            msg = msg.decode('ascii')
+                            line = line.decode('ascii')
                         self.logger.error(
                             "Error setting value in memcached: "
-                            "%(server)s: %(msg)s",
-                            {'server': server, 'msg': msg})
-                    if 0 <= self.item_size_warning_threshold <= len(value):
-                        self.logger.warning(
-                            "Item size larger than warning threshold: "
-                            "%d (%s) >= %d (%s)", len(value),
-                            human_readable(len(value)),
-                            self.item_size_warning_threshold,
-                            human_readable(self.item_size_warning_threshold))
+                            "%(server)s: %(line)s",
+                            {'server': server, 'line': line})
                     self._return_conn(server, fp, sock)
                     return
             except (Exception, Timeout) as e:

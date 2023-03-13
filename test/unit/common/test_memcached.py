@@ -364,11 +364,11 @@ class TestMemcached(unittest.TestCase):
         memcache_client.set('some_key', [1, 2, 3])
         self.assertEqual(memcache_client.get('some_key'), [1, 2, 3])
         # See JSON_FLAG
-        self.assertEqual(mock.cache, {cache_key: (b'2', b'0', b'[1, 2, 3]')})
+        self.assertEqual(mock.cache, {cache_key: (b'2', b'0', b'[1,2,3]')})
 
         memcache_client.set('some_key', [4, 5, 6])
         self.assertEqual(memcache_client.get('some_key'), [4, 5, 6])
-        self.assertEqual(mock.cache, {cache_key: (b'2', b'0', b'[4, 5, 6]')})
+        self.assertEqual(mock.cache, {cache_key: (b'2', b'0', b'[4,5,6]')})
 
         memcache_client.set('some_key', ['simple str', 'utf8 str éà'])
         # As per http://wiki.openstack.org/encoding,
@@ -376,10 +376,10 @@ class TestMemcached(unittest.TestCase):
         self.assertEqual(
             memcache_client.get('some_key'), ['simple str', u'utf8 str éà'])
         self.assertEqual(mock.cache, {cache_key: (
-            b'2', b'0', b'["simple str", "utf8 str \\u00e9\\u00e0"]')})
+            b'2', b'0', b'["simple str","utf8 str \\u00e9\\u00e0"]')})
 
         memcache_client.set('some_key', [1, 2, 3], time=20)
-        self.assertEqual(mock.cache, {cache_key: (b'2', b'20', b'[1, 2, 3]')})
+        self.assertEqual(mock.cache, {cache_key: (b'2', b'20', b'[1,2,3]')})
 
         sixtydays = 60 * 24 * 60 * 60
         esttimeout = time.time() + sixtydays
@@ -408,7 +408,7 @@ class TestMemcached(unittest.TestCase):
         memcache_client.set('some_key', [1, 2, 3])
         self.assertEqual(memcache_client.get('some_key'), [1, 2, 3])
         self.assertEqual(list(mock.cache.values()),
-                         [(b'2', b'0', b'[1, 2, 3]')])
+                         [(b'2', b'0', b'[1,2,3]')])
 
         # Now lets return an empty string, and make sure we aren't logging
         # the error.
