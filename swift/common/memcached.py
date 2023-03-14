@@ -125,6 +125,22 @@ def add_msg(key, timeout, value):
     ]) + (b'\r\n' + value + b'\r\n')
 
 
+def incr_msg(key, delta):
+    if not isinstance(key, bytes):
+        raise TypeError('key must be bytes')
+    if not isinstance(delta, bytes):
+        raise TypeError('delta must be bytes')
+    return b' '.join([b'incr', key, delta]) + b'\r\n'
+
+
+def decr_msg(key, delta):
+    if not isinstance(key, bytes):
+        raise TypeError('key must be bytes')
+    if not isinstance(delta, bytes):
+        raise TypeError('delta must be bytes')
+    return b' '.join([b'decr', key, delta]) + b'\r\n'
+
+
 class MemcacheConnectionError(Exception):
     pass
 
@@ -445,32 +461,32 @@ class MemcacheRing(object):
         """
         key = md5hash(key)
         server_key = md5hash(server_key) if server_key else key
-        command = b'incr'
-        if delta < 0:
-            command = b'decr'
-        delta = str(abs(int(delta))).encode('ascii')
         timeout = sanitize_timeout(time)
+        decr = delta < 0
+        delta = str(abs(int(delta))).encode('ascii')
+        if decr:
+            msg_func = decr_msg
+            add_val = b'0'
+        else:
+            msg_func = incr_msg
+            add_val = delta
+        msg = msg_func(key, delta)
         for (server, fp, sock) in self._get_conns(server_key):
             try:
                 with Timeout(self._io_timeout):
-                    sock.sendall(b' '.join([
-                        command, key, delta]) + b'\r\n')
+                    sock.sendall(msg)
                     line = fp.readline().strip().split()
                     if not line:
                         raise MemcacheConnectionError('incomplete read')
                     if line[0].upper() == b'NOT_FOUND':
-                        add_val = delta
-                        if command == b'decr':
-                            add_val = b'0'
-                        sock.sendall(b' '.join([
-                            b'add', key, b'0', str(timeout).encode('ascii'),
-                            str(len(add_val)).encode('ascii')
-                        ]) + b'\r\n' + add_val + b'\r\n')
+                        sock.sendall(add_msg(key, timeout, add_val))
                         line = fp.readline().strip().split()
                         if line[0].upper() == b'NOT_STORED':
-                            sock.sendall(b' '.join([
-                                command, key, delta]) + b'\r\n')
+                            sock.sendall(msg)
                             line = fp.readline().strip().split()
+                            if not line:
+                                raise MemcacheConnectionError(
+                                    'incomplete read')
                             ret = int(line[0].strip())
                         else:
                             ret = int(add_val)
@@ -643,6 +659,70 @@ class MemcacheRing(object):
                         keys_to_add.remove(key_info)
                     self._return_conn(server, fp, sock)
                     return added
+            except (Exception, Timeout) as e:
+                self._exception_occurred(server, e, sock=sock, fp=fp)
+        raise MemcacheConnectionError("No Memcached connections succeeded.")
+
+    def incr_multi(self, mapping, server_key, time=0):
+        server_key = md5hash(server_key)
+        timeout = sanitize_timeout(time)
+        keys_to_incr = []
+        for real_key, delta in mapping.items():
+            key = md5hash(real_key)
+            decr = delta < 0
+            delta = str(abs(int(delta))).encode('ascii')
+            if decr:
+                msg_func = decr_msg
+                add_val = b'0'
+            else:
+                msg_func = incr_msg
+                add_val = delta
+            keys_to_incr.append(
+                (real_key, msg_func(key, delta), key, add_val))
+        incremented = {}
+        for (server, fp, sock) in self._get_conns(server_key):
+            try:
+                with Timeout(self._io_timeout):
+                    sock.sendall(b''.join(
+                        key_info[1] for key_info in keys_to_incr))
+                    keys_to_incr_copy = keys_to_incr.copy()
+                    for key_info in keys_to_incr_copy:
+                        line = fp.readline().strip().split()
+                        if not line:
+                            raise MemcacheConnectionError('incomplete read')
+                        if line[0].upper() == b'NOT_FOUND':
+                            continue  # Key doesn't exist
+                        incremented[key_info[0]] = int(line[0].strip())
+                        keys_to_incr.remove(key_info)
+                    if keys_to_incr:
+                        # Some keys do not exist yet, add keys
+                        # that have not been incremented
+                        sock.sendall(b''.join(
+                            add_msg(key, timeout, add_val)
+                            for _, _, key, add_val in keys_to_incr
+                        ))
+                        keys_to_incr_copy = keys_to_incr.copy()
+                        for key_info in keys_to_incr_copy:
+                            line = fp.readline().strip().split()
+                            if line[0].upper() == b'NOT_STORED':
+                                continue  # Key already exists
+                            incremented[key_info[0]] = int(key_info[-1])
+                            keys_to_incr.remove(key_info)
+                    if keys_to_incr:
+                        # Some keys (among the non-incremented keys) were
+                        # created by another connection, redo the increment
+                        sock.sendall(b''.join(
+                            key_info[1] for key_info in keys_to_incr))
+                        keys_to_incr_copy = keys_to_incr.copy()
+                        for key_info in keys_to_incr_copy:
+                            line = fp.readline().strip().split()
+                            if not line:
+                                raise MemcacheConnectionError(
+                                    'incomplete read')
+                            incremented[key_info[0]] = int(line[0].strip())
+                            keys_to_incr.remove(key_info)
+                    self._return_conn(server, fp, sock)
+                    return incremented
             except (Exception, Timeout) as e:
                 self._exception_occurred(server, e, sock=sock, fp=fp)
         raise MemcacheConnectionError("No Memcached connections succeeded.")
