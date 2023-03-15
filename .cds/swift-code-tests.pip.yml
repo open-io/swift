@@ -9,6 +9,7 @@ jobs:
 
       - name: Install dependencies
         script:
+          - export DEBIAN_FRONTEND=noninteractive
           - apt update
           - apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt)
 
