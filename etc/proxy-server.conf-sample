@@ -70,6 +70,8 @@ bind_port = 8080
 # log_statsd_default_sample_rate = 1.0
 # log_statsd_sample_rate_factor = 1.0
 # log_statsd_metric_prefix =
+# log_statsd_valid_http_methods = GET,HEAD,POST,PUT,DELETE,COPY,OPTIONS
+# log_stats_enable_per_policy = True
 #
 # List of origin hosts that are allowed for CORS requests in addition to what
 # the container has set.

@@ -181,6 +181,10 @@ class ProxyLoggingMiddleware(object):
             value = conf.get('access_' + key, conf.get(key, None))
             if value:
                 self.access_log_conf[key] = value
+        self.statsd_enable_per_policy = config_true_value(conf.get(
+            'log_statsd_enable_per_policy',
+            True
+        ))
         self.access_logger = logger or get_logger(
             self.access_log_conf,
             log_route=conf.get('access_log_route', 'proxy-access'),
@@ -381,6 +385,7 @@ class ProxyLoggingMiddleware(object):
             's3token_time': s3token_time,
             'slo_time': slo_time,
         }
+
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
                                       **replacements))
@@ -426,6 +431,8 @@ class ProxyLoggingMiddleware(object):
 
     def statsd_metric_name_policy(self, req, status_int, method, policy_index):
         if policy_index is None:
+            return None
+        if not self.statsd_enable_per_policy:
             return None
         stat_type = self.get_metric_name_type(req)
         if stat_type == 'object':
