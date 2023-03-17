@@ -462,12 +462,14 @@ class TestS3XxeInjection(unittest.TestCase):
                     }
                 ]
             })
+        # "&xxe;" is rendered as an empty value, add a prefix as empty keys are
+        # not allowed (we don't want to test empty keys here).
         resp = requests.put(url, data=f"""
 <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file://{self.tmp_file.name}"> ]>
 <Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
     <TagSet>
         <Tag>
-            <Key>&xxe;</Key>
+            <Key>mykey&xxe;</Key>
             <Value>&xxe;</Value>
         </Tag>
     </TagSet>

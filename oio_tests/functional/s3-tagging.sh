@@ -44,6 +44,9 @@ echo "$OUT" | grep "Access Denied"
 ${AWS} s3api delete-bucket-tagging --bucket "$BUCKET" 2>&1
 # OK
 
+OUT=$(${AWS} s3api put-bucket-tagging --bucket "$BUCKET" --tagging 'TagSet=[{Key=ovh:organization,Value=marketing}]' 2>&1 | tail -n 1)
+echo "$OUT" | grep "InvalidTag"
+
 ${AWS} s3api put-bucket-tagging --bucket "$BUCKET" --tagging 'TagSet=[{Key=organization,Value=marketing}]'
 # OK
 
@@ -68,9 +71,22 @@ echo "$OUT" | grep "The specified key does not exist"
 OUT=$(${AWS} s3api put-object-tagging --bucket "$BUCKET" --key object --tagging 'TagSet=[{Key=organization,Value=marketing}]' 2>&1 | tail -n 1)
 echo "$OUT" | grep "The specified key does not exist"
 
+OUT=$(${AWS} s3api put-object-tagging --bucket "$BUCKET" --key object --tagging 'TagSet=[{Key=ovh:organization,Value=marketing}]' 2>&1 | tail -n 1)
+echo "$OUT" | grep "InvalidTag"
+
 OUT=$(${AWS} s3api delete-object-tagging --bucket "$BUCKET" --key object 2>&1 | tail -n 1)
 echo "$OUT" | grep "The specified key does not exist"
 
+OUT=$(${AWS} s3api put-object --bucket "$BUCKET" --key object2 --body "${OBJ_SRC}" --tagging "Key1=Value1&ovh:Key2=Value2" 2>&1 | tail -n 1)
+echo "$OUT" | grep "InvalidTag"
+
+# Add tags when creating an object
+${AWS} s3api put-object --bucket "$BUCKET" --key object2 --body "${OBJ_SRC}" --tagging "Key1=Value1&Key2=Value2"
+# OK
+
+# Check empty value is accepted
+${AWS} s3api put-object --bucket "$BUCKET" --key object3 --body "${OBJ_SRC}" --tagging "Key1=&Key2="
+# OK
 
 echo "-> Bucket exists, object exists, object operations"
 ${AWS} s3 cp "${OBJ_SRC}" "s3://${BUCKET}/object"
@@ -84,6 +100,9 @@ echo "$OUT"
 
 ${AWS} s3api delete-object-tagging --bucket "$BUCKET" --key object
 # OK
+
+OUT=$(${AWS} s3api put-object-tagging --bucket "$BUCKET" --key object --tagging 'TagSet=[{Key=aws:organization,Value=marketing}]' 2>&1 | tail -n 1)
+echo "$OUT" | grep "InvalidTag"
 
 ${AWS} s3api put-object-tagging --bucket "$BUCKET" --key object --tagging 'TagSet=[{Key=organization,Value=marketing}]'
 # OK
@@ -110,4 +129,6 @@ echo "$OUT"
 
 echo "-> OK, removing fixtures"
 ${AWS} s3 rm "s3://$BUCKET/object"
+${AWS} s3 rm "s3://$BUCKET/object2"
+${AWS} s3 rm "s3://$BUCKET/object3"
 ${AWS} s3 rb "s3://$BUCKET"

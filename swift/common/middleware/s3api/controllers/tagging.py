@@ -26,7 +26,7 @@ from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
-    MalformedXML, NoSuchTagSet, InvalidArgument
+    MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
@@ -48,11 +48,33 @@ INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'shall be encoded as UTF-8 then URLEncoded URL query ' \
                   'parameters without tag name duplicates.'
 
+RESERVED_PREFIXES = ('ovh:', 'aws:')
+
+
+def _create_tagging_xml_document():
+    root = Element('Tagging')
+    tagset = SubElement(root, 'TagSet')
+    return root, tagset
+
+
+def _check_key_prefix(key):
+    if not key:
+        raise InvalidTagKey()
+    if key.startswith(RESERVED_PREFIXES):
+        raise InvalidTag()
+
+
+def _add_tag_to_tag_set(tagset, key, value, check_key_prefix=True):
+    if check_key_prefix:
+        _check_key_prefix(key)
+    tag = SubElement(tagset, 'Tag')
+    SubElement(tag, 'Key').text = key
+    SubElement(tag, 'Value').text = value
+
 
 def tagging_header_to_xml(header_val):
     """Convert x-amz-tagging header value to a Tagging XML document."""
-    root = Element('Tagging')
-    elem = SubElement(root, 'TagSet')
+    root, tagset = _create_tagging_xml_document()
     # AWS supports keys with empty values like key1=&key2=
     items = parse_qs(header_val, keep_blank_values=True)
     for key, val in items.items():
@@ -60,9 +82,7 @@ def tagging_header_to_xml(header_val):
             raise InvalidArgument(HTTP_HEADER_TAGGING_KEY,
                                   value=val,
                                   msg=INVALID_TAGGING)
-        tag = SubElement(elem, 'Tag')
-        SubElement(tag, 'Key').text = key
-        SubElement(tag, 'Value').text = val[0]
+        _add_tag_to_tag_set(tagset, key, val[0])
     return tostring(root)
 
 
@@ -125,8 +145,11 @@ class TaggingController(Controller):
         """
         body = req.xml(MAX_TAGGING_BODY_SIZE)
         try:
-            # Just validate the body
-            fromstring(body, 'Tagging')
+            # Validate the body and reserved keys
+            tagging = fromstring(body, 'Tagging')
+            tagset = tagging.find('TagSet')
+            for tag in tagset.xpath('//Tag'):
+                _check_key_prefix(tag.find('Key').text)
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 

@@ -259,7 +259,7 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
         self.info = kwargs.copy()
         for reserved_key in ('headers', 'body'):
             if self.info.get(reserved_key):
-                del(self.info[reserved_key])
+                del self.info[reserved_key]
 
         swob.HTTPException.__init__(
             self, status=kwargs.pop('status', self._status),
@@ -584,6 +584,16 @@ class InvalidSOAPRequest(ErrorResponse):
 class InvalidStorageClass(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'The storage class you specified is not valid.'
+
+
+class InvalidTag(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'System tags cannot be added/updated by requester'
+
+
+class InvalidTagKey(InvalidTag):
+    _msg = 'The TagKey you have provided is invalid'
+    _code = 'InvalidTag'
 
 
 class InvalidTargetBucketForLogging(ErrorResponse):

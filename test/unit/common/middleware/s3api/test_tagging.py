@@ -35,11 +35,37 @@ class TestS3ApiTagging(S3ApiTestCase):
         </Tagging>
     """
 
+    TAGGING_BODY_EMPTY_KEY = """
+        <Tagging>
+          <TagSet>
+            <Tag>
+              <Key />
+              <Value>marketing</Value>
+            </Tag>
+          </TagSet>
+        </Tagging>
+    """
+
     TAGGING_BODY_NO_KEY = """
         <Tagging>
           <TagSet>
             <Tag>
               <Value>marketing</Value>
+            </Tag>
+          </TagSet>
+        </Tagging>
+    """
+
+    TAGGING_BODY_RESERVED_KEY = """
+        <Tagging>
+          <TagSet>
+            <Tag>
+              <Key>organization</Key>
+              <Value>marketing</Value>
+            </Tag>
+            <Tag>
+              <Key>ovh:organization</Key>
+              <Value>marketing2</Value>
             </Tag>
           </TagSet>
         </Tagging>
@@ -171,6 +197,27 @@ class TestS3ApiTagging(S3ApiTestCase):
                             body=self.__class__.TAGGING_BODY_NO_VALUE)
         self._assert_error(req, '400 Bad Request', 'MalformedXML')
 
+        req = Request.blank('/bucket?tagging',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=self.__class__.TAGGING_BODY_NO_KEY)
+        self._assert_error(req, '400 Bad Request', 'MalformedXML')
+
+        req = Request.blank('/bucket?tagging',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=self.__class__.TAGGING_BODY_EMPTY_KEY)
+        self._assert_error(req, '400 Bad Request', 'InvalidTag')
+
+        req = Request.blank('/bucket?tagging',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=self.__class__.TAGGING_BODY_RESERVED_KEY)
+        self._assert_error(req, '400 Bad Request', 'InvalidTag')
+
     def test_bucket_tagging_DELETE(self):
         req = Request.blank('/bucket?tagging',
                             environ={'REQUEST_METHOD': 'DELETE'},
@@ -214,12 +261,33 @@ class TestS3ApiTagging(S3ApiTestCase):
         self._assert_error(req, '400 Bad Request', 'MalformedXML')
 
     def test_object_tagging_PUT_invalid_body(self):
-        req = Request.blank('/bucket/missingobject?tagging',
+        req = Request.blank('/bucket/object?tagging',
                             environ={'REQUEST_METHOD': 'PUT'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()},
                             body=self.__class__.TAGGING_BODY_NO_KEY)
         self._assert_error(req, '400 Bad Request', 'MalformedXML')
+
+        req = Request.blank('/bucket/object?tagging',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=self.__class__.TAGGING_BODY_EMPTY_KEY)
+        self._assert_error(req, '400 Bad Request', 'InvalidTag')
+
+        req = Request.blank('/bucket/object?tagging',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=self.__class__.TAGGING_BODY_NO_VALUE)
+        self._assert_error(req, '400 Bad Request', 'MalformedXML')
+
+        req = Request.blank('/bucket/object?tagging',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()},
+                            body=self.__class__.TAGGING_BODY_RESERVED_KEY)
+        self._assert_error(req, '400 Bad Request', 'InvalidTag')
 
     def test_object_tagging_PUT_too_many_tags(self):
         self.skipTest('No restriction on the number of tags at the moment')
