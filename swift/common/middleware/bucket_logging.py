@@ -36,12 +36,14 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     """
 
     def __init__(self, app, conf, logger=None):
-        super(BucketLoggingMiddleware, self).__init__(app, conf, logger=logger)
+        super(BucketLoggingMiddleware, self).__init__(
+            app, conf, logger=logger, default_log_route='bucket-logging',
+            default_access_log_route='bucket-access')
 
         self.s3_log_prefix = conf.get('s3_log_prefix', 's3access-')
         self.s3_access_logger = get_logger(
             self.access_log_conf,
-            log_route=conf.get('access_log_route', 'proxy-access'),
+            log_route=conf.get('s3_access_log_route', 's3-access'),
             statsd_tail_prefix='proxy-server', formatter=logging.Formatter())
         self.s3_log_formatter = LogStringFormatter(default='-')
         self.s3_log_msg_template = (
