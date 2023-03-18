@@ -53,6 +53,20 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
             '{cipher_suite} {authentication_type} {host_header} {tls_version} '
             '{access_point_arn}')
 
+    # customize statsd metric name for s3 requests
+    def statsd_metric_name(self, req, status_int, method):
+        s3_info = req.environ.get('s3api.info', {})
+        operation = s3_info.get('operation', f"REST.{method}.OTHER")
+        error_code = s3_info.get(
+            'error_code',
+            'InternalError' if status_int == 500 else "OK")
+        return f"s3.{operation}.{status_int}.{error_code}"
+
+    # don't send policy statsd for s3 requests
+    # because policies are not used with s3
+    def statsd_metric_name_policy(self, req, status_int, method, policy_index):
+        return None
+
     def log_request(self, req, status_int, bytes_received, bytes_sent,
                     start_time, end_time, resp_headers=None, ttfb=0,
                     wire_status_int=None):
