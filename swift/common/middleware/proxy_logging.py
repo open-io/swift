@@ -284,22 +284,10 @@ class ProxyLoggingMiddleware(object):
         if any_obscured:
             req.params = new_params
 
-    def log_request(self, req, status_int, bytes_received, bytes_sent,
-                    start_time, end_time, resp_headers=None, ttfb=0,
-                    wire_status_int=None):
-        """
-        Log a request.
-
-        :param req: swob.Request object for the request
-        :param status_int: integer code for the response status
-        :param bytes_received: bytes successfully read from the request body
-        :param bytes_sent: bytes yielded to the WSGI server
-        :param start_time: timestamp request started
-        :param end_time: timestamp request completed
-        :param resp_headers: dict of the response headers
-        :param wire_status_int: the on the wire status int
-        """
-        self.obscure_req(req)
+    def generate_replacements(self, req, status_int, bytes_received,
+                              bytes_sent, start_time, end_time,
+                              resp_headers=None, ttfb=0,
+                              wire_status_int=None):
         resp_headers = resp_headers or {}
         logged_headers = None
         if self.log_hdrs:
@@ -329,7 +317,7 @@ class ProxyLoggingMiddleware(object):
         slo_time = defaultdict(lambda: '-')
         slo_time.update(req.environ.get('slo.time', {}))
 
-        replacements = {
+        return {
             # Time information
             'end_time': StrFormatTime(end_time),
             'start_time': StrFormatTime(start_time),
@@ -381,9 +369,35 @@ class ProxyLoggingMiddleware(object):
             's3token_time': s3token_time,
             'slo_time': slo_time,
         }
+
+    def log_request(self, req, status_int, bytes_received, bytes_sent,
+                    start_time, end_time, resp_headers=None, ttfb=0,
+                    wire_status_int=None):
+        """
+        Log a request.
+
+        :param req: swob.Request object for the request
+        :param status_int: integer code for the response status
+        :param bytes_received: bytes successfully read from the request body
+        :param bytes_sent: bytes yielded to the WSGI server
+        :param start_time: timestamp request started
+        :param end_time: timestamp request completed
+        :param resp_headers: dict of the response headers
+        :param wire_status_int: the on the wire status int
+        """
+        self.obscure_req(req)
+        replacements = self.generate_replacements(req, status_int,
+                                                  bytes_received, bytes_sent,
+                                                  start_time, end_time,
+                                                  resp_headers, ttfb,
+                                                  wire_status_int)
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
                                       **replacements))
+
+        method = self.method_from_req(req)
+        resp_headers = resp_headers or {}
+        policy_index = get_policy_index(req.headers, resp_headers)
 
         # Log timing and bytes-transferred data to StatsD
         metric_name = self.statsd_metric_name(req, status_int, method)

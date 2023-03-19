@@ -18,15 +18,13 @@ import json
 import logging
 from six.moves.urllib.parse import quote
 
-from swift.common.middleware.proxy_logging import ProxyLoggingMiddleware
+from swift.common.middleware.s3_logging import S3LoggingMiddleware
 from swift.common.registry import register_sensitive_header
-from swift.common.swob import str_to_wsgi
 from swift.common.utils import LogStringFormatter, get_logger, \
     get_remote_client
-from swift.proxy.controllers.base import get_container_info
 
 
-class BucketLoggingMiddleware(ProxyLoggingMiddleware):
+class BucketLoggingMiddleware(S3LoggingMiddleware):
     """
     This is an extension of ProxyLoggingMiddleware which, in addition
     to logging the "standard" way, also sends AWS-style logs to a bucket
@@ -56,10 +54,6 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     def log_request(self, req, status_int, bytes_received, bytes_sent,
                     start_time, end_time, resp_headers=None, ttfb=0,
                     wire_status_int=None):
-        super(BucketLoggingMiddleware, self).log_request(
-            req, status_int, bytes_received, bytes_sent, start_time, end_time,
-            resp_headers=resp_headers, ttfb=ttfb,
-            wire_status_int=wire_status_int)
 
         s3_info = req.environ.get('s3api.info')
         if not s3_info:
@@ -74,20 +68,12 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
         if not account:
             # Missing account to find the root container
             return
-        path_info_orig = req.environ['PATH_INFO']
-        try:
-            # Overwrite PATH_INFO with the main container path
-            container = str_to_wsgi(bucket)
-            req.environ['PATH_INFO'] = f'/v1/{account}/{container}'
-
-            container_info = get_container_info(
-                req.environ, self.app, swift_source='S3LOGGING')
-            if not container_info['sysmeta'].get('s3api-logging'):
-                # Logging disabled
-                return
-        finally:
-            # Restore original PATH_INFO to env
-            req.environ['PATH_INFO'] = path_info_orig
+        container_info = super().get_container_info(req, account, bucket)
+        if not container_info:
+            return
+        if not container_info['sysmeta'].get('s3api-logging'):
+            # Logging disabled
+            return
 
         request_uri = '%s %s %s' % (
             self.method_from_req(req), req.path_qs,
