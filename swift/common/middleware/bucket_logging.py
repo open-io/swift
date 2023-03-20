@@ -153,7 +153,7 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
             'tls_version': None,  # ignored
             'access_point_arn': None,  # ignored
         }
-        self.access_logger.info(
+        self.s3_access_logger.info(
             self.s3_log_formatter.format(self.s3_log_msg_template,
                                          **replacements))
 
