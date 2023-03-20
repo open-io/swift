@@ -590,6 +590,7 @@ class S3ApiMiddleware(object):
                 order = ['intelligent_tiering', 's3api']
             self.check_filter_order(pipeline, order)
             self.logger.debug('Use intelligent_tiering middleware.')
+            self.conf["enable_intelligent_tiering"] = True
 
         # Check bucket_quotas middleware position
         if 'bucket_quotas' in pipeline:

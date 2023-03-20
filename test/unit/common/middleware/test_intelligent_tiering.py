@@ -32,14 +32,8 @@ MOCK_FAKE_REQ_CONT_INFO = 'test.unit.common.middleware.' \
     'test_intelligent_tiering.FakeReq.get_container_info'
 MOCK_RABBIT_SEND_MESSAGE = 'swift.common.middleware.intelligent_tiering.' \
     'RabbitMQClient._send_message'
-MOCK_GET_ARCHIVING_STATUS = 'swift.common.middleware.intelligent_tiering.' \
-    'IntelligentTieringMiddleware._get_archiving_status'
 MOCK_SET_ARCHIVING_STATUS = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._set_archiving_status'
-MOCK_IAM_GENERATE_RULES = 'swift.common.middleware.intelligent_tiering.' \
-    'IntelligentTieringMiddleware._iam_generate_rules'
-MOCK_FAKE_FUNCTION = 'test.unit.common.middleware.test_intelligent_tiering.' \
-    'TestIAMIntelligentTiering._fake_function'
 
 
 class FakeReq(object):

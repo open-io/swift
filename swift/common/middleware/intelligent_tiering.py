@@ -116,6 +116,41 @@ TIERING_IAM_SUPPORTED_ACTIONS = {
 TIERING_CALLBACK = 'swift.callback.tiering.apply'
 
 
+def get_intelligent_tiering_info(app, req):
+    """
+    Return a dict with intelligent tiering info.
+    Keys are:
+    - status (always available)
+    - restoration_end_timestamp (only in Restored state)
+    """
+    intelligent_tiering_info = {"status": BUCKET_STATE_NONE}
+    try:
+        # Extract oio_cache and remove it from req if exists
+        oio_cache = req.environ.pop('oio.cache', None)
+        try:
+            info = req.get_container_info(app, read_caches=False)
+        finally:
+            # Put oio_cache again if exists (further request may benefit
+            # of the cache)
+            if oio_cache is not None:
+                req.environ['oio.cache'] = oio_cache
+    except NoSuchBucket:
+        return intelligent_tiering_info
+
+    archiving_status = info.get('sysmeta').get('s3api-archiving-status')
+    if not archiving_status:
+        archiving_status = BUCKET_STATE_NONE
+    elif archiving_status not in BUCKET_ALLOWED_TRANSITIONS:
+        raise UnexpectedContent(f'Invalid state {archiving_status}')
+    intelligent_tiering_info["status"] = archiving_status
+
+    if archiving_status == BUCKET_STATE_RESTORED:
+        intelligent_tiering_info["restoration_end_timestamp"] = \
+            info.get('sysmeta').get('s3api-restoration-end-timestamp')
+
+    return intelligent_tiering_info
+
+
 class RabbitMQClient(object):
     """
     Provides an API to send various messages to RabbitMQ.
@@ -311,24 +346,6 @@ class IntelligentTieringMiddleware(object):
             raise ServiceUnavailable('Failed to set status, status=%s' %
                                      resp.status)
 
-    def _get_archiving_status(self, req):
-        try:
-            # Extract oio_cache and remove it from req if exists
-            oio_cache = req.environ.pop('oio.cache', None)
-            info = req.get_container_info(self.app, read_caches=False)
-            # Put oio_cache again if exists (further request may benefit
-            # of the cache)
-            if oio_cache == {} and oio_cache.memcache:
-                req.environ['oio.cache'] = oio_cache
-        except NoSuchBucket:
-            return BUCKET_STATE_NONE
-        archiving_status = info.get('sysmeta').get('s3api-archiving-status')
-        if not archiving_status:
-            archiving_status = BUCKET_STATE_NONE
-        elif archiving_status not in BUCKET_ALLOWED_TRANSITIONS:
-            raise UnexpectedContent('Invalid state %s' % archiving_status)
-        return archiving_status
-
     def _process_PUT(self, current_status, req, tiering_conf):
         if tiering_conf['Status'] != 'Enabled':
             raise BadRequest('Status must be Enabled')
@@ -389,7 +406,8 @@ class IntelligentTieringMiddleware(object):
         Method allowed are PUT, DELETE and GET.
         :rtype: dict
         """
-        bucket_status = self._get_archiving_status(req)
+        info = get_intelligent_tiering_info(self.app, req)
+        bucket_status = info["status"]
 
         if req.method == 'PUT':
             self._process_PUT(bucket_status, req, tiering_conf)
@@ -458,7 +476,8 @@ class IntelligentTieringMiddleware(object):
         Then call the IAM callback from IAM middleware and add those generated
         rules.
         """
-        bucket_status = self._get_archiving_status(req)
+        info = get_intelligent_tiering_info(self.app, req)
+        bucket_status = info["status"]
         it_rules = self._iam_generate_rules(bucket_status, req.container_name)
 
         matcher = None

@@ -18,6 +18,8 @@ from six.moves.urllib.parse import parse_qs
 
 from swift.common.utils import close_if_possible, public
 
+from swift.common.middleware.intelligent_tiering import \
+    get_intelligent_tiering_info, GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_storage_domain, \
     set_s3_operation_rest, handle_no_such_key
@@ -27,7 +29,7 @@ from swift.common.middleware.s3api.etree import fromstring, tostring, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
-from swift.common.middleware.s3api.utils import sysmeta_header
+from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
@@ -49,6 +51,10 @@ INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'parameters without tag name duplicates.'
 
 RESERVED_PREFIXES = ('ovh:', 'aws:')
+
+INTELLIGENT_TIERING_STATUS_KEY = 'ovh:intelligent_tiering_status'
+INTELLIGENT_TIERING_RESTO_END_KEY = \
+    'ovh:intelligent_tiering_restoration_end_date'
 
 
 def _create_tagging_xml_document():
@@ -95,6 +101,32 @@ class TaggingController(Controller):
     * DELETE Bucket and Object tagging
 
     """
+    def _add_intelligent_tiering_tags(self, req, tagging):
+        if tagging:
+            root = fromstring(tagging)
+            tagset = root.find('TagSet')
+        else:
+            root, tagset = _create_tagging_xml_document()
+        info = get_intelligent_tiering_info(self.app, req)
+        # Replace internal status for client
+        bucket_status = GET_BUCKET_STATE_OUTPUT.get(
+            info["status"], info["status"]
+        )
+        _add_tag_to_tag_set(
+            tagset,
+            INTELLIGENT_TIERING_STATUS_KEY,
+            bucket_status,
+            check_key_prefix=False,
+        )
+        if info.get("restoration_end_timestamp"):
+            timestamp = S3Timestamp(info["restoration_end_timestamp"])
+            _add_tag_to_tag_set(
+                tagset,
+                INTELLIGENT_TIERING_RESTO_END_KEY,
+                timestamp.s3xmlformat,
+                check_key_prefix=False,
+            )
+        return tostring(root)
 
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit_bucket
@@ -118,6 +150,10 @@ class TaggingController(Controller):
             headers['x-amz-version-id'] = resp.sw_headers[VERSION_ID_HEADER]
         else:
             body = resp.sysmeta_headers.get(BUCKET_TAGGING_HEADER)
+            if self.conf.get("enable_intelligent_tiering"):
+                # If body is None, intelligent tiering tags will be added to a
+                # new empty document.
+                body = self._add_intelligent_tiering_tags(req, body)
         close_if_possible(resp.app_iter)
 
         if not body:
