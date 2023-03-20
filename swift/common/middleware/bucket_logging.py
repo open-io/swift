@@ -41,10 +41,17 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
             default_access_log_route='bucket-access')
 
         self.s3_log_prefix = conf.get('s3_log_prefix', 's3access-')
+        self.s3_access_log_conf = {}
+        for key in ('log_facility', 'log_name', 'log_level', 'log_udp_host',
+                    'log_udp_port'):
+            value = conf.get(
+                's3_access_' + key, self.access_log_conf.get(key, None))
+            if value:
+                self.s3_access_log_conf[key] = value
         self.s3_access_logger = get_logger(
-            self.access_log_conf,
+            self.s3_access_log_conf,
             log_route=conf.get('s3_access_log_route', 's3-access'),
-            statsd_tail_prefix='proxy-server', formatter=logging.Formatter())
+            formatter=logging.Formatter())
         self.s3_log_formatter = LogStringFormatter(default='-')
         self.s3_log_msg_template = (
             '{program}: {bucket_owner} {bucket} [{time}] '
