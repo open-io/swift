@@ -66,6 +66,10 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     def statsd_metric_name(self, req, status_int, method):
         s3_info = req.environ.get('s3api.info', {})
         operation = s3_info.get('operation', f"REST.{method}.OTHER")
+        # ensure to always have a 3 element operation
+        # ex: complete the SOAP.ListAllBuckets operation
+        if operation.count(".") == 1:
+            operation = f"{operation}.OTHER"
         error_code = s3_info.get(
             'error_code',
             'InternalError' if status_int == 500 else "OK")
