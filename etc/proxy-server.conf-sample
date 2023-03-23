@@ -624,6 +624,9 @@ use = egg:swift#bucket_ratelimit
 #bucket_ratelimit_ttl = 60
 # The increments will be made when processing the request.
 #asynchronous_increment = true
+# Accepts all requests, but indicates in the access logs (with bucket-logging)
+# if the request should have been ratelimited
+#log_only_on_global_ratelimiting = false
 
 [filter:s3api]
 use = egg:swift#s3api
