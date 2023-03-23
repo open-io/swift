@@ -118,7 +118,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'check_bucket_storage_domain': False,
             'cors_rules': [],
             'landing_page': 'https://aws.amazon.com/s3/',
-            'log_s3_operation': True,
             'max_bucket_listing': 1000,
             'max_multi_delete_objects': 1000,
             'max_parts_listing': 1000,
@@ -162,7 +161,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'cors_allow_origin': 'somewhere.com,some.*.where.io',
             'landing_page':
                 'https://docs.openstack.org/swift/latest/s3_compat.html',
-            'log_s3_operation': False,
             'max_bucket_listing': 500,
             'max_multi_delete_objects': 600,
             'max_parts_listing': 70,

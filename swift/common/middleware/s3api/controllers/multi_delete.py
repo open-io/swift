@@ -41,9 +41,7 @@ from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 def set_s3_operation_batch_delete_object(func):
     """
-    A decorator to set the specified operation name to the s3api.info fields
-    and append it to the swift.log_info fields, if the log_s3_operation
-    parameter is enabled.
+    A decorator to set the specified operation name to the s3api.info fields.
     """
     @functools.wraps(func)
     def _set_s3_operation(self, req, *args, **kwargs):

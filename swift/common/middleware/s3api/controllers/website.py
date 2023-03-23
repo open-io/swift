@@ -187,9 +187,7 @@ class WebsiteController(Controller):
 
 def set_s3_operation_website(func):
     """
-    A decorator to set the specified operation name to the s3api.info fields
-    and append it to the swift.log_info fields, if the log_s3_operation
-    parameter is enabled.
+    A decorator to set the specified operation name to the s3api.info fields.
     """
     @wraps(func)
     def _set_s3_operation(self, req, *args, **kwargs):

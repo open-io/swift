@@ -332,8 +332,6 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('ratelimit_as_client_error', False))
         self.conf.retry_after = config_positive_int_value(
             wsgi_conf.get('retry_after', 1))
-        self.conf.log_s3_operation = config_true_value(
-            wsgi_conf.get('log_s3_operation', True))
         self.conf.allow_anonymous_path_requests = config_true_value(
             wsgi_conf.get('allow_anonymous_path_requests', False))
         self.conf.bucket_db_read_only = config_true_value(
@@ -487,6 +485,7 @@ class S3ApiMiddleware(object):
                         resp = MethodNotAllowed(method, 'SERVICE')
                 else:
                     resp = InvalidRequest(reason='Not S3 request')
+                env.setdefault('s3api.info', {})['error_code'] = resp._code
             else:
                 resp = self.app
         except InvalidSubresource as e:

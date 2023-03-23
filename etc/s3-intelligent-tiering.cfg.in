@@ -11,7 +11,7 @@ sds_namespace = OPENIO
 sds_proxy_url = http://127.0.0.1:6000
 
 [pipeline:main]
-pipeline = catch_errors bucket-logging cache listing_formats iam intelligent_tiering bucket_quotas s3api tempauth proxy-logging copy slo versioned_writes symlink proxy-server
+pipeline = catch_errors s3-logging cache listing_formats iam intelligent_tiering bucket_quotas s3api tempauth proxy-logging copy slo versioned_writes symlink proxy-server
 
 [app:proxy-server]
 use = egg:swift#oio_proxy
@@ -29,8 +29,9 @@ use = egg:swift#gatekeeper
 [filter:proxy-logging]
 use = egg:swift#proxy_logging
 
-[filter:bucket-logging]
-use = egg:swift#bucket_logging
+[filter:s3-logging]
+use = egg:swift#s3_logging
+customer_access_logging = true
 
 [filter:catch_errors]
 use = egg:swift#catch_errors
