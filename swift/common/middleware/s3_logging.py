@@ -135,6 +135,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'error_code': error_code,
             'signature_version': s3_info.get('signature_version'),
             'authentication_type': s3_info.get('authentication_type'),
+            'ratelimit': str(s3_info.get('ratelimit', False)).lower()
         }
 
     def log_request(self, req, status_int, bytes_received, bytes_sent,
