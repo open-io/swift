@@ -122,9 +122,7 @@ def check_bucket_storage_domain(func):
 def set_s3_operation_rest(resource_type, object_resource_type=None,
                           method=None):
     """
-    A decorator to set the specified operation name to the s3api.info fields
-    and append it to the swift.log_info fields, if the log_s3_operation
-    parameter is enabled.
+    A decorator to set the specified operation name to the s3api.info fields.
     """
     def _set_s3_operation(func):
         @functools.wraps(func)
@@ -185,9 +183,7 @@ class Controller(object):
 
     def set_s3_operation(self, req, operation):
         """
-        Set the specified operation name to the s3api.info fields and append it
-        to the swift.log_info fields, if the log_s3_operation parameter is
-        enabled.
+        Set the specified operation name to the s3api.info fields.
         :param req: HTTP request object
         :param operation: S3 operation string
         """
@@ -195,9 +191,6 @@ class Controller(object):
             return
         self.operation = operation
         req.environ.setdefault('s3api.info', {})['operation'] = self.operation
-        if not self.conf.log_s3_operation:
-            return
-        req.environ.setdefault('swift.log_info', []).append(self.operation)
 
     def has_bucket_or_object_read_permission(self, req):
         """

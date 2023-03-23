@@ -28,9 +28,7 @@ from swift.common.middleware.s3api.utils import S3Timestamp, \
 
 def set_s3_operation_soap(operation):
     """
-    A decorator to set the specified operation name to the s3api.info fields
-    and append it to the swift.log_info fields, if the log_s3_operation
-    parameter is enabled.
+    A decorator to set the specified operation name to the s3api.info fields.
     """
     def _set_s3_operation(func):
         @functools.wraps(func)

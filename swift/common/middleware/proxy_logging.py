@@ -139,21 +139,24 @@ class ProxyLoggingMiddleware(object):
     Middleware that logs Swift proxy requests in the swift log format.
     """
 
-    def __init__(self, app, conf, logger=None,
-                 default_log_route='proxy-logging',
-                 default_access_log_route='proxy-access'):
+    def __init__(
+        self, app, conf, logger=None, default_log_route='proxy-logging',
+        default_access_log_route='proxy-access',
+        default_log_msg_template=(
+            '{client_ip} {remote_addr} {end_time.datetime} {method} {path} '
+            '{protocol} {status_int} {referer} {user_agent} {auth_token} '
+            '{bytes_recvd} {bytes_sent} {client_etag} {transaction_id} '
+            '{headers} {request_time} {source} {log_info} {start_time} '
+            '{end_time} {policy_index}'
+        )
+    ):
         self.app = app
         self.pid = os.getpid()
         self.logger = get_logger(
             conf, log_route=conf.get('log_name', default_log_route))
         self.log_formatter = LogStringFormatter(default='-', quote=True)
         self.log_msg_template = conf.get(
-            'log_msg_template', (
-                '{client_ip} {remote_addr} {end_time.datetime} {method} '
-                '{path} {protocol} {status_int} {referer} {user_agent} '
-                '{auth_token} {bytes_recvd} {bytes_sent} {client_etag} '
-                '{transaction_id} {headers} {request_time} {source} '
-                '{log_info} {start_time} {end_time} {policy_index}'))
+            'log_msg_template', default_log_msg_template)
         # The salt is only used in StrAnonymizer. This class requires bytes,
         # convert it now to prevent useless convertion later.
         self.anonymization_method = conf.get('log_anonymization_method', 'md5')
@@ -203,6 +206,31 @@ class ProxyLoggingMiddleware(object):
                                  'performance data will be logged '
                                  'for every request.')
 
+    def _enrich_replacements(self, req, status_int, resp_headers):
+        """
+        Give specific information from Swift requests.
+        """
+        if req is None:
+            # To check log message template validity
+            acc, cont, obj = 'a', 'c', ''
+            policy_index = ''
+        else:
+            acc, cont, obj = None, None, None
+            swift_path = req.environ.get('swift.backend_path', req.path)
+            if swift_path.startswith('/v1/'):
+                _, acc, cont, obj = split_path(swift_path, 1, 4, True)
+            policy_index = get_policy_index(req.headers, resp_headers)
+
+        return {
+            'account': StrAnonymizer(acc, self.anonymization_method,
+                                     self.anonymization_salt),
+            'container': StrAnonymizer(cont, self.anonymization_method,
+                                       self.anonymization_salt),
+            'object': StrAnonymizer(obj, self.anonymization_method,
+                                    self.anonymization_salt),
+            'policy_index': policy_index,
+        }
+
     def check_log_msg_template_validity(self):
         replacements = {
             # Time information
@@ -223,12 +251,6 @@ class ProxyLoggingMiddleware(object):
                                      self.anonymization_salt),
             'client_etag': StrAnonymizer('etag', self.anonymization_method,
                                          self.anonymization_salt),
-            'account': StrAnonymizer('a', self.anonymization_method,
-                                     self.anonymization_salt),
-            'container': StrAnonymizer('c', self.anonymization_method,
-                                       self.anonymization_salt),
-            'object': StrAnonymizer('', self.anonymization_method,
-                                    self.anonymization_salt),
             # Others information
             'method': 'GET',
             'domain': '',
@@ -241,7 +263,6 @@ class ProxyLoggingMiddleware(object):
             'request_time': '0.05',
             'source': '',
             'log_info': '',
-            'policy_index': '',
             'ttfb': '0.05',
             'pid': '42',
             'wire_status_int': '200',
@@ -249,6 +270,7 @@ class ProxyLoggingMiddleware(object):
             's3token_time': defaultdict(lambda: '-'),
             'slo_time': defaultdict(lambda: '-'),
         }
+        replacements.update(self._enrich_replacements(None, None, None))
         try:
             self.log_formatter.format(self.log_msg_template, **replacements)
         except Exception as e:
@@ -319,19 +341,13 @@ class ProxyLoggingMiddleware(object):
         if ':' in domain:
             domain, port = domain.rsplit(':', 1)
         duration_time_str = "%.4f" % (end_time - start_time)
-        policy_index = get_policy_index(req.headers, resp_headers)
-
-        acc, cont, obj = None, None, None
-        swift_path = req.environ.get('swift.backend_path', req.path)
-        if swift_path.startswith('/v1/'):
-            _, acc, cont, obj = split_path(swift_path, 1, 4, True)
 
         s3token_time = defaultdict(lambda: '-')
         s3token_time.update(req.environ.get('s3token.time', {}))
         slo_time = defaultdict(lambda: '-')
         slo_time.update(req.environ.get('slo.time', {}))
 
-        replacements = {
+        replacements = {  # Common info
             # Time information
             'end_time': StrFormatTime(end_time),
             'start_time': StrFormatTime(start_time),
@@ -354,13 +370,8 @@ class ProxyLoggingMiddleware(object):
             'client_etag': StrAnonymizer(req.headers.get('etag'),
                                          self.anonymization_method,
                                          self.anonymization_salt),
-            'account': StrAnonymizer(acc, self.anonymization_method,
-                                     self.anonymization_salt),
-            'container': StrAnonymizer(cont, self.anonymization_method,
-                                       self.anonymization_salt),
-            'object': StrAnonymizer(obj, self.anonymization_method,
-                                    self.anonymization_salt),
             # Others information
+            'host': req.host,
             'method': method,
             'domain': domain,
             'protocol':
@@ -375,7 +386,6 @@ class ProxyLoggingMiddleware(object):
             'source': req.environ.get('swift.source'),
             'log_info':
                 ','.join(req.environ.get('swift.log_info', '')),
-            'policy_index': policy_index,
             'ttfb': ttfb,
             'pid': self.pid,
             'wire_status_int': wire_status_int or status_int,
@@ -383,15 +393,16 @@ class ProxyLoggingMiddleware(object):
             's3token_time': s3token_time,
             'slo_time': slo_time,
         }
+        replacements.update(self._enrich_replacements(
+            req, status_int, resp_headers))
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
                                       **replacements))
 
         # Log timing and bytes-transferred data to StatsD
         metric_name = self.statsd_metric_name(req, status_int, method)
-        metric_name_policy = self.statsd_metric_name_policy(req, status_int,
-                                                            method,
-                                                            policy_index)
+        metric_name_policy = self.statsd_metric_name_policy(
+            req, status_int, method, replacements.get('policy_index'))
         # Only log data for valid controllers (or SOS) to keep the metric count
         # down (egregious errors will get logged by the proxy server itself).
 

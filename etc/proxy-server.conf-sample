@@ -777,9 +777,6 @@ use = egg:swift#s3api
 # long (in second) the user agent should wait before making a follow-up request.
 # retry_after = 1
 
-# Expose S3 operation in swift log
-# log_s3_operation = True
-
 # You can override the default log routing for this filter here:
 # log_name = s3api
 
@@ -1166,7 +1163,7 @@ use = egg:swift#proxy_logging
 #
 # Log route for this filter. Useful if you want to have different configs for
 # the two proxy-logging filters.
-# access_log_route = proxy-server
+# access_log_route = proxy-access
 #
 # If set, access_log_udp_host will override access_log_address
 # access_log_udp_host =
@@ -1226,11 +1223,17 @@ use = egg:swift#proxy_logging
 # will be substituted with the appropriate values
 # log_msg_template = {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index} {s3token_time[check_token]} {slo_time[manifest_read]}
 
-# Note: This is an extension of ProxyLoggingMiddleware which, in addition
-#       to logging the "standard" way, also sends AWS-style logs to a bucket
-#       (if configured).
+# Note: This is an extension of ProxyLoggingMiddleware which logs S3 requests
+#       and also sends AWS-style logs to a bucket (if configured).
 [filter:bucket-logging]
 use = egg:swift#bucket_logging
+# Log route for this filter. Useful if you want to have different configs for
+# the two bucket-logging filters.
+# access_log_route = bucket-access
+#
+# Template used to format access logs. All words surrounded by curly brackets
+# will be substituted with the appropriate values
+# log_msg_template = {client_ip} {remote_addr} {requester} {end_time.datetime} {method} {path} {protocol} {status_int} {operation} {error_code} {referer} {user_agent} {auth_token} {signature_version} {authentication_type} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time}
 
 # Note: Put before both ratelimit and auth in the pipeline.
 [filter:bulk]

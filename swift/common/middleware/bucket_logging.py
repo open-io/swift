@@ -21,7 +21,7 @@ from six.moves.urllib.parse import quote
 from swift.common.middleware.proxy_logging import ProxyLoggingMiddleware
 from swift.common.registry import register_sensitive_header
 from swift.common.swob import str_to_wsgi
-from swift.common.utils import LogStringFormatter, get_logger, \
+from swift.common.utils import LogStringFormatter, StrAnonymizer, get_logger, \
     get_remote_client
 from swift.proxy.controllers.base import get_container_info
 
@@ -38,7 +38,14 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     def __init__(self, app, conf, logger=None):
         super(BucketLoggingMiddleware, self).__init__(
             app, conf, logger=logger, default_log_route='bucket-logging',
-            default_access_log_route='bucket-access')
+            default_access_log_route='bucket-access',
+            default_log_msg_template=(
+                '{client_ip} {remote_addr} {requester} {end_time.datetime} '
+                '{method} {path} {protocol} {status_int} {operation} '
+                '{error_code} {referer} {user_agent} {auth_token} '
+                '{signature_version} {authentication_type} {bytes_recvd} '
+                '{bytes_sent} {client_etag} {transaction_id} {headers} '
+                '{request_time} {source} {log_info} {start_time} {end_time}'))
 
         self.s3_log_prefix = conf.get('s3_log_prefix', 's3access-')
         self.s3_access_log_conf = {}
@@ -79,6 +86,54 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     # because policies are not used with s3
     def statsd_metric_name_policy(self, req, status_int, method, policy_index):
         return None
+
+    def _enrich_replacements(self, req, status_int, resp_headers):
+        """
+        Give specific information from S3 requests.
+        """
+        if req is None:
+            # To check log message template validity
+            s3_info = {
+                'account': 'a',
+                'bucket': 'b',
+                'key': '',
+                'version_id': '123456789',
+                'requester': 'r',
+                'operation': 'REST.HEAD.BUCKET',
+                'signature_version': 's3v4',
+                'authentication_type': 'AuthHeader',
+            }
+            error_code = ''
+        else:
+            s3_info = req.environ.get('s3api.info')
+            if s3_info is None:
+                # Not S3 request
+                s3_info = {}
+            error_code = s3_info.get('error_code')
+            if not error_code and status_int == 500:
+                error_code = 'InternalError'
+
+        return {
+            'account': StrAnonymizer(
+                s3_info.get('account'), self.anonymization_method,
+                self.anonymization_salt),
+            'bucket': StrAnonymizer(
+                s3_info.get('bucket'), self.anonymization_method,
+                self.anonymization_salt),
+            'object': StrAnonymizer(
+                s3_info.get('key'), self.anonymization_method,
+                self.anonymization_salt),
+            'version_id': StrAnonymizer(
+                s3_info.get('version_id'), self.anonymization_method,
+                self.anonymization_salt),
+            'requester': StrAnonymizer(
+                s3_info.get('requester'), self.anonymization_method,
+                self.anonymization_salt),
+            'operation': s3_info.get('operation'),
+            'error_code': error_code,
+            'signature_version': s3_info.get('signature_version'),
+            'authentication_type': s3_info.get('authentication_type'),
+        }
 
     def log_request(self, req, status_int, bytes_received, bytes_sent,
                     start_time, end_time, resp_headers=None, ttfb=0,
