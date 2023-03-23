@@ -56,8 +56,6 @@ from oio.common.exceptions import SourceReadTimeout
 
 BUCKET_NAME_HEADER = 'X-Object-Sysmeta-Oio-Bucket-Name'
 SLO = 'x-static-large-object'
-# FIXME(FVE): we do support versioning now
-SUPPORT_VERSIONING = True
 
 
 class ObjectControllerRouter(object):
@@ -200,9 +198,6 @@ class ObjectController(BaseObjectController):
         stored in the "main" container but in a shard, where the versioning
         mode may not have been set yet.
         """
-        if not SUPPORT_VERSIONING:
-            return None
-
         # There is no reason to save several versions of segments:
         # a new version of a multipart object manifest will point to a
         # completely different set of segments, with another uploadId.
@@ -708,7 +703,7 @@ class ObjectController(BaseObjectController):
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         # only send headers if needed
-        if SUPPORT_VERSIONING and headers.get(FORCEVERSIONING_HEADER):
+        if headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
                 headers.get(FORCEVERSIONING_HEADER)
         if 'new_version' in kwargs:
@@ -845,7 +840,7 @@ class ObjectController(BaseObjectController):
         bypass_governance = req.headers.get(
             'x-amz-bypass-governance-retention', None)
         # only send headers if needed
-        if SUPPORT_VERSIONING and req.headers.get(FORCEVERSIONING_HEADER):
+        if req.headers.get(FORCEVERSIONING_HEADER):
             oio_headers[FORCEVERSIONING_HEADER] = \
                 req.headers.get(FORCEVERSIONING_HEADER)
         try:
