@@ -83,6 +83,9 @@ class BucketRateLimitMiddleware(object):
 
         self.async_incr = config_true_value(
             conf.get("asynchronous_increment", "true"))
+        self.log_only_on_global_ratelimiting = config_true_value(
+            conf.get("log_only_on_global_ratelimiting", "false")
+        )
 
         self.memcache_servers, self.memcache_client = \
             configure_memcache_client(conf, logger=self.logger)
@@ -194,12 +197,12 @@ class BucketRateLimitMiddleware(object):
             self.logger.warning(
                 "[BucketRatelimit] Cannot ratelimit without a memcached client"
             )
-            return
+            return None
 
         bucket = req.get_bucket_name()
         if not bucket:
             # Not a bucket request
-            return
+            return None
         group = self.s3_operations.get(operation)
         ratelimit_by_group = self.ratelimit_by_group.copy()
 
@@ -237,7 +240,7 @@ class BucketRateLimitMiddleware(object):
                 group,
                 exc,
             )
-            return
+            return None
 
         # Decode keys values
         if bucket_ratelimit is None:
@@ -298,9 +301,13 @@ class BucketRateLimitMiddleware(object):
             ratelimit = ratelimit_by_group[GLOBAL_RATELIMIT_GROUP]
         if ratelimit < 0:
             # Ratelimit is disabled (no limit)
-            return
+            return None
         if ratelimit == 0:
             # No bucket requests are allowed
+            req.environ.setdefault('s3api.info', {})['ratelimit'] = True
+            # report only activated and specific bucket ratelimit not set
+            if self.log_only_on_global_ratelimiting and not bucket_ratelimit:
+                return None
             raise SlowDown()
 
         # Check the current rate
@@ -323,6 +330,10 @@ class BucketRateLimitMiddleware(object):
             # When the period is full, it is no longer useful to increment
             # the counter, otherwise the next preriod may not also access
             # the bucket
+            req.environ.setdefault('s3api.info', {})['ratelimit'] = True
+            # report only activated and specific bucket ratelimit not set
+            if self.log_only_on_global_ratelimiting and not bucket_ratelimit:
+                return None
             raise SlowDown()
 
         # Accept the request and increment current counters
