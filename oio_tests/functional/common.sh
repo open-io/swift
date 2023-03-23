@@ -53,7 +53,6 @@ function install_deps() {
     libxml2-dev \
     libxslt1-dev \
     libzmq3-dev \
-    libzookeeper-mt-dev \
     python3-all-dev python3-pip python3-virtualenv \
     zlib1g-dev
   sudo systemctl stop apache2.service
@@ -67,14 +66,7 @@ function compile_sds() {
   fi
   cd third_party/oio-sds || return
   echo "travis_fold:start:compile_deps"
-  cmake \
-    -DCMAKE_INSTALL_PREFIX="/tmp/oio" \
-    -DLD_LIBDIR="lib" \
-    -DCMAKE_BUILD_TYPE="Debug" \
-    -DSTACK_PROTECTOR=1 \
-    -DZK_LIBDIR="/usr/lib" \
-    -DZK_INCDIR="/usr/include/zookeeper" \
-    .
+  cmake ${CMAKE_OPTS} -DCMAKE_BUILD_TYPE="Debug" -DSTACK_PROTECTOR=1 ${PWD}
   make all install
   export PATH="$PATH:/tmp/oio/bin" LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/tmp/oio/lib"
   echo "travis_fold:end:compile_deps"

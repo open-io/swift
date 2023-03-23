@@ -18,13 +18,19 @@ jobs:
           apt-add-repository ppa:longsleep/golang-backports
           apt update
           # rabbitmq-server is not is the list as only necessary for oio-tests
-          apt-get install -y rabbitmq-server $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE}
+          apt-get install -y rabbitmq-server $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${GO_PACKAGE} ${PYTHON_PACKAGE} ${ZOOKEEPER_PACKAGE}
           systemctl stop redis.service
           systemctl disable redis.service
-          echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:$PATH" > $HOME/swift-env.sh
+          echo "export PATH=/opt/${GO_PACKAGE}/bin:/opt/${PYTHON_PACKAGE}/bin:/opt/${ZOOKEEPER_PACKAGE}/bin:$PATH" > $HOME/swift-env.sh
+          echo "export ZOOBINDIR=/opt/${ZOOKEEPER_PACKAGE}/bin"  >> $HOME/swift-env.sh
+          echo "export ZOOLIBDIR=/opt/${ZOOKEEPER_PACKAGE}/lib"  >> $HOME/swift-env.sh
+          echo "export ZOOINCDIR=/opt/${ZOOKEEPER_PACKAGE}/include/zookeeper"  >> $HOME/swift-env.sh
+          echo 'export CMAKE_OPTS="-DCMAKE_INSTALL_PREFIX=/tmp/oio -DLD_LIBDIR=lib -DZK_LIBDIR=${ZOOLIBDIR} -DZK_INCDIR=${ZOOINCDIR}"' >> $HOME/swift-env.sh
+          echo "export LD_LIBRARY_PATH=/opt/${GO_PACKAGE}/lib:/opt/${PYTHON_PACKAGE}:/opt/${ZOOKEEPER_PACKAGE}/lib:/tmp/oio/lib" >> $HOME/swift-env.sh
           echo "export PIP_INDEX_URL=https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/" >> $HOME/swift-env.sh
           echo "export PYTHONPATH=$(find /opt/${PYTHON_PACKAGE}/lib/ -name 'site-packages')" >> $HOME/swift-env.sh
           source $HOME/swift-env.sh
+          mkdir /tmp/oio
           /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
           cat << EOF > $HOME/swiftenv/pip.conf
           [global]
@@ -48,13 +54,15 @@ jobs:
           systemctl restart rsyslog.service
 
       - name: Run oio functional tests
-        script:
-          - pgrep rsyslogd || rsyslogd &
-          - sysctl -w kernel.core_pattern='/tmp/core.%p.%E'
-          - ulimit -c unlimited
-          - ulimit -n 8192
-          - . $HOME/swiftenv/bin/activate
-          - ./oio_tests/run_tests.sh '{{.cds.env.TEST_SUITE}}'
+        script: |+
+          #!/bin/bash
+          source $HOME/swift-env.sh
+          pgrep rsyslogd || rsyslogd &
+          sysctl -w kernel.core_pattern='/tmp/core.%p.%E'
+          ulimit -c unlimited
+          ulimit -n 8192
+          . $HOME/swiftenv/bin/activate
+          ./oio_tests/run_tests.sh '{{.cds.env.TEST_SUITE}}'
 
       - name: Analyze Ceph S3 tests results
         script:
