@@ -1225,11 +1225,14 @@ use = egg:swift#proxy_logging
 
 # Note: This is an extension of ProxyLoggingMiddleware which logs S3 requests
 #       and also sends AWS-style logs to a bucket (if configured).
-[filter:bucket-logging]
-use = egg:swift#bucket_logging
+[filter:s3-logging]
+use = egg:swift#s3_logging
+# enable customer access logging
+# customer_access_logging = false
+#
 # Log route for this filter. Useful if you want to have different configs for
-# the two bucket-logging filters.
-# access_log_route = bucket-access
+# the two s3-logging filters.
+# access_log_route = s3-logging-access
 #
 # Template used to format access logs. All words surrounded by curly brackets
 # will be substituted with the appropriate values

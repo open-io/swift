@@ -22,11 +22,11 @@ from swift.common.middleware.proxy_logging import ProxyLoggingMiddleware
 from swift.common.registry import register_sensitive_header
 from swift.common.swob import str_to_wsgi
 from swift.common.utils import LogStringFormatter, StrAnonymizer, get_logger, \
-    get_remote_client
+    get_remote_client, config_true_value
 from swift.proxy.controllers.base import get_container_info
 
 
-class BucketLoggingMiddleware(ProxyLoggingMiddleware):
+class S3LoggingMiddleware(ProxyLoggingMiddleware):
     """
     This is an extension of ProxyLoggingMiddleware which, in addition
     to logging the "standard" way, also sends AWS-style logs to a bucket
@@ -36,9 +36,9 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     """
 
     def __init__(self, app, conf, logger=None):
-        super(BucketLoggingMiddleware, self).__init__(
-            app, conf, logger=logger, default_log_route='bucket-logging',
-            default_access_log_route='bucket-access',
+        super(S3LoggingMiddleware, self).__init__(
+            app, conf, logger=logger, default_log_route='s3-logging',
+            default_access_log_route='s3-logging-access',
             default_log_msg_template=(
                 '{client_ip} {remote_addr} {requester} {end_time.datetime} '
                 '{method} {path} {protocol} {status_int} {operation} '
@@ -55,6 +55,8 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
                 's3_access_' + key, self.access_log_conf.get(key, None))
             if value:
                 self.s3_access_log_conf[key] = value
+        self.customer_access_logging = config_true_value(
+            conf.get('customer_access_logging', False))
         self.s3_access_logger = get_logger(
             self.s3_access_log_conf,
             log_route=conf.get('s3_access_log_route', 's3-access'),
@@ -138,10 +140,14 @@ class BucketLoggingMiddleware(ProxyLoggingMiddleware):
     def log_request(self, req, status_int, bytes_received, bytes_sent,
                     start_time, end_time, resp_headers=None, ttfb=0,
                     wire_status_int=None):
-        super(BucketLoggingMiddleware, self).log_request(
+        super(S3LoggingMiddleware, self).log_request(
             req, status_int, bytes_received, bytes_sent, start_time, end_time,
             resp_headers=resp_headers, ttfb=ttfb,
             wire_status_int=wire_status_int)
+
+        # customer access logging is disabled
+        if not self.customer_access_logging:
+            return
 
         s3_info = req.environ.get('s3api.info')
         if not s3_info:
@@ -234,6 +240,6 @@ def filter_factory(global_conf, **local_conf):
     register_sensitive_header('x-auth-token')
     register_sensitive_header('x-storage-token')
 
-    def bucket_logger(app):
-        return BucketLoggingMiddleware(app, conf)
-    return bucket_logger
+    def s3_logger(app):
+        return S3LoggingMiddleware(app, conf)
+    return s3_logger
