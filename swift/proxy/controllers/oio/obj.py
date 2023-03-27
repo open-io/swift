@@ -46,7 +46,6 @@ from swift.proxy.controllers.obj import check_content_type
 from swift.proxy.controllers.obj import BaseObjectController
 
 from oio.common import exceptions
-from oio.common.constants import FORCEVERSIONING_HEADER
 
 from oio.common.http import ranges_from_http_header
 from oio.common.storage_method import STORAGE_METHODS
@@ -188,53 +187,6 @@ class ObjectController(BaseObjectController):
                 resp.headers['content-type'])
 
         return resp
-
-    # TODO(FVE): get rid of this
-    # This is not needed if we rely on swift's object versioning.
-    def enforce_versioning(self, req):
-        """
-        Enforce the versioning mode of a container just before executing
-        an object operation. This is useful when the current object is not
-        stored in the "main" container but in a shard, where the versioning
-        mode may not have been set yet.
-        """
-        # There is no reason to save several versions of segments:
-        # a new version of a multipart object manifest will point to a
-        # completely different set of segments, with another uploadId.
-        bucket_name = req.environ.get('s3api.bucket')
-        if not bucket_name \
-                or self.container_name == bucket_name \
-                or self.container_name.endswith(MULTIUPLOAD_SUFFIX):
-            return None
-
-        # We can't use _get_info_from_caches as it would use local worker cache
-        # first and an update of versioning mode may not be detected.
-        memcache = getattr(self.app, 'memcache', None) or \
-            req.environ.get('swift.cache')
-        if memcache is None:
-            return None
-
-        key = "/".join(("versioning", self.account_name, bucket_name))
-        val = memcache.get(key)
-        if val is not None:
-            if val != '':
-                req.headers[FORCEVERSIONING_HEADER] = val
-            return
-
-        oio_headers = {REQID_HEADER: self.trans_id}
-        oio_cache = req.environ.get('oio.cache')
-        perfdata = req.environ.get('swift.perfdata')
-        try:
-            meta = self.app.storage.container_get_properties(
-                self.account_name, bucket_name, headers=oio_headers,
-                cache=oio_cache, perfdata=perfdata)
-        except exceptions.NoSuchContainer:
-            raise HTTPNotFound(request=req)
-
-        val = meta['system'].get('sys.m2.policy.version', '')
-        memcache.set(key, val)
-        if val:
-            req.headers[FORCEVERSIONING_HEADER] = val
 
     def get_object_head_resp(self, req):
         storage = self.app.storage
@@ -487,8 +439,6 @@ class ObjectController(BaseObjectController):
             if aresp:
                 return aresp
 
-        self.enforce_versioning(req)
-
         old_slo_manifest = None
         old_slo_manifest_etag = None
         # If versioning is disabled, we must check if the object exists.
@@ -702,10 +652,6 @@ class ObjectController(BaseObjectController):
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
-        # only send headers if needed
-        if headers.get(FORCEVERSIONING_HEADER):
-            oio_headers[FORCEVERSIONING_HEADER] = \
-                headers.get(FORCEVERSIONING_HEADER)
         if 'new_version' in kwargs:
             # In a case of a MPU, we want the manifest to have the same
             # version-id as the original MPU placeholder. We cannot simply
@@ -828,8 +774,6 @@ class ObjectController(BaseObjectController):
 
         req.ensure_x_timestamp()
 
-        self.enforce_versioning(req)
-
         return self._delete_object(req)
 
     def _delete_object(self, req):
@@ -839,10 +783,6 @@ class ObjectController(BaseObjectController):
         perfdata = req.environ.get('swift.perfdata')
         bypass_governance = req.headers.get(
             'x-amz-bypass-governance-retention', None)
-        # only send headers if needed
-        if req.headers.get(FORCEVERSIONING_HEADER):
-            oio_headers[FORCEVERSIONING_HEADER] = \
-                req.headers.get(FORCEVERSIONING_HEADER)
         try:
             storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
