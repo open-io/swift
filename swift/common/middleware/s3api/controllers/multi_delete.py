@@ -20,7 +20,7 @@ import json
 from swift.common.constraints import MAX_OBJECT_NAME_LENGTH
 from swift.common.http import HTTP_NO_CONTENT
 from swift.common.swob import str_to_wsgi
-from swift.common.utils import public, StreamingPile
+from swift.common.utils import config_true_value, public, StreamingPile
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -157,6 +157,8 @@ class MultiObjectDeleteController(Controller):
                 req.params = {'version-id': version, 'symlink': 'get'}
             req_headers = {'Accept': 'application/json'}
 
+            delete_marker = False
+            delete_marker_version = None
             try:
                 check_iam_access('s3:DeleteObject')(
                     lambda x, req: None)(None, req)
@@ -192,9 +194,9 @@ class MultiObjectDeleteController(Controller):
                             msg_parts.extend(
                                 '%s: %s' % (obj, status)
                                 for obj, status in delete_result['Errors'])
-                            return key, version, {'code': 'SLODeleteError',
-                                                  'message':
-                                                  '\n'.join(msg_parts)}
+                            return (key, version, False, None,
+                                    {'code': 'SLODeleteError',
+                                     'message': '\n'.join(msg_parts)})
                         # else, all good
                     except (ValueError, TypeError, KeyError):
                         # Logs get all the gory details
@@ -202,31 +204,41 @@ class MultiObjectDeleteController(Controller):
                             'Could not parse SLO delete response (%s): %s',
                             resp.status, resp.body)
                         # Client gets something more generic
-                        return key, version, {'code': 'SLODeleteError',
-                                              'message':
-                                              'Unexpected swift response'}
+                        return (key, version, False, None,
+                                {'code': 'SLODeleteError',
+                                 'message': 'Unexpected swift response'})
+                else:
+                    delete_marker = config_true_value(
+                        resp.headers.get("x-amz-delete-marker"))
+                    if delete_marker:
+                        delete_marker_version = \
+                            resp.headers.get("x-amz-version-id")
             except (NoSuchKey, NoSuchVersion):
                 if self.has_bucket_or_object_read_permission(req) is False:
                     e = AccessDenied()
-                    return key, version, {'versionid': version,
-                                          'code': e.__class__.__name__,
-                                          'message': e._msg}
+                    return (key, version, False, None,
+                            {'versionid': version,
+                             'code': e.__class__.__name__,
+                             'message': e._msg})
             except ErrorResponse as e:
-                return key, version, {'versionid': version,
-                                      'code': e.__class__.__name__,
-                                      'message': e._msg}
+                return (key, version, False, None,
+                        {'versionid': version,
+                         'code': e.__class__.__name__,
+                         'message': e._msg})
             except Exception:
                 self.logger.exception(
                     'Unexpected Error handling DELETE of %r %r' % (
                         req.container_name, key))
-                return key, version, {'code': 'Server Error',
-                                      'message': 'Server Error'}
+                return (key, version, False, None,
+                        {'code': 'Server Error', 'message': 'Server Error'})
 
-            return key, version, None
+            return key, version, delete_marker, delete_marker_version, None
 
         with StreamingPile(self.conf.multi_delete_concurrency) as pile:
-            for key, version, err in pile.asyncstarmap(do_delete, (
-                    (req, key, version) for key, version in delete_list)):
+            for key, version, del_marker, del_marker_vers, err \
+                    in pile.asyncstarmap(do_delete,
+                                         ((req, key, version)
+                                          for key, version in delete_list)):
                 if err:
                     error = SubElement(elem, 'Error')
                     SubElement(error, 'Key').text = key
@@ -239,6 +251,12 @@ class MultiObjectDeleteController(Controller):
                     SubElement(deleted, 'Key').text = key
                     if version:
                         SubElement(deleted, 'VersionId').text = version
+                    if del_marker:
+                        SubElement(deleted, 'DeleteMarker').text = 'true'
+                    if del_marker_vers:
+                        SubElement(
+                            deleted,
+                            'DeleteMarkerVersionId').text = del_marker_vers
 
         body = tostring(elem)
 

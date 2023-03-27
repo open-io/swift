@@ -783,10 +783,12 @@ class ObjectController(BaseObjectController):
         perfdata = req.environ.get('swift.perfdata')
         bypass_governance = req.headers.get(
             'x-amz-bypass-governance-retention', None)
+        del_marker = False
+        oio_version = obj_version_from_env(req.environ)
         try:
-            storage.object_delete(
+            del_marker, oio_version = storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
-                version=obj_version_from_env(req.environ),
+                version=oio_version,
                 bypass_governance=bypass_governance,
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)
         except exceptions.NoSuchContainer:
@@ -798,5 +800,11 @@ class ObjectController(BaseObjectController):
             # else -- Swift doesn't consider this case as an error
         except exceptions.Forbidden:
             raise HTTPForbidden(request=req)
-        resp = HTTPNoContent(request=req)
+
+        headers = {
+            "x-amz-version-id": oio_versionid_to_swift_versionid(oio_version)
+        }
+        if del_marker:
+            headers["x-amz-delete-marker"] = "true"
+        resp = HTTPNoContent(request=req, headers=headers)
         return resp

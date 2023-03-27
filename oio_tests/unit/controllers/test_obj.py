@@ -142,12 +142,14 @@ class TestObjectController(unittest.TestCase):
 
     def test_DELETE_simple(self):
         req = Request.blank('/v1/a/c/o', method='DELETE')
-        self.storage.object_delete = Mock()
+        self.storage.object_delete = Mock(return_value=(False, '0'))
         resp = req.get_response(self.app)
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, bypass_governance=None,
             headers=ANY, cache=None, perfdata=ANY)
         self.assertEqual(204, resp.status_int)
+        # oio-sds always sets version ids, even when versioning is suspended
+        self.assertIn('x-amz-version-id', resp.headers)
 
     def test_DELETE_not_found(self):
         req = Request.blank('/v1/a/c/o', method='DELETE')

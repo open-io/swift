@@ -71,6 +71,9 @@ class TestS3Versioning(unittest.TestCase):
             profile=profile)
         deleted_keys = {k['Key'] for k in res['Deleted']}
         self.assertEqual(deleted_keys, set(keys))
+        # Make sure we did not create delete markers
+        self.assertFalse(any(k.get('DeleteMarker', False)
+                             for k in res['Deleted']))
 
     def test_containers_list(self):
         bucket = random_str(10)
@@ -94,6 +97,40 @@ class TestS3Versioning(unittest.TestCase):
         self.bucket = 'user1bucket'
         run_awscli_s3api('create-bucket', bucket=self.bucket)
         return self._test_multi_delete_utf8(profile='user1')
+
+    def test_multi_delete_utf8_delete_markers(self):
+        uploaded = []
+        keys = ("business/bar🍹", "business/café☕", "business/real estate🏡")
+        for key in keys:
+            self._create_simple_object(key, profile='default')
+            # Do not set versionId
+            uploaded.append({"Key": key})
+        payload = {"Objects": uploaded, "Quiet": False}
+        res = run_awscli_s3api(
+            "delete-objects",
+            "--delete", json.dumps(payload),
+            bucket=self.bucket,
+            profile='default')
+        deleted_keys = {k['Key'] for k in res['Deleted']}
+        self.assertEqual(deleted_keys, set(keys))
+        self.assertTrue(all(k.get('DeleteMarker', False)
+                            for k in res['Deleted']))
+
+        next_payload = []
+        for obj in res['Deleted']:
+            next_payload.append({"Key": obj["Key"],
+                                 "VersionId": obj["DeleteMarkerVersionId"]})
+            next_payload.append({
+                "Key": obj["Key"],
+                "VersionId":
+                    str(float(obj["DeleteMarkerVersionId"]) - 0.000001)
+            })
+        payload = {"Objects": next_payload, "Quiet": False}
+        run_awscli_s3api(
+            "delete-objects",
+            "--delete", json.dumps(payload),
+            bucket=self.bucket,
+            profile='default')
 
     def _create_mpu_object(self, key):
         size = 4 * 1024 * 1024

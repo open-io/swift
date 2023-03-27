@@ -188,7 +188,8 @@ OBJ_2_MD5=$(jq -r ".ETag|tostring" <<< "$OBJ_2_META")
 [[ $(md5sum obj | cut -d ' ' -f 1) == "$OBJ_2_EXPECTED_MD5" ]]
 
 echo "*** Putting a delete marker ***"
-${AWS} s3 rm "s3://${BUCKET}/obj"
+MARKER_META=$(${AWS} s3api delete-object --bucket "${BUCKET}" --key obj)
+[[ $(jq -r ".DeleteMarker" <<< "$MARKER_META") == "true" ]]
 
 echo "Listing current version, and checking"
 CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}")
