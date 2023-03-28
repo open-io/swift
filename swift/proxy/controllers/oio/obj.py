@@ -456,6 +456,28 @@ class ObjectController(BaseObjectController):
             if aresp:
                 return aresp
 
+        oio_query = req.environ.setdefault('oio.query', {})
+        create_delete_marker = oio_query.get('create_delete_marker')
+        if create_delete_marker:
+            # Only S3 object creations allow metadata to be sent freely.
+            # For replication, the creation of a delete marker must also
+            # go through the REST.PUT.OBJECT operation.
+            if req.content_length:
+                raise HTTPBadRequest('Expect no data to create delete marker')
+            version_id = oio_query.pop('new_version', None)
+            if not version_id:  # Fail fast
+                raise HTTPBadRequest('Missing version to create delete marker')
+            oio_query['version'] = version_id
+            resp = self._delete_object(req)
+            if resp.status_int != 204:
+                return resp
+            return HTTPCreated(
+                request=req, etag="DELETEMARKER",
+                last_modified=int(float(version_id)),
+                headers={
+                    'x-object-sysmeta-version-id': version_id
+                })
+
         old_slo_manifest = None
         old_slo_manifest_etag = None
         # If versioning is disabled, we must check if the object exists.
@@ -803,10 +825,13 @@ class ObjectController(BaseObjectController):
             'x-amz-bypass-governance-retention', None)
         del_marker = False
         oio_version = obj_version_from_env(req.environ)
+        create_delete_marker = req.environ.get(
+            'oio.query', {}).get('create_delete_marker')
         try:
             del_marker, oio_version = storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
                 version=oio_version,
+                create_delete_marker=create_delete_marker,
                 bypass_governance=bypass_governance,
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)
         except exceptions.NoSuchContainer:

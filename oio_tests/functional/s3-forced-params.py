@@ -48,7 +48,7 @@ class TestForcedParams(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super(TestForcedParams, cls).setUpClass()
-        cls.bucket = "user1bucket"
+        cls.bucket = f"user1bucket-{random.randint(0, 9999)}"
         cls.client = get_boto3_client(profile="user1")
         cls.admin_client = get_boto3_client(profile="default")
         cls.admin_client.create_bucket(Bucket=cls.bucket)
@@ -58,7 +58,7 @@ class TestForcedParams(unittest.TestCase):
         try:
             cls.admin_client.delete_bucket(Bucket=cls.bucket)
         except ClientError as exc:
-            print(f"tearDownClass: {exc}")
+            print(f"tearDown: Failed to delete bucket {cls.bucket}: {exc}")
         super(TestForcedParams, cls).tearDownClass()
 
     def setUp(self):
@@ -66,12 +66,13 @@ class TestForcedParams(unittest.TestCase):
         self._to_delete = []
 
     def tearDown(self):
-        for obj in self._to_delete:
+        for obj, version in self._to_delete:
             try:
-                self.admin_client.delete_object(Bucket=self.__class__.bucket,
-                                                Key=obj)
+                self.admin_client.delete_object(
+                    Bucket=self.bucket, Key=obj, VersionId=version)
             except Exception as exc:
-                print(f"tearDown: {exc}")
+                print("tearDown: Failed to delete object "
+                      f"{self.bucket}/{obj}/{version}: {exc}")
         super().tearDown()
 
     # -------------------------------------------
@@ -114,30 +115,37 @@ class TestForcedParams(unittest.TestCase):
         version = "1234567890.000000"
         client.meta.events.register(
             'before-sign.s3.PutObject',
-            partial(self.__class__._set_custom_header,
+            partial(self._set_custom_header,
                     VersionId=version))
-        client.put_object(Bucket=self.bucket, Key=key, Body=data)
-        self._to_delete.append(key)
+        put_res = client.put_object(Bucket=self.bucket, Key=key, Body=data)
+        self._to_delete.append((key, put_res['VersionId']))
+        if is_reseller:
+            self.assertEqual(version, put_res['VersionId'])
+        else:
+            self.assertNotEqual(version, put_res['VersionId'])
         head_res = client.head_object(Bucket=self.bucket, Key=key)
         self.assertEqual(len(data), head_res['ContentLength'])
-        if is_reseller:
-            self.assertEqual(version, head_res['VersionId'])
-        else:
-            self.assertNotEqual(version, head_res['VersionId'])
+        self.assertEqual(put_res['VersionId'], head_res['VersionId'])
 
     def test_force_version_v2_sign(self):
         sigv2_client = get_boto3_client(profile="default",
                                         signature_version='s3')
-        return self._test_upload_object_forced_version(sigv2_client)
+        try:
+            self._test_upload_object_forced_version(sigv2_client)
+        finally:
+            sigv2_client.close()
 
     def test_force_version_v4_sign(self):
-        return self._test_upload_object_forced_version(self.admin_client)
+        self._test_upload_object_forced_version(self.admin_client)
 
     def test_force_version_v2_sign_not_reseller(self):
         sigv2_client = get_boto3_client(profile="user1",
                                         signature_version='s3')
-        return self._test_upload_object_forced_version(sigv2_client,
-                                                       is_reseller=False)
+        try:
+            self._test_upload_object_forced_version(sigv2_client,
+                                                    is_reseller=False)
+        finally:
+            sigv2_client.close()
 
     def test_force_version_v4_sign_not_reseller(self):
         return self._test_upload_object_forced_version(self.client,
@@ -149,16 +157,17 @@ class TestForcedParams(unittest.TestCase):
         version = "1234567890.000000"
         client.meta.events.register(
             'before-call.s3.PutObject',
-            self.__class__._set_custom_header_v2)
-        client.put_object(Bucket=self.bucket, Key=key, Body=data,
-                          Metadata={"x-oio-version-id": version})
-        self._to_delete.append(key)
+            self._set_custom_header_v2)
+        put_res = client.put_object(Bucket=self.bucket, Key=key, Body=data,
+                                    Metadata={"x-oio-version-id": version})
+        self._to_delete.append((key, put_res['VersionId']))
+        if is_reseller:
+            self.assertEqual(version, put_res['VersionId'])
+        else:
+            self.assertNotEqual(version, put_res['VersionId'])
         head_res = client.head_object(Bucket=self.bucket, Key=key)
         self.assertEqual(len(data), head_res['ContentLength'])
-        if is_reseller:
-            self.assertEqual(version, head_res['VersionId'])
-        else:
-            self.assertNotEqual(version, head_res['VersionId'])
+        self.assertEqual(put_res['VersionId'], head_res['VersionId'])
 
     def test_force_version_v2_v4_sign(self):
         return self._test_upload_object_forced_version_v2(self.admin_client)
@@ -173,26 +182,60 @@ class TestForcedParams(unittest.TestCase):
         data = key.encode('utf-8')
         version = "1234567890.000000"
         cust_header = "x-oio-?version-id"
-        client.put_object(bucket_name=self.bucket, object_name=key,
-                          data=io.BytesIO(data), length=len(data),
-                          metadata={cust_header: version})
-        self._to_delete.append(key)
+        put_res = client.put_object(bucket_name=self.bucket, object_name=key,
+                                    data=io.BytesIO(data), length=len(data),
+                                    metadata={cust_header: version})
+        self._to_delete.append((key, put_res.version_id))
+        if is_reseller:
+            self.assertEqual(version, put_res.version_id)
+        else:
+            self.assertNotEqual(version, put_res.version_id)
         head_res = client.stat_object(bucket_name=self.bucket, object_name=key)
         self.assertEqual(len(data), head_res.size)
-        if is_reseller:
-            self.assertEqual(version, head_res.version_id)
-        else:
-            self.assertNotEqual(version, head_res.version_id)
+        self.assertEqual(put_res.version_id, head_res.version_id)
         self.assertNotIn(cust_header, head_res.metadata)
 
     def test_force_version_minio(self):
         client = get_minio_client(profile="default")
-        return self._test_upload_object_forced_version_minio(client)
+        self._test_upload_object_forced_version_minio(client)
 
     def test_force_version_minio_not_reseller(self):
         client = get_minio_client(profile="user1")
-        return self._test_upload_object_forced_version_minio(client,
-                                                             is_reseller=False)
+        self._test_upload_object_forced_version_minio(
+            client, is_reseller=False)
+
+    def _test_create_delete_marker_minio(self, client, is_reseller=True):
+        key = "upload_%04d" % (random.randint(0, 9999),)
+        version = "1234567890.000000"
+        cust_metadata = {
+            "x-oio-?version-id": version,
+            "x-oio-?delete-marker": True,
+        }
+        put_res = client.put_object(bucket_name=self.bucket, object_name=key,
+                                    data=io.BytesIO(b""), length=0,
+                                    metadata=cust_metadata)
+        self._to_delete.append((key, put_res.version_id))
+        if is_reseller:
+            self.assertEqual(version, put_res.version_id)
+        else:
+            self.assertNotEqual(version, put_res.version_id)
+        list_res = client.list_objects(
+            bucket_name=self.bucket, prefix=key, include_version=True)
+        obj = next(list_res)
+        self.assertEqual(obj.object_name, key)
+        self.assertEqual(put_res.version_id, obj.version_id)
+        if is_reseller:
+            self.assertTrue(obj.is_delete_marker)
+        else:
+            self.assertFalse(obj.is_delete_marker)
+
+    def test_create_delete_marker_minio(self):
+        client = get_minio_client(profile="default")
+        self._test_create_delete_marker_minio(client)
+
+    def test_create_delete_marker_minio_not_reseller(self):
+        client = get_minio_client(profile="user1")
+        self._test_create_delete_marker_minio(client, is_reseller=False)
 
 
 if __name__ == "__main__":

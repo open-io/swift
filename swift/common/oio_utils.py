@@ -15,7 +15,7 @@
 
 from functools import wraps
 from swift.common.request_helpers import split_reserved_name
-from swift.common.utils import Timestamp
+from swift.common.utils import Timestamp, config_true_value
 
 from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPNotFound, \
@@ -161,7 +161,8 @@ def extract_oio_headers(fnc):
     """
 
     _header_mapping = {
-        "version-id": "new_version"
+        "version-id": ("new_version", str),
+        "delete-marker": ("create_delete_marker", config_true_value),
     }
 
     @wraps(fnc)
@@ -182,7 +183,8 @@ def extract_oio_headers(fnc):
                 if lowered.startswith(aws_oio_prefix):
                     suffix = lowered[len(aws_oio_prefix):]
                     if suffix in _header_mapping:
-                        query[_header_mapping[suffix]] = val
+                        query_key, convert_query_val = _header_mapping[suffix]
+                        query[query_key] = convert_query_val(val)
                     else:
                         self.logger.debug(
                             "%s is not mapped to any OpenIO param", key)
