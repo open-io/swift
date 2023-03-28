@@ -31,7 +31,6 @@ use = egg:swift#proxy_logging
 
 [filter:s3-logging]
 use = egg:swift#s3_logging
-customer_access_logging = true
 
 [filter:catch_errors]
 use = egg:swift#catch_errors

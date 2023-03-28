@@ -44,13 +44,16 @@ class FakeReq(S3Request):
                  content_length=None,
                  bucket_db=None):
         self.environ = {}
+        self.environ['s3api.info'] = {}
+        self.environ['s3api.bucket_db'] = bucket_db
         self.headers = {}
         self.method = method
         self.account = account
         self.container_name = container_name
+        self.bucket = container_name
         self.object_name = object_name
+        self.key = object_name
         self.content_length = content_length
-        self.environ['s3api.bucket_db'] = bucket_db
 
 
 class TestBucketQuotas(S3ApiTestCase):

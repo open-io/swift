@@ -198,7 +198,7 @@ class BucketRateLimitMiddleware(object):
         """
         self.logger.debug(
             "[BucketRatelimit] Fetch the bucket info of %s "
-            "to extract ratelimit info", req.get_bucket_name())
+            "to extract ratelimit info", req.bucket)
         try:
             bucket_info = req.get_bucket_info(self.app)
         except NoSuchBucket:
@@ -218,7 +218,7 @@ class BucketRateLimitMiddleware(object):
             )
             return None
 
-        bucket = req.get_bucket_name()
+        bucket = req.bucket
         if not bucket:
             # Not a bucket request
             return None

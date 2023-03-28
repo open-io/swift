@@ -149,7 +149,6 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.constraints import valid_api_version
 from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
-from swift.common.swob import wsgi_to_str
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
@@ -449,22 +448,6 @@ class S3ApiMiddleware(object):
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
             env['s3api.bucket'] = req.container_name
-            env['s3api.info'] = {
-                'bucket': wsgi_to_str(req.container_name),
-                'requester': req.user_id,
-                'signature_version': req.signature_version,
-                'authentication_type': req.authentication_type,
-            }
-            try:
-                env['s3api.info']['account'] = req.get_account(
-                    req.container_name)
-            except Exception:
-                pass
-            if req.object_name:
-                env['s3api.info']['key'] = wsgi_to_str(req.object_name)
-                env['s3api.info']['version_id'] = req.params.get('versionId')
-                env['s3api.storage_policy_to_class'] = \
-                    req.storage_policy_to_class
             if req.storage_class:
                 auto_storage_policies = self.conf.auto_storage_policies.get(
                     req.storage_class)

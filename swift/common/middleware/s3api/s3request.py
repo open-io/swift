@@ -280,8 +280,6 @@ class SigV4Mixin(object):
     A request class mixin to provide S3 signature v4 functionality
     """
 
-    signature_version = 'SigV4'
-
     def check_signature(self, secret):
         secret = utf8encode(secret)
         # Save secret for further signature computation
@@ -708,12 +706,34 @@ def get_request_class(env, s3_acl):
         return request_classes[0]
 
 
+def _req_s3api_info(field):
+    """
+    Set and retrieve value of the field entry in self.environ['s3api.info].
+    """
+    def getter(self):
+        return self.environ['s3api.info'].get(field)
+
+    def setter(self, value):
+        self.environ['s3api.info'][field] = value
+
+    return property(getter, setter,
+                    doc="Get and set the %s in the S3 info" % field)
+
+
 class S3Request(swob.Request):
     """
     S3 request object.
     """
 
-    signature_version = 'SigV2'
+    account = _req_s3api_info('account')
+    bucket = _req_s3api_info('bucket')
+    key = _req_s3api_info('key')
+    version_id = _req_s3api_info('version_id')
+    style = _req_s3api_info('style')
+    signature_version = _req_s3api_info('signature_version')
+    authentication_type = _req_s3api_info('authentication_type')
+    user_id = _req_s3api_info('requester')
+
     bucket_acl = _header_acl_property('container')
     object_acl = _header_acl_property('object')
 
@@ -725,6 +745,10 @@ class S3Request(swob.Request):
         self._timestamp = None
         self._secret = None
         self._chunk_signature_valid = True
+
+        # Reset S3 information for this new S3 request
+        self.environ['s3api.info'] = {}
+
         given_domain = None
         if 'HTTP_HOST' in self.environ:
             given_domain = self.environ['HTTP_HOST']
@@ -735,8 +759,50 @@ class S3Request(swob.Request):
             self.bucket_in_host,
             self.is_website,
         ) = self._parse_host(given_domain, self.conf.storage_domains)
-        self.access_key, self.signature = self._parse_auth_info()
-        self.container_name, self.object_name = self._parse_uri()
+        self.access_key, self.signature = None, None
+        parse_auth_info_success = False
+        self.container_name, self.object_name = None, None
+        parse_uri_success = False
+        try:
+            self.access_key, self.signature = self._parse_auth_info()
+            parse_auth_info_success = True
+        except NotS3Request:
+            raise
+        except Exception:
+            # If this is an S3 request, still try to fetch the container name
+            # to provide as much information as possible in the logs
+            try:
+                self.container_name, self.object_name = self._parse_uri()
+                parse_uri_success = True
+            except Exception:
+                pass
+            raise
+        else:
+            self.container_name, self.object_name = self._parse_uri()
+            parse_uri_success = True
+        finally:
+            if parse_uri_success:
+                try:
+                    # Load all possible information in s3api.info before
+                    # the first checks (and the first exceptions)
+                    self.bucket = self._get_bucket_name()
+                    if self.object_name:
+                        self.key = swob.wsgi_to_str(self.object_name)
+                        self.version_id = self.params.get('versionId')
+                        self.environ['s3api.storage_policy_to_class'] = \
+                            self.storage_policy_to_class
+                    self.style = 'virtual' if self.bucket_in_host else 'path'
+                    if not self._is_anonymous:
+                        self.signature_version = \
+                            f'SigV{self._signature_version}'
+                    self.authentication_type = self._get_authentication_type()
+                except Exception:
+                    if parse_auth_info_success:
+                        raise
+                    # else
+                    #   Do not replace the main exception with another one
+
+        # Check parameters and headers
         self.storage_class = self._get_storage_class()
         self._validate_headers()
         if not self._is_anonymous:
@@ -750,11 +816,8 @@ class S3Request(swob.Request):
                 'check_signature': self.check_signature,
             }
         else:
-            self.signature_version = None
             self.string_to_sign = None
-        self.account = None
         self.user_account = None
-        self.user_id = None
 
         # Avoids that swift.swob.Response replaces Location header value
         # by full URL when absolute path given. See swift.swob for more detail.
@@ -825,8 +888,7 @@ class S3Request(swob.Request):
                  'Expires' not in self.params and
                  'X-Amz-Credential' not in self.params))
 
-    @property
-    def authentication_type(self):
+    def _get_authentication_type(self):
         if self._is_query_auth:
             return 'QueryString'
         if self._is_header_auth:
@@ -1426,11 +1488,8 @@ class S3Request(swob.Request):
 
     def get_account(self, container):
         account = None
-        if container:
-            if container.endswith(MULTIUPLOAD_SUFFIX):
-                bucket = container[:-len(MULTIUPLOAD_SUFFIX)]
-            else:
-                bucket = container
+        bucket = self._get_bucket_name(container) if container else None
+        if bucket:
             # Anonymous requests do not know in advance the account used.
             if self._is_anonymous:
                 if self.bucket_db:
@@ -1981,14 +2040,15 @@ class S3Request(swob.Request):
             raise InternalError(
                 'unexpected status code %d' % info['status'])
 
-    def get_bucket_name(self):
-        bucket = self.environ.get('s3api.info', {}).get('bucket')
-        if not bucket and self.container_name:
-            if self.container_name.endswith(MULTIUPLOAD_SUFFIX):
-                bucket = self.container_name[:-len(MULTIUPLOAD_SUFFIX)]
-            else:
-                bucket = self.container_name
-            bucket = swob.wsgi_to_str(bucket)
+    def _get_bucket_name(self, container_name=None):
+        container_name = container_name or self.container_name
+        if not container_name:
+            return None
+        if container_name.endswith(MULTIUPLOAD_SUFFIX):
+            bucket = container_name[:-len(MULTIUPLOAD_SUFFIX)]
+        else:
+            bucket = container_name
+        bucket = swob.wsgi_to_str(bucket)
         if not bucket:
             return None
         return bucket
@@ -2000,7 +2060,7 @@ class S3Request(swob.Request):
 
         :raises NoSuchBucket:
         """
-        bucket = self.get_bucket_name()
+        bucket = self.bucket
         if bucket is None:
             raise ValueError('Not a bucket request')
 
@@ -2019,18 +2079,18 @@ class S3Request(swob.Request):
                     self.container_name = swob.str_to_wsgi(bucket)
                     container_info = self.get_container_info(
                         app, read_caches=read_caches)
+                    if is_success(container_info['status']):
+                        bucket_info = {
+                            "account": self.account,
+                            "ctime": container_info.get("created_at"),
+                            "mtime": container_info.get("status_changed_at"),
+                            "bytes": container_info.get("bytes", 0),
+                            "objects": container_info.get("object_count", 0),
+                        }
                 except NoSuchBucket:
                     pass
                 finally:
                     self.container_name = container_name
-                if container_info:
-                    bucket_info = {
-                        "account": self.account,
-                        "ctime": container_info.get("created_at"),
-                        "mtime": container_info.get("status_changed_at"),
-                        "bytes": container_info.get("bytes", 0),
-                        "objects": container_info.get("object_count", 0),
-                    }
             set_info_in_infocache(self.environ, bucket_info, bucket=bucket)
 
         if bucket_info is None:
