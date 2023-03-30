@@ -1525,15 +1525,22 @@ class S3Request(swob.Request):
         enabled = acct_info['meta'].get(self.conf.account_enabled_key, 'true')
         return enabled == 'true'
 
-    def to_swift_req(self, method, container, obj, query=None,
-                     body=None, headers=None):
+    @staticmethod
+    def to_swift_request(
+            environ, method, account, container, obj,
+            bucket_in_host=None, query=None, body=None, headers=None,
+            force_swift_request_proxy_log=True):
         """
         Create a Swift request based on this request's environment.
-        """
-        env = self.environ.copy()
-        env['swift.infocache'] = self.environ.setdefault('swift.infocache', {})
 
-        account = self.get_account(container)
+        It's a static method, so some information about the S3 request
+        (or config) must be passed in the parameters:
+        - account
+        - bucket_in_host
+        - force_swift_request_proxy_log
+        """
+        env = environ.copy()
+        env['swift.infocache'] = environ.setdefault('swift.infocache', {})
 
         def sanitize(value):
             if set(value).issubset(string.printable):
@@ -1569,7 +1576,7 @@ class S3Request(swob.Request):
                 else:
                     env[key] = sanitize(value)
         else:  # mostly-functional fallback
-            for key in self.environ:
+            for key in environ:
                 if not key.startswith('HTTP_X_AMZ_META_'):
                     continue
                 # AWS ignores user-defined headers with these characters
@@ -1605,7 +1612,7 @@ class S3Request(swob.Request):
                     query = dict()
                 query['multipart-manifest'] = 'get'
 
-        if self.conf.force_swift_request_proxy_log:
+        if force_swift_request_proxy_log:
             env['swift.proxy_access_log_made'] = False
         env['swift.source'] = 'S3'
         if method is not None:
@@ -1630,9 +1637,9 @@ class S3Request(swob.Request):
             params.append('version-id=' + copy_from_version_id)
         env['QUERY_STRING'] = '&'.join(params)
 
-        if self.bucket_in_host:
+        if bucket_in_host:
             # Delete the bucket name in the hostname
-            bucket_prefix = self.bucket_in_host + '.'
+            bucket_prefix = bucket_in_host + '.'
             http_host = env.get('HTTP_HOST', None)
             if http_host and http_host.startswith(bucket_prefix):
                 env['HTTP_HOST'] = http_host[len(bucket_prefix):]
@@ -1642,6 +1649,18 @@ class S3Request(swob.Request):
 
         return swob.Request.blank(quote(path), environ=env, body=body,
                                   headers=headers)
+
+    def to_swift_req(self, method, container, obj, query=None,
+                     body=None, headers=None):
+        """
+        Create a Swift request based on this request's environment.
+        """
+        force_swift_request_proxy_log = self.conf.force_swift_request_proxy_log
+        return self.to_swift_request(
+            self.environ, method, self.get_account(container), container, obj,
+            bucket_in_host=self.bucket_in_host,
+            query=query, body=body, headers=headers,
+            force_swift_request_proxy_log=force_swift_request_proxy_log)
 
     def storage_policy_to_class(self, storage_policy, default='STANDARD'):
         if not storage_policy:

@@ -612,7 +612,7 @@ def get_cache_key(account, container=None, obj=None, shard=None, bucket=None):
     bucket = to_native(bucket)
 
     if bucket:
-        cache_key = 'bucket-%s' % bucket
+        cache_key = 'bucket/%s' % bucket
     elif shard:
         if not (account and container):
             raise ValueError('Shard cache key requires account and container')

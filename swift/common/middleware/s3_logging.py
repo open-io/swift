@@ -18,7 +18,9 @@ import json
 import logging
 from six.moves.urllib.parse import quote
 
+from swift.common.http import is_success
 from swift.common.middleware.proxy_logging import ProxyLoggingMiddleware
+from swift.common.middleware.s3api.s3request import S3Request
 from swift.common.registry import register_sensitive_header
 from swift.common.swob import str_to_wsgi
 from swift.common.utils import LogStringFormatter, StrAnonymizer, get_logger, \
@@ -166,20 +168,27 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
         if not account:
             # Missing account to find the root container
             return
-        path_info_orig = req.environ['PATH_INFO']
-        try:
-            # Overwrite PATH_INFO with the main container path
-            container = str_to_wsgi(bucket)
-            req.environ['PATH_INFO'] = f'/v1/{account}/{container}'
 
-            container_info = get_container_info(
-                req.environ, self.app, swift_source='S3LOGGING')
-            if not container_info['sysmeta'].get('s3api-logging'):
-                # Logging disabled
-                return
-        finally:
-            # Restore original PATH_INFO to env
-            req.environ['PATH_INFO'] = path_info_orig
+        # (completely) Convert S3 request to Swift request
+        container = str_to_wsgi(bucket)
+        bucket_in_host = (
+            container if s3_info.get('style') == 'virtual' else None
+        )
+        sw_req = S3Request.to_swift_request(
+            req.environ, 'HEAD', account, container, None,
+            bucket_in_host=bucket_in_host)
+        container_info = get_container_info(
+            sw_req.environ, self.app, swift_source='S3LOGGING')
+        container_status = container_info['status']
+        if not is_success(container_status):
+            if container_status != 404:
+                self.logger.warning(
+                    'Impossible to know if the Logging is enabled (%s)',
+                    container_status)
+            return
+        if not container_info['sysmeta'].get('s3api-logging'):
+            # Logging disabled
+            return
 
         request_uri = '%s %s %s' % (
             self.method_from_req(req), req.path_qs,
