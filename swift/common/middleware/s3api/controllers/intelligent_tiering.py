@@ -22,7 +22,7 @@ from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import BadRequest, \
-    HTTPOk, MalformedXML, S3NotImplemented
+    HTTPOk, MalformedXML, NoSuchConfiguration, S3NotImplemented
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
@@ -43,15 +43,7 @@ def header_name_from_id(tiering_id):
     Generate the name of the header which will contain the whole
     tiering configuration document.
     """
-    return header_name_prefix() + tiering_id
-
-
-def header_name_prefix():
-    """
-    Compute the prefix of the header which will contain the whole
-    tiering configuration document.
-    """
-    return TIERING_HEADER_PREFIX
+    return f"{TIERING_HEADER_PREFIX}{tiering_id.replace('_', '-')}"
 
 
 def xml_conf_to_dict(tiering_conf_xml):
@@ -114,6 +106,15 @@ class IntelligentTieringController(Controller):
 
         return elem
 
+    def _get_document_from_resp(self, resp, tiering_id):
+        document = resp.sysmeta_headers.get(header_name_from_id(tiering_id))
+        if not document:
+            return None
+
+        # Check tiering_id in document
+        stored_id = xml_conf_to_dict(document.encode('utf-8')).get('Id')
+        return document if stored_id == tiering_id else None
+
     @set_s3_operation_rest('INTELLIGENT_TIERING')
     @ratelimit_bucket
     @public
@@ -130,13 +131,14 @@ class IntelligentTieringController(Controller):
         resp = req.get_response(self.app, method='HEAD')
         tiering_id = req.params.get('id')
 
-        archiving_status = resp.sysmeta_headers.get(TIERING_ARCHIVING_STATUS)
         if tiering_id:
             # GetBucketIntelligentTieringConfiguration
             func = lambda objs: objs[0]
-            body = resp.sysmeta_headers.get(header_name_from_id(tiering_id),
-                                            None)
+
+            body = self._get_document_from_resp(resp, tiering_id)
             if body is None:
+                archiving_status = resp.sysmeta_headers.get(
+                    TIERING_ARCHIVING_STATUS)
                 if archiving_status is None:
                     return HTTPNotFound(
                         "No intelligent tiering configuration "
@@ -152,10 +154,9 @@ class IntelligentTieringController(Controller):
         else:
             # ListBucketIntelligentTieringConfiguration
             func = self._build_list_tiering_result
-            prefix = header_name_prefix().lower()
+            tiering_header_prefix = TIERING_HEADER_PREFIX.lower()
             for key, value in resp.sysmeta_headers.items():
-                _key = key.lower()
-                if _key.startswith(prefix):
+                if key.lower().startswith(tiering_header_prefix):
                     configurations.append(value)
 
         # May raise exceptions
@@ -209,12 +210,14 @@ class IntelligentTieringController(Controller):
             raise BadRequest("Invalid parameter: id doesn't match document Id")
 
         # Only one configuration can exist at a time
-        existing_tiering_headers = {
-            h.lower() for h, _ in resp.sysmeta_headers.items()
-            if h.lower().startswith(TIERING_HEADER_PREFIX)
-        }
-        header = f"{TIERING_HEADER_PREFIX}{tiering_id}"
-        if existing_tiering_headers and header not in existing_tiering_headers:
+        tiering_header_prefix = TIERING_HEADER_PREFIX.lower()
+        already_has_tiering = False
+        for key, _ in resp.sysmeta_headers.items():
+            if key.lower().startswith(tiering_header_prefix):
+                already_has_tiering = True
+                break
+        if (already_has_tiering
+                and self._get_document_from_resp(resp, tiering_id) is None):
             raise BadRequest(
                 "Invalid parameter: id doesn't match existing tiering "
                 "configuration"
@@ -224,6 +227,7 @@ class IntelligentTieringController(Controller):
         self.apply_tiering(req, tiering_dict)
 
         req.headers[header_name_from_id(tiering_id)] = body
+
         subreq = req.to_swift_req('POST', req.container_name, None,
                                   headers=req.headers)
         # XXX(FVE): we may want to cancel the tiering operation
@@ -247,7 +251,11 @@ class IntelligentTieringController(Controller):
             raise BadRequest("Missing parameter: id")
 
         # Check ACLs
-        req.get_response(self.app, method='HEAD')
+        resp = req.get_response(self.app, method='HEAD')
+
+        # Check if tiering ID exists
+        if self._get_document_from_resp(resp, tiering_id) is None:
+            raise NoSuchConfiguration()
 
         # May raise exceptions
         self.apply_tiering(req, None)

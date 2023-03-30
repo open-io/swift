@@ -59,6 +59,18 @@ TIERING_XML_WITHOUT_ID = b"""<?xml version="1.0" encoding="UTF-8"?>
 </IntelligentTieringConfiguration>
 """
 
+TIERING_HEADER_ID3 = header_name_from_id('id-3')
+TIERING_XML_ID3 = b"""<?xml version="1.0" encoding="UTF-8"?>
+<IntelligentTieringConfiguration
+      xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+   <Id>id_3</Id>
+   <Status>Enabled</Status>
+   <Tiering>
+      <AccessTier>ARCHIVE_ACCESS</AccessTier>
+      <Days>999</Days>
+   </Tiering>
+</IntelligentTieringConfiguration>
+"""
 TIERING_HEADER = header_name_from_id('myid')
 MOCK_BUCKET_DB_SHOW = "swift.common.middleware.s3api.bucket_db." \
     "DummyBucketDb.show"
@@ -89,8 +101,16 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
                             {TIERING_HEADER: TIERING_XML.decode('utf-8')},
                             None)
 
+        self.swift.register('HEAD', '/v1/AUTH_test/bucket-specific',
+                            HTTPNoContent,
+                            {TIERING_HEADER_ID3:
+                                TIERING_XML_ID3.decode('utf-8')},
+                            None)
+
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
         self.s3api.bucket_db.create('test-tiering', 'AUTH_test')
+
+        self.s3api.bucket_db.create('bucket-specific', 'AUTH_test')
 
     def test_xml_conf_to_dict(self):
         expected = {
@@ -280,6 +300,38 @@ class TestS3apiIntelligentTiering(S3ApiTestCase):
         self.assertEqual('BadRequest', self._get_error_code(body))
         self.assertEqual('Bucket size must be at least 1 byte',
                          self._get_error_message(body))
+        calls = self.swift.calls_with_headers
+        self.assertEqual(1, len(calls))  # HEAD container
+
+    @patch(MOCK_BUCKET_DB_SHOW, return_value={"objects": 10, "bytes": 42})
+    def test_PUT_id_underscore(self, _mock):
+        self.swift.register('POST', '/v1/AUTH_test/bucket-specific',
+                            HTTPNoContent, {}, None)
+        req = Request.blank('/bucket-specific?intelligent-tiering&id=id_3',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     TIERING_CALLBACK: tiering_callback_ok},
+                            body=TIERING_XML_ID3,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _headers, body = self.call_s3api(req)
+
+        self.assertEqual('200 OK', status)
+
+    def test_GET_id_underscore(self):
+        req = Request.blank('/bucket-specific?intelligent-tiering&id=id_3',
+                            environ={'REQUEST_METHOD': 'GET',
+                                     TIERING_CALLBACK: tiering_callback_ok},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _headers, body = self.call_s3api(req)
+
+        self.assertEqual('200 OK', status)
+        # The GET method patch the tiering-conf from the metadata.
+        # Expected XML is also patched in order to have the same formatting.
+        self.assertEqual(tostring(fromstring(TIERING_XML_ID3)), body)
+
         calls = self.swift.calls_with_headers
         self.assertEqual(1, len(calls))  # HEAD container
 

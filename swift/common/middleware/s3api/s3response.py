@@ -721,6 +721,11 @@ class NoSuchCORSConfiguration(ErrorResponse):
     _msg = 'The CORS configuration does not exist'
 
 
+class NoSuchConfiguration(ErrorResponse):
+    _status = '404 Not Found'
+    _msg = 'The specified configuration does not exist.'
+
+
 class NoSuchKey(ErrorResponse):
     _status = '404 Not Found'
     _msg = 'The specified key does not exist.'
