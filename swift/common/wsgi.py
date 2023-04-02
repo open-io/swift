@@ -1191,7 +1191,10 @@ def run_wsgi(conf_path, app_section, *args, **kwargs):
             # parent; set env var for fds and reexec ourselves
             os.close(read_fd)
             os.putenv(NOTIFY_FD_ENV_KEY, str(write_fd))
-            myself = os.path.realpath(sys.argv[0])
+            if conf.get('use_realpath_on_usr1', True):
+                myself = os.path.realpath(sys.argv[0])
+            else:
+                myself = sys.argv[0]
             logger.info("Old server PID=%d re'execing as: %r",
                         orig_server_pid, [myself] + list(sys.argv))
             if hasattr(os, 'set_inheritable'):

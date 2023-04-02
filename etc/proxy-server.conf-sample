@@ -30,6 +30,10 @@ bind_port = 8080
 # use many eventlet co-routines to service multiple concurrent requests.
 # workers = auto
 #
+# on USR1 signal, whether or not to resolve symlinks from the binary
+# of the current process before spawning the new process.
+# use_realpath_on_usr1 = true
+#
 # Maximum concurrent requests per worker
 # max_clients = 1024
 #
