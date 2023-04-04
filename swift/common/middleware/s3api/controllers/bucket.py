@@ -15,6 +15,7 @@
 
 from base64 import standard_b64encode as b64encode
 from base64 import standard_b64decode as b64decode
+from binascii import Error as BinasciiError
 import functools
 import re
 
@@ -222,9 +223,20 @@ class BucketController(Controller):
                 query['marker'] = swob.wsgi_to_str(req.params['start-after'])
             # continuation-token overrides start-after
             if 'continuation-token' in req.params:
-                decoded = b64decode(req.params['continuation-token'])
+                try:
+                    decoded = b64decode(req.params['continuation-token'])
+                except BinasciiError:
+                    raise InvalidArgument(
+                        'continuation-token', None,
+                        msg="The continuation token provided is incorrect")
                 if not six.PY2:
-                    decoded = decoded.decode('utf8')
+                    try:
+                        decoded = decoded.decode('utf8')
+                    except UnicodeDecodeError:
+                        raise InvalidArgument(
+                            'continuation-token', None,
+                            msg="The continuation token provided is incorrect")
+
                 query['marker'] = decoded
             if 'fetch-owner' in req.params:
                 fetch_owner = config_true_value(req.params['fetch-owner'])

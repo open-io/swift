@@ -20,6 +20,7 @@ import tempfile
 import time
 import unittest
 
+from botocore.exceptions import ClientError
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
     run_awscli_s3api, get_boto3_client
 
@@ -123,6 +124,18 @@ class TestS3BasicTest(unittest.TestCase):
         self.assertIn(
             b'<Key>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Key>',
             resp.content)
+
+    def test_list_continuation_token(self):
+        keys = ('obj1', 'obj2')
+        client = get_boto3_client()
+
+        for key in keys:
+            client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+
+        with self.assertRaises(ClientError) as ctx:
+            client.list_objects_v2(Bucket=self.bucket, Prefix="obj", ContinuationToken="aaa")
+        self.assertIn("InvalidArgument", str(ctx.exception))
+        self.assertIn("continuation token", str(ctx.exception))
 
     def test_list_no_url_encoding(self):
         key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
