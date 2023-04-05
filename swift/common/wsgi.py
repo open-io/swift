@@ -1191,7 +1191,7 @@ def run_wsgi(conf_path, app_section, *args, **kwargs):
             # parent; set env var for fds and reexec ourselves
             os.close(read_fd)
             os.putenv(NOTIFY_FD_ENV_KEY, str(write_fd))
-            if conf.get('use_realpath_on_usr1', True):
+            if config_true_value(conf.get('use_realpath_on_usr1', True)):
                 myself = os.path.realpath(sys.argv[0])
             else:
                 myself = sys.argv[0]
