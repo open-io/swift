@@ -166,6 +166,12 @@ class TestS3BasicTest(unittest.TestCase):
             "get-object", '--range', 'bytes: 1-10', '/dev/null',
             bucket=self.bucket, key=key)
         self.assertEqual(111, data['ContentLength'])
+        # When there are multiple ranges, they are ignored
+        # S3 compliance: multiple range not supported by AWS
+        data = run_awscli_s3api(
+            "get-object", '--range', 'bytes=0-5, 7-10', '/dev/null',
+            bucket=self.bucket, key=key)
+        self.assertEqual(111, data['ContentLength'])
 
     def test_non_ascii_access_key_in_presigned_url(self):
         bucket_name = random_str(20)

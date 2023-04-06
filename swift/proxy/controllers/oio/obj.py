@@ -253,6 +253,11 @@ class ObjectController(BaseObjectController):
         if req.headers.get('Range'):
             try:
                 ranges = ranges_from_http_header(req.headers.get('Range'))
+                # Expected one range, if there are multiple ranges,
+                # ignore them.
+                if len(ranges) != 1:
+                    ranges = None
+                    req.range = None
             except ValueError as exc:
                 # When the Range header is malformed, it is ignored
                 self.logger.warning('Malformed Range header (%s): %s',
