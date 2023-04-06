@@ -90,7 +90,6 @@ class ReplicationController(Controller):
 
     def _validate_rule(self, rule):
         unsupported_features = {
-            "DeleteMarkerReplication": {},
             "SourceSelectionCriteria": {
                 "ReplicaModifications": {},
                 "SseKmsEncryptedObjects": {},

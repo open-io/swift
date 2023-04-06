@@ -220,7 +220,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("400 Bad Request", status)
         self.assertEqual("InvalidRequest", self._get_error_code(body))
 
-    def test_PUT_unsupported_delete_marker(self):
+    def test_PUT_delete_marker(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -248,8 +248,8 @@ class TestS3ApiReplication(S3ApiTestCase):
                                 "Date": self.get_date_header(),
                             })
         status, _, body = self.call_s3api(req)
-        self.assertEqual("501 Not Implemented", status)
-        self.assertEqual("NotImplemented", self._get_error_code(body))
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
 
     def test_PUT_unsupported_source_selection_no_child(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
