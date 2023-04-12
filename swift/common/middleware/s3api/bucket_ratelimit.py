@@ -44,7 +44,8 @@ class BucketRateLimitMiddleware(object):
     """
     Rate limiting middleware
 
-    Rate limits requests on a Bucket level. Limits are configurable.
+    Rate limits requests on a bucket level. Limits are configurable globally
+    and per bucket, and for customizable operation groups.
     If the limit is exceeded, a SlowDown error is immediately returned.
 
     The algorithm used is inspired by the one proposed by CloudFlare.
@@ -191,6 +192,25 @@ class BucketRateLimitMiddleware(object):
                 exc,
             )
 
+    def load_bucket_ratelimit(self, req):
+        """
+        Load ratelimit information from bucket metadata.
+        """
+        self.logger.debug(
+            "[BucketRatelimit] Fetch the bucket info of %s "
+            "to extract ratelimit info", req.get_bucket_name())
+        try:
+            bucket_info = req.get_bucket_info(self.app)
+        except NoSuchBucket:
+            # If a client wants to aggressively access a bucket
+            # that does not exist, that client must also be rate limited
+            bucket_info = None
+        if bucket_info is not None:
+            bucket_ratelimit = bucket_info.get("ratelimit")
+        if bucket_ratelimit is None:
+            bucket_ratelimit = {}
+        return bucket_ratelimit
+
     def ratelimit_callback(self, req, operation):
         if not self.memcache_client:
             self.logger.warning(
@@ -243,21 +263,10 @@ class BucketRateLimitMiddleware(object):
 
         # Decode keys values
         if bucket_ratelimit is None:
-            self.logger.debug(
-                "[BucketRatelimit] Fetch the bucket info of %s "
-                "to extract ratelimit info", bucket)
-            try:
-                bucket_info = req.get_bucket_info(self.app)
-            except NoSuchBucket:
-                # If a client wants to aggressively access a bucket
-                # that does not exist, that client must also be rate limited
-                bucket_info = None
-            if bucket_info is not None:
-                bucket_ratelimit = bucket_info.get("ratelimit")
-            if bucket_ratelimit is None:
-                bucket_ratelimit = {}
-            # In order not to requery the account service,
-            # store the information in the memcached (during 1 minute),
+            bucket_ratelimit = self.load_bucket_ratelimit(req)
+
+            # In order not to query the account service again,
+            # store the information in memcached (during 1 minute),
             # even when the bucket has no ratelimit
             try:
                 self.memcache_client.set(
@@ -276,6 +285,7 @@ class BucketRateLimitMiddleware(object):
                 )
                 # This request can still be ratelimited,
                 # the next request will try to cache the bucket ratelimit
+
         # Override the config ratelimit with the bucket ratelimit
         ratelimit_by_group.update(bucket_ratelimit)
         if current_counter is None:

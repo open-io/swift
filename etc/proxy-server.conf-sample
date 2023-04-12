@@ -615,14 +615,15 @@ use = egg:swift#oioiam
 
 [filter:bucket_ratelimit]
 use = egg:swift#bucket_ratelimit
-# Group of S3 operations
+# Group of S3 operations (ex: REST.GET.BUCKET,REST.HEAD.OBJECT)
 #group.[GROUP] = [OPERATION1],[OPERATION2]
-# Maximum bucket requests per second.
-# Default to -1 (no limit).
+# Maximum bucket requests per second. This limit can be overridden
+# per bucket with OpenIO SDS API. Default to -1 (no limit).
 #ratelimit = -1
-# Maximum requests per second for all operations in the group
+# Maximum requests per second for all operations in the group.
+# These group limits can be overridden per bucket with OpenIO SDS API.
 #ratelimit.[GROUP] = [RATELIMIT]
-# Period of time (in second) over which the rate is calculated.
+# Period of time (in seconds) over which the rate is calculated.
 #sampling_period = 1
 # The amount of time the bucket ratelimit is cached.
 #bucket_ratelimit_ttl = 60
