@@ -163,8 +163,8 @@ class StreamingInput(object):
         self._validator = chunk_validator
         self._raw_to_read = raw_content_length  # Can be None
         self._to_read = content_length
-        self._raw_buffer = ''
-        self._processed_content = ''
+        self._raw_buffer = b''
+        self._processed_content = b''
         self._chunk_header = None
         self._last_chunk_size = None
         self._chunk = 1
@@ -199,7 +199,7 @@ class StreamingInput(object):
             return (chunk_size, chunk_signature)
 
         # Content
-        read_chunk = ''
+        read_chunk = b''
 
         _size = size
         if _size is None:
@@ -221,7 +221,7 @@ class StreamingInput(object):
                 break
 
             # Add data to buffer to process
-            data = self._input.read(size).decode('utf8')
+            data = self._input.read(size)
             if self._raw_to_read is not None:
                 self._raw_to_read -= len(data)
             self._raw_buffer += data
@@ -235,11 +235,15 @@ class StreamingInput(object):
             while True:
                 # Read chunk header
                 if self._chunk_header is None:
-                    split_buffer = self._raw_buffer.split('\r\n', 1)
+                    split_buffer = self._raw_buffer.split(b'\r\n', 1)
                     if len(split_buffer) != 2:
                         # Buffer does not contains a complete chunk header
                         break
-                    self._chunk_header = parse_chunk_header(split_buffer[0])
+                    try:
+                        self._chunk_header = \
+                            parse_chunk_header(split_buffer[0].decode("utf-8"))
+                    except UnicodeDecodeError as exc:
+                        raise AuthorizationHeaderMalformed from exc
                     # Consume the first part
                     self._raw_buffer = split_buffer[1]
                     self._chunk += 1
@@ -251,7 +255,7 @@ class StreamingInput(object):
                     break
 
                 # Ensure marker '\r\n' is present at the expected position
-                if self._raw_buffer[chunk_size: chunk_size + 2] != '\r\n':
+                if self._raw_buffer[chunk_size: chunk_size + 2] != b'\r\n':
                     self.close()
                     raise swob.HTTPForbidden(body='%s\n%s' % (
                         SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH, chunk_signature))
@@ -265,7 +269,7 @@ class StreamingInput(object):
                 # Prepare for next chunk
                 self._chunk_header = None
 
-        return read_chunk.encode('utf8')
+        return read_chunk
 
     def close(self):
         close_if_possible(self._input)
@@ -652,7 +656,7 @@ class SigV4Mixin(object):
             '/'.join(self.scope.values()).encode('utf8'),
             self.signature.encode('utf8'),
             sha256(b'').hexdigest().encode('utf8'),
-            sha256(data.encode('utf8')).hexdigest().encode('utf8')
+            sha256(data).hexdigest().encode('utf8')
         ])
 
     def signature_does_not_match_kwargs(self):
