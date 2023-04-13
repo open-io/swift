@@ -304,7 +304,7 @@ class BucketRateLimitMiddleware(object):
         if ratelimit == 0:
             # No bucket requests are allowed
             req.environ.setdefault('s3api.info', {})['ratelimit'] = True
-            if self.log_only_on_global_ratelimiting:
+            if self.log_only_on_global_ratelimiting and not bucket_ratelimit:
                 return None
             raise SlowDown()
 
