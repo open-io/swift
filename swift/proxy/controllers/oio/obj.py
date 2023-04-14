@@ -22,7 +22,8 @@ from swift import gettext_ as _
 from swift.common.utils import (
     clean_content_type, config_true_value, Timestamp, public,
     close_if_possible, closing_if_possible)
-from swift.common.constraints import check_metadata, check_object_creation
+from swift.common.constraints import MAX_FILE_SIZE, check_metadata, \
+    check_object_creation
 from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
@@ -35,7 +36,8 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
     HTTPNotFound, HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
     HTTPNoContent, Response, HTTPInternalServerError, multi_range_iterator, \
-    HTTPServiceUnavailable, HTTPException, str_to_wsgi, wsgi_quote
+    HTTPServiceUnavailable, HTTPRequestEntityTooLarge, HTTPException, \
+    str_to_wsgi, wsgi_quote
 from swift.common.request_helpers import is_sys_or_user_meta, \
     is_object_transient_sysmeta, resolve_etag_is_at_header
 from swift.common.wsgi import make_subrequest
@@ -111,30 +113,40 @@ class StreamRangeIterator(object):
         return self.stream()
 
 
-class ExpectedSizeReader(object):
+class TooLargeInput(exceptions.OioException):
+    pass
+
+
+class SizeCheckerReader(object):
     """Only accept as a valid EOF an exact number of bytes received."""
 
     def __init__(self, source, expected):
         self.source = source
         self.expected = expected
+        if self.expected is not None and self.expected > MAX_FILE_SIZE:
+            raise TooLargeInput
         self.consumed = 0
+
+    def _add_size(self, size):
+        if size == 0:
+            if self.expected is not None and self.consumed != self.expected:
+                raise exceptions.SourceReadError("Truncated input")
+        else:
+            self.consumed = self.consumed + size
+            if self.expected is None:
+                if self.consumed > MAX_FILE_SIZE:
+                    raise TooLargeInput
+            elif self.consumed > self.expected:
+                raise TooLargeInput
 
     def read(self, *args, **kwargs):
         rc = self.source.read(*args, **kwargs)
-        if len(rc) == 0:
-            if self.consumed != self.expected:
-                raise exceptions.SourceReadError("Truncated input")
-        else:
-            self.consumed = self.consumed + len(rc)
+        self._add_size(len(rc))
         return rc
 
     def readline(self, *args, **kwargs):
         rc = self.source.readline(*args, **kwargs)
-        if len(rc) == 0:
-            if self.consumed != self.expected:
-                raise exceptions.SourceReadError("Truncated input")
-        else:
-            self.consumed = self.consumed + len(rc)
+        self._add_size(len(rc))
         return rc
 
     def close(self):
@@ -481,9 +493,8 @@ class ObjectController(BaseObjectController):
         if req.headers.get('Oio-Copy-From'):
             return self._link_object(req)
 
-        data_source = req.environ['wsgi.input']
-        if req.content_length:
-            data_source = ExpectedSizeReader(data_source, req.content_length)
+        data_source = SizeCheckerReader(
+            req.environ['wsgi.input'], req.content_length)
 
         headers = self._prepare_headers(req)
 
@@ -700,6 +711,8 @@ class ObjectController(BaseObjectController):
                 _('Client disconnected without sending last chunk'))
             self.app.logger.increment('client_disconnects')
             raise HTTPClientDisconnect(request=req)
+        except TooLargeInput:
+            return HTTPRequestEntityTooLarge(request=req)
         except exceptions.EtagMismatch:
             raise HTTPUnprocessableEntity(request=req)
         except (exceptions.ServiceBusy, exceptions.OioTimeout,

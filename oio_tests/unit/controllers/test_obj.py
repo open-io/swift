@@ -222,8 +222,8 @@ class TestObjectController(unittest.TestCase):
         mock.assert_called_once_with(
             'a', 'c', obj_name='o', etag='',
             properties={}, mime_type='application/octet-stream',
-            file_or_path=req.environ['wsgi.input'], policy=None,
-            headers=ANY, container_properties=ANY, cache=None,
+            file_or_path=ANY,
+            policy=None, headers=ANY, container_properties=ANY, cache=None,
             perfdata=ANY, properties_callback=ANY)
         self.assertEqual(201, resp.status_int)
         self.assertIn('Last-Modified', resp.headers)
