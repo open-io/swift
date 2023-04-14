@@ -170,17 +170,22 @@ class StreamingInput(object):
         self._chunk = 1
 
     def read(self, size=None):
+        try:
+            return self._read(size=size)
+        except Exception:
+            self.close()
+            raise
+
+    def _read(self, size=None):
         def process_chunk(signature, chunk):
             chunk_valid = self._validator(chunk, signature)
             if not chunk_valid:
-                self.close()
                 raise swob.HTTPForbidden(body='%s\n%s' % (
                     SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH, signature))
 
         def parse_chunk_header(header):
             header_parts = header.split(';', 1)
             if len(header_parts) != 2:
-                self.close()
                 raise swob.HTTPForbidden(body=SIGV4_ERROR_INCOMPLETE_BODY)
             chunk_size = int(header_parts[0], 16)
             # Ensure chunk size is correct
@@ -188,12 +193,10 @@ class StreamingInput(object):
                 self._last_chunk_size = chunk_size
             elif (chunk_size != 0 and
                   self._last_chunk_size < SIGV4_CHUNK_MIN_SIZE):
-                self.close()
                 raise swob.HTTPForbidden(body='%s\n%s\n%s' % (
                     SIGV4_ERROR_INVALID_CHUNK_SIZE, self._chunk, chunk_size))
             self._last_chunk_size = chunk_size
             if not header_parts[1].startswith('chunk-signature='):
-                self.close()
                 raise swob.HTTPForbidden(msg=SIGV4_ERROR_INCOMPLETE_BODY)
             chunk_signature = header_parts[1][16:]
             return (chunk_size, chunk_signature)
@@ -215,7 +218,6 @@ class StreamingInput(object):
                 self._to_read -= len(read_chunk)
                 if self._raw_to_read == 0 and len(self._raw_buffer) == 0:
                     if self._last_chunk_size != 0:
-                        self.close()
                         raise swob.HTTPForbidden(
                             body=SIGV4_ERROR_INCOMPLETE_BODY)
                 break
@@ -229,7 +231,6 @@ class StreamingInput(object):
             if self._to_read < 0 or (self._raw_to_read is not None
                                      and self._raw_to_read < 0):
                 # to much received data
-                self.close()
                 raise swob.HTTPForbidden(msg=SIGV4_ERROR_INCOMPLETE_BODY)
 
             while True:
@@ -256,7 +257,6 @@ class StreamingInput(object):
 
                 # Ensure marker '\r\n' is present at the expected position
                 if self._raw_buffer[chunk_size: chunk_size + 2] != b'\r\n':
-                    self.close()
                     raise swob.HTTPForbidden(body='%s\n%s' % (
                         SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH, chunk_signature))
 

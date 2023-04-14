@@ -1603,8 +1603,6 @@ class TestStreamingInput(S3ApiTestCase):
             wrapped.read,
             4
         )
-        self.assertFalse(wrapped._input.closed)
-        wrapped.close()
         self.assertTrue(wrapped._input.closed)
 
     def test_good_no_content_length(self):
