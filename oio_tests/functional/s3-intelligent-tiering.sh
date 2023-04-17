@@ -80,10 +80,10 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U2} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
-  # user1 can delete object in the bucket before archiving
+  # user1 can delete object from the bucket before archiving
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic2
 
-  # user2 cannot delete object in the bucket before archiving (no permission)
+  # user2 cannot delete object from the bucket before archiving (no permission)
   OUT=$(${AWSA1U2} s3 rm s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
@@ -104,10 +104,11 @@ test_intelligent_tiering() {
   nc -w 2 localhost 15672 < /dev/null
   retval=$?
   if [ "$retval" -eq "0" ]; then
+    # Wait for the container update event to reach the account service
+    # (if we don't, the size won't be right).
+    sleep 1
     # Read message in RabbitMQ
-    # TODO: When RabbitMQ version >= 3.7, add <ackmode=ack_requeue_false>
-    # to consume the message
-    OUT=$(rabbitmqadmin get queue=pca --format=long)
+    OUT=$(rabbitmqadmin get queue=pca ackmode=ack_requeue_false --format=long)
     echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 222, \"region\": \"REGIONONE\"}"
   fi
 
