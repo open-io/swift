@@ -548,8 +548,29 @@ class SigV4Mixin(object):
         """
         It won't require bucket name in canonical_uri for v4.
         """
-        return swob.wsgi_to_bytes(swob.wsgi_quote(
-            self.environ.get('PATH_INFO', self.path), safe='-_.~/'))
+        # NOTE: we are using RAW_PATH_INFO instead of PATH_INFO
+        # to avoid SignatureDoesNotMatch error when creating an object
+        # starting with '/'.
+        # This issue comes from the replacement of '//' by '/'
+        # done on PATH_INFO while parsing request in some python version.
+        # (see https://github.com/python/cpython/pull/93879).
+        # With python 3.7.15 -->  PUT //test:
+        #   PATH_INFO=/test
+        #   RAW_PATH_INFO=//test
+        # With python 3.8.10 -->  PUT //test:
+        #   PATH_INFO=//test
+        #   RAW_PATH_INFO=//test
+        return swob.wsgi_to_bytes(
+            swob.wsgi_quote(
+                swob.wsgi_unquote(
+                    self.environ.get(
+                        'RAW_PATH_INFO',
+                        self.path
+                    )
+                ),
+                safe='-_.~/'
+            )
+        )
 
     def _canonical_request(self):
         # prepare 'canonical_request'

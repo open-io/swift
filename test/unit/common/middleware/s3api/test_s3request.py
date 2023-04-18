@@ -998,6 +998,33 @@ class TestRequest(S3ApiTestCase):
         self.assertTrue(sigv4_req.check_signature('secret'))
 
     @patch.object(S3Request, '_validate_dates', lambda *a: None)
+    def test_check_signature_sigv4_slash_in_object_name(self):
+        environ = {
+            'HTTP_HOST': 'bucket.s3.test.com',
+            'REQUEST_METHOD': 'PUT',
+            'RAW_PATH_INFO': '//test/file',
+            'PATH_INFO': '/test/file'}
+        headers = {
+            'Authorization':
+                'AWS4-HMAC-SHA256 '
+                'Credential=test/20210104/us-east-1/s3/aws4_request, '
+                'SignedHeaders=host;x-amz-content-sha256;x-amz-date,'
+                'Signature=648cfd72cfe229f5616df52d2f6e15bd8b096d1b35'
+                '90cecfee090a9bd0b17378',
+            'X-Amz-Content-SHA256': 'UNSIGNED-PAYLOAD',
+            'Date': 'Mon, 04 Jan 2021 10:26:23 -0000',
+            'X-Amz-Date': '20210104T102623Z'}
+
+        # Virtual hosted-style
+        self.s3api.conf.storage_domain = ['s3.test.com']
+        req = Request.blank(
+            environ['RAW_PATH_INFO'], environ=environ, headers=headers)
+        sigv4_req = SigV4Request(req.environ)
+        self.assertTrue(
+            sigv4_req._canonical_request().endswith(b'UNSIGNED-PAYLOAD'))
+        self.assertTrue(sigv4_req.check_signature('secret'))
+
+    @patch.object(S3Request, '_validate_dates', lambda *a: None)
     def test_check_signature_sigv4_chunk_valid(self):
         environ = {
             'HTTP_HOST': 's3.test.com',
