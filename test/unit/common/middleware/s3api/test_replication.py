@@ -16,7 +16,9 @@
 from swift.common.middleware.s3api.bucket_db import BucketDbWrapper, \
     get_bucket_db
 from swift.common.middleware.s3api.s3response import HTTPNoContent
-from swift.common.swob import Request, HTTPNotFound
+from swift.common.middleware.versioned_writes.object_versioning import \
+    SYSMETA_VERSIONS_ENABLED
+from swift.common.swob import Request, HTTPNotFound, HTTPOk
 
 from test.unit.common.middleware.s3api import S3ApiTestCase
 
@@ -36,6 +38,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         )
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
         self.s3api.bucket_db.create("test-replication", "AUTH_test")
+        self.s3api.bucket_db.create("dest", "AUTH_test")
 
     def test_GET_no_configuration(self):
         req = Request.blank('/test-replication?replication',
@@ -81,15 +84,16 @@ class TestS3ApiReplication(S3ApiTestCase):
                 <Role></Role>
                 <Rule>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
             </ReplicationConfiguration>
         """
-
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
 
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
@@ -102,6 +106,91 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("200 OK", status)
         self.assertFalse(body)  # empty -> False
 
+    def test_PUT_not_valid_bucket_prefix(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <Destination>
+                        <Bucket>dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Invalid bucket ARN.", str(body))  # empty -> False
+
+    def test_PUT_non_existing_dest(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::missing-bucket</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Destination bucket must exist.", str(body))
+
+    def test_PUT_versioning_not_enabled_on_dest(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: False}, None)
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Destination bucket must have versioning enabled.",
+                      str(body))
+
     def test_PUT_non_ascii_id(self):
         config = """<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
@@ -110,7 +199,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                 <Rule>
                     <ID>fõõ</ID>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -140,7 +229,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                 <Rule>
                     <ID>{rule_id}</ID>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -173,7 +262,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config += b"a" * 1025
         config += b"""</Prefix>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -230,7 +319,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                         <Status>Enabled</Status>
                     </DeleteMarkerReplication>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -239,6 +328,8 @@ class TestS3ApiReplication(S3ApiTestCase):
 
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
 
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
@@ -259,7 +350,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                 <Rule>
                     <SourceSelectionCriteria></SourceSelectionCriteria>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -268,6 +359,8 @@ class TestS3ApiReplication(S3ApiTestCase):
 
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
 
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
@@ -291,7 +384,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                         </ReplicaModifications>
                     </SourceSelectionCriteria>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -325,7 +418,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                         </SseKmsEncryptedObjects>
                     </SourceSelectionCriteria>
                     <Destination>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -343,7 +436,6 @@ class TestS3ApiReplication(S3ApiTestCase):
                                 "Date": self.get_date_header(),
                             })
         status, _, body = self.call_s3api(req)
-        print(body)
         self.assertEqual("501 Not Implemented", status)
         self.assertEqual("NotImplemented", self._get_error_code(body))
 
@@ -357,7 +449,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                         <AccessControlTranslation>
                             <Owner>Destination</Owner>
                         </AccessControlTranslation>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -386,7 +478,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                 <Rule>
                     <Destination>
                         <EncryptionConfiguration></EncryptionConfiguration>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -417,7 +509,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                         <Metrics>
                             <Status>Enabled</Status>
                         </Metrics>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -449,7 +541,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                             <Time></Time>
                             <Status>Enabled</Status>
                         </ReplicationTime>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>
@@ -478,7 +570,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                 <Rule>
                     <Destination>
                         <StorageClass>DEEP_ARCHIVE</StorageClass>
-                        <Bucket>dest</Bucket>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
                 </Rule>

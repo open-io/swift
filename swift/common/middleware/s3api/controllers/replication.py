@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, check_container_existence, \
@@ -22,11 +23,12 @@ from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
-    InvalidArgument, InvalidRequest, MalformedXML, \
-    ReplicationConfigurationNotFoundError, S3NotImplemented
+    InternalError, InvalidArgument, InvalidRequest, MalformedXML, \
+    ReplicationConfigurationNotFoundError, S3NotImplemented, ServiceUnavailable
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
-from swift.common.utils import public
+from swift.common.utils import config_true_value, public
+from swift.proxy.controllers.base import get_container_info
 
 BUCKET_REPLICATION_HEADER = sysmeta_header("bucket", "replication")
 
@@ -34,6 +36,8 @@ MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
 MAX_REPLICATION_BODY_SIZE = 256 * 1024  # Arbitrary
 MAX_RULES_ALLOWED = 1000
+ARN_AWS_PREFIX = "arn:aws:"
+DEST_BUCKET_PREFIX = ARN_AWS_PREFIX + "s3:::"
 
 
 def is_ascii(content):
@@ -65,7 +69,7 @@ class ReplicationController(Controller):
                     f"<{feature}> support is not implemented yet"
                 )
 
-    def _validate_destination(self, destination):
+    def _validate_destination(self, destination, req):
         unsupported_features = {
             "AccessControlTranslation": {},
             "Account": {},
@@ -87,8 +91,58 @@ class ReplicationController(Controller):
             raise S3NotImplemented(
                 f"Storage class '{storage_class.text}' is not yet supported"
             )
+        bucket = destination.find("./Bucket")
+        if bucket is None:
+            raise InvalidRequest('Destination bucket must be specified.')
+        value = bucket.text
+        if not value.startswith(DEST_BUCKET_PREFIX):
+            raise InvalidArgument(name="Bucket",
+                                  value=value,
+                                  msg="Invalid bucket ARN.")
+        bucket_name = value[len(DEST_BUCKET_PREFIX):]
+        if req.container_name == bucket_name:
+            # Check if buckets source and destination are different
+            raise InvalidRequest('Destination bucket cannot be the same'
+                                 ' as the source bucket.')
 
-    def _validate_rule(self, rule):
+        source_info = req.get_bucket_info(self.app)
+        target_info = req.bucket_db.show(bucket_name,
+                                         source_info['account'])
+        if not (target_info and target_info["account"]):
+            # Bucket destination not found
+            raise InvalidRequest("Destination bucket must exist.")
+        source_location = source_info.get('region', '')
+        target_location = target_info.get('region', '')
+        if source_location == target_location:
+            sw_req = req.to_swift_req(
+                'HEAD', bucket_name, None, headers=req.headers)
+            info = get_container_info(
+                sw_req.environ,
+                self.app,
+                swift_source='S3')
+            if is_success(info['status']):
+                # Check if versioning is enabled on bucket destination
+                if not config_true_value(
+                    info.get('sysmeta', {}).get('versions-enabled',
+                                                False)
+                ):
+                    raise InvalidRequest('Destination bucket must have'
+                                         ' versioning enabled.')
+            elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
+                raise ServiceUnavailable(
+                    headers={
+                        'Retry-After': str(
+                            info.get('Retry-After',
+                                     self.conf.retry_after))})
+            else:
+                # Unknown error
+                raise InternalError(
+                    'Unexpected status code %d' % info['status'])
+        else:
+            # TODO(FIR) verify versionning across regions
+            pass
+
+    def _validate_rule(self, rule, req):
         unsupported_features = {
             "SourceSelectionCriteria": {
                 "ReplicaModifications": {},
@@ -125,10 +179,10 @@ class ReplicationController(Controller):
             )
 
         self._validate_destination(
-            rule.find("./Destination")
+            rule.find("./Destination"), req
         )
 
-    def _validate_configuration(self, conf):
+    def _validate_configuration(self, conf, req):
         conf = conf if conf is not None else ""
         try:
             data = fromstring(conf, "ReplicationConfiguration")
@@ -144,7 +198,7 @@ class ReplicationController(Controller):
             )
 
         for rule in rules:
-            self._validate_rule(rule)
+            self._validate_rule(rule, req)
 
     @set_s3_operation_rest('REPLICATION')
     @ratelimit_bucket
@@ -166,7 +220,7 @@ class ReplicationController(Controller):
 
         config = req.xml(MAX_REPLICATION_BODY_SIZE)
         # Validation
-        self._validate_configuration(config)
+        self._validate_configuration(config, req)
 
         req.headers[BUCKET_REPLICATION_HEADER] = config
         resp = req.get_response(self.app, method="POST")
