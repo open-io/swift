@@ -13,14 +13,75 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+from uuid import UUID
+from mock import patch
+from swift.common.middleware.s3api.etree import fromstring, tostring
 from swift.common.middleware.s3api.bucket_db import BucketDbWrapper, \
     get_bucket_db
-from swift.common.middleware.s3api.s3response import HTTPNoContent
+from swift.common.middleware.s3api.controllers.replication import \
+    BUCKET_REPLICATION_HEADER, dict_conf_to_xml, replication_xml_conf_to_dict
 from swift.common.middleware.versioned_writes.object_versioning import \
     SYSMETA_VERSIONS_ENABLED
-from swift.common.swob import Request, HTTPNotFound, HTTPOk
-
+from swift.common.swob import Request, HTTPNotFound, HTTPOk, HTTPNoContent
 from test.unit.common.middleware.s3api import S3ApiTestCase
+
+EXPECTED = (
+    b'<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<ReplicationConfiguration'
+    b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+    b'<Role>arn:aws:iam::329840991682:role/replicationRole</Role>'
+    b'<Rule><DeleteMarkerReplication><Status>Disabled</Status>'
+    b'</DeleteMarkerReplication><Destination>'
+    b'<Bucket>arn:aws:s3:::replication-dst</Bucket></Destination>'
+    b'<Filter><Tag><Key>string</Key><Value>string</Value></Tag></Filter>'
+    b'<ID>d4e1ba32c7fe49f0bb6062838ae48bb2</ID><Priority>0</Priority>'
+    b'<Status>Enabled</Status></Rule><Rule><DeleteMarkerReplication>'
+    b'<Status>Disabled</Status></DeleteMarkerReplication><Destination>'
+    b'<Bucket>arn:aws:s3:::replication-dst</Bucket></Destination><Filter>'
+    b'<And><Prefix>string</Prefix><Tag><Key>string</Key><Value>string</Value>'
+    b'</Tag><Tag><Key>string</Key><Value>string</Value></Tag></And>'
+    b'<Prefix>string</Prefix><Tag><Key>key</Key><Value>value</Value></Tag>'
+    b'</Filter><ID>2dfdcf571182407293d35b52959876e3</ID><Priority>0</Priority>'
+    b'<Status>Enabled</Status></Rule></ReplicationConfiguration>'
+)
+REPLICATION_CONF_XML = (
+    b'<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<ReplicationConfiguration'
+    b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+    b'<Role>arn:aws:iam::329840991682:role/replicationRole</Role>'
+    b'<Rule><DeleteMarkerReplication>'
+    b'<Status>Disabled</Status>'
+    b'</DeleteMarkerReplication>'
+    b'<Destination>'
+    b'<Bucket>arn:aws:s3:::dest</Bucket>'
+    b'</Destination>'
+    b'<Filter>'
+    b'<Tag>'
+    b'<Key>string</Key>'
+    b'<Value>string</Value>'
+    b'</Tag>'
+    b'</Filter>'
+    b'<ID>2dfdcf571182407293d35b52959876e3</ID>'
+    b'<Priority>0</Priority>'
+    b'<Status>Enabled</Status>'
+    b'</Rule>'
+    b'</ReplicationConfiguration>'
+)
+
+
+REPLICATION_CONF_DICT = {
+    "Role": "arn:aws:iam::329840991682:role/replicationRole",
+    "Rules": [
+        {
+            "ID": '2dfdcf571182407293d35b52959876e3',
+            "Priority": 0,
+            "Status": "Enabled",
+            "DeleteMarkerReplication": {"Status": "Disabled"},
+            "Filter": {"Tag": {"Key": "string", "Value": "string"}},
+            "Destination": {"Bucket": "arn:aws:s3:::dest"},
+        }
+    ],
+}
+REPLICATION_CONF_JSON = json.dumps(REPLICATION_CONF_DICT)
 
 
 class TestS3ApiReplication(S3ApiTestCase):
@@ -34,14 +95,96 @@ class TestS3ApiReplication(S3ApiTestCase):
             "HEAD", "/v1/AUTH_test/missing-bucket", HTTPNotFound, {}, None
         )
         self.swift.register(
-            "HEAD", "/v1/AUTH_test/test-replication", HTTPNoContent, {}, None
+            "HEAD",
+            "/v1/AUTH_test/test-replication",
+            HTTPNoContent,
+            {BUCKET_REPLICATION_HEADER: REPLICATION_CONF_JSON},
+            None
+        )
+        self.swift.register(
+            "HEAD",
+            "/v1/AUTH_test/test-replication-no-conf",
+            HTTPNoContent,
+            {},
+            None
         )
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
         self.s3api.bucket_db.create("test-replication", "AUTH_test")
+        self.s3api.bucket_db.create("test-replication-no-conf", "AUTH_test")
         self.s3api.bucket_db.create("dest", "AUTH_test")
 
+    def test_xml_conf_to_dict(self):
+        """
+        Test xml conf convertion to dict conf. Beside it is also testing if ID
+        is generated if not specified in replication configuration.
+        """
+        xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::329840991682:role/replicationRole</Role>
+                <Rule>
+                    <DeleteMarkerReplication>
+                        <Status>Disabled</Status>
+                    </DeleteMarkerReplication>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Filter>
+                        <Tag>
+                            <Key>string</Key>
+                            <Value>string</Value>
+                        </Tag>
+                    </Filter>
+                    <Priority>0</Priority>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        with patch("uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = UUID(
+                '1383c063-a200-46eb-85fc-d483b7262911')
+            dict_conf = replication_xml_conf_to_dict(xml_conf)
+        self.assertIn("ID", dict_conf["Rules"][0])
+        self.assertEqual(dict_conf["Rules"][0]["ID"],
+                         "1383c063a20046eb85fcd483b7262911")
+
+    def test_dict_conf_to_xml(self):
+        conf_dict_test = {
+            "Role": "arn:aws:iam::329840991682:role/replicationRole",
+            "Rules": [
+                {
+                    "ID": 'd4e1ba32c7fe49f0bb6062838ae48bb2',
+                    "Priority": 0,
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {"Tag": {"Key": "string", "Value": "string"}},
+                    "Destination": {"Bucket": "arn:aws:s3:::replication-dst"},
+                },
+                {
+                    "ID": '2dfdcf571182407293d35b52959876e3',
+                    "Priority": 0,
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {
+                        "Prefix": "string",
+                        "Tag": {"Key": "key", "Value": "value"},
+                        "And": {
+                            "Prefix": "string",
+                            "Tags": [
+                                {"Key": "string", "Value": "string"},
+                                {"Key": "string", "Value": "string"},
+                            ],
+                        },
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::replication-dst"},
+                },
+            ],
+        }
+        xml_conf = dict_conf_to_xml(conf_dict_test)
+        self.assertEqual(tostring(fromstring(EXPECTED)), xml_conf)
+
     def test_GET_no_configuration(self):
-        req = Request.blank('/test-replication?replication',
+        req = Request.blank('/test-replication-no-conf?replication',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -60,6 +203,16 @@ class TestS3ApiReplication(S3ApiTestCase):
         status, _, body = self.call_s3api(req)
         self.assertEqual("404 Not Found", status)
         self.assertEqual("NoSuchBucket", self._get_error_code(body))
+
+    def test_GET_Ok(self):
+        req = Request.blank('/test-replication?replication',
+                            environ={'REQUEST_METHOD': 'GET'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("200 OK", status)
+        self.assertEqual(tostring(fromstring(REPLICATION_CONF_XML)), body)
 
     def test_PUT_no_content(self):
         config = b""
@@ -186,7 +339,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                       " configuration schema.",
                       str(body))
 
-    def test_PUT_deleteMarkerreplication_missing(self):
+    def test_PUT_deleteMarkeReplication_missing(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -489,7 +642,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
-                <Priority>1</Priority>
+                    <Priority>1</Priority>
                     <DeleteMarkerReplication>
                         <Status>Enabled</Status>
                     </DeleteMarkerReplication>
