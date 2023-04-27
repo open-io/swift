@@ -201,7 +201,8 @@ test_intelligent_tiering() {
 
 test_clean() {
   # Use the OpenIO cli to cheat on Bucket states
-  openio --account AUTH_demo container set ${SHARED_BUCKET} \
+  openio --account AUTH_demo container set ${SHARED_BUCKET}+segments --status enabled
+  openio --account AUTH_demo container set ${SHARED_BUCKET} --status enabled \
     --property X-Container-Sysmeta-S3Api-Archiving-Status="Deleting"
 
   # user1 has full control or can delete objects prefixed by its user name

@@ -19,6 +19,8 @@ import json
 import pika
 from pika.exchange_type import ExchangeType
 
+from oio.common.constants import OIO_DB_ENABLED, OIO_DB_FROZEN
+
 from swift.common.middleware.s3api.iam import ARN_S3_PREFIX, \
     IAM_RULES_CALLBACK, RT_BUCKET, RT_OBJECT, IamRulesMatcher
 from swift.common.middleware.s3api.s3response import UnexpectedContent, \
@@ -327,6 +329,60 @@ class IntelligentTieringMiddleware(object):
 
         return self.app(env, msg)
 
+    def _set_container_property(
+            self,
+            req,
+            key,
+            value,
+            container=None,
+            ignore_container_not_found=False,
+    ):
+        if not container:
+            container = req.container_name
+
+        sw_req = req.to_swift_req('POST', container, None)
+
+        # If the request is done on the main container, it should exist.
+        # If the request is done on the segment, this header prevents its
+        # creation if it does not exist (it may not exist for a bucket
+        # without any MPU).
+        sw_req.environ.setdefault('oio.query', {})['autocreate'] = False
+
+        sub_req = make_pre_authed_request(
+            sw_req.environ, sw_req.method, path=sw_req.path)
+
+        # Add the property and its value in the headers
+        sub_req.headers[key] = value
+
+        resp = sub_req.get_response(self.app)
+        if resp.status_int != 204:
+            if resp.status_int == 404 and ignore_container_not_found:
+                # The container does not exist, but this is explicitely allowed
+                return
+            raise ServiceUnavailable('Failed to set property, status=%s' %
+                                     resp.status)
+
+    def _set_bucket_status(self, req, status):
+        """
+        Method used to freeze/enable the bucket (aka container and its segment
+        if it exists).
+        Status should be one of OIO_DB_FROZEN, OIO_DB_ENABLED.
+        """
+        # First on the main container
+        self._set_container_property(
+            req,
+            key=sysmeta_header('container', 'status'),
+            value=str(status),
+        )
+        # Then on the segment associated
+        self._set_container_property(
+            req,
+            key=sysmeta_header('container', 'status'),
+            value=str(status),
+            container=f"{req.container_name}+segments",
+            ignore_container_not_found=True,
+        )
+
     def _set_archiving_status(self, req, old_status, new_status):
         if old_status not in BUCKET_ALLOWED_TRANSITIONS:
             raise UnexpectedContent('Old state is not valid: %s' % old_status)
@@ -336,15 +392,53 @@ class IntelligentTieringMiddleware(object):
             raise InvalidBucketState('Transition now allowed: from %s to %s' %
                                      (old_status, new_status))
 
-        sw_req = req.to_swift_req('POST', req.container_name, None)
-        sub_req = make_pre_authed_request(
-            sw_req.environ, sw_req.method, path=sw_req.path)
-        sub_req.headers[
-            sysmeta_header('container', 'archiving-status')] = new_status
-        resp = sub_req.get_response(self.app)
-        if resp.status_int != 204:
-            raise ServiceUnavailable('Failed to set status, status=%s' %
-                                     resp.status)
+        self._set_container_property(
+            req,
+            key=sysmeta_header('container', 'archiving-status'),
+            value=new_status,
+        )
+
+    def _put_archive(self, current_status, req):
+        new_status = BUCKET_STATE_LOCKED
+        if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
+            raise BadRequest('Archiving is not allowed in the state %s' %
+                             current_status)
+
+        try:
+            # Freeze the bucket
+            self._set_bucket_status(req, OIO_DB_FROZEN)
+
+            # Size should be computed when the bucket is frozen
+            bucket_info = req.get_bucket_info(self.app)
+            bucket_size = bucket_info.get('bytes')
+            bucket_region = bucket_info.get('region')
+
+            # Send rabbitmq event
+            self.rabbitmq_client.start_archiving(
+                req.account, req.container_name, bucket_size, bucket_region
+            )
+            # Change status in container metadata
+            self._set_archiving_status(req, current_status, new_status)
+        except (ServiceUnavailable, UnexpectedContent, InvalidBucketState):
+            # Unfreeze the bucket: the archive is not possible,
+            # the client should be able to manage its container again.
+            self._set_bucket_status(req, OIO_DB_ENABLED)
+            raise
+
+    def _put_restore(self, current_status, req):
+        new_status = BUCKET_STATE_RESTORING
+        if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
+            raise BadRequest('Restoring is not allowed in the state %s' %
+                             current_status)
+
+        bucket_info = req.get_bucket_info(self.app)
+        bucket_size = bucket_info.get('bytes')
+        bucket_region = bucket_info.get('region')
+
+        self.rabbitmq_client.start_restoring(
+            req.account, req.container_name, bucket_size, bucket_region
+        )
+        self._set_archiving_status(req, current_status, new_status)
 
     def _process_PUT(self, current_status, req, tiering_conf):
         if tiering_conf['Status'] != 'Enabled':
@@ -357,48 +451,25 @@ class IntelligentTieringMiddleware(object):
             raise BadRequest('AccessTier must be one of %s' %
                              TIERING_TIER_ACTIONS)
 
-        bucket_info = req.get_bucket_info(self.app)
-        bucket_size = bucket_info.get('bytes')
-        bucket_region = bucket_info.get('region')
-
         # ARCHIVE
         if action == TIERING_ACTION_TIER_ARCHIVE:
-            new_status = BUCKET_STATE_LOCKED
-            if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
-                self.rabbitmq_client.start_archiving(req.account,
-                                                     req.container_name,
-                                                     bucket_size,
-                                                     bucket_region)
-                self._set_archiving_status(req, current_status, new_status)
-            else:
-                raise BadRequest('Archiving is not allowed in the state %s' %
-                                 current_status)
+            self._put_archive(current_status, req)
 
         # RESTORE
         elif action == TIERING_ACTION_TIER_RESTORE:
-            new_status = BUCKET_STATE_RESTORING
-            if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
-                self.rabbitmq_client.start_restoring(req.account,
-                                                     req.container_name,
-                                                     bucket_size,
-                                                     bucket_region)
-                self._set_archiving_status(req, current_status, new_status)
-            else:
-                raise BadRequest('Restoring is not allowed in the state %s' %
-                                 current_status)
+            self._put_restore(current_status, req)
         else:
             raise S3NotImplemented(
                 'Action %s is not implemented yet.' % action)
 
     def _process_DELETE(self, current_status, req):
         new_status = BUCKET_STATE_DELETING
-        if new_status in BUCKET_ALLOWED_TRANSITIONS[current_status]:
-            self.rabbitmq_client.start_archive_deletion(req.account,
-                                                        req.container_name)
-            self._set_archiving_status(req, current_status, new_status)
-        else:
+        if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
             raise BadRequest('Deletion is not allowed in the state %s' %
                              current_status)
+        self.rabbitmq_client.start_archive_deletion(req.account,
+                                                    req.container_name)
+        self._set_archiving_status(req, current_status, new_status)
 
     def tiering_callback(self, req, tiering_conf, **kwargs):
         """

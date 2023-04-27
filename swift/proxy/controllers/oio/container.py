@@ -273,19 +273,24 @@ class ContainerController(SwiftContainerController):
             is_sys_or_user_meta('container', k)
         }
 
-        system = dict()
+        system = {}
         # This headers enable versioning.
         # First the legacy one.
         ver_loc = headers.get('X-Container-Sysmeta-Versions-Location')
-        if ver_loc is not None:
+        if ver_loc:
             # When suspending versioning, header has empty string value
             ver_val = "-1" if ver_loc else "1"
             system['sys.m2.policy.version'] = ver_val
         # Then the new one.
         vers_enabled = headers.get(CLIENT_VERSIONS_ENABLED)
-        if vers_enabled is not None:
+        if vers_enabled:
             ver_val = "-1" if config_true_value(vers_enabled) else "1"
             system['sys.m2.policy.version'] = ver_val
+
+        # This headers change the container status (frozen, enabled, ..)
+        status = metadata.pop("X-Container-Sysmeta-S3Api-Status", None)
+        if status:
+            system['sys.status'] = status
 
         return metadata, system
 
@@ -415,12 +420,18 @@ class ContainerController(SwiftContainerController):
 
     def get_container_post_resp(self, req, headers):
         properties, system = self.properties_from_headers(headers)
-        if not properties:
+        if not properties and not system:
             return self.PUT(req)
 
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
+        oio_params = req.environ.get('oio.query', {})
         perfdata = req.environ.get('swift.perfdata')
+
+        # Check if container should be created if not existing.
+        # If the param is not set, the container will be created.
+        autocreate = oio_params.pop("autocreate", True)
+
         try:
             self.app.storage.container_set_properties(
                 self.account_name, self.container_name,
@@ -428,7 +439,10 @@ class ContainerController(SwiftContainerController):
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)
             resp = HTTPNoContent(request=req)
         except exceptions.NoSuchContainer:
-            resp = self.PUT(req)
+            if autocreate:
+                resp = self.PUT(req)
+            else:
+                return HTTPNotFound(request=req)
         return resp
 
     def get_container_delete_resp(self, req):
