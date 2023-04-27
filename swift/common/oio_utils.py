@@ -18,7 +18,7 @@ from swift.common.request_helpers import split_reserved_name
 from swift.common.utils import Timestamp, config_true_value
 
 from swift.common.swob import HTTPMethodNotAllowed, \
-    HTTPNotFound, \
+    HTTPForbidden, HTTPNotFound, \
     HTTPNotModified, HTTPPreconditionFailed, HTTPServiceUnavailable
 
 from oio.common.constants import REQID_HEADER, \
@@ -76,6 +76,8 @@ def handle_service_busy(fnc):
         try:
             return fnc(self, req, *args, **kwargs)
         except (ServiceBusy, ServiceUnavailable) as err:
+            if err.message == "Invalid status: frozen":
+                raise HTTPForbidden(request=req)
             headers = {}
             headers['Retry-After'] = str(self.app.retry_after)
             return HTTPServiceUnavailable(request=req, headers=headers,
