@@ -38,6 +38,8 @@ MOCK_SET_BUCKET_STATUS = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._set_bucket_status'
 MOCK_SET_ARCHIVING_STATUS = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._set_archiving_status'
+MOCK_CHECK_MPU_COMPLETE = 'swift.common.middleware.intelligent_tiering.' \
+    'IntelligentTieringMiddleware._are_all_mpu_complete'
 
 
 class FakeReq(object):
@@ -113,7 +115,7 @@ class TestIntelligentTiering(unittest.TestCase):
 
         with patch(MOCK_FAKE_REQ_CONT_INFO,
                    return_value=self.return_value_get_bucket_status):
-            self.app.tiering_callback(self.req, tiering_conf)
+            self.app.tiering_callback(self.req, tiering_conf, None)
         self.assertEqual(1, m_rabbit.call_count)
         self.assertEqual(1, m_archiving_status.call_count)
         if self.expected_container_status_args:
@@ -148,6 +150,7 @@ class TestIntelligentTiering(unittest.TestCase):
                 self.app.tiering_callback,
                 self.req,
                 tiering_conf,
+                None,
             )
         self.assertEqual(0, m_rabbit.call_count)
         self.assertEqual(0, m_archiving_status.call_count)
@@ -159,7 +162,10 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_RABBIT_SEND_MESSAGE)
     @patch(MOCK_SET_ARCHIVING_STATUS)
     @patch(MOCK_SET_BUCKET_STATUS)
-    def test_PUT_archive_ok(self, m_b_status, m_archiving_status, m_rabbit):
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_ok(
+        self, m_check_mpu, m_b_status, m_archiving_status, m_rabbit
+    ):
         self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
                                      'archive', 42, None)
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
@@ -173,6 +179,8 @@ class TestIntelligentTiering(unittest.TestCase):
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
+        # Checking if mpu are completed will be tested in functional tests
+        m_check_mpu.return_value = True
         self._test_callback_ok(m_b_status, m_archiving_status, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)

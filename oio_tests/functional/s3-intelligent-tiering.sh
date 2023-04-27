@@ -87,16 +87,30 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U2} s3 rm s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
 
-  # Ask for ARCHIVE operation
-  ${AWSA1U1} s3api put-bucket-intelligent-tiering-configuration \
+  # Initiate MPU and upload part but without completing it
+  UPLOAD_ID=$(${AWSA1U1} s3api create-multipart-upload --bucket ${SHARED_BUCKET} --key user1_bigobject | jq -r '.UploadId')
+  ETAG=$(${AWSA1U1} s3api upload-part --bucket ${SHARED_BUCKET} --key user1_bigobject --part-number 1 --body /etc/magic --upload-id ${UPLOAD_ID} | jq -r '.ETag' | tr -d '"')
+
+  # Ask for ARCHIVE operation (user is able to but MPU not completed is blocking)
+  OUT=$(${AWSA1U1} s3api put-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid \
-    --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}"
+    --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}"  2>&1 | tail -n 1)
+  echo "$OUT" | grep "BadRequest"
+
+  # Complete the MPU, the archive is not blocked anymore
+  ${AWSA1U1} s3api complete-multipart-upload --bucket ${SHARED_BUCKET} --key user1_bigobject \
+    --upload-id ${UPLOAD_ID} --multipart-upload '{"Parts": [{"ETag": "'"${ETAG}"'", "PartNumber": 1}]}'
 
   # user2 cannot ask for ARCHIVE operation (no permission)
   OUT=$(${AWSA1U2} s3api put-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid \
     --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}" 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
+
+  # Ask for ARCHIVE operation
+  ${AWSA1U1} s3api put-bucket-intelligent-tiering-configuration \
+    --bucket ${SHARED_BUCKET} --id myid \
+    --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}"
 
   # Check if RabbitMQ HTTP API port is open
   #   (should be on CDS, eventually in dev env).
@@ -109,7 +123,10 @@ test_intelligent_tiering() {
     sleep 1
     # Read message in RabbitMQ
     OUT=$(rabbitmqadmin get queue=pca ackmode=ack_requeue_false --format=long)
-    echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 222, \"region\": \"REGIONONE\"}"
+    # Expected size: magic + user1_magic + user1_bigobject + user1_bigobject/<upload-id>/1
+    # size = 111 + 111 + 252 + 111 = 585
+    # because the size of the manifest of user1_bigobject is 252
+    echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 585, \"region\": \"REGIONONE\"}"
   fi
 
   # user1 cannot create anymore (Intelligent-tiering deny)
@@ -207,6 +224,7 @@ test_clean() {
 
   # user1 has full control or can delete objects prefixed by its user name
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic
+  ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_bigobject
   # admin can delete any object
   ${AWSA1ADM} s3 rm s3://${SHARED_BUCKET}/magic
 

@@ -27,6 +27,8 @@ from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     BadRequest, InvalidBucketState, NoSuchBucket, S3NotImplemented, \
     ServiceUnavailable
 from swift.common.middleware.s3api.utils import sysmeta_header
+from swift.common.middleware.s3api.multi_upload_utils import \
+    list_bucket_multipart_uploads
 from swift.common.swob import HTTPMethodNotAllowed
 from swift.common.utils import config_true_value, get_logger
 from swift.common.wsgi import make_pre_authed_request
@@ -398,11 +400,33 @@ class IntelligentTieringMiddleware(object):
             value=new_status,
         )
 
-    def _put_archive(self, current_status, req):
+    def _are_all_mpu_complete(self, req, s3app):
+        # Remove req params used for intelligent request
+        old_params = req.params.copy()
+
+        # The entire list is not necessary, the request should be aborted
+        # if only 1 part is still here
+        req.params = {"max-uploads": 1}
+        results = list_bucket_multipart_uploads(s3app, req)
+
+        # Put back params to the request
+        req.params = old_params
+
+        if len(results["uploads"]) > 0:
+            return False
+        return True
+
+    def _put_archive(self, current_status, req, s3app):
         new_status = BUCKET_STATE_LOCKED
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
             raise BadRequest('Archiving is not allowed in the state %s' %
                              current_status)
+
+        # Archive is not possible if there is an incomplete MPU
+        if not self._are_all_mpu_complete(req, s3app):
+            raise BadRequest('Archiving is not allowed when there are '
+                             'incomplete MPU, please complete them or '
+                             'delete the parts.')
 
         try:
             # Freeze the bucket
@@ -440,7 +464,7 @@ class IntelligentTieringMiddleware(object):
         )
         self._set_archiving_status(req, current_status, new_status)
 
-    def _process_PUT(self, current_status, req, tiering_conf):
+    def _process_PUT(self, current_status, req, tiering_conf, s3app):
         if tiering_conf['Status'] != 'Enabled':
             raise BadRequest('Status must be Enabled')
         if len(tiering_conf['Tierings']) != 1:
@@ -453,7 +477,7 @@ class IntelligentTieringMiddleware(object):
 
         # ARCHIVE
         if action == TIERING_ACTION_TIER_ARCHIVE:
-            self._put_archive(current_status, req)
+            self._put_archive(current_status, req, s3app)
 
         # RESTORE
         elif action == TIERING_ACTION_TIER_RESTORE:
@@ -471,7 +495,7 @@ class IntelligentTieringMiddleware(object):
                                                     req.container_name)
         self._set_archiving_status(req, current_status, new_status)
 
-    def tiering_callback(self, req, tiering_conf, **kwargs):
+    def tiering_callback(self, req, tiering_conf, s3app, **kwargs):
         """
         Intelligent Tiering callback.
         Method allowed are PUT, DELETE and GET.
@@ -481,7 +505,7 @@ class IntelligentTieringMiddleware(object):
         bucket_status = info["status"]
 
         if req.method == 'PUT':
-            self._process_PUT(bucket_status, req, tiering_conf)
+            self._process_PUT(bucket_status, req, tiering_conf, s3app)
         elif req.method == 'DELETE':
             self._process_DELETE(bucket_status, req)
         elif req.method == 'GET':

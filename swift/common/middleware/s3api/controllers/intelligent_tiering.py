@@ -91,7 +91,7 @@ class IntelligentTieringController(Controller):
             raise S3NotImplemented(
                 "Intelligent tiering is not enabled on this gateway.")
         # This can raise exceptions too
-        return tiering_callback(req, tiering_dict)
+        return tiering_callback(req, tiering_dict, self.app)
 
     def _build_base_listing(self):
         elem = Element('ListBucketIntelligentTieringConfigurationsOutput')

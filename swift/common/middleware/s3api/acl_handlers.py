@@ -179,7 +179,7 @@ class BaseAclHandler(object):
                 elem = fromstring(body, ACL.root_tag)
                 acl = ACL.from_elem(
                     elem, True, self.req.conf.allow_no_owner)
-            except(XMLSyntaxError, DocumentInvalid):
+            except (XMLSyntaxError, DocumentInvalid):
                 raise MalformedACLError()
             except Exception as e:
                 self.logger.error(e)
@@ -496,6 +496,9 @@ ACL_MAP = {
     {'Permission': 'OWNER'},
     # GET Bucket, List Parts, List Multipart Upload
     ('GET', 'GET', 'container'):
+    {'Permission': 'READ'},
+    # List Multipart Upload from Intelligent Tiering PUT
+    ('PUT', 'GET', 'container'):
     {'Permission': 'READ'},
     # PUT Object, PUT Object Copy
     ('PUT', 'HEAD', 'container'):

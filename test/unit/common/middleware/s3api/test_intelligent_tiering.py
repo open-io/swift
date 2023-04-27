@@ -76,12 +76,12 @@ MOCK_BUCKET_DB_SHOW = "swift.common.middleware.s3api.bucket_db." \
     "DummyBucketDb.show"
 
 
-def tiering_callback_ok(req, conf):
+def tiering_callback_ok(req, conf, s3app):
     """To be used as an always OK tiering callback."""
     return {"bucket_status": "Enabled"}
 
 
-def tiering_callback_invalid_state(req, conf):
+def tiering_callback_invalid_state(req, conf, s3app):
     """To be used as a never OK tiering callback."""
     raise InvalidBucketState
 
