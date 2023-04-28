@@ -205,6 +205,7 @@ class BucketRateLimitMiddleware(object):
             # If a client wants to aggressively access a bucket
             # that does not exist, that client must also be rate limited
             bucket_info = None
+        bucket_ratelimit = None
         if bucket_info is not None:
             bucket_ratelimit = bucket_info.get("ratelimit")
         if bucket_ratelimit is None:
