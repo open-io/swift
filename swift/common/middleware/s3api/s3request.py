@@ -2112,7 +2112,7 @@ class S3Request(swob.Request):
         if bucket_info is None:
             if self.bucket_db:
                 bucket_info = self.bucket_db.show(
-                    bucket, use_cache=read_caches)
+                    bucket, self.account, use_cache=read_caches)
             else:
                 container_name = self.container_name
                 try:
