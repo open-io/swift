@@ -178,6 +178,25 @@ class ReplicationController(Controller):
                 "The maximum value is {MAX_LENGTH_RULE_ID} characters."
             )
 
+        rule_filter = rule.find("./Filter")
+        # Filter must be defined
+        if rule_filter is None:
+            raise MalformedXML()
+        # If filter defined, Priority must also be defined
+        rule_priority = rule.find("./Priority")
+        if rule_priority is None:
+            raise InvalidRequest("Priority must be specified for "
+                                 "this version of Cross Region Replication"
+                                 " configuration schema.")
+        # If filter defined, DeletemarkerReplication must also be defined
+        rule_deleteMarkerReplication = rule.find(
+            "./DeleteMarkerReplication")
+        if rule_deleteMarkerReplication is None:
+            raise InvalidRequest(
+                "DeleteMarkerReplication must be specified "
+                "for this version of Cross Region Replication"
+                " configuration schema.")
+
         self._validate_destination(
             rule.find("./Destination"), req
         )

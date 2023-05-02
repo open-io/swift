@@ -83,6 +83,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
@@ -106,12 +113,128 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("200 OK", status)
         self.assertFalse(body)  # empty -> False
 
+    def test_PUT_filter_missing(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("The XML you provided was not well-formed or "
+                      "did not validate against our published schema",
+                      str(body))
+
+    def test_PUT_priority_missing(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Priority must be specified for "
+                      "this version of Cross Region Replication"
+                      " configuration schema.",
+                      str(body))
+
+    def test_PUT_deleteMarkerreplication_missing(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("DeleteMarkerReplication must be specified for "
+                      "this version of Cross Region Replication"
+                      " configuration schema.",
+                      str(body))
+
     def test_PUT_not_valid_bucket_prefix(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <Bucket>dest</Bucket>
                     </Destination>
@@ -141,6 +264,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <Bucket>arn:aws:s3:::missing-bucket</Bucket>
                     </Destination>
@@ -168,6 +298,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
@@ -315,9 +452,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
                     <DeleteMarkerReplication>
                         <Status>Enabled</Status>
                     </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
@@ -348,6 +489,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <SourceSelectionCriteria></SourceSelectionCriteria>
                     <Destination>
                         <Bucket>arn:aws:s3:::dest</Bucket>
@@ -378,6 +526,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <SourceSelectionCriteria>
                         <ReplicaModifications>
                             <Status>Enabled</Status>
@@ -412,6 +567,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <SourceSelectionCriteria>
                         <SseKmsEncryptedObjects>
                             <Status>Enabled</Status>
@@ -445,6 +607,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <AccessControlTranslation>
                             <Owner>Destination</Owner>
@@ -476,6 +645,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <EncryptionConfiguration></EncryptionConfiguration>
                         <Bucket>arn:aws:s3:::dest</Bucket>
@@ -505,6 +681,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <Metrics>
                             <Status>Enabled</Status>
@@ -536,6 +719,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <ReplicationTime>
                             <Time></Time>
@@ -568,6 +758,13 @@ class TestS3ApiReplication(S3ApiTestCase):
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
                 <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
                     <Destination>
                         <StorageClass>DEEP_ARCHIVE</StorageClass>
                         <Bucket>arn:aws:s3:::dest</Bucket>
