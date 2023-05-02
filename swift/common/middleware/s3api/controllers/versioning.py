@@ -74,9 +74,11 @@ class VersioningController(Controller):
         Handles PUT Bucket versioning.
         """
         info = req.get_container_info(self.app)
-        object_lock = info['sysmeta'].get(
+        object_lock = info.get('sysmeta', {}).get(
             's3api-bucket-object-lock-enabled',
             None)
+        replication_conf = info.get('sysmeta', {}).get(
+            's3api-replication', {})
 
         if 'object_versioning' not in get_swift_info():
             raise S3NotImplemented()
@@ -85,11 +87,18 @@ class VersioningController(Controller):
         try:
             elem = fromstring(xml, 'VersioningConfiguration')
             status = elem.find('./Status').text
-            if object_lock and status.lower() == 'suspended':
-                raise InvalidBucketState(
-                    'An Object Lock configuration is '
-                    'present on this bucket, so the versioning state cannot '
-                    'be changed.')
+            if status.lower() == 'suspended':
+                if object_lock:
+                    raise InvalidBucketState(
+                        'An Object Lock configuration is '
+                        'present on this bucket, so the versioning state '
+                        'cannot be changed.')
+                if replication_conf:
+                    raise InvalidBucketState(
+                        'A replication configuration is present '
+                        'on this bucket, so you cannot change the '
+                        'versioning state. To change the versioning '
+                        'state, first delete the replication configuration.')
         except (XMLSyntaxError, DocumentInvalid):
             raise MalformedXML()
         except Exception as e:

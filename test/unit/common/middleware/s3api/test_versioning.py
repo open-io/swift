@@ -16,7 +16,8 @@
 import unittest
 
 from mock import patch
-
+from swift.common.middleware.s3api.controllers.replication import \
+    BUCKET_REPLICATION_HEADER
 from swift.common.swob import Request, HTTPNoContent
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     Element, SubElement
@@ -137,6 +138,36 @@ class TestS3ApiVersioning(S3ApiTestCase):
         self.assertIn(('X-Versions-Enabled', 'false'),
                       list(calls[-1][2].items()))
 
+    def _versioning_PUT_suspended_replication_conf_present(self, path):
+        elem = Element('VersioningConfiguration')
+        SubElement(elem, 'Status').text = 'Suspended'
+        xml = tostring(elem)
+        self.swift.register('POST', '/v1/AUTH_test/bucket', HTTPNoContent,
+                            {'x-container-sysmeta-versions-enabled': 'False'},
+                            None)
+
+        self.swift.register('HEAD',
+                            '/v1/AUTH_test/bucket',
+                            HTTPNoContent,
+                            {"x-container-sysmeta-versions-enabled": False,
+                             BUCKET_REPLICATION_HEADER: {'blabla'}},
+                            None)
+        req = Request.blank(
+            '%s?versioning' % path,
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body=xml)
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '409')
+        self.assertIn("A replication configuration is present on this bucket, "
+                      "so you cannot change the versioning state. To change "
+                      "the versioning state, first delete the replication "
+                      "configuration", str(body))
+
+        calls = self.swift.calls_with_headers
+        self.assertEqual(calls[-1][0], 'HEAD')
+
     def test_object_versioning_GET_not_configured(self):
         self._versioning_GET_not_configured('/bucket/object')
 
@@ -154,6 +185,10 @@ class TestS3ApiVersioning(S3ApiTestCase):
 
     def test_object_versioning_PUT_suspended(self):
         self._versioning_PUT_suspended('/bucket/object')
+
+    def test_object_versioning_PUT_suspended_replication_conf_present(self):
+        self._versioning_PUT_suspended_replication_conf_present(
+            '/bucket/object')
 
     def test_bucket_versioning_GET_not_configured(self):
         self._versioning_GET_not_configured('/bucket')
