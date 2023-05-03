@@ -19,6 +19,7 @@ import functools
 from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
     check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
@@ -245,6 +246,7 @@ class Controller(object):
             return False
 
     @set_s3_operation_rest('PREFLIGHT')
+    @ratelimit_bucket
     @public
     @check_bucket_storage_domain
     def OPTIONS(self, req):

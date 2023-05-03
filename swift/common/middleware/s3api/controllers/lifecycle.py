@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -42,6 +43,7 @@ class LifecycleController(Controller):
     """
 
     @set_s3_operation_rest('LIFECYCLE')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
@@ -59,6 +61,7 @@ class LifecycleController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('LIFECYCLE')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation
@@ -80,6 +83,7 @@ class LifecycleController(Controller):
         return convert_response(req, resp, 204, HTTPOk)
 
     @set_s3_operation_rest('LIFECYCLE')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @bucket_operation

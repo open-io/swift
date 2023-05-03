@@ -20,6 +20,7 @@ from re import compile, sub
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, object_operation, \
     set_s3_operation_rest, handle_no_such_key
+from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
@@ -28,7 +29,6 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     HTTPOk, InvalidArgument, InvalidBucketState, InvalidRequest, \
     InvalidRetentionPeriod, MalformedXML, \
     NoSuchObjectLockConfiguration, ObjectLockConfigurationNotFoundError
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 from swift.common.middleware.s3api.utils import S3Timestamp, convert_response,\
     mktime, sysmeta_header
@@ -382,6 +382,7 @@ class ObjectLockRetentionController(Controller):
     """
 
     @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
@@ -424,6 +425,7 @@ class ObjectLockRetentionController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
+    @ratelimit_bucket
     @public
     @fill_cors_headers
     @object_operation
