@@ -255,8 +255,7 @@ class ReplicationController(Controller):
                                  ' as the source bucket.')
 
         source_info = req.get_bucket_info(self.app)
-        target_info = req.bucket_db.show(bucket_name,
-                                         source_info['account'])
+        target_info = req.bucket_db.show(bucket_name)
         if not (target_info and target_info["account"]):
             # Bucket destination not found
             raise InvalidRequest("Destination bucket must exist.")
