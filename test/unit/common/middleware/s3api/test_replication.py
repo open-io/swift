@@ -22,6 +22,8 @@ from swift.common.middleware.s3api.bucket_db import BucketDbWrapper, \
 from swift.common.middleware.s3api.controllers.replication import \
     BUCKET_REPLICATION_HEADER, dict_conf_to_xml, replication_xml_conf_to_dict,\
     MAX_PRIORITY_NUMBER, MIN_PRIORITY_NUMBER
+from swift.common.middleware.s3api.controllers.bucket import \
+    OBJECT_LOCK_ENABLED_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     SYSMETA_VERSIONS_ENABLED
 from swift.common.swob import Request, HTTPNotFound, HTTPOk, HTTPNoContent
@@ -83,6 +85,25 @@ REPLICATION_CONF_DICT = {
     ],
 }
 REPLICATION_CONF_JSON = json.dumps(REPLICATION_CONF_DICT)
+BASIC_CONF = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+"""
 
 
 class TestS3ApiReplication(S3ApiTestCase):
@@ -111,6 +132,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         )
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
         self.s3api.bucket_db.create("test-replication", "AUTH_test")
+        self.s3api.bucket_db.create("test-replication-lock", "AUTH_test")
         self.s3api.bucket_db.create("test-replication-no-conf", "AUTH_test")
         self.s3api.bucket_db.create("dest", "AUTH_test")
 
@@ -232,25 +254,6 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("400 Bad Request", status)
 
     def test_PUT_minimal(self):
-        config = b"""<?xml version="1.0" encoding="UTF-8"?>
-            <ReplicationConfiguration
-                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
-                <Rule>
-                    <Priority>1</Priority>
-                    <DeleteMarkerReplication>
-                        <Status>Enabled</Status>
-                    </DeleteMarkerReplication>
-                    <Filter>
-                        <Prefix>Tax</Prefix>
-                    </Filter>
-                    <Destination>
-                        <Bucket>arn:aws:s3:::dest</Bucket>
-                    </Destination>
-                    <Status>Enabled</Status>
-                </Rule>
-            </ReplicationConfiguration>
-        """
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_test/dest',
@@ -258,7 +261,7 @@ class TestS3ApiReplication(S3ApiTestCase):
 
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
-                            body=config,
+                            body=BASIC_CONF,
                             headers={
                                 "Authorization": "AWS test:tester:hmac",
                                 "Date": self.get_date_header(),
@@ -318,6 +321,45 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("400 Bad Request", status)
         self.assertIn("Rule Id must be unique", str(body))
 
+    def test_PUT_priority_not_valid(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e3</ID>
+                    <Priority>-1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn(f"Priority must be between"
+                      f" {MIN_PRIORITY_NUMBER} and {MAX_PRIORITY_NUMBER}.",
+                      str(body))
+
     def test_PUT_tag_keys_not_unique(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
@@ -364,45 +406,6 @@ class TestS3ApiReplication(S3ApiTestCase):
         status, _, body = self.call_s3api(req)
         self.assertEqual("400 Bad Request", status)
         self.assertIn("Duplicate Tag Keys are not allowed.", str(body))
-
-    def test_PUT_priority_not_valid(self):
-        config = b"""<?xml version="1.0" encoding="UTF-8"?>
-            <ReplicationConfiguration
-                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
-                <Rule>
-                    <ID>2dfdcf571182407293d35b52959876e3</ID>
-                    <Priority>-1</Priority>
-                    <DeleteMarkerReplication>
-                        <Status>Enabled</Status>
-                    </DeleteMarkerReplication>
-                    <Filter>
-                        <Prefix>Tax</Prefix>
-                    </Filter>
-                    <Destination>
-                        <Bucket>arn:aws:s3:::dest</Bucket>
-                    </Destination>
-                    <Status>Enabled</Status>
-                </Rule>
-            </ReplicationConfiguration>
-        """
-        self.swift.register('POST', '/v1/AUTH_test/test-replication',
-                            HTTPNoContent, {}, None)
-        self.swift.register('HEAD', '/v1/AUTH_test/dest',
-                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
-
-        req = Request.blank('/test-replication?replication',
-                            environ={"REQUEST_METHOD": "PUT"},
-                            body=config,
-                            headers={
-                                "Authorization": "AWS test:tester:hmac",
-                                "Date": self.get_date_header(),
-                            })
-        status, _, body = self.call_s3api(req)
-        self.assertEqual("400 Bad Request", status)
-        self.assertIn(f"Priority must be between"
-                      f" {MIN_PRIORITY_NUMBER} and {MAX_PRIORITY_NUMBER}.",
-                      str(body))
 
     def test_PUT_filter_missing(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -584,32 +587,13 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertIn("Destination bucket must exist.", str(body))
 
     def test_PUT_versioning_not_enabled_on_dest(self):
-        config = b"""<?xml version="1.0" encoding="UTF-8"?>
-            <ReplicationConfiguration
-                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
-                <Rule>
-                    <Priority>1</Priority>
-                    <DeleteMarkerReplication>
-                        <Status>Enabled</Status>
-                    </DeleteMarkerReplication>
-                    <Filter>
-                        <Prefix>Tax</Prefix>
-                    </Filter>
-                    <Destination>
-                        <Bucket>arn:aws:s3:::dest</Bucket>
-                    </Destination>
-                    <Status>Enabled</Status>
-                </Rule>
-            </ReplicationConfiguration>
-        """
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_test/dest',
                             HTTPOk, {SYSMETA_VERSIONS_ENABLED: False}, None)
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
-                            body=config,
+                            body=BASIC_CONF,
                             headers={
                                 "Authorization": "AWS test:tester:hmac",
                                 "Date": self.get_date_header(),
@@ -738,26 +722,6 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("InvalidRequest", self._get_error_code(body))
 
     def test_PUT_delete_marker(self):
-        config = b"""<?xml version="1.0" encoding="UTF-8"?>
-            <ReplicationConfiguration
-                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
-                <Rule>
-                    <Priority>1</Priority>
-                    <DeleteMarkerReplication>
-                        <Status>Enabled</Status>
-                    </DeleteMarkerReplication>
-                    <Filter>
-                        <Prefix>Tax</Prefix>
-                    </Filter>
-                    <Destination>
-                        <Bucket>arn:aws:s3:::dest</Bucket>
-                    </Destination>
-                    <Status>Enabled</Status>
-                </Rule>
-            </ReplicationConfiguration>
-        """
-
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_test/dest',
@@ -765,7 +729,7 @@ class TestS3ApiReplication(S3ApiTestCase):
 
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
-                            body=config,
+                            body=BASIC_CONF,
                             headers={
                                 "Authorization": "AWS test:tester:hmac",
                                 "Date": self.get_date_header(),
@@ -1078,6 +1042,76 @@ class TestS3ApiReplication(S3ApiTestCase):
         status, _, body = self.call_s3api(req)
         self.assertEqual("501 Not Implemented", status)
         self.assertEqual("NotImplemented", self._get_error_code(body))
+
+    def test_PUT_object_lock_enabled(self):
+
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/test-replication-lock', HTTPNoContent,
+            {OBJECT_LOCK_ENABLED_HEADER: True},
+            None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest', HTTPOk,
+                            {SYSMETA_VERSIONS_ENABLED: True}, None)
+        req = Request.blank('/test-replication-lock?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=BASIC_CONF,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertEqual("InvalidRequest", self._get_error_code(body))
+        self.assertIn('Replication configuration cannot be applied to '
+                      'an Object Lock enabled bucket',
+                      str(body))
+
+    def test_PUT_object_lock_enabled_with_invalid_token(self):
+
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/test-replication-lock', HTTPNoContent,
+            {OBJECT_LOCK_ENABLED_HEADER: True},
+            None)
+        req = Request.blank('/test-replication-lock?replication',
+                            environ={
+                                "REQUEST_METHOD": "PUT",
+                                'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_TOKEN':
+                                '160fd4d8a9ec4eecbc703bf88c9512caf67'
+                                '1a63b8d27b27bd6505111167690b'},
+                            body=BASIC_CONF,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertEqual("InvalidToken", self._get_error_code(body))
+        self.assertIn('The provided token is malformed or otherwise invalid.',
+                      str(body))
+
+    def test_PUT_object_lock_enabled_with_valid_token(self):
+        self.swift.register('POST', '/v1/AUTH_test/test-replication-lock',
+                            HTTPNoContent, {}, None)
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/test-replication-lock', HTTPNoContent,
+            {OBJECT_LOCK_ENABLED_HEADER: True},
+            None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest', HTTPOk,
+                            {SYSMETA_VERSIONS_ENABLED: True}, None)
+        req = Request.blank('/test-replication-lock?replication',
+                            environ={
+                                "REQUEST_METHOD": "PUT",
+                                'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_TOKEN':
+                                'ZTg0Y2IyNzMyM2JiOTVjYzUwZGFkMjFkNDM2OW'
+                                'EwMjMzZDRlOWM1NmU0ZWRiZjg5ZmQ3N2M0OWQ4N'
+                                'zRlOWE4MQ=='},
+                            body=BASIC_CONF,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
 
     def test_DELETE_bucket_ok(self):
         self.swift.register('POST', '/v1/AUTH_test/test-replication',

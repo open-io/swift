@@ -25,10 +25,11 @@ from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring, tostring, SubElement, Element
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
-    InternalError, InvalidArgument, InvalidRequest, MalformedXML, \
-    ReplicationConfigurationNotFoundError, S3NotImplemented, ServiceUnavailable
+    InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
+    MalformedXML, ReplicationConfigurationNotFoundError, S3NotImplemented, \
+    ServiceUnavailable
 from swift.common.middleware.s3api.utils import convert_response, \
-    sysmeta_header
+    sysmeta_header, is_valid_token
 from swift.common.utils import config_true_value, public
 from swift.proxy.controllers.base import get_container_info
 
@@ -387,9 +388,26 @@ class ReplicationController(Controller):
         """
         if not self.conf.enable_bucket_replication:
             raise S3NotImplemented()
-
+        info = req.get_container_info(self.app)
+        object_lock = info.get('sysmeta', {}).get(
+            's3api-bucket-object-lock-enabled',
+            None)
         # Check ACLs
-        req.get_response(self.app, method='HEAD')
+        resp = req.get_response(self.app, method='HEAD')
+        if object_lock:
+            # Check if replication has been already defined on this bucket.
+            # Token validation needed only if replication conf not found.
+            if BUCKET_REPLICATION_HEADER not in resp.sysmeta_headers:
+                token = req.environ.get("HTTP_X_AMZ_BUCKET_OBJECT_LOCK_TOKEN")
+                if not token:
+                    raise InvalidRequest(
+                        'Replication configuration cannot be applied'
+                        ' to an Object Lock enabled bucket.')
+                account = req.account
+                container = req.container_name
+                if not is_valid_token(
+                        token, self.conf.token_prefix, account, container):
+                    raise InvalidToken()
 
         config = req.xml(MAX_REPLICATION_BODY_SIZE)
         # Validation
