@@ -157,24 +157,31 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
         "Role": replication_conf.find("Role").text,
         "Rules": [],
     }
+    IDs = []
     for rule in replication_conf.findall("Rule"):
-        ID = rule.find("ID")
+        id_marker = rule.find("ID")
+        id_text = id_marker.text if id_marker is not None else uuid.uuid4().hex
+        if id_text in IDs:
+            raise InvalidArgument("ID", id_text, "Rule Id must be unique")
+        IDs.append(id_text)
         priority = rule.find("Priority")
         deleteMarkerReplication = rule.find("DeleteMarkerReplication")
-        out["Rules"].append({
-            "ID": ID.text if ID is not None else uuid.uuid4().hex,
-            "Priority": int(priority.text) if priority is not None
-            else 1,
-            "Status": rule.find("Status").text,
-            "DeleteMarkerReplication": {
-                "Status": deleteMarkerReplication.find("Status").text
-                if deleteMarkerReplication is not None else "Disabled",
-            },
-            "Filter": get_filters(rule.find("Filter")),
-            "Destination": {
-                "Bucket": rule.find("Destination").find("Bucket").text,
-            },
-        })
+        out["Rules"].append(
+            {
+                "ID": id_text,
+                "Priority": int(priority.text) if priority is not None else 1,
+                "Status": rule.find("Status").text,
+                "DeleteMarkerReplication": {
+                    "Status": deleteMarkerReplication.find("Status").text
+                    if deleteMarkerReplication is not None
+                    else "Disabled",
+                },
+                "Filter": get_filters(rule.find("Filter")),
+                "Destination": {
+                    "Bucket": rule.find("Destination").find("Bucket").text,
+                },
+            }
+        )
     return out
 
 
