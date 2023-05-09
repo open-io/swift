@@ -25,6 +25,9 @@ from swift.common import utils
 
 MULTIUPLOAD_SUFFIX = '+segments'
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
+# Content-Type by default at AWS, the official value being
+# "application/octet-stream"
+DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
 
 
 def sysmeta_prefix(resource):

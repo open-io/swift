@@ -94,7 +94,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import unique_id, \
-    MULTIUPLOAD_SUFFIX, S3Timestamp, sysmeta_header
+    MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
@@ -907,15 +907,16 @@ class UploadController(Controller):
                 sysmeta_header('object', 'content-type'))
         elif hct_header in resp.sysmeta_headers:
             # has-content-type is present but false, so no content type was
-            # set on initial upload. In that case, we won't set one on our
-            # PUT request. Swift will end up guessing one based on the
-            # object name.
+            # set on initial upload.
             content_type = None
         else:
             content_type = resp.headers.get('Content-Type')
 
         if content_type:
             headers['Content-Type'] = content_type
+        else:
+            # Use the default to not use the Content-Type of this request
+            headers['Content-Type'] = DEFAULT_CONTENT_TYPE
 
         container = req.container_name + MULTIUPLOAD_SUFFIX
         s3_etag_hasher = md5(usedforsecurity=False)

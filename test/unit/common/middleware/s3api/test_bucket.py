@@ -30,6 +30,7 @@ from swift.common.middleware.s3api.etree import fromstring, tostring, \
 from swift.common.middleware.s3api.subresource import Owner, encode_acl, \
     ACLPublicRead
 from swift.common.middleware.s3api.s3request import MAX_32BIT_INT
+from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE
 
 from test.unit.common.middleware.helpers import normalize_path
 from test.unit.common.middleware.s3api import S3ApiTestCase
@@ -802,7 +803,7 @@ class TestS3ApiBucket(S3ApiTestCase):
     def test_bucket_GET_versions_with_key_marker_and_version_id_marker(self):
         container_listing = [{
             "bytes": 8192,
-            "content_type": "binary/octet-stream",
+            "content_type": DEFAULT_CONTENT_TYPE,
             "hash": "221994040b14294bdf7fbc128e66633c",
             "last_modified": "2019-08-16T19:39:53.152780",
             "name": "subdir/foo",
@@ -817,7 +818,7 @@ class TestS3ApiBucket(S3ApiTestCase):
             'is_latest': True,
         }, {
             "bytes": 8192,
-            "content_type": "binary/octet-stream",
+            "content_type": DEFAULT_CONTENT_TYPE,
             "hash": "221994040b14294bdf7fbc128e66633c",
             "last_modified": "2019-08-16T19:39:53.508510",
             "name": "subdir/bar",
@@ -825,7 +826,7 @@ class TestS3ApiBucket(S3ApiTestCase):
             'is_latest': False,
         }, {
             "bytes": 8192,
-            "content_type": "binary/octet-stream",
+            "content_type": DEFAULT_CONTENT_TYPE,
             "hash": "221994040b14294bdf7fbc128e66633c",
             "last_modified": "2019-08-16T19:39:42.673260",
             "name": "subdir/foo",
@@ -1071,14 +1072,14 @@ class TestS3ApiBucket(S3ApiTestCase):
     def test_bucket_GET_versions_prefix(self):
         container_listing = [{
             "bytes": 8192,
-            "content_type": "binary/octet-stream",
+            "content_type": DEFAULT_CONTENT_TYPE,
             "hash": "221994040b14294bdf7fbc128e66633c",
             "last_modified": "2019-08-16T19:39:53.152780",
             "name": "subdir/foo",
         }]
         versions_listing = [{
             "bytes": 8192,
-            "content_type": "binary/octet-stream",
+            "content_type": DEFAULT_CONTENT_TYPE,
             "hash": "221994040b14294bdf7fbc128e66633c",
             "last_modified": "2019-08-16T19:39:53.508510",
             "name": "subdir/bar",
@@ -1094,7 +1095,7 @@ class TestS3ApiBucket(S3ApiTestCase):
             'is_latest': False,
         }, {
             "bytes": 8192,
-            "content_type": "binary/octet-stream",
+            "content_type": DEFAULT_CONTENT_TYPE,
             "hash": "221994040b14294bdf7fbc128e66633c",
             "last_modified": "2019-08-16T19:39:42.673260",
             "name": "subdir/foo",

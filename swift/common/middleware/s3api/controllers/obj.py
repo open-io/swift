@@ -27,7 +27,8 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
     SSEC_KEY_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
-from swift.common.middleware.s3api.utils import S3Timestamp, sysmeta_header
+from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
+    S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
@@ -259,7 +260,7 @@ class ObjectController(Controller):
         req.check_copy_source(self.app)
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason
-            req.headers['Content-Type'] = 'binary/octet-stream'
+            req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
         resp = req.get_response(self.app)
 
         if 'X-Amz-Copy-Source' in req.headers:

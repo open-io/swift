@@ -53,6 +53,10 @@ class TestS3Mpu(unittest.TestCase):
             if 'NoSuchBucket' not in str(exc):
                 raise
 
+    @staticmethod
+    def _add_content_type(request, **_kwargs):
+        request.headers['Content-Type'] = 'text/xml'
+
     def _create_multipart_upload(self, bucket, path, *params):
         data = run_awscli_s3api(
             "create-multipart-upload", *params,
@@ -87,11 +91,14 @@ class TestS3Mpu(unittest.TestCase):
     def test_complete_mpu_with_headers(self):
         path = random_str(10)
         content_type = random_str(10)
+
+        # Create MPU with a specific Content-Type
         data = self._create_multipart_upload(self.bucket, path,
                                              "--content-type", content_type,
                                              "--acl", "public-read")
         upload_id = data['UploadId']
 
+        # Upload 1 part
         mpu_parts = []
         part = run_awscli_s3api(
             "upload-part",
@@ -101,12 +108,24 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket, key=path)
         mpu_parts.append({"ETag": part['ETag'], "PartNumber": 1})
 
-        final = run_awscli_s3api(
-            "complete-multipart-upload",
-            "--upload-id", upload_id,
-            "--multipart-upload",
-            json.dumps({"Parts": mpu_parts}),
-            bucket=self.bucket, key=path)
+        # Complete the MPU with a Content-Type to text/xml
+        # Some tools specify the Content-Type on this operation,
+        # and since the data sent is indeed XML, this should be allowed
+        # without affecting the object Content-Type.
+        boto_client = get_boto3_client()
+        try:
+            boto_client.meta.events.register(
+                'before-sign.s3.*', self._add_content_type)
+            final = boto_client.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=path,
+                MultipartUpload={
+                    'Parts': mpu_parts,
+                },
+                UploadId=upload_id)
+        finally:
+            boto_client.meta.events.unregister(
+                'before-sign.s3.*', self._add_content_type)
         self.assertEqual(final['Key'], path)
 
         data = run_awscli_s3api(
@@ -259,17 +278,30 @@ class TestS3Mpu(unittest.TestCase):
             "list-multipart-uploads", "--prefix", path, bucket=self.bucket)
         self.assertEqual(1, len(data.get('Uploads', [])))
 
-        # complete MPU
-        data = run_awscli_s3api(
-            "complete-multipart-upload",
-            "--upload-id", upload_id,
-            "--multipart-upload", json.dumps({"Parts": mpu_parts}),
-            bucket=self.bucket, key=path)
+        # Complete the MPU with a Content-Type to text/xml
+        # Some tools specify the Content-Type on this operation,
+        # and since the data sent is indeed XML, this should be allowed
+        # without affecting the object Content-Type.
+        boto_client = get_boto3_client()
+        try:
+            boto_client.meta.events.register(
+                'before-sign.s3.*', self._add_content_type)
+            data = boto_client.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=path,
+                MultipartUpload={
+                    'Parts': mpu_parts,
+                },
+                UploadId=upload_id)
+        finally:
+            boto_client.meta.events.unregister(
+                'before-sign.s3.*', self._add_content_type)
         self.assertEqual(path, data['Key'])
         self.assertTrue(data['ETag'].endswith('-2"'))
 
         data = run_awscli_s3api("head-object", bucket=self.bucket, key=path)
         self.assertEqual(size, data['ContentLength'])
+        self.assertEqual('binary/octet-stream', data['ContentType'])
 
         data = run_awscli_s3api(
             "head-object",

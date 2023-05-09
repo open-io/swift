@@ -33,8 +33,8 @@ from swift.common.middleware.s3api.etree import fromstring, tostring
 from swift.common.middleware.s3api.subresource import Owner, Grant, User, \
     ACL, encode_acl, decode_acl, ACLPublicRead
 from test.unit.common.middleware.s3api.test_s3_acl import s3acl
-from swift.common.middleware.s3api.utils import sysmeta_header, mktime, \
-    S3Timestamp
+from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
+    S3Timestamp, sysmeta_header, mktime
 from swift.common.middleware.s3api.s3request import MAX_32BIT_INT
 from swift.common.storage_policy import StoragePolicy
 from swift.proxy.controllers.base import get_cache_key
@@ -1526,7 +1526,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
         _, _, headers = self.swift.calls_with_headers[-2]
-        self.assertNotIn('Content-Type', headers)
+        self.assertEqual(DEFAULT_CONTENT_TYPE, headers['Content-Type'])
 
     def test_object_multipart_upload_complete_weird_host_name(self):
         # This happens via boto signature v4
