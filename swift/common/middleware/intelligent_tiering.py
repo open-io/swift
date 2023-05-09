@@ -252,10 +252,13 @@ class RabbitMQClient(object):
             account, bucket, RABBITMQ_MSG_ARCHIVING, bucket_size,
             bucket_region)
 
-    def start_restoring(self, account, bucket, bucket_size, bucket_region):
+    def start_restoring(self, account, bucket, bucket_region):
         self._send_message(
-            account, bucket, RABBITMQ_MSG_RESTORING, bucket_size,
-            bucket_region)
+            account,
+            bucket,
+            RABBITMQ_MSG_RESTORING,
+            bucket_region=bucket_region
+        )
 
     def start_archive_deletion(self, account, bucket):
         self._send_message(account, bucket, RABBITMQ_MSG_DELETION)
@@ -433,7 +436,7 @@ class IntelligentTieringMiddleware(object):
             self._set_bucket_status(req, OIO_DB_FROZEN)
 
             # Size should be computed when the bucket is frozen
-            bucket_info = req.get_bucket_info(self.app)
+            bucket_info = req.get_bucket_info(self.app, read_caches=False)
             bucket_size = bucket_info.get('bytes')
             bucket_region = bucket_info.get('region')
 
@@ -456,11 +459,10 @@ class IntelligentTieringMiddleware(object):
                              current_status)
 
         bucket_info = req.get_bucket_info(self.app)
-        bucket_size = bucket_info.get('bytes')
         bucket_region = bucket_info.get('region')
 
         self.rabbitmq_client.start_restoring(
-            req.account, req.container_name, bucket_size, bucket_region
+            req.account, req.container_name, bucket_region
         )
         self._set_archiving_status(req, current_status, new_status)
 

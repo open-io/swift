@@ -55,11 +55,11 @@ class FakeReq(object):
     def get_container_info(self):
         raise S3NotImplemented()
 
-    def get_bucket_info(self, _app):
+    def get_bucket_info(self, _app, read_caches=None):
         return {
-            'account': self.account,
-            'bytes': 42,
-            "objects": 2
+            "account": self.account,
+            "bytes": 42,
+            "objects": 2,
         }
 
 
@@ -253,7 +253,7 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_ok(self, m_b_status, m_archiving_status, m_rabbit):
         self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
-                                     'restore', 42, None)
+                                     'restore', None)
         self.expected_archiving_status_args = (
             self.req, BUCKET_STATE_ARCHIVED,
             BUCKET_STATE_RESTORING
