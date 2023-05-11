@@ -36,6 +36,8 @@ BUCKET_REPLICATION_HEADER = sysmeta_header("bucket", "replication")
 
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
+MIN_PRIORITY_NUMBER = 0
+MAX_PRIORITY_NUMBER = 2147483647
 MAX_REPLICATION_BODY_SIZE = 256 * 1024  # Arbitrary
 MAX_RULES_ALLOWED = 1000
 ARN_AWS_PREFIX = "arn:aws:"
@@ -335,7 +337,10 @@ class ReplicationController(Controller):
                                  "this version of Cross Region Replication"
                                  " configuration schema.Please refer to S3 "
                                  "Developer Guide for more information.")
-                                 " configuration schema.")
+        if not (0 <= int(rule_priority.text) <= MAX_PRIORITY_NUMBER):
+            raise InvalidRequest(
+                f"Priority must be between"
+                f" {MIN_PRIORITY_NUMBER} and {MAX_PRIORITY_NUMBER}.")
         # If filter defined, DeletemarkerReplication must also be defined
         rule_deleteMarkerReplication = rule.find(
             "./DeleteMarkerReplication")
