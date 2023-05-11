@@ -84,21 +84,28 @@ def dict_conf_to_xml(conf, root="ReplicationConfiguration"):
     return body
 
 
-def get_tags(tags_xml_item):
+def get_tags(tag_xml_items, tag_keys):
     """
     Return tags from XML replication conf
 
-    :param tags_item: List of XML items gathering tags
-    :type tags_item: list
+    :param tag_xml_items: List of XML items gathering tags
+    :type tag_xml_items: list
+    :param tag_keys: collection of all tags key
+    :type tag_keys: set
     :return: list of identified tags
     :rtype: list
     """
     tags = []
-    if tags_xml_item is None:
+    if tag_xml_items is None:
         return None
-    for tag in tags_xml_item:
-        tags.append({"Key": tag.find("Key").text,
-                    "Value": tag.find("Value").text})
+    for tag in tag_xml_items:
+        key = tag.find("Key").text
+        value = tag.find("Value").text
+        tags.append({"Key": key,
+                     "Value": value})
+        if key in tag_keys:
+            raise InvalidRequest('Duplicate Tag Keys are not allowed.')
+        tag_keys.add(key)
     return tags
 
 
@@ -112,12 +119,13 @@ def get_filters(filter_xml_item):
     :rtype: dict
     """
     d_filters = {}
+    tag_keys = set()
     if filter_xml_item is not None:
         # Check if filters are packed into an AND marker
         and_item = filter_xml_item.find("And")
         if and_item is not None:
             prefix = and_item.find("Prefix")
-            tags = get_tags(and_item.findall("Tag"))
+            tags = get_tags(and_item.findall("Tag"), tag_keys=tag_keys)
             if len(list(and_item)) > 1:
                 d_filters["And"] = {}
                 if prefix is not None:
@@ -135,7 +143,7 @@ def get_filters(filter_xml_item):
         prefix = filter_xml_item.find("Prefix")
         if prefix is not None:
             d_filters["Prefix"] = prefix.text
-        tags = get_tags(filter_xml_item.findall("Tag"))
+        tags = get_tags(filter_xml_item.findall("Tag"), tag_keys=tag_keys)
         if tags:
             d_filters["Tag"] = tags[0]
     return d_filters
@@ -157,13 +165,14 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
         "Role": replication_conf.find("Role").text,
         "Rules": [],
     }
-    IDs = []
+    IDs = set()
     for rule in replication_conf.findall("Rule"):
         id_marker = rule.find("ID")
         id_text = id_marker.text if id_marker is not None else uuid.uuid4().hex
         if id_text in IDs:
-            raise InvalidArgument("ID", id_text, "Rule Id must be unique")
-        IDs.append(id_text)
+            raise InvalidArgument("ID", id_text, "Rule Id must be unique.")
+
+        IDs.add(id_text)
         priority = rule.find("Priority")
         deleteMarkerReplication = rule.find("DeleteMarkerReplication")
         out["Rules"].append(
@@ -324,6 +333,8 @@ class ReplicationController(Controller):
         if rule_priority is None:
             raise InvalidRequest("Priority must be specified for "
                                  "this version of Cross Region Replication"
+                                 " configuration schema.Please refer to S3 "
+                                 "Developer Guide for more information.")
                                  " configuration schema.")
         # If filter defined, DeletemarkerReplication must also be defined
         rule_deleteMarkerReplication = rule.find(
@@ -332,7 +343,8 @@ class ReplicationController(Controller):
             raise InvalidRequest(
                 "DeleteMarkerReplication must be specified "
                 "for this version of Cross Region Replication"
-                " configuration schema.")
+                " configuration schema. Please refer to S3 Developer"
+                " Guide for more information.")
 
         self._validate_destination(
             rule.find("./Destination"), req
@@ -356,13 +368,6 @@ class ReplicationController(Controller):
         for rule in rules:
             self._validate_rule(rule, req)
 
-    def _replication_xml_conf_to_dict(self, conf):
-        return replication_xml_conf_to_dict(conf)
-
-    def _replication_dict_conf_to_xml(self, conf):
-        """Convert replication conf from dict to xml"""
-        return dict_conf_to_xml(conf)
-
     @set_s3_operation_rest('REPLICATION')
     @ratelimit_bucket
     @public
@@ -384,7 +389,7 @@ class ReplicationController(Controller):
         config = req.xml(MAX_REPLICATION_BODY_SIZE)
         # Validation
         self._validate_configuration(config, req)
-        dict_conf = self._replication_xml_conf_to_dict(config)
+        dict_conf = replication_xml_conf_to_dict(config)
         json_conf = json.dumps(dict_conf)
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
         resp = req.get_response(self.app, method="POST")
@@ -408,7 +413,7 @@ class ReplicationController(Controller):
         if not body:
             raise ReplicationConfigurationNotFoundError
         body = json.loads(body)
-        generated_body = self._replication_dict_conf_to_xml(body)
+        generated_body = dict_conf_to_xml(body)
         return HTTPOk(body=generated_body, content_type="application/xml")
 
     @set_s3_operation_rest('REPLICATION')
