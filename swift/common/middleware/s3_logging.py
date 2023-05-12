@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from datetime import datetime, timezone
+from functools import partial
 import json
 import logging
 from six.moves.urllib.parse import quote
@@ -22,10 +23,13 @@ from swift.common.http import is_success
 from swift.common.middleware.proxy_logging import ProxyLoggingMiddleware
 from swift.common.middleware.s3api.s3request import S3Request
 from swift.common.registry import register_sensitive_header
-from swift.common.swob import str_to_wsgi
+from swift.common.swob import str_to_wsgi, Request
 from swift.common.utils import LogStringFormatter, StrAnonymizer, get_logger, \
     get_remote_client, config_true_value
 from swift.proxy.controllers.base import get_container_info
+
+
+PRE_LOG_REQUEST_CALLBACK = 'swift.callback.pre_log_s3_request'
 
 
 class S3LoggingMiddleware(ProxyLoggingMiddleware):
@@ -93,6 +97,21 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
     def statsd_metric_name_policy(self, req, status_int, method, policy_index):
         return None
 
+    def _pre_log_request_callback(self, start_time, env):
+        # Some headers and parameters are obfuscated
+        pre_log_env = env.copy()
+        req = Request(pre_log_env)
+        self.log_request(
+            req, None, None, None, start_time, None,
+            customer_access_logging=False)
+
+    def pre_log_request(self, env, start_time):
+        # If we want to know the specifics of this request as well as possible,
+        # it is better to wait to fetch as much information specific to S3
+        # as possible
+        env[PRE_LOG_REQUEST_CALLBACK] = partial(
+            self._pre_log_request_callback, start_time)
+
     def _enrich_replacements(self, req, status_int, resp_headers):
         """
         Give specific information from S3 requests.
@@ -143,14 +162,16 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
         }
 
     def log_request(self, req, status_int, bytes_received, bytes_sent,
-                    start_time, end_time, resp_headers=None, ttfb=0,
-                    wire_status_int=None):
+                    start_time, end_time, resp_headers=None, ttfb=None,
+                    wire_status_int=None, customer_access_logging=None):
         super(S3LoggingMiddleware, self).log_request(
             req, status_int, bytes_received, bytes_sent, start_time, end_time,
             resp_headers=resp_headers, ttfb=ttfb,
             wire_status_int=wire_status_int)
 
-        if not self.customer_access_logging:
+        if customer_access_logging is None:
+            customer_access_logging = self.customer_access_logging
+        if not customer_access_logging:
             # Do not log requests from clients
             # that have S3 Server Access Logging enabled
             return

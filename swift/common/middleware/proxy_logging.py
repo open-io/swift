@@ -167,6 +167,7 @@ class ProxyLoggingMiddleware(object):
         log_hdrs_only = list_from_csv(conf.get(
             'access_log_headers_only', ''))
         self.log_hdrs_only = [x.title() for x in log_hdrs_only]
+        self.pre_log = config_true_value(conf.get('pre_log', 'false'))
 
         # The leading access_* check is in case someone assumes that
         # log_statsd_valid_http_methods behaves like the other log_statsd_*
@@ -308,8 +309,14 @@ class ProxyLoggingMiddleware(object):
         if any_obscured:
             req.params = new_params
 
+    def pre_log_request(self, env, start_time):
+        # Some headers and parameters are obfuscated
+        env = env.copy()
+        req = Request(env)
+        self.log_request(req, None, None, None, start_time, None)
+
     def log_request(self, req, status_int, bytes_received, bytes_sent,
-                    start_time, end_time, resp_headers=None, ttfb=0,
+                    start_time, end_time, resp_headers=None, ttfb=None,
                     wire_status_int=None):
         """
         Log a request.
@@ -340,7 +347,12 @@ class ProxyLoggingMiddleware(object):
                                  req.environ.get('SERVER_NAME', None))
         if ':' in domain:
             domain, port = domain.rsplit(':', 1)
-        duration_time_str = "%.4f" % (end_time - start_time)
+        duration_time = None
+        if end_time is not None:  # (final) access log
+            duration_time = end_time - start_time
+        duration_time_str = None
+        if duration_time is not None:  # (final) access log
+            duration_time_str = "%.4f" % duration_time
 
         s3token_time = defaultdict(lambda: '-')
         s3token_time.update(req.environ.get('s3token.time', {}))
@@ -406,14 +418,15 @@ class ProxyLoggingMiddleware(object):
         # Only log data for valid controllers (or SOS) to keep the metric count
         # down (egregious errors will get logged by the proxy server itself).
 
-        if metric_name:
+        if metric_name and duration_time is not None:  # (final) access log
             self.access_logger.timing(metric_name + '.timing',
-                                      (end_time - start_time) * 1000)
+                                      duration_time * 1000)
             self.access_logger.update_stats(metric_name + '.xfer',
                                             bytes_received + bytes_sent)
-        if metric_name_policy:
+        if metric_name_policy and duration_time is not None:
+            # (final) access log
             self.access_logger.timing(metric_name_policy + '.timing',
-                                      (end_time - start_time) * 1000)
+                                      duration_time * 1000)
             self.access_logger.update_stats(metric_name_policy + '.xfer',
                                             bytes_received + bytes_sent)
 
@@ -481,6 +494,9 @@ class ProxyLoggingMiddleware(object):
         input_proxy = InputProxy(env['wsgi.input'])
         env['wsgi.input'] = input_proxy
         start_time = time.time()
+
+        if self.pre_log:
+            self.pre_log_request(env, start_time)
 
         def my_start_response(status, headers, exc_info=None):
             start_response_args[0] = (status, list(headers), exc_info)

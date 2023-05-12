@@ -35,6 +35,7 @@ use = egg:swift#proxy_logging
 [filter:s3-logging]
 use = egg:swift#s3_logging
 customer_access_logging = true
+pre_log = true
 log_msg_template = log_type:access	client_ip:{client_ip}	remote_addr:{remote_addr}	requester:{requester}	domain:{domain}	path:{path}	client_etag:{client_etag}	account:{account}	bucket:{bucket}	object:{object}	version_id:{version_id}	method:{method}	operation:{operation}	status_int:{status_int}	error_code:{error_code}	bytes_recvd_int:{bytes_recvd}	bytes_sent_int:{bytes_sent}	request_id:{transaction_id}	request_time_float:{request_time}	start_time_float:{start_time}	ttfb_float:{ttfb}	user_agent:{user_agent:.256}	signature_version:{signature_version}	authentication_type:{authentication_type}	ratelimit:{ratelimit}
 
 [filter:catch_errors]

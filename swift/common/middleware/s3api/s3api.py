@@ -151,6 +151,7 @@ from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
 
+from swift.common.middleware.s3_logging import PRE_LOG_REQUEST_CALLBACK
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
 from swift.common.middleware.s3api.controllers import S3WebsiteController
@@ -447,6 +448,9 @@ class S3ApiMiddleware(object):
                 env['s3api.bucket_db'] = BucketDbWrapper(self.bucket_db)
             req_class = get_request_class(env, self.conf.s3_acl)
             req = req_class(env, self.app, self.conf)
+            pre_log_request = req.environ.get(PRE_LOG_REQUEST_CALLBACK)
+            if pre_log_request is not None:
+                pre_log_request(req.environ)
             env['s3api.bucket'] = req.container_name
             if req.storage_class:
                 auto_storage_policies = self.conf.auto_storage_policies.get(
