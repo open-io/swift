@@ -25,8 +25,6 @@ jobs:
           - . $HOME/oiovenv/bin/activate
           - cd {{.cds.workspace}}
           - coverage combine
-          - coverage report --skip-empty --ignore-errors > coverage-report-py.txt
-          - worker upload --tag='{{.cds.version}}' {{.cds.workspace}}/coverage-report-py.txt
           - coverage html --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" --skip-empty --ignore-errors -d coverage-report-py
           - coverage json --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" --ignore-errors -o coverage-report-py-full.json
           - jq -f .cds/python-coverage-filter.jq coverage-report-py-full.json > coverage-report-py.json
@@ -70,7 +68,6 @@ jobs:
           - jq -r '"obsto_kpi_dev_coverage_line_percentage{language=\"python\",repository=\"swift\"} \(.coverage.Python.line_percent)"' coverage-report-py.json >>coverage-summary.openmetrics
           - jq -r '"obsto_kpi_dev_tests_total{repository=\"swift\",type=\"functional\"} \(.tests.Python.functional)"' test-report-py.json >>coverage-summary.openmetrics
           - jq -r '"obsto_kpi_dev_tests_total{repository=\"swift\",type=\"unit\"} \(.tests.Python.unit)"' test-report-py.json >>coverage-summary.openmetrics
-          - worker upload --tag='{{.cds.version}}' coverage-summary.openmetrics
           - mkdir coverage
           - mv coverage-report-py coverage-summary.openmetrics coverage/
           - echo '<!DOCTYPE html><html><a href="./coverage-report-py/">Python coverage report</a><br/><a href="./coverage-summary.openmetrics">Coverage summary (OpenMetrics format)</a></body></html>' > coverage/index.html
