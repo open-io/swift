@@ -5,6 +5,16 @@ workflow:
   root:
     pipeline: swift-root
     application: swift
+    payload:
+      "git.author": ""
+      "git.branch": "feature/oio-backend"
+      "git.hash": ""
+      "git.hash.before": ""
+      "git.message": ""
+      "git.repository": OPENIO/swift
+      "git.tag": ""
+      "build_deb": "false"
+
 
   test-code-quality:
     pipeline: swift-code-tests
@@ -35,10 +45,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and (build_deb == "true" or git_branch == "feature/oio-backend")
 
   tests-unit:
     pipeline: swift-tests
