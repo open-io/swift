@@ -13,31 +13,12 @@ configure_s3cmd
 RET=0
 
 # Intelligent Tiering with IAM in the pipeline
-export WITH_IAM=true
 RULES_FILE="$PWD/etc/iam-rules-sample.json"
 sed -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" etc/s3-intelligent-tiering.cfg.in > etc/s3-intelligent-tiering.cfg
 # Remove in order to test the functionality to allow/deny from conf, allow get operation only when bucket is restored
 sed -i "s#it_iam_get_object_actions = None, Restored#it_iam_get_object_actions = Restored#g" etc/s3-intelligent-tiering.cfg
 # Allow to delete objects via Swift in deleting bucket state
 sed -i "s#it_iam_delete_object_actions = None#it_iam_delete_object_actions = None,Deleting#g" etc/s3-intelligent-tiering.cfg
-run_functional_test etc/s3-intelligent-tiering.cfg s3-intelligent-tiering.sh
-
-# Check if already failed
-if [ "$RET" -ne "0" ]; then
-  exit $RET
-fi
-
-configure_aws virtual
-
-# Intelligent Tiering without IAM in the pipeline
-export WITH_IAM=false
-RULES_FILE="$PWD/etc/iam-rules-sample.json"
-sed -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" etc/s3-intelligent-tiering.cfg.in > etc/s3-intelligent-tiering.cfg
-# Remove in order to test the functionality to allow/deny from conf, allow get operation only when bucket is restored
-sed -i "s#it_iam_get_object_actions = None, Restored#it_iam_get_object_actions = Restored#g" etc/s3-intelligent-tiering.cfg
-# Allow to delete objects via Swift in deleting bucket state
-sed -i "s#it_iam_delete_object_actions = None#it_iam_delete_object_actions = None,Deleting#g" etc/s3-intelligent-tiering.cfg
-sed -i "s#iam intelligent_tiering#intelligent_tiering#g" etc/s3-intelligent-tiering.cfg
 run_functional_test etc/s3-intelligent-tiering.cfg s3-intelligent-tiering.sh
 
 exit $RET

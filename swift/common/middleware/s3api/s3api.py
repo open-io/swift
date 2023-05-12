@@ -571,10 +571,14 @@ class S3ApiMiddleware(object):
 
         # Check intelligent_tiering middleware position
         if 'intelligent_tiering' in pipeline:
-            if 'iam' in pipeline:
-                order = ['iam', 'intelligent_tiering', 's3api']
-            else:
-                order = ['intelligent_tiering', 's3api']
+            if 'iam' not in pipeline:
+                # If it is ever allowed, take care of the internal request
+                # done to check the uncompleted MPU called during a
+                # "put-bucket-intelligent-tiering-configuration" for archive.
+                raise ValueError(
+                    'Invalid pipeline %r: missing filters iam' % pipeline
+                )
+            order = ['iam', 'intelligent_tiering', 's3api']
             self.check_filter_order(pipeline, order)
             self.logger.debug('Use intelligent_tiering middleware.')
             self.conf["enable_intelligent_tiering"] = True

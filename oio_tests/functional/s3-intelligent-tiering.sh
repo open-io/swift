@@ -1,10 +1,5 @@
 #!/bin/bash
 
-if [ -z ${WITH_IAM+x} ]; then
-  echo "WITH_IAM var is not set"
-  exit 1
-fi
-
 # "default" is administrator
 AWSA1ADM="aws --profile default --endpoint-url http://localhost:5000"
 # "user1" is only allowed some operations
@@ -53,11 +48,6 @@ test_create_object() {
   # user2 cannot create objects (no permission)
   OUT=$(${AWSA1U2} s3 cp /etc/magic  s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
-
-  if [ "$WITH_IAM" != true ]; then
-    # Give full control to user1
-    ${AWSA1ADM} s3api put-bucket-acl --grant-full-control "id=demo:user1" --bucket ${SHARED_BUCKET}
-  fi
 
   # user1 has now full control or it can create objects prefixed by its user name
   ${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic
@@ -161,54 +151,39 @@ test_intelligent_tiering() {
   OUT=$(${AWSA1U2} s3 ls s3://${SHARED_BUCKET} 2>&1 | tail -n 10)
   echo "$OUT" | grep "AccessDenied"
 
-  if [ "$WITH_IAM" == true ]; then
-    # user1 can fetch the bucket intelligent-tiering-configuration
-    # and the bucket status
-    OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
-      --bucket ${SHARED_BUCKET} --id myid 2>&1)
-    # user1 can read s3 tags
-    ${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET}
-  else
-    # user1 cannot fetch the bucket intelligent-tiering-configuration
-    # and the bucket status because it's not a admin user
-    OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
-      --bucket ${SHARED_BUCKET} --id myid 2>&1 | tail -n 1)
-    echo "$OUT" | grep "AccessDenied"
-    # user1 cannot fetch tags because it's not a admin user
-    OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tail -n 1)
-    echo "$OUT" | grep "AccessDenied"
+  # user1 can fetch the bucket intelligent-tiering-configuration
+  # and the bucket status
+  OUT=$(${AWSA1U1} s3api get-bucket-intelligent-tiering-configuration \
+    --bucket ${SHARED_BUCKET} --id myid 2>&1)
+  # user1 can read s3 tags
+  ${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET}
 
-    OUT=$(${AWSA1ADM} s3api get-bucket-intelligent-tiering-configuration \
-      --bucket ${SHARED_BUCKET} --id myid 2>&1)
-    ${AWSA1ADM} s3api get-bucket-tagging --bucket ${SHARED_BUCKET}
-  fi
   echo $OUT | grep "\"Status\": \"Archiving\""
   echo $OUT | grep "\"AccessTier\": \"OVH_ARCHIVE\""
 
-  if [ "$WITH_IAM" == true ]; then
-    # Before adding tags, only bucket status is returned
-    OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
-    echo "$OUT" | grep '{"Key":"ovh:intelligent_tiering_status","Value":"Archiving"}'
+  # Before adding tags, only bucket status is returned
+  OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
+  echo "$OUT" | grep '{"Key":"ovh:intelligent_tiering_status","Value":"Archiving"}'
 
-    # Add a client tag, it should be returned with the bucket status.
-    # Ovh tags are appended to the document, so order is guaranteed.
-    ${AWSA1U1} s3api put-bucket-tagging --bucket ${SHARED_BUCKET} \
-      --tagging 'TagSet=[{Key=organization,Value=marketing}]'
-    OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
-    echo "$OUT" | grep '{"Key":"organization","Value":"marketing"},{"Key":"ovh:intelligent_tiering_status","Value":"Archiving"}'
+  # Add a client tag, it should be returned with the bucket status.
+  # Ovh tags are appended to the document, so order is guaranteed.
+  ${AWSA1U1} s3api put-bucket-tagging --bucket ${SHARED_BUCKET} \
+    --tagging 'TagSet=[{Key=organization,Value=marketing}]'
+  OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
+  echo "$OUT" | grep '{"Key":"organization","Value":"marketing"},{"Key":"ovh:intelligent_tiering_status","Value":"Archiving"}'
 
-    # Simulate Restored state with openio CLI
-    openio container set ${SHARED_BUCKET} \
-      --property X-Container-Sysmeta-S3Api-Archiving-Status="Restored"
-    # Tags are successfully returned
-    OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
-    echo "$OUT" | grep '{"Key":"organization","Value":"marketing"},{"Key":"ovh:intelligent_tiering_status","Value":"Restored"}'
-    # Add end restoration date, it should be returned with tags
-    openio container set ${SHARED_BUCKET} \
-      --property X-Container-Sysmeta-S3Api-Restoration-End-Timestamp="1682006112"
-    OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
-    echo "$OUT" | grep '{"Key":"organization","Value":"marketing"},{"Key":"ovh:intelligent_tiering_status","Value":"Restored"},{"Key":"ovh:intelligent_tiering_restoration_end_date","Value":"2023-04-20T15:55:12.000Z"}'
-  fi
+  # Simulate Restored state with openio CLI
+  openio container set ${SHARED_BUCKET} \
+    --property X-Container-Sysmeta-S3Api-Archiving-Status="Restored"
+  # Tags are successfully returned
+  OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
+  echo "$OUT" | grep '{"Key":"organization","Value":"marketing"},{"Key":"ovh:intelligent_tiering_status","Value":"Restored"}'
+  # Add end restoration date, it should be returned with tags
+  openio container set ${SHARED_BUCKET} \
+    --property X-Container-Sysmeta-S3Api-Restoration-End-Timestamp="1682006112"
+  OUT=$(${AWSA1U1} s3api get-bucket-tagging --bucket ${SHARED_BUCKET} 2>&1 | tr -d '\n' | tr -d ' ')
+  echo "$OUT" | grep '{"Key":"organization","Value":"marketing"},{"Key":"ovh:intelligent_tiering_status","Value":"Restored"},{"Key":"ovh:intelligent_tiering_restoration_end_date","Value":"2023-04-20T15:55:12.000Z"}'
+
   # user2 cannot fetch the bucket intelligent-tiering-configuration
   # and the bucket status (no permission)
   OUT=$(${AWSA1U2} s3api get-bucket-intelligent-tiering-configuration \
