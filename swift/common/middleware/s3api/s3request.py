@@ -208,7 +208,12 @@ class StreamingInput(object):
         if _size is None:
             _size = self._to_read
 
+        no_data = False
         while True:
+            # Check if the previous round has reached the EOF
+            if no_data:
+                raise swob.HTTPForbidden(body=SIGV4_ERROR_INCOMPLETE_BODY)
+
             # Check if there is enough processed data available
             if (len(self._processed_content) >= _size
                     or (self._raw_to_read == 0 and len(self._raw_buffer) == 0)
@@ -224,9 +229,11 @@ class StreamingInput(object):
 
             # Add data to buffer to process
             data = self._input.read(size)
+            no_data = not data
             if self._raw_to_read is not None:
                 self._raw_to_read -= len(data)
             self._raw_buffer += data
+
             # Check if counters are consistent
             if self._to_read < 0 or (self._raw_to_read is not None
                                      and self._raw_to_read < 0):

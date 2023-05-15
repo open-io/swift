@@ -36,7 +36,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, InternalError, AccessDenied, SignatureDoesNotMatch, \
     RequestTimeTooSkewed, XAmzContentSHA256Mismatch, \
     AuthorizationHeaderMalformed
-from swift.common.utils import md5
+from swift.common.utils import md5, FileLikeIter
 
 from test.debug_logger import debug_logger
 
@@ -1649,6 +1649,73 @@ class TestStreamingInput(S3ApiTestCase):
         self.assertFalse(wrapped._input.closed)
         wrapped.close()
         self.assertTrue(wrapped._input.closed)
+
+    def test_incomplete_read(self):
+        def chunk_validator(chunk, signature):
+            return signature == 'ok'
+
+        raw = (
+            # First chunk is valid,
+            b'9;chunk-signature=ok\r\n\xdf\xee\xf1456789\r\n',
+            # but there is no end chunk.
+            b"", b"", b"", b"", b"", b"", b"", b"", b"", b"",
+            # Raise an exception to avoid any infinite loop.
+            EOFError("Reading continues indefinitely"),
+        )
+        reader = FileLikeIter(raw)
+        with patch.object(reader, "read", side_effect=raw) as mocked_read:
+            wrapped = StreamingInput(reader, None, 9, chunk_validator)
+            with self.assertRaises(swob.HTTPException) as raised:
+                wrapped.read(1024)
+            self.assertEqual(raised.exception.status, '403 Forbidden')
+            self.assertTrue(wrapped._input.closed)
+            self.assertEqual(mocked_read.call_count, 2)
+
+    def test_incomplete_read_after_header(self):
+        def chunk_validator(chunk, signature):
+            return signature == 'ok'
+
+        raw = (
+            # First chunk is valid,
+            b'2;chunk-signature=ok\r\n12\r\n',
+            # second buffer in trucated,
+            b'2;chunk-signature=ok\r\n',
+            # and there is no end chunk.
+            b"", b"", b"", b"", b"", b"", b"", b"", b"", b"",
+            # Raise an exception to avoid any infinite loop.
+            EOFError("Reading continues indefinitely"),
+        )
+        reader = FileLikeIter(raw)
+        with patch.object(reader, "read", side_effect=raw) as mocked_read:
+            wrapped = StreamingInput(reader, None, 9, chunk_validator)
+            with self.assertRaises(swob.HTTPException) as raised:
+                wrapped.read(1024)
+            self.assertEqual(raised.exception.status, '403 Forbidden')
+            self.assertTrue(wrapped._input.closed)
+            self.assertEqual(mocked_read.call_count, 3)
+
+    def test_incomplete_read_mid_header(self):
+        def chunk_validator(chunk, signature):
+            return signature == 'ok'
+
+        raw = (
+            # First chunk is valid,
+            b'2;chunk-signature=ok\r\n12\r\n',
+            # second buffer in trucated,
+            b'2;chunk-signat',
+            # and there is no end chunk.
+            b"", b"", b"", b"", b"", b"", b"", b"", b"", b"",
+            # Raise an exception to avoid any infinite loop.
+            EOFError("Reading continues indefinitely"),
+        )
+        reader = FileLikeIter(raw)
+        with patch.object(reader, "read", side_effect=raw) as mocked_read:
+            wrapped = StreamingInput(reader, None, 9, chunk_validator)
+            with self.assertRaises(swob.HTTPException) as raised:
+                wrapped.read(1024)
+            self.assertEqual(raised.exception.status, '403 Forbidden')
+            self.assertTrue(wrapped._input.closed)
+            self.assertEqual(mocked_read.call_count, 3)
 
     def test_wrong_signature_first_chunk(self):
         def chunk_validator(chunk, signature):
