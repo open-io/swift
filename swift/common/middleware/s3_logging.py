@@ -49,9 +49,10 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 '{client_ip} {remote_addr} {requester} {end_time.datetime} '
                 '{method} {path} {protocol} {status_int} {operation} '
                 '{error_code} {referer} {user_agent} {auth_token} '
-                '{signature_version} {authentication_type} {bytes_recvd} '
-                '{bytes_sent} {client_etag} {transaction_id} {headers} '
-                '{request_time} {source} {log_info} {start_time} {end_time}'))
+                '{signature_version} {authentication_type} {aws_chunked} '
+                '{bytes_recvd} {bytes_sent} {client_etag} {transaction_id} '
+                '{headers} {request_time} {source} {log_info} {start_time} '
+                '{end_time}'))
 
         # Parameters to log request from clients
         # that have S3 Server Access Logging enabled
@@ -76,8 +77,8 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             '"{request_uri}" {http_status} {error_code} {bytes_sent} '
             '{object_size} {total_time} {turn_around_time} "{referer}" '
             '"{user_agent}" {version_id} {host_id} {signature_version} '
-            '{cipher_suite} {authentication_type} {aws_chunked} {host_header} '
-            '{tls_version} {access_point_arn}')
+            '{cipher_suite} {authentication_type} {host_header} {tls_version} '
+            '{access_point_arn}')
 
     # customize statsd metric name for s3 requests
     def statsd_metric_name(self, req, status_int, method):

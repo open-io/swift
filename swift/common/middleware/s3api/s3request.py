@@ -1869,6 +1869,7 @@ class S3Request(swob.Request):
         if error_type == SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH:
             return SignatureDoesNotMatch(
                 **self.signature_does_not_match_kwargs())
+        return None
 
     def _get_response(self, app, method, container, obj,
                       headers=None, body=None, query=None):
@@ -1965,9 +1966,11 @@ class S3Request(swob.Request):
             raise BadDigest(content_md5=err_msg.decode('utf8'))
         if status == HTTP_FORBIDDEN:
             if self._is_chunked_upload:
-                raise self._handle_chunk_upload_error(err_msg.decode('utf8'))
-            else:
-                raise AccessDenied()
+                upload_error = self._handle_chunk_upload_error(
+                    err_msg.decode('utf8'))
+                if upload_error is not None:
+                    raise upload_error
+            raise AccessDenied()
         if status == HTTP_SERVICE_UNAVAILABLE:
             raise ServiceUnavailable(headers={
                 'Retry-After': str(resp.headers.get('Retry-After',
