@@ -760,6 +760,7 @@ class S3Request(swob.Request):
     style = _req_s3api_info('style')
     signature_version = _req_s3api_info('signature_version')
     authentication_type = _req_s3api_info('authentication_type')
+    aws_chunked = _req_s3api_info('aws_chunked')
     user_id = _req_s3api_info('requester')
 
     bucket_acl = _header_acl_property('container')
@@ -824,6 +825,7 @@ class S3Request(swob.Request):
                         self.signature_version = \
                             f'SigV{self._signature_version}'
                     self.authentication_type = self._get_authentication_type()
+                    self.aws_chunked = self._is_chunked_upload
                 except Exception:
                     if parse_auth_info_success:
                         raise

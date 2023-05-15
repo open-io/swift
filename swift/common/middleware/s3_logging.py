@@ -76,8 +76,8 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             '"{request_uri}" {http_status} {error_code} {bytes_sent} '
             '{object_size} {total_time} {turn_around_time} "{referer}" '
             '"{user_agent}" {version_id} {host_id} {signature_version} '
-            '{cipher_suite} {authentication_type} {host_header} {tls_version} '
-            '{access_point_arn}')
+            '{cipher_suite} {authentication_type} {aws_chunked} {host_header} '
+            '{tls_version} {access_point_arn}')
 
     # customize statsd metric name for s3 requests
     def statsd_metric_name(self, req, status_int, method):
@@ -158,6 +158,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'error_code': error_code,
             'signature_version': s3_info.get('signature_version'),
             'authentication_type': s3_info.get('authentication_type'),
+            'aws_chunked': str(s3_info.get('aws_chunked', False)).lower(),
             'ratelimit': str(s3_info.get('ratelimit', False)).lower()
         }
 
