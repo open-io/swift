@@ -158,6 +158,7 @@ class TestConfig(unittest.TestCase):
         del conf.allowable_clock_skew
         del conf.ratelimit_as_client_error
         del conf.retry_after
+        del conf.token_prefix
         self.assertEqual({}, conf)
 
     def test_update(self):

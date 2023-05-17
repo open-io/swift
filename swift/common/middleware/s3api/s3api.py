@@ -393,7 +393,21 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('enable_object_lock', True))
         self.conf.enable_website = config_true_value(
             wsgi_conf.get('enable_website', True))
-
+        # AWS S3 requires a token to activate object lock on an existing
+        # bucket. On Amazon side this token is only available if asked to
+        # the support. On our side, the user will have two possibilities
+        # - generate his token (process will be described in documentation).
+        # - require as amazon a request from the user to the support to
+        #   get a valid token.
+        # The parameter token_prefix comes to enable those two behaviors:
+        # If empty the user will be able to generate the token by himself
+        #  token = hash of the (account + container)
+        # If not empty, it means that a user will have to ask for valid
+        #  token to OVH support, the user does not know the prefix so
+        #  he cannot generate a valid token.
+        #  token = hash of the (token_prefix + account + container)
+        self.conf.token_prefix = \
+            wsgi_conf.get('token_prefix', '')
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)

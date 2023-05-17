@@ -136,6 +136,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_bucket_replication': True,
             'enable_object_lock': True,
             'enable_website': True,
+            'token_prefix': "",
         })
         s3api = S3ApiMiddleware(None, {})
         self.assertEqual(expected, s3api.conf)
@@ -177,6 +178,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_bucket_replication': False,
             'enable_object_lock': False,
             'enable_website': False,
+            'token_prefix': '',
         }
         s3api = S3ApiMiddleware(None, conf)
         conf['cors_preflight_allow_origin'] = \
