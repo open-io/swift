@@ -225,10 +225,10 @@ class CryptoWSGIContext(WSGIContext):
 
         return keys
 
-    def get_multiple_keys(self, env):
+    def get_multiple_keys(self, env, optionals=[]):
         # get a list of keys from the keymaster containing one dict of keys for
         # each of the keymaster root secret ids
-        keys = [self.get_keys(env)]
+        keys = [self.get_keys(env, optionals=optionals)]
         active_key_id = keys[0]['id']
         for other_key_id in keys[0].get('all_ids', []):
             if other_key_id == active_key_id:

@@ -161,6 +161,12 @@ test_mpu_overwrite() {
     false
   fi
 
+  echo "Check the If-None-Match feature"
+  # Should return an error code 304 if we pass a valid etag ("Not Modified")
+  if ${AWS} s3api head-object --bucket ${BUCKET} --key obj --if-none-match c9975699ef630d1f3dfc7224b16d1a25-11; then
+    false
+  fi
+
   echo
   echo "Cleanup"
   echo "-------"

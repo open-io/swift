@@ -312,8 +312,13 @@ class EncrypterObjContext(CryptoWSGIContext):
         masked = False
         old_etags = req.headers.get(header_name)
         if old_etags:
+            # See comment below
+            optionals = []
+            if self.crypto.ssec_mode and req.method == 'HEAD':
+                optionals.append("object")
             try:
-                all_keys = self.get_multiple_keys(req.environ)
+                all_keys = self.get_multiple_keys(req.environ,
+                                                  optionals=optionals)
             except HTTPException:
                 if self.crypto.ssec_mode:
                     # In SSE-C mode, if the customer does not provide the key:
@@ -329,9 +334,10 @@ class EncrypterObjContext(CryptoWSGIContext):
                     continue
                 new_etags.append('"%s"' % etag)
                 for keys in all_keys:
-                    masked_etag = _hmac_etag(keys['object'], etag)
-                    new_etags.append('"%s"' % masked_etag)
-                masked = True
+                    if 'object' in keys:
+                        masked_etag = _hmac_etag(keys['object'], etag)
+                        new_etags.append('"%s"' % masked_etag)
+                        masked = True
 
             req.headers[header_name] = ', '.join(new_etags)
 
