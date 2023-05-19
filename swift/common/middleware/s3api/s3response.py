@@ -162,6 +162,8 @@ class S3Response(S3ResponseBase, swob.Response):
                         headers['x-amz-object-lock-retain-until-date'] = val
                     elif _key == 'x-object-sysmeta-s3api-legal-hold-status':
                         headers['x-amz-object-lock-legal-hold'] = val
+                    elif _key == 'x-object-sysmeta-s3api-replication-status':
+                        headers['x-amz-replication-status'] = val
                 else:
                     sw_headers[key] = val
             else:

@@ -458,6 +458,8 @@ class ObjectController(BaseObjectController):
 
         oio_query = req.environ.setdefault('oio.query', {})
         create_delete_marker = oio_query.get('create_delete_marker')
+        replication_status = oio_query.pop('replication_status', None)
+
         if create_delete_marker:
             # Only S3 object creations allow metadata to be sent freely.
             # For replication, the creation of a delete marker must also
@@ -471,12 +473,17 @@ class ObjectController(BaseObjectController):
             resp = self._delete_object(req)
             if resp.status_int != 204:
                 return resp
+            delete_marker_header = {
+                'x-object-sysmeta-version-id': version_id
+            }
+            if replication_status is not None:
+                delete_marker_header['x-object-sysmeta-replication-status'] \
+                    = replication_status
+
             return HTTPCreated(
                 request=req, etag="DELETEMARKER",
                 last_modified=int(float(version_id)),
-                headers={
-                    'x-object-sysmeta-version-id': version_id
-                })
+                headers=delete_marker_header)
 
         old_slo_manifest = None
         old_slo_manifest_etag = None
@@ -519,6 +526,9 @@ class ObjectController(BaseObjectController):
             req.environ['wsgi.input'], req.content_length)
 
         headers = self._prepare_headers(req)
+        if replication_status is not None:
+            headers['x-object-sysmeta-s3api-replication-status'] = \
+                replication_status
 
         with closing_if_possible(data_source):
             resp = self._store_object(req, data_source, headers)

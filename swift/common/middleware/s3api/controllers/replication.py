@@ -35,6 +35,10 @@ from swift.proxy.controllers.base import get_container_info
 
 BUCKET_REPLICATION_HEADER = sysmeta_header("bucket", "replication")
 
+HTTP_HEADER_REPLICATION_STATUS = 'X-Amz-Meta-X-Oio-?replication-status'
+OBJECT_REPLICATION_STATUS = sysmeta_header("object", "replication-status")
+
+
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
 MIN_PRIORITY_NUMBER = 0
