@@ -227,7 +227,11 @@ function run_functional_test() {
     then
       ./bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
     else
-      coverage run -p bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
+      coverage run \
+        --concurrency=eventlet \
+        --context "$(basename $conf)" \
+        -p bin/oioswift-proxy-server \
+        $conf -v >/tmp/journal.log 2>&1 &
     fi
     export GW_CONF=$(readlink -e $conf)
     sleep 1
