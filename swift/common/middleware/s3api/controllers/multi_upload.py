@@ -75,7 +75,7 @@ from swift.common.utils import json, public, reiterate, md5, list_from_csv, \
 from swift.common.request_helpers import get_container_update_override_key, \
     get_param, update_etag_is_at_header
 
-from six.moves.urllib.parse import quote, urlparse
+from six.moves.urllib.parse import unquote, quote_plus, urlparse
 
 from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
@@ -96,7 +96,7 @@ from swift.common.middleware.s3api.multi_upload_utils import \
 from swift.common.middleware.s3api.utils import unique_id, \
     MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, sysmeta_header
 from swift.common.middleware.s3api.etree import Element, SubElement, \
-    fromstring, tostring, XMLSyntaxError, DocumentInvalid
+    fromstring, tostring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_DATE, HEADER_RETENION_MODE, \
@@ -135,6 +135,8 @@ def _get_upload_info(req, app, upload_id):
 
 
 def _make_complete_body(req, s3_etag, yielded_anything):
+    escape_xml_text, finalize_xml_texts = init_xml_texts()
+
     result_elem = Element('CompleteMultipartUploadResult')
 
     # NOTE: boto with sig v4 appends port to HTTP_HOST value at
@@ -154,13 +156,18 @@ def _make_complete_body(req, s3_etag, yielded_anything):
         port = netloc.split(':', 2)[1]
         host_url += ':%s' % port
 
-    SubElement(result_elem, 'Location').text = host_url + req.path
+    # req.path can be percent-encoding, let's make sure the space is always
+    # encoded with a '+'
+    SubElement(result_elem, 'Location').text = host_url + quote_plus(
+        unquote(req.path).encode("utf-8"), safe="/")
     SubElement(result_elem, 'Bucket').text = req.container_name
     # The client application wants the same key as is the request, not
     # the internal representation, hence the call to wsgi_to_str.
-    SubElement(result_elem, 'Key').text = wsgi_to_str(req.object_name)
+    SubElement(result_elem, 'Key').text = escape_xml_text(
+        wsgi_to_str(req.object_name))
     SubElement(result_elem, 'ETag').text = '"%s"' % s3_etag
-    body = tostring(result_elem, xml_declaration=not yielded_anything)
+    body = finalize_xml_texts(tostring(
+        result_elem, xml_declaration=not yielded_anything))
     if yielded_anything:
         return b'\n' + body
     return body
@@ -443,17 +450,23 @@ class UploadsController(Controller):
             nextuploadmarker = uploads[-1]['upload_id']
             nextkeymarker = uploads[-1]['key']
 
+        escape_xml_text, finalize_xml_texts = init_xml_texts(
+            result["encoding_type"] == 'url')
+
         result_elem = Element('ListMultipartUploadsResult')
         SubElement(result_elem, 'Bucket').text = req.container_name
-        SubElement(result_elem, 'KeyMarker').text = result["keymarker"]
+        SubElement(result_elem, 'KeyMarker').text = escape_xml_text(
+            result["keymarker"])
         SubElement(result_elem, 'UploadIdMarker').text = result["uploadid"]
-        SubElement(result_elem, 'NextKeyMarker').text = nextkeymarker
+        SubElement(result_elem, 'NextKeyMarker').text = escape_xml_text(
+            nextkeymarker)
         SubElement(result_elem, 'NextUploadIdMarker').text = nextuploadmarker
         if 'delimiter' in req.params:
-            SubElement(result_elem, 'Delimiter').text = \
-                get_param(req, 'delimiter')
+            SubElement(result_elem, 'Delimiter').text = escape_xml_text(
+                get_param(req, 'delimiter'))
         if 'prefix' in req.params:
-            SubElement(result_elem, 'Prefix').text = get_param(req, 'prefix')
+            SubElement(result_elem, 'Prefix').text = escape_xml_text(
+                get_param(req, 'prefix'))
         SubElement(result_elem, 'MaxUploads').text = str(result["maxuploads"])
         if result["encoding_type"] is not None:
             SubElement(result_elem, 'EncodingType').text = \
@@ -466,9 +479,7 @@ class UploadsController(Controller):
         for u in uploads:
             upload_elem = SubElement(result_elem, 'Upload')
             name = u['key']
-            if result["encoding_type"] == 'url':
-                name = quote(name)
-            SubElement(upload_elem, 'Key').text = name
+            SubElement(upload_elem, 'Key').text = escape_xml_text(name)
             SubElement(upload_elem, 'UploadId').text = u['upload_id']
             initiator_elem = SubElement(upload_elem, 'Initiator')
             SubElement(initiator_elem, 'ID').text = req.user_id
@@ -483,9 +494,9 @@ class UploadsController(Controller):
 
         for p in result["prefixes"]:
             elem = SubElement(result_elem, 'CommonPrefixes')
-            SubElement(elem, 'Prefix').text = p
+            SubElement(elem, 'Prefix').text = escape_xml_text(p)
 
-        body = tostring(result_elem)
+        body = finalize_xml_texts(tostring(result_elem))
 
         return HTTPOk(body=body, content_type='application/xml')
 
@@ -563,12 +574,16 @@ class UploadsController(Controller):
 
         req.get_response(self.app, 'PUT', seg_container, obj, body='')
 
+        escape_xml_text, finalize_xml_texts = init_xml_texts()
+
         result_elem = Element('InitiateMultipartUploadResult')
         SubElement(result_elem, 'Bucket').text = req.container_name
-        SubElement(result_elem, 'Key').text = wsgi_to_str(req.object_name)
-        SubElement(result_elem, 'UploadId').text = upload_id
+        SubElement(result_elem, 'Key').text = escape_xml_text(
+            wsgi_to_str(req.object_name))
+        SubElement(result_elem, 'UploadId').text = escape_xml_text(
+            upload_id)
 
-        body = tostring(result_elem)
+        body = finalize_xml_texts(tostring(result_elem))
 
         return HTTPOk(body=body, content_type='application/xml')
 
@@ -665,11 +680,12 @@ class UploadController(Controller):
             o = objList[-1]
             last_part = os.path.basename(o['name'])
 
+        escape_xml_text, finalize_xml_texts = init_xml_texts(
+            encoding_type == 'url')
+
         result_elem = Element('ListPartsResult')
         SubElement(result_elem, 'Bucket').text = req.container_name
-        if encoding_type == 'url':
-            object_name = quote(object_name)
-        SubElement(result_elem, 'Key').text = object_name
+        SubElement(result_elem, 'Key').text = escape_xml_text(object_name)
         SubElement(result_elem, 'UploadId').text = upload_id
 
         initiator_elem = SubElement(result_elem, 'Initiator')
@@ -684,8 +700,7 @@ class UploadController(Controller):
         SubElement(result_elem, 'NextPartNumberMarker').text = str(last_part)
         SubElement(result_elem, 'MaxParts').text = str(maxparts)
         if 'encoding-type' in req.params:
-            SubElement(result_elem, 'EncodingType').text = \
-                get_param(req, 'encoding-type')
+            SubElement(result_elem, 'EncodingType').text = encoding_type
         SubElement(result_elem, 'IsTruncated').text = \
             'true' if truncated else 'false'
 
@@ -697,7 +712,7 @@ class UploadController(Controller):
             SubElement(part_elem, 'ETag').text = '"%s"' % i['hash']
             SubElement(part_elem, 'Size').text = str(i['bytes'])
 
-        body = tostring(result_elem)
+        body = finalize_xml_texts(tostring(result_elem))
 
         return HTTPOk(body=body, content_type='application/xml')
 

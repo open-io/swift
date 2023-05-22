@@ -16,9 +16,11 @@
 
 from datetime import datetime, timedelta
 import json
+import re
 import requests
 import tempfile
 import unittest
+from urllib.parse import quote
 
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
     run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client
@@ -532,6 +534,87 @@ class TestS3Mpu(unittest.TestCase):
             "list-multipart-uploads",
             bucket=self.bucket_object_lock)
         self.assertEqual('', uploads)
+
+    def test_create_mpu_with_invalid_xml_chars(self):
+        # Using invalid XML characters prevents us from using regular clients
+        key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
+        urlencoded_key = quote(key)
+        client = get_boto3_client()
+        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
+
+        # Initiate MPU
+        resp = requests.post(
+            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploads',
+            headers={"x-amz-acl": "public-read-write"})
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
+            resp.content)
+        upload_id = re.search(r'<UploadId>([a-zA-Z0-9/+=]+)<\/UploadId>',
+                              resp.content.decode('utf-8'))
+        self.assertIsNotNone(upload_id)
+        upload_id = upload_id.group(1)
+        self.assertIsNotNone(upload_id)
+
+        # List Multipart Uploads
+        resp = requests.get(
+            f'http://{self.bucket}.localhost:5000/?uploads&prefix={urlencoded_key}')
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Prefix>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Prefix>',
+            resp.content)
+        self.assertIn(
+            b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
+            resp.content)
+        # List Multipart Uploads (with url encoding)
+        resp = requests.get(
+            f'http://{self.bucket}.localhost:5000/?uploads&prefix={urlencoded_key}&encoding-type=url')
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Prefix>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Prefix>',
+            resp.content)
+        self.assertIn(
+            b'<Key>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Key>',
+            resp.content)
+
+        # Upload Part
+        resp = requests.put(
+            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}&partNumber=1',
+            data=b'a'*5242880)
+        self.assertEqual(200, resp.status_code)
+
+        # List Parts
+        resp = requests.get(
+            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}')
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
+            resp.content)
+        # List Parts (with url encoding)
+        resp = requests.get(
+            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}&encoding-type=url')
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Key>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Key>',
+            resp.content)
+
+        resp = requests.post(
+            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}',
+            data="""
+<CompleteMultipartUpload>
+    <Part>
+        <PartNumber>1</PartNumber>
+        <ETag>"79b281060d337b9b2b84ccf390adcf74"</ETag>
+    </Part>
+</CompleteMultipartUpload>
+""")
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Location>http://' + self.bucket.encode('utf-8') + b'.localhost:5000/object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Location>',
+            resp.content)
+        self.assertIn(
+            b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
+            resp.content)
 
 
 if __name__ == "__main__":

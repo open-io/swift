@@ -17,12 +17,8 @@ from base64 import standard_b64encode as b64encode
 from base64 import standard_b64decode as b64decode
 from binascii import Error as BinasciiError
 import functools
-import re
 
 import six
-from six.moves.urllib.parse import quote_plus
-from functools import partial
-from xml.sax import saxutils
 
 from swift.common import swob
 from swift.common.http import HTTP_OK
@@ -35,7 +31,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
-    tostring, fromstring, XMLSyntaxError, DocumentInvalid
+    tostring, fromstring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
@@ -47,9 +43,6 @@ from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
-_VALID_XML_CHAR_REGEXP = re.compile(  # ordered by presumed frequency
-    '[^\u0020-\uD7FF\u0009\u000A\u000D\uE000-\uFFFD\U00010000-\U0010FFFF]')
-_FAKE_TEXT_REGEX = re.compile(b'fake[0-9]+text')
 
 
 def set_s3_operation_rest_for_list_objects(func):
@@ -66,27 +59,6 @@ def set_s3_operation_rest_for_list_objects(func):
         return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
 
     return _set_s3_operation
-
-
-def _escape_xml_text(to_be_escaped_later, text):
-    if not text:
-        return text
-    if to_be_escaped_later is None:
-        return quote_plus(text.encode("utf-8"), safe="/")
-    i = len(to_be_escaped_later)
-    to_be_escaped_later.append(text)
-    return f'fake{i}text'
-
-
-def _replace_fake_text(to_be_escaped_later, m):
-    i = int(m.group(0)[4:-4])
-    escaped_name = saxutils.escape(to_be_escaped_later[i])
-    return re.sub(_VALID_XML_CHAR_REGEXP, _char_to_char_reference,
-                  escaped_name).encode('utf-8')
-
-
-def _char_to_char_reference(m):
-    return '&#x%x;' % ord(m.group(0))
 
 
 class BucketController(Controller):
@@ -258,13 +230,13 @@ class BucketController(Controller):
             req.params.get('version-id-marker'))
         if is_truncated:
             if 'name' in objects[-1]:
-                SubElement(elem, 'NextKeyMarker').text = \
-                    objects[-1]['name']
+                SubElement(elem, 'NextKeyMarker').text = escape_xml_text(
+                    objects[-1]['name'])
                 SubElement(elem, 'NextVersionIdMarker').text = \
                     objects[-1].get('version') or 'null'
-            if 'subdir' in objects[-1]:
-                SubElement(elem, 'NextKeyMarker').text = \
-                    objects[-1]['subdir']
+            elif 'subdir' in objects[-1]:
+                SubElement(elem, 'NextKeyMarker').text = escape_xml_text(
+                    objects[-1]['subdir'])
                 SubElement(elem, 'NextVersionIdMarker').text = 'null'
         SubElement(elem, 'MaxKeys').text = str(tag_max_keys)
         delimiter = swob.wsgi_to_str(req.params.get('delimiter'))
@@ -424,17 +396,7 @@ class BucketController(Controller):
         is_truncated = max_keys > 0 and len(objects) > max_keys
         objects = objects[:max_keys]
 
-        # When the response is not URL-encoded, reference characters must be
-        # used for non valid XML characters.
-        # But the 'lxml' module does not support these non valid XML
-        # characters.
-        # The trick is therefore to put a fake text which is replaced at the
-        # end by the real text correctly escaped.
-        if url_encoding:
-            to_be_escaped_later = None
-        else:
-            to_be_escaped_later = []
-        escape_xml_text = partial(_escape_xml_text, to_be_escaped_later)
+        escape_xml_text, finalize_xml_texts = init_xml_texts(url_encoding)
 
         if listing_type == 'object-versions':
             func = self._build_versions_result
@@ -447,13 +409,7 @@ class BucketController(Controller):
         self._add_objects_to_result(
             req, elem, objects, escape_xml_text, listing_type, fetch_owner)
 
-        body = tostring(elem)
-        if to_be_escaped_later is not None:
-            # Replace with the real text correctly escaped
-            body = re.sub(
-                _FAKE_TEXT_REGEX,
-                partial(_replace_fake_text, to_be_escaped_later),
-                body)
+        body = finalize_xml_texts(tostring(elem))
 
         resp = HTTPOk(body=body, content_type='application/xml')
         return resp

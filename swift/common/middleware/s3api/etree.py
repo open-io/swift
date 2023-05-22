@@ -16,7 +16,12 @@
 import lxml.etree
 from copy import deepcopy
 from pkg_resources import resource_stream  # pylint: disable-msg=E0611
+import re
+
 import six
+from six.moves.urllib.parse import quote_plus
+from functools import partial
+from xml.sax import saxutils
 
 from swift.common.utils import get_logger
 from swift.common.middleware.s3api.exception import S3Exception
@@ -25,6 +30,10 @@ from swift.common.middleware.s3api.utils import camel_to_snake, \
 
 XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
 XMLNS_XSI = 'http://www.w3.org/2001/XMLSchema-instance'
+
+_VALID_XML_CHAR_REGEXP = re.compile(  # ordered by presumed frequency
+    '[^\u0020-\uD7FF\u0009\u000A\u000D\uE000-\uFFFD\U00010000-\U0010FFFF]')
+_FAKE_TEXT_REGEX = re.compile(b'fake ([0-9]+) text')
 
 
 class XMLSyntaxError(S3Exception):
@@ -135,3 +144,58 @@ parser.set_element_class_lookup(parser_lookup)
 
 Element = parser.makeelement
 SubElement = lxml.etree.SubElement
+
+
+def init_xml_texts(url_encoding=False):
+    """
+    Return
+    - a function to correctly escape all the texts contained in the XML:
+      this function must be used on all the texts coming from the client
+    - a function to build the final version of the XML
+
+    When the response is not URL-encoded, reference characters must be used
+    for non valid XML characters.
+    But the 'lxml' module does not support these non valid XML characters.
+    The trick is therefore to put a fake text which is replaced at the end
+    by the real text correctly escaped.
+    """
+    if url_encoding:
+        to_be_escaped_later = None
+    else:
+        to_be_escaped_later = []
+    escape_xml_text = partial(_escape_xml_text, to_be_escaped_later)
+    finalize_xml_texts = partial(_finalize_xml_texts, to_be_escaped_later)
+    return escape_xml_text, finalize_xml_texts
+
+
+def _escape_xml_text(to_be_escaped_later, text):
+    if not text:
+        return text
+    if to_be_escaped_later is None:
+        return quote_plus(text.encode("utf-8"), safe="/")
+    i = len(to_be_escaped_later)
+    to_be_escaped_later.append(text)
+    # Use spaces so as not to confuse with an ID or an urlencoded string
+    # or a bucket name
+    return f'fake {i} text'
+
+
+def _finalize_xml_texts(to_be_escaped_later, body):
+    if not to_be_escaped_later:
+        return body
+    # Replace with the real text correctly escaped
+    return re.sub(
+        _FAKE_TEXT_REGEX,
+        partial(_replace_fake_text, to_be_escaped_later),
+        body)
+
+
+def _replace_fake_text(to_be_escaped_later, m):
+    i = int(m.group(1))
+    escaped_name = saxutils.escape(to_be_escaped_later[i])
+    return re.sub(_VALID_XML_CHAR_REGEXP, _char_to_char_reference,
+                  escaped_name).encode('utf-8')
+
+
+def _char_to_char_reference(m):
+    return '&#x%x;' % ord(m.group(0))

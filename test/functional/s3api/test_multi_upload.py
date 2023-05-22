@@ -1090,6 +1090,178 @@ class TestS3ApiMultiUpload(S3ApiBase):
         self.assertTrue('content-length' in headers)
         self.assertEqual(headers['content-length'], '0')
 
+    def test_create_mpu_with_invalid_xml_chars(self):
+        bucket = 'bucket'
+        expected_key = 'object\u001e\u001e<Test> name\x02-\x0d-\x0f %🙂\n/.md'
+        expected_xml_key = b'object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name&#x2;-\r-&#xf; %\xf0\x9f\x99\x82\n/.md'  # noqa: E501
+        expected_fake_key = b'testcreatempuwithinvalidxmlchars'
+        bad_content_md5 = base64.b64encode(b'a' * 16).strip().decode('ascii')
+        headers = [{'Content-Type': 'foo/bar', 'x-amz-meta-baz': 'quux'},
+                   {'Content-MD5': bad_content_md5},
+                   {'Etag': 'nonsense'}]
+
+        # Initiate MPU
+        status, headers, body = next(
+            self._initiate_multi_uploads_result_generator(
+                bucket, [expected_key], headers=headers))
+        self.assertEqual(status, 200, body)
+        self.assertCommonResponseHeaders(headers)
+        self.assertIn('content-type', headers)
+        self.assertEqual(headers['content-type'], 'application/xml')
+        self.assertIn('content-length', headers)
+        self.assertEqual(headers['content-length'], str(len(body)))
+        # etree does not handle these invalid characters
+        body = body.replace(expected_xml_key, expected_fake_key)
+        elem = fromstring(body, 'InitiateMultipartUploadResult')
+        self.assertEqual(elem.find('Bucket').text, bucket)
+        self.assertEqual(expected_fake_key.decode('utf-8'),
+                         elem.find('Key').text)
+        expected_upload_id = elem.find('UploadId').text
+        self.assertIsNotNone(expected_upload_id)
+
+        # List Multipart Uploads
+        query = 'uploads'
+        query += '&' + urllib.parse.urlencode({'prefix': expected_key})
+        status, headers, body = \
+            self.conn.make_request('GET', bucket, query=query)
+        self.assertEqual(status, 200)
+        self.assertCommonResponseHeaders(headers)
+        self.assertTrue('content-type' in headers)
+        self.assertEqual(headers['content-type'], 'application/xml')
+        self.assertTrue('content-length' in headers)
+        self.assertEqual(headers['content-length'], str(len(body)))
+        # etree does not handle these invalid characters
+        body = body.replace(expected_xml_key, expected_fake_key)
+        elem = fromstring(body, 'ListMultipartUploadsResult')
+        self.assertEqual(elem.find('Bucket').text, bucket)
+        self.assertIsNone(elem.find('KeyMarker').text)
+        self.assertIsNone(elem.find('NextKeyMarker').text)
+        self.assertIsNone(elem.find('UploadIdMarker').text)
+        self.assertIsNone(elem.find('NextUploadIdMarker').text)
+        self.assertEqual(elem.find('MaxUploads').text, '1000')
+        self.assertTrue(elem.find('EncodingType') is None)
+        self.assertEqual(elem.find('IsTruncated').text, 'false')
+        uploads = elem.findall('Upload')
+        self.assertEqual(1, len(uploads))
+        u = uploads[0]
+        xml_key = u.find('Key').text
+        upload_id = u.find('UploadId').text
+        self.assertEqual(expected_fake_key.decode('utf-8'), xml_key)
+        self.assertEqual(expected_upload_id, upload_id)
+        self.assertEqual(u.find('Initiator/ID').text, self.conn.user_id)
+        self.assertEqual(u.find('Initiator/DisplayName').text,
+                         self.conn.user_id)
+        self.assertEqual(u.find('Owner/ID').text, self.conn.user_id)
+        self.assertEqual(u.find('Owner/DisplayName').text, self.conn.user_id)
+        self.assertEqual(u.find('StorageClass').text, 'STANDARD')
+        self.assertTrue(u.find('Initiated').text is not None)
+
+        # Upload Part
+        content = b'a' * self.min_segment_size
+        etag = md5(content, usedforsecurity=False).hexdigest()
+        status, headers, body = \
+            self._upload_part(bucket, expected_key, expected_upload_id,
+                              content)
+        self.assertEqual(status, 200)
+        self.assertCommonResponseHeaders(headers, etag)
+        self.assertTrue('content-type' in headers)
+        self.assertEqual(headers['content-type'], 'text/html; charset=UTF-8')
+        self.assertTrue('content-length' in headers)
+        self.assertEqual(headers['content-length'], '0')
+        expected_parts_list = [(headers['etag'], mktime(headers['date']))]
+
+        # List Parts
+        query = 'uploadId=%s' % upload_id
+        status, headers, body = \
+            self.conn.make_request('GET', bucket, expected_key, query=query)
+        self.assertEqual(status, 200)
+        self.assertCommonResponseHeaders(headers)
+        self.assertTrue('content-type' in headers)
+        self.assertEqual(headers['content-type'], 'application/xml')
+        self.assertTrue('content-length' in headers)
+        self.assertEqual(headers['content-length'], str(len(body)))
+        # etree does not handle these invalid characters
+        body = body.replace(expected_xml_key, expected_fake_key)
+        elem = fromstring(body, 'ListPartsResult')
+        self.assertEqual(elem.find('Bucket').text, bucket)
+        self.assertEqual(elem.find('Key').text,
+                         expected_fake_key.decode('utf-8'))
+        self.assertEqual(elem.find('UploadId').text, expected_upload_id)
+        self.assertEqual(elem.find('Initiator/ID').text, self.conn.user_id)
+        self.assertEqual(elem.find('Initiator/DisplayName').text,
+                         self.conn.user_id)
+        self.assertEqual(elem.find('Owner/ID').text, self.conn.user_id)
+        self.assertEqual(elem.find('Owner/DisplayName').text,
+                         self.conn.user_id)
+        self.assertEqual(elem.find('StorageClass').text, 'STANDARD')
+        self.assertEqual(elem.find('PartNumberMarker').text, '0')
+        self.assertEqual(elem.find('NextPartNumberMarker').text, '1')
+        self.assertEqual(elem.find('MaxParts').text, '1000')
+        self.assertEqual(elem.find('IsTruncated').text, 'false')
+        self.assertEqual(len(elem.findall('Part')), 1)
+
+        # etags will be used to generate xml for Complete Multipart Upload
+        etags = []
+        for (expected_etag, expected_date), p in \
+                zip(expected_parts_list, elem.findall('Part')):
+            last_modified = p.find('LastModified').text
+            self.assertTrue(last_modified is not None)
+            # TODO: sanity check
+            #       (kota_) How do we check the sanity?
+            #       the last-modified header drops milli-seconds info
+            #       by the constraint of the format.
+            #       For now, we can do either the format check or round check
+            # last_modified_from_xml = mktime(last_modified)
+            # self.assertEqual(expected_date,
+            #                   last_modified_from_xml)
+            self.assertEqual(expected_etag, p.find('ETag').text)
+            self.assertEqual(self.min_segment_size, int(p.find('Size').text))
+            etags.append(p.find('ETag').text)
+
+        # Complete Multipart Upload
+        xml = self._gen_comp_xml(etags)
+        status, headers, body = \
+            self._complete_multi_upload(bucket, expected_key,
+                                        expected_upload_id, xml)
+        self.assertEqual(status, 200)
+        self.assertCommonResponseHeaders(headers)
+        self.assertIn('content-type', headers)
+        self.assertEqual(headers['content-type'], 'application/xml')
+        if 'content-length' in headers:
+            self.assertEqual(headers['content-length'], str(len(body)))
+        else:
+            self.assertIn('transfer-encoding', headers)
+            self.assertEqual(headers['transfer-encoding'], 'chunked')
+        lines = body.split(b'\n')
+        self.assertTrue(lines[0].startswith(b'<?xml'), body)
+        self.assertTrue(lines[0].endswith(b'?>'), body)
+        # etree does not handle these invalid characters
+        body = body.replace(expected_xml_key, expected_fake_key)
+        elem = fromstring(body, 'CompleteMultipartUploadResult')
+        self.assertEqual(
+            '%s/bucket/object%%1E%%1E%%3CTest%%3E%%C2%%A0name%%02-%%0D-%%0F+%%25%%F0%%9F%%99%%82%%0A/.md' %  # noqa: E501
+            tf.config['s3_storage_url'].rstrip('/'),
+            elem.find('Location').text)
+        self.assertEqual(elem.find('Bucket').text, bucket)
+        self.assertEqual(elem.find('Key').text,
+                         expected_fake_key.decode('utf-8'))
+        concatted_etags = b''.join(
+            etag.strip('"').encode('ascii') for etag in etags)
+        exp_etag = '"%s-%s"' % (
+            md5(binascii.unhexlify(concatted_etags),
+                usedforsecurity=False).hexdigest(), len(etags))
+        etag = elem.find('ETag').text
+        self.assertEqual(etag, exp_etag)
+
+        # Check if object exists
+        exp_size = self.min_segment_size * len(etags)
+        status, headers, body = \
+            self.conn.make_request('HEAD', bucket, expected_key)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers['content-length'], str(exp_size))
+        self.assertEqual(headers['content-type'], 'foo/bar')
+        self.assertEqual(headers['x-amz-meta-baz'], 'quux')
+
 
 class TestS3ApiMultiUploadSigV4(TestS3ApiMultiUpload):
     @classmethod
