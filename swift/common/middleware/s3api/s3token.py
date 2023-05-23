@@ -70,7 +70,7 @@ from six.moves import urllib
 from swift.common.swob import Request, HTTPBadRequest, HTTPUnauthorized, \
     HTTPException
 from swift.common.utils import config_true_value, split_path, get_logger, \
-    cache_from_env, append_underscore
+    item_from_env, append_underscore
 from swift.common.wsgi import ConfigFileError
 
 
@@ -193,6 +193,7 @@ class S3Token(object):
         else:
             self._verify = None
 
+        self._secret_cache = conf.get('secret_cache', 'swift.cache')
         self._secret_cache_duration = int(conf.get('secret_cache_duration', 0))
         self._secret_cache_duration_min = \
             int(conf.get('secret_cache_duration_min',
@@ -334,7 +335,7 @@ class S3Token(object):
         memcache_client = None
         memcache_token_key = 's3secret/%s' % access
         if self._secret_cache_duration > 0:
-            memcache_client = cache_from_env(environ)
+            memcache_client = item_from_env(environ, self._secret_cache)
         cached_auth_data = None
         environ.setdefault('s3token.time', {})
         regions_per_type = None

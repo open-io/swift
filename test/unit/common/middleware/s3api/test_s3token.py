@@ -536,11 +536,11 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         self._assert_authorized(req, account_path='/v1/')
         self.assertEqual(req.environ['PATH_INFO'], '/v1/AUTH_TENANT_ID/c/o')
 
-    @mock.patch('swift.common.middleware.s3api.s3token.cache_from_env')
+    @mock.patch('swift.common.middleware.s3api.s3token.item_from_env')
     @mock.patch('keystoneclient.v3.client.Client')
     @mock.patch.object(requests, 'post')
     def test_secret_is_cached(self, MOCK_REQUEST, MOCK_KEYSTONE,
-                              MOCK_CACHE_FROM_ENV):
+                              MOCK_ITEM_FROM_ENV):
         self.middleware = self.make_middleware({
             'auth_uri': 'http://example.com',
             'secret_cache_duration': '20',
@@ -555,7 +555,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         self.assertEqual(20, self.middleware._secret_cache_duration)
         self.assertIsNone(MOCK_KEYSTONE.mock_calls[0][2]['region_name'])
 
-        cache = MOCK_CACHE_FROM_ENV.return_value
+        cache = MOCK_ITEM_FROM_ENV.return_value
 
         fake_cache_response = ({}, {'id': 'tenant_id'}, 'secret')
         cache.get.return_value = fake_cache_response
@@ -574,12 +574,14 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.get_response(self.middleware)
         # Ensure we don't request auth from keystone
         self.assertFalse(MOCK_REQUEST.called)
+        MOCK_ITEM_FROM_ENV.assert_called_once_with(req.environ,
+                                                   'swift.cache')
 
-    @mock.patch('swift.common.middleware.s3api.s3token.cache_from_env')
+    @mock.patch('swift.common.middleware.s3api.s3token.item_from_env')
     @mock.patch('keystoneclient.v3.client.Client')
     @mock.patch.object(requests, 'post')
     def test_secret_sets_cache(self, MOCK_REQUEST, MOCK_KEYSTONE,
-                               MOCK_CACHE_FROM_ENV):
+                               MOCK_ITEM_FROM_ENV):
         self.middleware = self.make_middleware({
             'auth_uri': 'http://example.com',
             'secret_cache_duration': '20',
@@ -596,7 +598,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         self.assertEqual(MOCK_KEYSTONE.mock_calls[0][2]['region_name'],
                          'some-other-region')
 
-        cache = MOCK_CACHE_FROM_ENV.return_value
+        cache = MOCK_ITEM_FROM_ENV.return_value
         cache.get.return_value = None
 
         keystone_client = MOCK_KEYSTONE.return_value
@@ -630,6 +632,51 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         expected_cache = (expected_headers, None, tenant, 'secret')
         cache.set.assert_called_once_with('s3secret/access', expected_cache,
                                           time=20)
+        MOCK_ITEM_FROM_ENV.assert_called_once_with(req.environ,
+                                                   'swift.cache')
+
+    @mock.patch('swift.common.middleware.s3api.s3token.item_from_env')
+    @mock.patch('keystoneclient.v3.client.Client')
+    @mock.patch.object(requests, 'post')
+    def test_secret_cache_setting(self, MOCK_REQUEST, MOCK_KEYSTONE,
+                                  MOCK_ITEM_FROM_ENV):
+        self.middleware = self.make_middleware({
+            'auth_uri': 'http://example.com',
+            'secret_cache_duration': '20',
+            'secret_cache': 'swift.cache.auth',
+            'auth_type': 'v3password',
+            'auth_url': 'http://example.com:5000/v3',
+            'username': 'swift',
+            'password': 'secret',
+            'project_name': 'service',
+            'user_domain_name': 'default',
+            'project_domain_name': 'default',
+        })
+        self.assertEqual(20, self.middleware._secret_cache_duration)
+        self.assertEqual('swift.cache.auth', self.middleware._secret_cache)
+        self.assertIsNone(MOCK_KEYSTONE.mock_calls[0][2]['region_name'])
+
+        cache = MOCK_ITEM_FROM_ENV.return_value
+
+        fake_cache_response = ({}, {'id': 'tenant_id'}, 'secret')
+        cache.get.return_value = fake_cache_response
+
+        MOCK_REQUEST.return_value = TestResponse({
+            'status_code': 201,
+            'text': json.dumps(GOOD_RESPONSE_V2)})
+
+        req = Request.blank('/v1/AUTH_cfa/c/o')
+        req.environ['s3api.auth_details'] = {
+            'access_key': u'access',
+            'signature': u'signature',
+            'string_to_sign': u'token',
+            'check_signature': lambda x: True
+        }
+        req.get_response(self.middleware)
+        # Ensure we don't request auth from keystone
+        self.assertFalse(MOCK_REQUEST.called)
+        MOCK_ITEM_FROM_ENV.assert_called_once_with(req.environ,
+                                                   'swift.cache.auth')
 
 
 class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
