@@ -137,9 +137,17 @@ class MemcacheMiddleware(object):
         self.logger = get_logger(conf, log_route='memcache')
         self.memcache_servers, self.memcache = configure_memcache_client(
             conf, logger=self.logger)
+        self.memcache_env_key = conf.get('memcache_env_key', 'swift.cache')
+        if (
+            self.memcache_env_key != 'swift.cache' and
+            not self.memcache_env_key.startswith('swift.cache.')
+        ):
+            raise ValueError(
+                'memcache_env_key value must be equal to `swift.cache`'
+                'or start with `swift.cache.`')
 
     def __call__(self, env, start_response):
-        env['swift.cache'] = self.memcache
+        env[self.memcache_env_key] = self.memcache
         return self.app(env, start_response)
 
 

@@ -191,7 +191,7 @@ class OioMemcacheMiddleware(MemcacheMiddleware):
                 self.memcache, ttl=oio_cache_ttl)
 
     def __call__(self, env, start_response):
-        env['swift.cache'] = self.memcache
+        env[self.memcache_env_key] = self.memcache
         env['oio.cache'] = self.memcache_dict
         return self.app(env, start_response)
 
