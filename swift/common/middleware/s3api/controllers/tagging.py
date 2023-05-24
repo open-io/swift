@@ -18,8 +18,6 @@ from six.moves.urllib.parse import parse_qs
 
 from swift.common.utils import close_if_possible, public
 
-from swift.common.middleware.intelligent_tiering import \
-    get_intelligent_tiering_info, GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_storage_domain, \
     set_s3_operation_rest, handle_no_such_key
@@ -27,6 +25,8 @@ from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.intelligent_tiering_utils import \
+    get_intelligent_tiering_info, GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
 from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp

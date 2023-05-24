@@ -14,13 +14,15 @@
 # limitations under the License.
 
 from dict2xml import dict2xml
-from swift.common.middleware.intelligent_tiering import GET_BUCKET_STATE_OUTPUT
+
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.intelligent_tiering_utils import \
+    GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, NoSuchConfiguration, S3NotImplemented
 from swift.common.middleware.s3api.utils import convert_response, \

@@ -22,7 +22,7 @@ from swift.common.middleware.s3api.bucket_db import BucketDbWrapper, \
 from swift.common.middleware.s3api.controllers.replication import \
     BUCKET_REPLICATION_HEADER, dict_conf_to_xml, replication_xml_conf_to_dict,\
     MAX_PRIORITY_NUMBER, MIN_PRIORITY_NUMBER
-from swift.common.middleware.s3api.controllers.bucket import \
+from swift.common.middleware.s3api.utils import \
     OBJECT_LOCK_ENABLED_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     SYSMETA_VERSIONS_ENABLED
@@ -138,7 +138,7 @@ class TestS3ApiReplication(S3ApiTestCase):
 
     def test_xml_conf_to_dict(self):
         """
-        Test xml conf convertion to dict conf. Beside it is also testing if ID
+        Test xml conf conversion to dict conf. Beside it is also testing if ID
         is generated if not specified in replication configuration.
         """
         xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>

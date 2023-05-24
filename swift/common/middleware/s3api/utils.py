@@ -47,6 +47,9 @@ def sysmeta_header(resource, name):
     return sysmeta_prefix(resource) + name
 
 
+OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
+
+
 def camel_to_snake(camel):
     return re.sub('(.)([A-Z])', r'\1_\2', camel).lower()
 

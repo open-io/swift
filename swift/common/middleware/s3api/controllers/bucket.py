@@ -43,11 +43,10 @@ from swift.common.middleware.s3api.s3response import \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    sysmeta_header
+    sysmeta_header, OBJECT_LOCK_ENABLED_HEADER
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
-OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
 _VALID_XML_CHAR_REGEXP = re.compile(  # ordered by presumed frequency
     '[^\u0020-\uD7FF\u0009\u000A\u000D\uE000-\uFFFD\U00010000-\U0010FFFF]')
 _FAKE_TEXT_REGEX = re.compile(b'fake[0-9]+text')

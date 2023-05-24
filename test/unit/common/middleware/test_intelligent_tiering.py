@@ -22,9 +22,11 @@ from sys import version_info
 from oio.common.constants import OIO_DB_FROZEN
 
 from swift.common.middleware.intelligent_tiering import \
+    IntelligentTieringMiddleware
+from swift.common.middleware.s3api.intelligent_tiering_utils import \
     BUCKET_STATE_DELETING, BUCKET_STATE_LOCKED, BUCKET_STATE_NONE, \
     BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_STATE_RESTORING, \
-    BUCKET_ALLOWED_TRANSITIONS, IntelligentTieringMiddleware
+    BUCKET_ALLOWED_TRANSITIONS
 from swift.common.middleware.s3api.s3response import BadRequest, \
     S3NotImplemented
 from swift.common.swob import Request, HTTPNoContent

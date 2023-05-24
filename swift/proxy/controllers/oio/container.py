@@ -25,6 +25,8 @@ from swift.common.utils import public, Timestamp, \
 from swift.common.constraints import check_metadata
 from swift.common import constraints
 
+from swift.common.middleware.s3api.utils import \
+    OBJECT_LOCK_ENABLED_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     CLIENT_VERSIONS_ENABLED, SYSMETA_VERSIONS_CONT
 from swift.common.middleware.versioned_writes.legacy \
@@ -42,9 +44,6 @@ from swift.proxy.controllers.base import clear_info_cache, \
     _get_info_from_caches, headers_from_container_info
 
 from oio.common import exceptions
-
-from swift.common.middleware.s3api.controllers.bucket import \
-    OBJECT_LOCK_ENABLED_HEADER
 
 
 class ContainerController(SwiftContainerController):
