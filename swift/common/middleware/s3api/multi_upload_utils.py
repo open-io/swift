@@ -16,18 +16,20 @@
 
 import re
 
+from swift.common.http import HTTP_OK, HTTP_NOT_FOUND, HTTP_SERVICE_UNAVAILABLE
 from swift.common.utils import json
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
-    NoSuchBucket
+    NoSuchBucket, InternalError, ServiceUnavailable
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX
 from swift.common.request_helpers import get_param
+from swift.common.wsgi import make_pre_authed_request
 
 
 DEFAULT_MAX_PARTS_LISTING = 1000
 DEFAULT_MAX_UPLOADS = 1000
 
 
-def list_bucket_multipart_uploads(app, req):
+def list_bucket_multipart_uploads(app, req, pre_auth=False):
     """
     Handles List Multipart Uploads.
     Return return as a dict json with those keys:
@@ -109,9 +111,21 @@ def list_bucket_multipart_uploads(app, req):
     is_part = re.compile('/[0-9]+$')
     while len(uploads) < maxuploads:
         try:
-            req.environ['oio.list_mpu'] = True
-            resp = req.get_response(app, container=container,
-                                    query=query, method="GET")
+            if pre_auth:
+                sw_req = req.to_swift_req('GET', container, None, query=query)
+                sub_req = make_pre_authed_request(
+                    sw_req.environ, sw_req.method, path=sw_req.path)
+                resp = sub_req.get_response(app)
+                if resp.status_int == HTTP_NOT_FOUND:
+                    raise NoSuchBucket(req.container_name)
+                elif resp.status_int == HTTP_SERVICE_UNAVAILABLE:
+                    raise ServiceUnavailable()
+                elif resp.status_int != HTTP_OK:
+                    raise InternalError(
+                        'unexpected status code %d' % resp.status_int)
+            else:
+                resp = req.get_response(app, container=container,
+                                        query=query, method="GET")
             objects = json.loads(resp.body)
         except NoSuchBucket:
             # Assume NoSuchBucket as no uploads

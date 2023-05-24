@@ -329,7 +329,7 @@ class IntelligentTieringMiddleware(object):
         # The entire list is not necessary, the request should be aborted
         # if only 1 part is still here
         req.params = {"max-uploads": 1}
-        results = list_bucket_multipart_uploads(s3app, req)
+        results = list_bucket_multipart_uploads(s3app, req, pre_auth=True)
 
         # Put back params to the request
         req.params = old_params
