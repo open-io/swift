@@ -93,8 +93,9 @@ class TestS3Acl(unittest.TestCase):
             'delete-objects',
             '--delete', '{"Objects": [{"Key": "%s"}]}' % key,
             profile=A2ADM, bucket=self.bucket)
-        self.assertEqual(
-            200, res.get('ResponseMetadata', {}).get('HTTPStatusCode'))
+        # awscli output has changed: https://github.com/aws/aws-cli/pull/7829
+        # self.assertEqual(
+        #     200, res.get('ResponseMetadata', {}).get('HTTPStatusCode'))
         self.assertListEqual([{
             'Key': key,
             'Code': 'AccessDenied',

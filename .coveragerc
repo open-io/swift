@@ -1,6 +1,8 @@
 [run]
 branch = True
 omit = /usr*,setup.py,*egg*,.venv/*,.tox/*,test/*
+parallel = True
+sigterm = True
 source = swift,oio_tests,proxy
 
 [report]

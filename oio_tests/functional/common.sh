@@ -225,9 +225,12 @@ function run_functional_test() {
 
     if [ -n "$NO_COVERAGE" ]
     then
+      echo "Running oioswift-proxy-server without code coverage"
       ./bin/oioswift-proxy-server $conf -v >/tmp/journal.log 2>&1 &
     else
+      echo "Running oioswift-proxy-server with code coverage"
       coverage run \
+        --rcfile=.coveragerc \
         --concurrency=eventlet \
         --context "$(basename $conf)" \
         -p bin/oioswift-proxy-server \
@@ -247,7 +250,9 @@ function run_functional_test() {
     done
 
     for pid in $PID; do
-        kill $pid
-        wait $pid
+      echo "Killing process $pid"
+      kill $pid
+      echo "Waiting for process $pid"
+      wait $pid || true
     done
 }

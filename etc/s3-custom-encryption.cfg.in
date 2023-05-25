@@ -1,6 +1,8 @@
 [DEFAULT]
 bind_port = 5000
-workers = 1
+# Setting to zero will make everything in the main process.
+# This is necessary to get clean coverage reports.
+workers = 0
 user = %USER%
 log_facility = LOG_LOCAL0
 log_level = DEBUG

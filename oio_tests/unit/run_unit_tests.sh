@@ -4,7 +4,7 @@ set -e
 
 coverage run \
   --omit=swift/account/*,swift/cli/*,swift/container/*,swift/obj/* \
-  --context "unit" \
+  --context "oioswift-unit" \
   -p \
     $(which nosetests) \
     -v --exe \
