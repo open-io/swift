@@ -106,9 +106,10 @@ class LoggingStatusController(Controller):
             source_info = req.get_bucket_info(self.app)
             if req.bucket_db:
                 target_info = req.bucket_db.show(
-                    target_bucket, source_info['account'])
+                    target_bucket, source_info['account'], reqid=req.trans_id)
                 if not target_info:
-                    target_owner = req.bucket_db.get_owner(target_bucket)
+                    target_owner = req.bucket_db.get_owner(target_bucket,
+                                                           reqid=req.trans_id)
                     if target_owner:
                         raise InvalidTargetBucketForLogging(target_bucket)
                     raise InvalidTargetBucketForLogging(

@@ -736,7 +736,7 @@ def get_request_class(env, s3_acl):
 
 def _req_s3api_info(field):
     """
-    Set and retrieve value of the field entry in self.environ['s3api.info].
+    Set and retrieve value of the field entry from self.environ['s3api.info'].
     """
     def getter(self):
         return self.environ['s3api.info'].get(field)
@@ -762,6 +762,7 @@ class S3Request(swob.Request):
     authentication_type = _req_s3api_info('authentication_type')
     aws_chunked = _req_s3api_info('aws_chunked')
     user_id = _req_s3api_info('requester')
+    trans_id = swob._req_environ_property('swift.trans_id')
 
     bucket_acl = _header_acl_property('container')
     object_acl = _header_acl_property('object')
@@ -1523,7 +1524,8 @@ class S3Request(swob.Request):
             # Anonymous requests do not know in advance the account used.
             if self._is_anonymous:
                 if self.bucket_db:
-                    ct_owner = self.bucket_db.get_owner(bucket)
+                    ct_owner = self.bucket_db.get_owner(bucket,
+                                                        reqid=self.trans_id)
                     account = ct_owner if ct_owner else None
                 if account is None:
                     raise NoSuchBucket(container)
@@ -1531,7 +1533,8 @@ class S3Request(swob.Request):
             # that are not in the same account.
             # To properly access the bucket, the owner account must be used.
             elif self.bucket_db:
-                ct_owner = self.bucket_db.get_owner(bucket)
+                ct_owner = self.bucket_db.get_owner(bucket,
+                                                    reqid=self.trans_id)
                 account = ct_owner if ct_owner else None
         # Otherwise, use the account used by the request
         if account is None:
@@ -2124,7 +2127,7 @@ class S3Request(swob.Request):
         if bucket_info is None:
             if self.bucket_db:
                 bucket_info = self.bucket_db.show(
-                    bucket, use_cache=read_caches)
+                    bucket, use_cache=read_caches, reqid=self.trans_id)
             else:
                 container_name = self.container_name
                 try:

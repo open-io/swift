@@ -425,7 +425,8 @@ def check_iam_access(object_action, bucket_action=None):
             # to other account's buckets.
             if (acl_allow is None and req.container_name and req.bucket_db
                     and req.environ[IAM_EXPLICIT_ALLOW]):
-                bkt_owner = req.bucket_db.get_owner(req.container_name)
+                bkt_owner = req.bucket_db.get_owner(req.container_name,
+                                                    reqid=req.trans_id)
                 if bkt_owner and bkt_owner != req.user_account:
                     # We cannot deny access immediately. Let the ACLs decide.
                     req.environ[IAM_EXPLICIT_ALLOW] = False

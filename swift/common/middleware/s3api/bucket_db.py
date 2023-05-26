@@ -34,7 +34,7 @@ class DummyBucketDb(object):
     def __init__(self, *args, **kwargs):
         self._bucket_db = dict()
 
-    def get_owner(self, bucket):
+    def get_owner(self, bucket, **kwargs):
         """
         Get the owner of a bucket.
         """
@@ -79,7 +79,7 @@ class DummyBucketDb(object):
             return
         self._bucket_db.pop(bucket, None)
 
-    def release(self, bucket, owner):
+    def release(self, bucket, owner, **kwargs):
         """
         Remove the bucket from the database.
         """
@@ -106,7 +106,7 @@ class OioBucketDb(object):
             {'namespace': namespace}, proxy_endpoint=proxy_url,
             logger=self.logger, **kwargs)
 
-    def get_owner(self, bucket):
+    def get_owner(self, bucket, **kwargs):
         """
         Get the owner of a bucket.
 
@@ -114,7 +114,8 @@ class OioBucketDb(object):
         :returns: the owner of the bucket
         """
         try:
-            return self.bucket_client.bucket_get_owner(bucket, use_cache=True)
+            return self.bucket_client.bucket_get_owner(
+                bucket, use_cache=True, **kwargs)
         except NotFound:
             # Don't need to log, this is not an error
             return None
@@ -210,7 +211,7 @@ class OioBucketDb(object):
                     bucket, owner, exc)
             raise ServiceUnavailable from exc
 
-    def release(self, bucket, owner):
+    def release(self, bucket, owner, **kwargs):
         """
         Cancel the reservation for the bucket name.
 
@@ -218,7 +219,7 @@ class OioBucketDb(object):
         :param owner: name of the account owning the bucket
         """
         try:
-            self.bucket_client.bucket_release(bucket, owner)
+            self.bucket_client.bucket_release(bucket, owner, **kwargs)
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(
@@ -241,7 +242,7 @@ class OioBucketDb(object):
         """
         try:
             return self.bucket_client.bucket_show(
-                bucket, account=owner, use_cache=use_cache)
+                bucket, account=owner, use_cache=use_cache, **kwargs)
         except ClientException as exc:
             if self.logger:
                 self.logger.warning(

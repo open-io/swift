@@ -42,9 +42,11 @@ class UniqueBucketController(BucketController):
         # we currently don't support LocationConstraint, we have to create
         # the bucket on the local region.
         can_create = req.bucket_db.reserve(req.container_name, req.account,
-                                           region=self.conf.location)
+                                           region=self.conf.location,
+                                           reqid=req.trans_id)
         if not can_create:
-            ct_owner = req.bucket_db.get_owner(req.container_name)
+            ct_owner = req.bucket_db.get_owner(req.container_name,
+                                               reqid=req.trans_id)
             if ct_owner == req.account:
                 raise BucketAlreadyOwnedByYou(req.container_name)
             raise BucketAlreadyExists(req.container_name)
@@ -52,18 +54,21 @@ class UniqueBucketController(BucketController):
             resp = super(UniqueBucketController, self).PUT(req)
         except Exception:
             # Container creation failed, remove reservation
-            req.bucket_db.release(req.container_name, req.account)
+            req.bucket_db.release(req.container_name, req.account,
+                                  reqid=req.trans_id)
             raise
 
         # Container creation succeeded,
         # confirm reservation by creating the bucket.
         if not req.bucket_db.create(req.container_name, req.account,
-                                    region=self.conf.location):
+                                    region=self.conf.location,
+                                    reqid=req.trans_id):
             # Try to rollback by deleting the new container
             try:
                 resp = req.get_response(self.app, method='DELETE')
                 # ... and remove reservation
-                req.bucket_db.release(req.container_name, req.account)
+                req.bucket_db.release(req.container_name, req.account,
+                                      reqid=req.trans_id)
             except Exception as exc:
                 self.logger.warning(
                     'Failed to delete new container '
@@ -88,12 +93,14 @@ class UniqueBucketController(BucketController):
             # In some cases, the root container may be deleted,
             # but the bucket may not
             req.bucket_db.delete(req.container_name, req.account,
-                                 region=self.conf.location)
+                                 region=self.conf.location,
+                                 reqid=req.trans_id)
             raise
 
         if resp.is_success:
             # Root container deletion succeeded, delete the bucket
             req.bucket_db.delete(req.container_name, req.account,
-                                 region=self.conf.location)
+                                 region=self.conf.location,
+                                 reqid=req.trans_id)
 
         return resp
