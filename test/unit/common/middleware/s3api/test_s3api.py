@@ -51,7 +51,7 @@ class TestListingMiddleware(S3ApiTestCase):
     def test_s3_etag_in_json(self):
         # This translation happens all the time, even on normal swift requests
         body_data = json.dumps([
-            {'name': 'obj1', 'hash': '0123456789abcdef0123456789abcdef'},
+            {'name': 'obj1', 'hash': '0VXBsb2FkIElE0VXBsb2FkIElE'},
             {'name': 'obj2', 'hash': 'swiftetag; s3_etag=mu-etag'},
             {'name': 'obj2', 'hash': 'swiftetag; something=else'},
             {'subdir': 'path/'},
@@ -64,7 +64,7 @@ class TestListingMiddleware(S3ApiTestCase):
         req = Request.blank('/v1/a/c')
         status, headers, body = self.call_s3api(req)
         self.assertEqual(json.loads(body), [
-            {'name': 'obj1', 'hash': '0123456789abcdef0123456789abcdef'},
+            {'name': 'obj1', 'hash': '0VXBsb2FkIElE0VXBsb2FkIElE'},
             {'name': 'obj2', 'hash': 'swiftetag', 's3_etag': '"mu-etag"'},
             {'name': 'obj2', 'hash': 'swiftetag; something=else'},
             {'subdir': 'path/'},
@@ -81,7 +81,7 @@ class TestListingMiddleware(S3ApiTestCase):
 
         # Yes JSON, but wrong content-type
         body_data = json.dumps([
-            {'name': 'obj1', 'hash': '0123456789abcdef0123456789abcdef'},
+            {'name': 'obj1', 'hash': '0VXBsb2FkIElE0VXBsb2FkIElE'},
             {'name': 'obj2', 'hash': 'swiftetag; s3_etag=mu-etag'},
             {'name': 'obj2', 'hash': 'swiftetag; something=else'},
             {'subdir': 'path/'},
@@ -662,12 +662,12 @@ class TestS3ApiMiddleware(S3ApiTestCase):
 
     def test_token_generation(self):
         self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/'
-                                    'object/123456789abcdef',
+                                    'object/VXBsb2FkIElE',
                             swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_test/bucket+segments/'
-                                   'object/123456789abcdef/1',
+                                   'object/VXBsb2FkIElE/1',
                             swob.HTTPCreated, {}, None)
-        req = Request.blank('/bucket/object?uploadId=123456789abcdef'
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE'
                             '&partNumber=1',
                             environ={'REQUEST_METHOD': 'PUT'})
         req.headers['Authorization'] = 'AWS test:tester:hmac'
@@ -678,7 +678,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             status, headers, body = self.call_s3api(req)
             self.assertIn('swift.backend_path', req.environ)
             self.assertEqual(
-                '/v1/AUTH_test/bucket+segments/object/123456789abcdef/1',
+                '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
                 req.environ['swift.backend_path'])
 
         _, _, headers = self.swift.calls_with_headers[-1]
@@ -687,17 +687,17 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'signature': 'hmac',
             'string_to_sign': b'\n'.join([
                 b'PUT', b'', b'', date_header.encode('ascii'),
-                b'/bucket/object?partNumber=1&uploadId=123456789abcdef']),
+                b'/bucket/object?partNumber=1&uploadId=VXBsb2FkIElE']),
             'check_signature': mock_cs})
 
     def test_non_ascii_user(self):
         self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/'
-                                    'object/123456789abcdef',
+                                    'object/VXBsb2FkIElE',
                             swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_test/bucket+segments/'
-                                   'object/123456789abcdef/1',
+                                   'object/VXBsb2FkIElE/1',
                             swob.HTTPCreated, {}, None)
-        req = Request.blank('/bucket/object?uploadId=123456789abcdef'
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE'
                             '&partNumber=1',
                             environ={'REQUEST_METHOD': 'PUT'})
         # NB: WSGI string for a snowman

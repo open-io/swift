@@ -59,6 +59,7 @@ Static Large Object when the multipart upload is completed.
 
 """
 
+import base64
 import binascii
 import copy
 import functools
@@ -105,6 +106,15 @@ from swift.common.middleware.s3api.multi_upload_utils import \
     list_bucket_multipart_uploads
 
 MAX_COMPLETE_UPLOAD_BODY_SIZE = 2048 * 1024
+
+
+def _get_upload_id(req):
+    upload_id = get_param(req, 'uploadId')
+    try:
+        base64.b64decode(upload_id)
+    except Exception as exc:
+        raise NoSuchUpload(upload_id=upload_id) from exc
+    return upload_id
 
 
 def _get_upload_info(req, app, upload_id):
@@ -235,7 +245,7 @@ class PartController(Controller):
 
         part_number = self.parse_part_number(req)
 
-        upload_id = get_param(req, 'uploadId')
+        upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
         req.container_name += MULTIUPLOAD_SUFFIX
@@ -623,7 +633,7 @@ class UploadController(Controller):
             err_msg = 'Invalid Encoding Method specified in Request'
             raise InvalidArgument('encoding-type', encoding_type, err_msg)
 
-        upload_id = get_param(req, 'uploadId')
+        upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
         storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
@@ -729,7 +739,7 @@ class UploadController(Controller):
         """
         Handles Abort Multipart Upload.
         """
-        upload_id = get_param(req, 'uploadId')
+        upload_id = _get_upload_id(req)
         _get_upload_info(req, self.app, upload_id)
 
         # First check to see if this multi-part upload was already
@@ -782,7 +792,7 @@ class UploadController(Controller):
         """
         Handles Complete Multipart Upload.
         """
-        upload_id = get_param(req, 'uploadId')
+        upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
         # Use the same storage class for the manifest

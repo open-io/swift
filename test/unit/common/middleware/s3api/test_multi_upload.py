@@ -55,32 +55,44 @@ OBJECT_MANIFEST = \
       'content_type': 'application/octet-stream',
       'etag': '0123456789abcdef',
       'last_modified': '2018-05-21T08:40:58.000000',
-      'path': '/bucket+segments/object/X/1'},
+      'path': '/bucket+segments/object/VXBsb2FkIElE/1'},
      {'bytes': 21,
       'content_type': 'application/octet-stream',
       'etag': 'fedcba9876543210',
       'last_modified': '2018-05-21T08:40:59.000000',
-      'path': '/bucket+segments/object/X/2'}]
+      'path': '/bucket+segments/object/VXBsb2FkIElE/2'}]
 
 OBJECTS_TEMPLATE = \
-    (('object/X/1', '2014-05-07T19:47:51.592270', '0123456789abcdef', 100),
-     ('object/X/2', '2014-05-07T19:47:52.592270', 'fedcba9876543210', 200))
+    (('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+      '0123456789abcdef', 100),
+     ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+      'fedcba9876543210', 200))
 
 MULTIPARTS_TEMPLATE = \
-    (('object/X', '2014-05-07T19:47:50.592270', 'HASH', 1),
-     ('object/X/1', '2014-05-07T19:47:51.592270', '0123456789abcdef', 11),
-     ('object/X/2', '2014-05-07T19:47:52.592270', 'fedcba9876543210', 21),
-     ('object/Y', '2014-05-07T19:47:53.592270', 'HASH', 2),
-     ('object/Y/1', '2014-05-07T19:47:54.592270', '0123456789abcdef', 12),
-     ('object/Y/2', '2014-05-07T19:47:55.592270', 'fedcba9876543210', 22),
-     ('object/Z', '2014-05-07T19:47:56.592270', 'HASH', 3),
-     ('object/Z/1', '2014-05-07T19:47:57.592270', '0123456789abcdef', 13),
-     ('object/Z/2', '2014-05-07T19:47:58.592270', 'fedcba9876543210', 23),
-     ('subdir/object/Z', '2014-05-07T19:47:58.592270', 'HASH', 4),
-     ('subdir/object/Z/1', '2014-05-07T19:47:58.592270', '0123456789abcdef',
-      41),
-     ('subdir/object/Z/2', '2014-05-07T19:47:58.592270', 'fedcba9876543210',
-      41),
+    (('object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+      'HASH', 1),
+     ('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+      '0123456789abcdef', 11),
+     ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+      'fedcba9876543210', 21),
+     ('object/VXBsb2FkIElF', '2014-05-07T19:47:53.592270',
+      'HASH', 2),
+     ('object/VXBsb2FkIElF/1', '2014-05-07T19:47:54.592270',
+      '0123456789abcdef', 12),
+     ('object/VXBsb2FkIElF/2', '2014-05-07T19:47:55.592270',
+      'fedcba9876543210', 22),
+     ('object/VXBsb2FkIElG', '2014-05-07T19:47:56.592270',
+      'HASH', 3),
+     ('object/VXBsb2FkIElG/1', '2014-05-07T19:47:57.592270',
+      '0123456789abcdef', 13),
+     ('object/VXBsb2FkIElG/2', '2014-05-07T19:47:58.592270',
+      'fedcba9876543210', 23),
+     ('subdir/object/VXBsb2FkIElG', '2014-05-07T19:47:58.592270',
+      'HASH', 4),
+     ('subdir/object/VXBsb2FkIElG/1', '2014-05-07T19:47:58.592270',
+      '0123456789abcdef', 41),
+     ('subdir/object/VXBsb2FkIElG/2', '2014-05-07T19:47:58.592270',
+      'fedcba9876543210', 41),
      # NB: wsgi strings
      ('subdir/object/completed\xe2\x98\x83/W/1', '2014-05-07T19:47:58.592270',
       '0123456789abcdef', 41),
@@ -118,36 +130,45 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             swob.HTTPOk, {}, json.dumps([]))
         # but for the listing when aborting an upload, break it up into pages
         self.swift.register(
-            'GET', '%s?delimiter=/&format=json&marker=&prefix=object/X/' % (
-                self.segment_bucket, ),
+            'GET', '%s?delimiter=/&format=json&marker=&'
+            'prefix=object/VXBsb2FkIElE/' % (self.segment_bucket, ),
             swob.HTTPOk, {}, json.dumps(objects[:1]))
         self.swift.register(
-            'GET', '%s?delimiter=/&format=json&marker=%s&prefix=object/X/' % (
-                self.segment_bucket, objects[0]['name']),
+            'GET', '%s?delimiter=/&format=json&marker=%s&'
+            'prefix=object/VXBsb2FkIElE/' % (self.segment_bucket,
+                                             objects[0]['name']),
             swob.HTTPOk, {}, json.dumps(objects[1:]))
         self.swift.register(
-            'GET', '%s?delimiter=/&format=json&marker=%s&prefix=object/X/' % (
-                self.segment_bucket, objects[-1]['name']),
+            'GET', '%s?delimiter=/&format=json&marker=%s&'
+            'prefix=object/VXBsb2FkIElE/' % (self.segment_bucket,
+                                             objects[-1]['name']),
             swob.HTTPOk, {}, '[]')
-        self.swift.register('HEAD', self.segment_bucket + '/object/X',
-                            swob.HTTPOk,
-                            {'x-object-meta-foo': 'bar',
-                             'content-type': 'application/directory',
-                             'x-object-sysmeta-s3api-has-content-type': 'yes',
-                             'x-object-sysmeta-s3api-content-type':
-                             'baz/quux'}, None)
-        self.swift.register('PUT', self.segment_bucket + '/object/X',
-                            swob.HTTPCreated, {}, None)
-        self.swift.register('DELETE', self.segment_bucket + '/object/X',
-                            swob.HTTPNoContent, {}, None)
-        self.swift.register('GET', self.segment_bucket + '/object/invalid',
-                            swob.HTTPNotFound, {}, None)
-        self.swift.register('PUT', self.segment_bucket + '/object/X/1',
-                            swob.HTTPCreated, put_headers, None)
-        self.swift.register('DELETE', self.segment_bucket + '/object/X/1',
-                            swob.HTTPNoContent, {}, None)
-        self.swift.register('DELETE', self.segment_bucket + '/object/X/2',
-                            swob.HTTPNoContent, {}, None)
+        self.swift.register(
+            'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPOk,
+            {'x-object-meta-foo': 'bar',
+             'content-type': 'application/directory',
+             'x-object-sysmeta-s3api-has-content-type': 'yes',
+             'x-object-sysmeta-s3api-content-type':
+             'baz/quux'}, None)
+        self.swift.register(
+            'PUT', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPCreated, {}, None)
+        self.swift.register(
+            'DELETE', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPNoContent, {}, None)
+        self.swift.register(
+            'GET', self.segment_bucket + '/object/invalid',
+            swob.HTTPNotFound, {}, None)
+        self.swift.register(
+            'PUT', self.segment_bucket + '/object/VXBsb2FkIElE/1',
+            swob.HTTPCreated, put_headers, None)
+        self.swift.register(
+            'DELETE', self.segment_bucket + '/object/VXBsb2FkIElE/1',
+            swob.HTTPNoContent, {}, None)
+        self.swift.register(
+            'DELETE', self.segment_bucket + '/object/VXBsb2FkIElE/2',
+            swob.HTTPNoContent, {}, None)
 
         mp_manifest = self.segment_bucket[:-9] + \
             '/object?format=raw&multipart-manifest=get'
@@ -157,12 +178,13 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                              'X-Object-Sysmeta-Swift3-Etag': S3_ETAG,
                              'X-Static-Large-Object': 'True'},
                             json.dumps(OBJECT_MANIFEST))
-        self.swift.register('HEAD', self.segment_bucket + '/object/X/1',
-                            swob.HTTPOk,
-                            {'etag': '0123456789abcdef',
-                             'content-type': 'application/octet-stream',
-                             'content-length': '11'},
-                            None)
+        self.swift.register(
+            'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE/1',
+            swob.HTTPOk,
+            {'etag': '0123456789abcdef',
+             'content-type': 'application/octet-stream',
+             'content-length': '11'},
+            None)
 
     @s3acl
     def test_bucket_upload_part(self):
@@ -175,10 +197,11 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual([], self.swift.calls)
 
     def test_bucket_upload_part_success(self):
-        req = Request.blank('/bucket/object?partNumber=1&uploadId=X',
-                            method='PUT',
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?partNumber=1&uploadId=VXBsb2FkIElE',
+            method='PUT',
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         with patch('swift.common.middleware.s3api.s3request.'
                    'get_container_info',
                    lambda env, app, swift_source, read_caches=None:
@@ -186,8 +209,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             status, headers, body = self.call_s3api(req)
         self.assertEqual(status, '200 OK')
         self.assertEqual([
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/X/1'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
         ], self.swift.calls)
 
     @s3acl
@@ -334,7 +357,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(elem.find('Bucket').text, 'bucket')
         self.assertIsNone(elem.find('KeyMarker').text)
         self.assertIsNone(elem.find('UploadIdMarker').text)
-        self.assertEqual(elem.find('NextUploadIdMarker').text, 'Z')
+        self.assertEqual(elem.find('NextUploadIdMarker').text, 'VXBsb2FkIElG')
         self.assertEqual(elem.find('MaxUploads').text, '1000')
         self.assertEqual(elem.find('IsTruncated').text, 'false')
         self.assertEqual(len(elem.findall('Upload')), 4)
@@ -403,7 +426,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         elem = fromstring(body, 'ListMultipartUploadsResult')
         self.assertEqual(len(elem.findall('Upload/UploadId')), 2)
         self.assertEqual(elem.find('NextKeyMarker').text, 'object')
-        self.assertEqual(elem.find('NextUploadIdMarker').text, 'Y')
+        self.assertEqual(elem.find('NextUploadIdMarker').text, 'VXBsb2FkIElF')
         self.assertEqual(elem.find('MaxUploads').text, '2')
         self.assertEqual(elem.find('IsTruncated').text, 'true')
         self.assertEqual(status.split()[0], '200')
@@ -430,7 +453,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         elem = fromstring(body, 'ListMultipartUploadsResult')
         self.assertEqual(len(elem.findall('Upload/UploadId')), 4)
         self.assertEqual(elem.find('NextKeyMarker').text, 'subdir/object')
-        self.assertEqual(elem.find('NextUploadIdMarker').text, 'Z')
+        self.assertEqual(elem.find('NextUploadIdMarker').text, 'VXBsb2FkIElG')
         self.assertEqual(elem.find('MaxUploads').text, '1000')
         self.assertEqual(elem.find('IsTruncated').text, 'false')
         self.assertEqual(status.split()[0], '200')
@@ -444,17 +467,20 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_id_and_key_marker(self):
-        query = 'upload-id-marker=Y&key-marker=object'
+        query = 'upload-id-marker=VXBsb2FkIElF&key-marker=object'
         multiparts = \
-            (('object/Y', '2014-05-07T19:47:53.592270', 'HASH', 2),
-             ('object/Y/1', '2014-05-07T19:47:54.592270', 'HASH', 12),
-             ('object/Y/2', '2014-05-07T19:47:55.592270', 'HASH', 22))
+            (('object/VXBsb2FkIElF', '2014-05-07T19:47:53.592270',
+              'HASH', 2),
+             ('object/VXBsb2FkIElF/1', '2014-05-07T19:47:54.592270',
+              'HASH', 12),
+             ('object/VXBsb2FkIElF/2', '2014-05-07T19:47:55.592270',
+              'HASH', 22))
 
         status, headers, body = \
             self._test_bucket_multipart_uploads_GET(query, multiparts)
         elem = fromstring(body, 'ListMultipartUploadsResult')
         self.assertEqual(elem.find('KeyMarker').text, 'object')
-        self.assertEqual(elem.find('UploadIdMarker').text, 'Y')
+        self.assertEqual(elem.find('UploadIdMarker').text, 'VXBsb2FkIElF')
         self.assertEqual(len(elem.findall('Upload')), 1)
         objects = [(o[0], o[1][:-3] + 'Z') for o in multiparts]
         for u in elem.findall('Upload'):
@@ -470,24 +496,30 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             key, arg = q.split('=')
             query[key] = arg
         self.assertEqual(query['format'], 'json')
-        self.assertEqual(query['marker'], quote_plus('object/Y/2'))
+        self.assertEqual(query['marker'], quote_plus('object/VXBsb2FkIElF/2'))
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_key_marker(self):
         query = 'key-marker=object'
         multiparts = \
-            (('object/X', '2014-05-07T19:47:50.592270', 'HASH', 1),
-             ('object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 11),
-             ('object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 21),
-             ('object/Y', '2014-05-07T19:47:53.592270', 'HASH', 2),
-             ('object/Y/1', '2014-05-07T19:47:54.592270', 'HASH', 12),
-             ('object/Y/2', '2014-05-07T19:47:55.592270', 'HASH', 22))
+            (('object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 1),
+             ('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 11),
+             ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 21),
+             ('object/VXBsb2FkIElF', '2014-05-07T19:47:53.592270',
+              'HASH', 2),
+             ('object/VXBsb2FkIElF/1', '2014-05-07T19:47:54.592270',
+              'HASH', 12),
+             ('object/VXBsb2FkIElF/2', '2014-05-07T19:47:55.592270',
+              'HASH', 22))
         status, headers, body = \
             self._test_bucket_multipart_uploads_GET(query, multiparts)
         elem = fromstring(body, 'ListMultipartUploadsResult')
         self.assertEqual(elem.find('KeyMarker').text, 'object')
         self.assertEqual(elem.find('NextKeyMarker').text, 'object')
-        self.assertEqual(elem.find('NextUploadIdMarker').text, 'Y')
+        self.assertEqual(elem.find('NextUploadIdMarker').text, 'VXBsb2FkIElF')
         self.assertEqual(len(elem.findall('Upload')), 2)
         objects = [(o[0], o[1][:-3] + 'Z') for o in multiparts]
         for u in elem.findall('Upload'):
@@ -503,15 +535,18 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             key, arg = q.split('=')
             query[key] = arg
         self.assertEqual(query['format'], 'json')
-        self.assertEqual(query['marker'], quote_plus('object/Y/2'))
+        self.assertEqual(query['marker'], quote_plus('object/VXBsb2FkIElF/2'))
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_prefix(self):
-        query = 'prefix=X'
+        query = 'prefix=VXBsb2FkIElE'
         multiparts = \
-            (('object/X', '2014-05-07T19:47:50.592270', 'HASH', 1),
-             ('object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 11),
-             ('object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 21))
+            (('object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 1),
+             ('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 11),
+             ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 21))
         status, headers, body = \
             self._test_bucket_multipart_uploads_GET(query, multiparts)
         elem = fromstring(body, 'ListMultipartUploadsResult')
@@ -530,30 +565,48 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             key, arg = q.split('=')
             query[key] = arg
         self.assertEqual(query['format'], 'json')
-        self.assertEqual(query['prefix'], 'X')
+        self.assertEqual(query['prefix'], 'VXBsb2FkIElE')
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_delimiter(self):
         query = 'delimiter=/'
         multiparts = \
-            (('object/X', '2014-05-07T19:47:50.592270', 'HASH', 1),
-             ('object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 11),
-             ('object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 21),
-             ('object/Y', '2014-05-07T19:47:50.592270', 'HASH', 2),
-             ('object/Y/1', '2014-05-07T19:47:51.592270', 'HASH', 21),
-             ('object/Y/2', '2014-05-07T19:47:52.592270', 'HASH', 22),
-             ('object/Z', '2014-05-07T19:47:50.592270', 'HASH', 3),
-             ('object/Z/1', '2014-05-07T19:47:51.592270', 'HASH', 31),
-             ('object/Z/2', '2014-05-07T19:47:52.592270', 'HASH', 32),
-             ('subdir/object/X', '2014-05-07T19:47:50.592270', 'HASH', 4),
-             ('subdir/object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 41),
-             ('subdir/object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 42),
-             ('subdir/object/Y', '2014-05-07T19:47:50.592270', 'HASH', 5),
-             ('subdir/object/Y/1', '2014-05-07T19:47:51.592270', 'HASH', 51),
-             ('subdir/object/Y/2', '2014-05-07T19:47:52.592270', 'HASH', 52),
-             ('subdir2/object/Z', '2014-05-07T19:47:50.592270', 'HASH', 6),
-             ('subdir2/object/Z/1', '2014-05-07T19:47:51.592270', 'HASH', 61),
-             ('subdir2/object/Z/2', '2014-05-07T19:47:52.592270', 'HASH', 62))
+            (('object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 1),
+             ('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 11),
+             ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 21),
+             ('object/VXBsb2FkIElF', '2014-05-07T19:47:50.592270',
+              'HASH', 2),
+             ('object/VXBsb2FkIElF/1', '2014-05-07T19:47:51.592270',
+              'HASH', 21),
+             ('object/VXBsb2FkIElF/2', '2014-05-07T19:47:52.592270',
+              'HASH', 22),
+             ('object/VXBsb2FkIElG', '2014-05-07T19:47:50.592270',
+              'HASH', 3),
+             ('object/VXBsb2FkIElG/1', '2014-05-07T19:47:51.592270',
+              'HASH', 31),
+             ('object/VXBsb2FkIElG/2', '2014-05-07T19:47:52.592270',
+              'HASH', 32),
+             ('subdir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 4),
+             ('subdir/object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 41),
+             ('subdir/object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 42),
+             ('subdir/object/VXBsb2FkIElF', '2014-05-07T19:47:50.592270',
+              'HASH', 5),
+             ('subdir/object/VXBsb2FkIElF/1', '2014-05-07T19:47:51.592270',
+              'HASH', 51),
+             ('subdir/object/VXBsb2FkIElF/2', '2014-05-07T19:47:52.592270',
+              'HASH', 52),
+             ('subdir2/object/VXBsb2FkIElG', '2014-05-07T19:47:50.592270',
+              'HASH', 6),
+             ('subdir2/object/VXBsb2FkIElG/1', '2014-05-07T19:47:51.592270',
+              'HASH', 61),
+             ('subdir2/object/VXBsb2FkIElG/2', '2014-05-07T19:47:52.592270',
+              'HASH', 62))
 
         status, headers, body = \
             self._test_bucket_multipart_uploads_GET(query, multiparts)
@@ -586,24 +639,36 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def test_bucket_multipart_uploads_GET_with_multi_chars_delimiter(self):
         query = 'delimiter=subdir'
         multiparts = \
-            (('object/X', '2014-05-07T19:47:50.592270', 'HASH', 1),
-             ('object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 11),
-             ('object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 21),
-             ('dir/subdir/object/X', '2014-05-07T19:47:50.592270',
+            (('object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 1),
+             ('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 11),
+             ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 21),
+             ('dir/subdir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
               'HASH', 3),
-             ('dir/subdir/object/X/1', '2014-05-07T19:47:51.592270',
+             ('dir/subdir/object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
               'HASH', 31),
-             ('dir/subdir/object/X/2', '2014-05-07T19:47:52.592270',
+             ('dir/subdir/object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
               'HASH', 32),
-             ('subdir/object/X', '2014-05-07T19:47:50.592270', 'HASH', 4),
-             ('subdir/object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 41),
-             ('subdir/object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 42),
-             ('subdir/object/Y', '2014-05-07T19:47:50.592270', 'HASH', 5),
-             ('subdir/object/Y/1', '2014-05-07T19:47:51.592270', 'HASH', 51),
-             ('subdir/object/Y/2', '2014-05-07T19:47:52.592270', 'HASH', 52),
-             ('subdir2/object/Z', '2014-05-07T19:47:50.592270', 'HASH', 6),
-             ('subdir2/object/Z/1', '2014-05-07T19:47:51.592270', 'HASH', 61),
-             ('subdir2/object/Z/2', '2014-05-07T19:47:52.592270', 'HASH', 62))
+             ('subdir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 4),
+             ('subdir/object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 41),
+             ('subdir/object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 42),
+             ('subdir/object/VXBsb2FkIElF', '2014-05-07T19:47:50.592270',
+              'HASH', 5),
+             ('subdir/object/VXBsb2FkIElF/1', '2014-05-07T19:47:51.592270',
+              'HASH', 51),
+             ('subdir/object/VXBsb2FkIElF/2', '2014-05-07T19:47:52.592270',
+              'HASH', 52),
+             ('subdir2/object/VXBsb2FkIElG', '2014-05-07T19:47:50.592270',
+              'HASH', 6),
+             ('subdir2/object/VXBsb2FkIElG/1', '2014-05-07T19:47:51.592270',
+              'HASH', 61),
+             ('subdir2/object/VXBsb2FkIElG/2', '2014-05-07T19:47:52.592270',
+              'HASH', 62))
 
         status, headers, body = \
             self._test_bucket_multipart_uploads_GET(query, multiparts)
@@ -635,15 +700,18 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def test_bucket_multipart_uploads_GET_with_prefix_and_delimiter(self):
         query = 'prefix=dir/&delimiter=/'
         multiparts = \
-            (('dir/subdir/object/X', '2014-05-07T19:47:50.592270',
+            (('dir/subdir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
               'HASH', 4),
-             ('dir/subdir/object/X/1', '2014-05-07T19:47:51.592270',
+             ('dir/subdir/object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
               'HASH', 41),
-             ('dir/subdir/object/X/2', '2014-05-07T19:47:52.592270',
+             ('dir/subdir/object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
               'HASH', 42),
-             ('dir/object/X', '2014-05-07T19:47:50.592270', 'HASH', 5),
-             ('dir/object/X/1', '2014-05-07T19:47:51.592270', 'HASH', 51),
-             ('dir/object/X/2', '2014-05-07T19:47:52.592270', 'HASH', 52))
+             ('dir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270', 'HASH',
+              5),
+             ('dir/object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
+              'HASH', 51),
+             ('dir/object/VXBsb2FkIElE/2', '2014-05-07T19:47:52.592270',
+              'HASH', 52))
 
         status, headers, body = \
             self._test_bucket_multipart_uploads_GET(query, multiparts)
@@ -673,7 +741,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertTrue(query.get('delimiter') is None)
 
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def _test_object_multipart_upload_initiate(self, headers, cache=None,
                                                bucket_exists=True,
                                                expected_policy=None,
@@ -698,12 +766,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertNotIn('Content-MD5', req_headers)
         if bucket_exists:
             self.assertEqual([
-                ('PUT', '/v1/AUTH_test/bucket+segments/object/X'),
+                ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ], self.swift.calls)
         else:
             self.assertEqual([
                 ('PUT', '/v1/AUTH_test/bucket+segments'),
-                ('PUT', '/v1/AUTH_test/bucket+segments/object/X'),
+                ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ], self.swift.calls)
             if expected_policy:
                 _, _, req_headers = self.swift.calls_with_headers[-2]
@@ -833,7 +901,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             expected_read_acl='.r:*,.rlistings')
 
     @patch('swift.common.middleware.s3api.controllers.multi_upload.'
-           'unique_id', lambda: 'X')
+           'unique_id', lambda: 'VXBsb2FkIElE')
     def _test_object_multipart_upload_initiate_s3acl(
             self, cache, existance_cached, should_head, should_put):
         # mostly inlining stuff from @s3acl(s3_acl_only=True)
@@ -868,7 +936,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         expected.append(('HEAD', '/v1/AUTH_test/bucket'))
         if should_put:
             expected.append(('PUT', '/v1/AUTH_test/bucket+segments'))
-        expected.append(('PUT', '/v1/AUTH_test/bucket+segments/object/X'))
+        expected.append(
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'))
         self.assertEqual(expected, self.swift.calls)
 
         _, _, req_headers = self.swift.calls_with_headers[-1]
@@ -929,7 +998,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl(s3acl_only=True)
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def test_object_multipart_upload_initiate_no_content_type(self):
         req = Request.blank('/bucket/object?uploads',
                             environ={'REQUEST_METHOD': 'POST'},
@@ -955,7 +1024,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                          tmpacl_header)
 
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def test_object_multipart_upload_initiate_without_bucket(self):
         self.swift.register('HEAD', '/v1/AUTH_test/bucket',
                             swob.HTTPNotFound, {}, None)
@@ -969,7 +1038,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self._get_error_code(body), 'NoSuchBucket')
 
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def test_object_multipart_upload_initiate_object_lock_invalid_args(self):
         def do_test(extra_headers, expected_message):
             headers = {
@@ -1045,7 +1114,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     @s3acl
     def test_object_multipart_upload_complete_error(self):
         malformed_xml = 'malformed_XML'
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()},
@@ -1054,7 +1123,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self._get_error_code(body), 'MalformedXML')
 
         # without target bucket
-        req = Request.blank('/nobucket/object?uploadId=X',
+        req = Request.blank('/nobucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1071,7 +1140,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def test_object_multipart_upload_complete(self):
         content_md5 = base64.b64encode(md5(
             XML.encode('ascii'), usedforsecurity=False).digest())
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(),
@@ -1088,12 +1157,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker exists
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             # Create the SLO
             ('PUT', '/v1/AUTH_test/bucket/object'
                     '?heartbeat=on&multipart-manifest=put'),
             # Delete the in-progress-upload marker
-            ('DELETE', '/v1/AUTH_test/bucket+segments/object/X')
+            ('DELETE', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE')
         ])
 
         _, _, headers = self.swift.calls_with_headers[-2]
@@ -1103,23 +1172,24 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         override_etag = '; s3_etag=%s' % S3_ETAG.strip('"')
         h = 'X-Object-Sysmeta-Container-Update-Override-Etag'
         self.assertEqual(headers.get(h), override_etag)
-        self.assertEqual(headers.get('X-Object-Sysmeta-S3Api-Upload-Id'), 'X')
+        self.assertEqual(headers.get('X-Object-Sysmeta-S3Api-Upload-Id'),
+                         'VXBsb2FkIElE')
 
     def test_object_multipart_upload_complete_non_ascii(self):
         wsgi_snowman = '\xe2\x98\x83'
 
         self.swift.register(
-            'HEAD', '/v1/AUTH_test/bucket+segments/%s/X' % wsgi_snowman,
-            swob.HTTPOk, {}, None)
+            'HEAD', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE' %
+            wsgi_snowman, swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_test/bucket/%s' % wsgi_snowman,
                             swob.HTTPCreated, {}, None)
         self.swift.register(
-            'DELETE', '/v1/AUTH_test/bucket+segments/%s/X' % wsgi_snowman,
-            swob.HTTPOk, {}, None)
+            'DELETE', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE' %
+            wsgi_snowman, swob.HTTPOk, {}, None)
 
         content_md5 = base64.b64encode(md5(
             XML.encode('ascii'), usedforsecurity=False).digest())
-        req = Request.blank('/bucket/%s?uploadId=X' % wsgi_snowman,
+        req = Request.blank('/bucket/%s?uploadId=VXBsb2FkIElE' % wsgi_snowman,
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(),
@@ -1136,35 +1206,39 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker exists
-            ('HEAD', '/v1/AUTH_test/bucket+segments/%s/X' % wsgi_snowman),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE' %
+             wsgi_snowman),
             # Create the SLO
             ('PUT', '/v1/AUTH_test/bucket/%s'
                     '?heartbeat=on&multipart-manifest=put' % wsgi_snowman),
             # Delete the in-progress-upload marker
-            ('DELETE', '/v1/AUTH_test/bucket+segments/%s/X' % wsgi_snowman)
+            ('DELETE', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE' %
+             wsgi_snowman)
         ])
 
         self.assertEqual(json.loads(self.swift.req_bodies[-2]), [
-            {"path": u"/bucket+segments/\N{SNOWMAN}/X/1",
+            {"path": u"/bucket+segments/\N{SNOWMAN}/VXBsb2FkIElE/1",
              "etag": "0123456789abcdef0123456789abcdef"},
-            {"path": u"/bucket+segments/\N{SNOWMAN}/X/2",
+            {"path": u"/bucket+segments/\N{SNOWMAN}/VXBsb2FkIElE/2",
              "etag": "fedcba9876543210fedcba9876543210"},
         ])
 
     def test_object_multipart_upload_retry_complete(self):
         content_md5 = base64.b64encode(md5(
             XML.encode('ascii'), usedforsecurity=False).digest())
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/object/X',
-                            swob.HTTPNotFound, {}, None)
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
+            swob.HTTPNotFound, {}, None)
         recent_ts = S3Timestamp.now(delta=-1000000).internal  # 10s ago
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
-                            swob.HTTPOk,
-                            {'x-object-meta-foo': 'bar',
-                             'content-type': 'baz/quux',
-                             'x-object-sysmeta-s3api-upload-id': 'X',
-                             'x-object-sysmeta-s3api-etag': S3_ETAG.strip('"'),
-                             'x-timestamp': recent_ts}, None)
-        req = Request.blank('/bucket/object?uploadId=X',
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            swob.HTTPOk,
+            {'x-object-meta-foo': 'bar',
+             'content-type': 'baz/quux',
+             'x-object-sysmeta-s3api-upload-id': 'VXBsb2FkIElE',
+             'x-object-sysmeta-s3api-etag': S3_ETAG.strip('"'),
+             'x-timestamp': recent_ts}, None)
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(),
@@ -1181,7 +1255,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker does not exist
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             # But the object does, and with the same upload ID
             ('HEAD', '/v1/AUTH_test/bucket/object'),
             # So no PUT necessary
@@ -1190,17 +1264,19 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def test_object_multipart_upload_retry_complete_etag_mismatch(self):
         content_md5 = base64.b64encode(md5(
             XML.encode('ascii'), usedforsecurity=False).digest())
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/object/X',
-                            swob.HTTPNotFound, {}, None)
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
+            swob.HTTPNotFound, {}, None)
         recent_ts = S3Timestamp.now(delta=-1000000).internal
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
-                            swob.HTTPOk,
-                            {'x-object-meta-foo': 'bar',
-                             'content-type': 'baz/quux',
-                             'x-object-sysmeta-s3api-upload-id': 'X',
-                             'x-object-sysmeta-s3api-etag': 'not-the-etag',
-                             'x-timestamp': recent_ts}, None)
-        req = Request.blank('/bucket/object?uploadId=X',
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            swob.HTTPOk,
+            {'x-object-meta-foo': 'bar',
+             'content-type': 'baz/quux',
+             'x-object-sysmeta-s3api-upload-id': 'VXBsb2FkIElE',
+             'x-object-sysmeta-s3api-etag': 'not-the-etag',
+             'x-timestamp': recent_ts}, None)
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(),
@@ -1217,14 +1293,14 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker does not exist
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             # But the object does, and with the same upload ID
             ('HEAD', '/v1/AUTH_test/bucket/object'),
             # Create the SLO
             ('PUT', '/v1/AUTH_test/bucket/object'
                     '?heartbeat=on&multipart-manifest=put'),
             # Retry deleting the marker for the sake of completeness
-            ('DELETE', '/v1/AUTH_test/bucket+segments/object/X')
+            ('DELETE', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE')
         ])
 
         _, _, headers = self.swift.calls_with_headers[-2]
@@ -1234,22 +1310,25 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         override_etag = '; s3_etag=%s' % S3_ETAG.strip('"')
         h = 'X-Object-Sysmeta-Container-Update-Override-Etag'
         self.assertEqual(headers.get(h), override_etag)
-        self.assertEqual(headers.get('X-Object-Sysmeta-S3Api-Upload-Id'), 'X')
+        self.assertEqual(headers.get('X-Object-Sysmeta-S3Api-Upload-Id'),
+                         'VXBsb2FkIElE')
 
     def test_object_multipart_upload_retry_complete_upload_id_mismatch(self):
         content_md5 = base64.b64encode(md5(
             XML.encode('ascii'), usedforsecurity=False).digest())
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/object/X',
-                            swob.HTTPNotFound, {}, None)
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
+            swob.HTTPNotFound, {}, None)
         recent_ts = S3Timestamp.now(delta=-1000000).internal
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
-                            swob.HTTPOk,
-                            {'x-object-meta-foo': 'bar',
-                             'content-type': 'baz/quux',
-                             'x-object-sysmeta-s3api-upload-id': 'Y',
-                             'x-object-sysmeta-s3api-etag': S3_ETAG.strip('"'),
-                             'x-timestamp': recent_ts}, None)
-        req = Request.blank('/bucket/object?uploadId=X',
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            swob.HTTPOk,
+            {'x-object-meta-foo': 'bar',
+             'content-type': 'baz/quux',
+             'x-object-sysmeta-s3api-upload-id': 'VXBsb2FkIElF',
+             'x-object-sysmeta-s3api-etag': S3_ETAG.strip('"'),
+             'x-timestamp': recent_ts}, None)
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(),
@@ -1265,7 +1344,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker does not exist
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             # But the object does, and with the same upload ID
             ('HEAD', '/v1/AUTH_test/bucket/object'),
         ])
@@ -1274,7 +1353,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         bad_md5 = base64.b64encode(md5(
             XML.encode('ascii') + b'some junk', usedforsecurity=False)
             .digest())
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(),
@@ -1294,7 +1373,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             'Signature=X',
         ])
         req = Request.blank(
-            '/bucket/object?uploadId=X',
+            '/bucket/object?uploadId=VXBsb2FkIElE',
             environ={'REQUEST_METHOD': 'POST'},
             headers={'Authorization': authz_header,
                      'X-Amz-Date': self.get_v4_amz_date_header(),
@@ -1314,7 +1393,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             'Signature=X',
         ])
         req = Request.blank(
-            '/bucket/object?uploadId=X',
+            '/bucket/object?uploadId=VXBsb2FkIElE',
             environ={'REQUEST_METHOD': 'POST'},
             headers={'Authorization': authz_header,
                      'X-Amz-Date': self.get_v4_amz_date_header(),
@@ -1326,7 +1405,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     @patch('swift.common.middleware.s3api.controllers.multi_upload.time')
     def test_object_multipart_upload_complete_with_heartbeat(self, mock_time):
         self.swift.register(
-            'HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-ok/X',
+            'HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE',
             swob.HTTPOk, {}, None)
         self.swift.register(
             'GET', '/v1/AUTH_test/bucket+segments', swob.HTTPOk, {},
@@ -1350,10 +1429,11 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             15,  # JSON body
         )
         self.swift.register(
-            'DELETE', '/v1/AUTH_test/bucket+segments/heartbeat-ok/X',
+            'DELETE',
+            '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE',
             swob.HTTPNoContent, {}, None)
 
-        req = Request.blank('/bucket/heartbeat-ok?uploadId=X',
+        req = Request.blank('/bucket/heartbeat-ok?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1370,17 +1450,20 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-ok/X'),
+            ('HEAD',
+             '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket/heartbeat-ok?'
                     'heartbeat=on&multipart-manifest=put'),
-            ('DELETE', '/v1/AUTH_test/bucket+segments/heartbeat-ok/X'),
+            ('DELETE',
+             '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE'),
         ])
 
     @patch('swift.common.middleware.s3api.controllers.multi_upload.time')
     def test_object_multipart_upload_complete_failure_with_heartbeat(
             self, mock_time):
         self.swift.register(
-            'HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-fail/X',
+            'HEAD',
+            '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE',
             swob.HTTPOk, {}, None)
         self.swift.register(
             'GET', '/v1/AUTH_test/bucket+segments', swob.HTTPOk, {},
@@ -1403,7 +1486,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             15,  # JSON body
         )
 
-        req = Request.blank('/bucket/heartbeat-fail?uploadId=X',
+        req = Request.blank('/bucket/heartbeat-fail?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1421,7 +1504,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-fail/X'),
+            ('HEAD',
+             '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket/heartbeat-fail?'
                     'heartbeat=on&multipart-manifest=put'),
         ])
@@ -1430,7 +1514,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def test_object_multipart_upload_missing_part_with_heartbeat(
             self, mock_time):
         self.swift.register(
-            'HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-fail/X',
+            'HEAD',
+            '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE',
             swob.HTTPOk, {}, None)
         self.swift.register(
             'GET', '/v1/AUTH_test/bucket+segments', swob.HTTPOk, {},
@@ -1453,7 +1538,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             15,  # JSON body
         )
 
-        req = Request.blank('/bucket/heartbeat-fail?uploadId=X',
+        req = Request.blank('/bucket/heartbeat-fail?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1471,16 +1556,17 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-fail/X'),
+            ('HEAD',
+             '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket/heartbeat-fail?'
                     'heartbeat=on&multipart-manifest=put'),
         ])
 
     def test_object_multipart_upload_complete_404_on_marker_delete(self):
         segment_bucket = '/v1/AUTH_test/bucket+segments'
-        self.swift.register('DELETE', segment_bucket + '/object/X',
+        self.swift.register('DELETE', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPNotFound, {}, None)
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1495,10 +1581,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     def test_object_multipart_upload_complete_old_content_type(self):
         self.swift.register_unconditionally(
-            'HEAD', '/v1/AUTH_test/bucket+segments/object/X',
+            'HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
             swob.HTTPOk, {"Content-Type": "thingy/dingy"}, None)
 
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1512,11 +1598,11 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     def test_object_multipart_upload_complete_no_content_type(self):
         self.swift.register_unconditionally(
-            'HEAD', '/v1/AUTH_test/bucket+segments/object/X',
+            'HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
             swob.HTTPOk, {"X-Object-Sysmeta-S3api-Has-Content-Type": "no"},
             None)
 
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1530,7 +1616,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     def test_object_multipart_upload_complete_weird_host_name(self):
         # This happens via boto signature v4
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST',
                                      'HTTP_HOST': 'localhost:8080:8080'},
                             headers={'Authorization': 'AWS test:tester:hmac',
@@ -1549,7 +1635,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register('PUT', '/v1/AUTH_test/bucket/object',
                             swob.HTTPBadRequest, {}, msg)
         req = Request.blank(
-            '/bucket/object?uploadId=X',
+            '/bucket/object?uploadId=VXBsb2FkIElE',
             environ={'REQUEST_METHOD': 'POST'},
             headers={'Authorization': 'AWS test:tester:hmac',
                      'Date': self.get_date_header(), },
@@ -1563,7 +1649,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket/object'
              '?heartbeat=on&multipart-manifest=put'),
         ])
@@ -1575,7 +1661,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register('PUT', '/v1/AUTH_test/bucket/object',
                             swob.HTTPBadRequest, {}, msg)
         req = Request.blank(
-            '/bucket/object?uploadId=X',
+            '/bucket/object?uploadId=VXBsb2FkIElE',
             environ={'REQUEST_METHOD': 'POST'},
             headers={'Authorization': 'AWS test:tester:hmac',
                      'Date': self.get_date_header(), },
@@ -1589,7 +1675,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket/object'
              '?heartbeat=on&multipart-manifest=put'),
         ])
@@ -1598,7 +1684,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         segment_bucket = '/v1/AUTH_test/empty-bucket+segments'
 
         object_list = [{
-            'name': 'object/X/1',
+            'name': 'object/VXBsb2FkIElE/1',
             'last_modified': self.last_modified,
             'hash': 'd41d8cd98f00b204e9800998ecf8427e',
             'bytes': '0',
@@ -1608,19 +1694,20 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             json.dumps(object_list))
         self.swift.register('HEAD', '/v1/AUTH_test/empty-bucket',
                             swob.HTTPNoContent, {}, None)
-        self.swift.register('HEAD', segment_bucket + '/object/X',
+        self.swift.register('HEAD', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPOk, {'x-object-meta-foo': 'bar',
                                           'content-type': 'baz/quux'}, None)
         self.swift.register('PUT', '/v1/AUTH_test/empty-bucket/object',
                             swob.HTTPCreated, {}, None)
-        self.swift.register('DELETE', segment_bucket + '/object/X/1',
-                            swob.HTTPOk, {}, None)
-        self.swift.register('DELETE', segment_bucket + '/object/X',
+        self.swift.register(
+            'DELETE', segment_bucket + '/object/VXBsb2FkIElE/1',
+            swob.HTTPOk, {}, None)
+        self.swift.register('DELETE', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPOk, {}, None)
 
         xml = '<CompleteMultipartUpload></CompleteMultipartUpload>'
 
-        req = Request.blank('/empty-bucket/object?uploadId=X',
+        req = Request.blank('/empty-bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1632,7 +1719,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/empty-bucket'),
-            ('HEAD', '/v1/AUTH_test/empty-bucket+segments/object/X'),
+            ('HEAD',
+             '/v1/AUTH_test/empty-bucket+segments/object/VXBsb2FkIElE'),
         ])
 
     def test_object_multipart_upload_complete_single_zero_length_segment(self):
@@ -1640,7 +1728,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         put_headers = {'etag': self.etag, 'last-modified': self.last_modified}
 
         object_list = [{
-            'name': 'object/X/1',
+            'name': 'object/VXBsb2FkIElE/1',
             'last_modified': self.last_modified,
             'hash': 'd41d8cd98f00b204e9800998ecf8427e',
             'bytes': '0',
@@ -1650,14 +1738,15 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             json.dumps(object_list))
         self.swift.register('HEAD', '/v1/AUTH_test/empty-bucket',
                             swob.HTTPNoContent, {}, None)
-        self.swift.register('HEAD', segment_bucket + '/object/X',
+        self.swift.register('HEAD', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPOk, {'x-object-meta-foo': 'bar',
                                           'content-type': 'baz/quux'}, None)
         self.swift.register('PUT', '/v1/AUTH_test/empty-bucket/object',
                             swob.HTTPCreated, {}, None)
-        self.swift.register('DELETE', segment_bucket + '/object/X/1',
-                            swob.HTTPOk, {}, None)
-        self.swift.register('DELETE', segment_bucket + '/object/X',
+        self.swift.register(
+            'DELETE', segment_bucket + '/object/VXBsb2FkIElE/1',
+            swob.HTTPOk, {}, None)
+        self.swift.register('DELETE', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPOk, {}, None)
 
         xml = '<CompleteMultipartUpload>' \
@@ -1667,7 +1756,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             '</Part>' \
             '</CompleteMultipartUpload>'
 
-        req = Request.blank('/empty-bucket/object?uploadId=X',
+        req = Request.blank('/empty-bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1679,10 +1768,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/empty-bucket'),
-            ('HEAD', '/v1/AUTH_test/empty-bucket+segments/object/X'),
+            ('HEAD',
+             '/v1/AUTH_test/empty-bucket+segments/object/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/empty-bucket/object?'
                     'heartbeat=on&multipart-manifest=put'),
-            ('DELETE', '/v1/AUTH_test/empty-bucket+segments/object/X'),
+            ('DELETE',
+             '/v1/AUTH_test/empty-bucket+segments/object/VXBsb2FkIElE'),
         ])
         _, _, put_headers = self.swift.calls_with_headers[-2]
         self.assertEqual(put_headers.get('X-Object-Meta-Foo'), 'bar')
@@ -1692,17 +1783,17 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         segment_bucket = '/v1/AUTH_test/bucket+segments'
 
         object_list = [{
-            'name': 'object/X/1',
+            'name': 'object/VXBsb2FkIElE/1',
             'last_modified': self.last_modified,
             'hash': '0123456789abcdef0123456789abcdef',
             'bytes': '100',
         }, {
-            'name': 'object/X/2',
+            'name': 'object/VXBsb2FkIElE/2',
             'last_modified': self.last_modified,
             'hash': 'fedcba9876543210fedcba9876543210',
             'bytes': '1',
         }, {
-            'name': 'object/X/3',
+            'name': 'object/VXBsb2FkIElE/3',
             'last_modified': self.last_modified,
             'hash': 'd41d8cd98f00b204e9800998ecf8427e',
             'bytes': '0',
@@ -1712,11 +1803,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             json.dumps(object_list))
         self.swift.register('HEAD', '/v1/AUTH_test/bucket',
                             swob.HTTPNoContent, {}, None)
-        self.swift.register('HEAD', segment_bucket + '/object/X',
+        self.swift.register('HEAD', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPOk, {'x-object-meta-foo': 'bar',
                                           'content-type': 'baz/quux'}, None)
-        self.swift.register('DELETE', segment_bucket + '/object/X/3',
-                            swob.HTTPNoContent, {}, None)
+        self.swift.register(
+            'DELETE', segment_bucket + '/object/VXBsb2FkIElE/3',
+            swob.HTTPNoContent, {}, None)
 
         xml = '<CompleteMultipartUpload>' \
             '<Part>' \
@@ -1733,7 +1825,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             '</Part>' \
             '</CompleteMultipartUpload>'
 
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header(), },
@@ -1750,10 +1842,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket/object?'
                     'heartbeat=on&multipart-manifest=put'),
-            ('DELETE', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('DELETE', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ])
 
         _, _, headers = self.swift.calls_with_headers[-2]
@@ -1771,9 +1863,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             acl_headers.get(sysmeta_header('object', 'acl'))
         headers['X-Object-Meta-Foo'] = 'bar'
         headers['Content-Type'] = 'baz/quux'
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/object/X',
-                            swob.HTTPOk, headers, None)
-        req = Request.blank('/bucket/object?uploadId=X',
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
+            swob.HTTPOk, headers, None)
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'POST'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()},
@@ -1800,7 +1893,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self._get_error_code(body), 'NoSuchUpload')
 
         # without target bucket
-        req = Request.blank('/nobucket/object?uploadId=X',
+        req = Request.blank('/nobucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'DELETE'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -1815,7 +1908,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl
     def test_object_multipart_upload_abort(self):
-        req = Request.blank('/bucket/object?uploadId=X',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'DELETE'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -1837,38 +1930,42 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
         # invalid part number
-        req = Request.blank('/bucket/object?partNumber=invalid&uploadId=X',
-                            environ={'REQUEST_METHOD': 'PUT'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()},
-                            body='part object')
+        req = Request.blank(
+            '/bucket/object?partNumber=invalid&uploadId=VXBsb2FkIElE',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body='part object')
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
         # part number must be > 0
-        req = Request.blank('/bucket/object?partNumber=0&uploadId=X',
-                            environ={'REQUEST_METHOD': 'PUT'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()},
-                            body='part object')
+        req = Request.blank(
+            '/bucket/object?partNumber=0&uploadId=VXBsb2FkIElE',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body='part object')
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
         # part number must be < 10001
-        req = Request.blank('/bucket/object?partNumber=10001&uploadId=X',
-                            environ={'REQUEST_METHOD': 'PUT'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()},
-                            body='part object')
+        req = Request.blank(
+            '/bucket/object?partNumber=10001&uploadId=VXBsb2FkIElE',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body='part object')
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
         # without target bucket
-        req = Request.blank('/nobucket/object?partNumber=1&uploadId=X',
-                            environ={'REQUEST_METHOD': 'PUT'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()},
-                            body='part object')
+        req = Request.blank(
+            '/nobucket/object?partNumber=1&uploadId=VXBsb2FkIElE',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body='part object')
         with patch(
                 'swift.common.middleware.s3api.s3request.get_container_info',
                 lambda env, app, swift_source, read_caches=None:
@@ -1880,11 +1977,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl
     def test_object_upload_part(self):
-        req = Request.blank('/bucket/object?partNumber=1&uploadId=X',
-                            environ={'REQUEST_METHOD': 'PUT'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()},
-                            body='part object')
+        req = Request.blank(
+            '/bucket/object?partNumber=1&uploadId=VXBsb2FkIElE',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body='part object')
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '200')
 
@@ -1921,7 +2019,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self._get_error_code(body), 'NoSuchUpload')
 
         # without target bucket
-        req = Request.blank('/nobucket/object?uploadId=X',
+        req = Request.blank('/nobucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -1937,21 +2035,21 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     @s3acl
     def test_object_list_parts(self):
         swift_parts = [
-            {'name': 'object/X/%d' % i,
+            {'name': 'object/VXBsb2FkIElE/%d' % i,
              'last_modified': '2014-05-07T19:47:%02d.592270' % (i % 60),
              'hash': hex(i),
              'bytes': 100 * i}
             for i in range(1, 2000)]
         swift_sorted = sorted(swift_parts, key=lambda part: part['name'])
-        self.swift.register('GET',
-                            "%s?delimiter=/&format=json&marker=&"
-                            "prefix=object/X/" % self.segment_bucket,
-                            swob.HTTPOk, {}, json.dumps(swift_sorted))
-        self.swift.register('GET',
-                            "%s?delimiter=/&format=json&marker=object/X/999&"
-                            "prefix=object/X/" % self.segment_bucket,
-                            swob.HTTPOk, {}, json.dumps({}))
-        req = Request.blank('/bucket/object?uploadId=X',
+        self.swift.register(
+            'GET', "%s?delimiter=/&format=json&marker=&"
+            "prefix=object/VXBsb2FkIElE/" % self.segment_bucket,
+            swob.HTTPOk, {}, json.dumps(swift_sorted))
+        self.swift.register(
+            'GET', "%s?delimiter=/&format=json&marker=object/VXBsb2FkIElE/999&"
+            "prefix=object/VXBsb2FkIElE/" % self.segment_bucket, swob.HTTPOk,
+            {}, json.dumps({}))
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -1959,7 +2057,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         elem = fromstring(body, 'ListPartsResult')
         self.assertEqual(elem.find('Bucket').text, 'bucket')
         self.assertEqual(elem.find('Key').text, 'object')
-        self.assertEqual(elem.find('UploadId').text, 'X')
+        self.assertEqual(elem.find('UploadId').text, 'VXBsb2FkIElE')
         self.assertEqual(elem.find('Initiator/ID').text, 'test:tester')
         self.assertEqual(elem.find('Initiator/ID').text, 'test:tester')
         self.assertEqual(elem.find('Owner/ID').text, 'test:tester')
@@ -1985,16 +2083,18 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(s3_parts, list(range(1, 1001)))
 
     def test_object_list_parts_encoding_type(self):
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/object@@/X',
-                            swob.HTTPOk, {}, None)
-        self.swift.register('GET', "%s?delimiter=/&format=json&"
-                            "marker=object/X/2&prefix=object@@/X/"
-                            % self.segment_bucket, swob.HTTPOk, {},
-                            json.dumps({}))
-        req = Request.blank('/bucket/object@@?uploadId=X&encoding-type=url',
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/object@@/VXBsb2FkIElE',
+            swob.HTTPOk, {}, None)
+        self.swift.register(
+            'GET', "%s?delimiter=/&format=json&marker=object/VXBsb2FkIElE/2"
+            "&prefix=object@@/VXBsb2FkIElE/" %
+            self.segment_bucket, swob.HTTPOk, {}, json.dumps({}))
+        req = Request.blank(
+            '/bucket/object@@?uploadId=VXBsb2FkIElE&encoding-type=url',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         elem = fromstring(body, 'ListPartsResult')
         self.assertEqual(elem.find('Key').text, quote('object@@'))
@@ -2002,13 +2102,14 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
     def test_object_list_parts_without_encoding_type(self):
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments/object@@/X',
-                            swob.HTTPOk, {}, None)
-        self.swift.register('GET', "%s?delimiter=/&format=json&"
-                            "marker=object/X/2&prefix=object@@/X/"
-                            % self.segment_bucket, swob.HTTPOk, {},
-                            json.dumps({}))
-        req = Request.blank('/bucket/object@@?uploadId=X',
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/object@@/VXBsb2FkIElE',
+            swob.HTTPOk, {}, None)
+        self.swift.register(
+            'GET', "%s?delimiter=/&format=json&marker=object/VXBsb2FkIElE/2"
+            "&prefix=object@@/VXBsb2FkIElE/" % self.segment_bucket,
+            swob.HTTPOk, {}, json.dumps({}))
+        req = Request.blank('/bucket/object@@?uploadId=VXBsb2FkIElE',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -2018,15 +2119,16 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
     def test_object_list_parts_encoding_type_error(self):
-        req = Request.blank('/bucket/object?uploadId=X&encoding-type=xml',
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&encoding-type=xml',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_max_parts(self):
-        req = Request.blank('/bucket/object?uploadId=X&max-parts=1',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE&max-parts=1',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -2037,32 +2139,35 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
     def test_object_list_parts_str_max_parts(self):
-        req = Request.blank('/bucket/object?uploadId=X&max-parts=invalid',
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&max-parts=invalid',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_negative_max_parts(self):
-        req = Request.blank('/bucket/object?uploadId=X&max-parts=-1',
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&max-parts=-1',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_over_max_parts(self):
-        req = Request.blank('/bucket/object?uploadId=X&max-parts=%d' %
-                            (self.s3api.conf.max_parts_listing + 1),
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&max-parts=%d' %
+            (self.s3api.conf.max_parts_listing + 1),
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         elem = fromstring(body, 'ListPartsResult')
         self.assertEqual(elem.find('Bucket').text, 'bucket')
         self.assertEqual(elem.find('Key').text, 'object')
-        self.assertEqual(elem.find('UploadId').text, 'X')
+        self.assertEqual(elem.find('UploadId').text, 'VXBsb2FkIElE')
         self.assertEqual(elem.find('Initiator/ID').text, 'test:tester')
         self.assertEqual(elem.find('Owner/ID').text, 'test:tester')
         self.assertEqual(elem.find('StorageClass').text, 'STANDARD')
@@ -2082,16 +2187,17 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
     def test_object_list_parts_over_max_32bit_int(self):
-        req = Request.blank('/bucket/object?uploadId=X&max-parts=%d' %
-                            (MAX_32BIT_INT + 1),
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&max-parts=%d' %
+            (MAX_32BIT_INT + 1),
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_with_part_number_marker(self):
-        req = Request.blank('/bucket/object?uploadId=X&'
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE&'
                             'part-number-marker=1',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
@@ -2104,26 +2210,26 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
     def test_object_list_parts_str_part_number_marker(self):
-        req = Request.blank('/bucket/object?uploadId=X&part-number-marker='
-                            'invalid',
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&part-number-marker=invalid',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_negative_part_number_marker(self):
-        req = Request.blank('/bucket/object?uploadId=X&part-number-marker='
-                            '-1',
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&part-number-marker=-1',
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_over_part_number_marker(self):
         part_number_marker = str(self.s3api.conf.max_upload_part_num + 1)
-        req = Request.blank('/bucket/object?uploadId=X&'
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE&'
                             'part-number-marker=%s' % part_number_marker,
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
@@ -2136,16 +2242,17 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(status.split()[0], '200')
 
     def test_object_list_parts_over_max_32bit_int_part_number_marker(self):
-        req = Request.blank('/bucket/object?uploadId=X&part-number-marker='
-                            '%s' % ((MAX_32BIT_INT + 1)),
-                            environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+        req = Request.blank(
+            '/bucket/object?uploadId=VXBsb2FkIElE&part-number-marker=%s' %
+            ((MAX_32BIT_INT + 1)),
+            environ={'REQUEST_METHOD': 'GET'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
     def test_object_list_parts_same_max_marts_as_objects_num(self):
-        req = Request.blank('/bucket/object?uploadId=X&max-parts=2',
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE&max-parts=2',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
@@ -2166,21 +2273,21 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     @s3acl(s3acl_only=True)
     def test_upload_part_acl_without_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('PUT', '?partNumber=1&uploadId=X',
+            self._test_for_s3acl('PUT', '?partNumber=1&uploadId=VXBsb2FkIElE',
                                  'test:other')
         self.assertEqual(status.split()[0], '403')
 
     @s3acl(s3acl_only=True)
     def test_upload_part_acl_with_write_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('PUT', '?partNumber=1&uploadId=X',
+            self._test_for_s3acl('PUT', '?partNumber=1&uploadId=VXBsb2FkIElE',
                                  'test:write')
         self.assertEqual(status.split()[0], '200')
 
     @s3acl(s3acl_only=True)
     def test_upload_part_acl_with_fullcontrol_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('PUT', '?partNumber=1&uploadId=X',
+            self._test_for_s3acl('PUT', '?partNumber=1&uploadId=VXBsb2FkIElE',
                                  'test:full_control')
         self.assertEqual(status.split()[0], '200')
 
@@ -2207,7 +2314,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl(s3acl_only=True)
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def test_initiate_multipart_upload_acl_without_permission(self):
         status, headers, body = \
             self._test_for_s3acl('POST', '?uploads', 'test:other')
@@ -2215,7 +2322,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl(s3acl_only=True)
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def test_initiate_multipart_upload_acl_with_write_permission(self):
         status, headers, body = \
             self._test_for_s3acl('POST', '?uploads', 'test:write')
@@ -2223,7 +2330,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl(s3acl_only=True)
     @patch('swift.common.middleware.s3api.controllers.'
-           'multi_upload.unique_id', lambda: 'X')
+           'multi_upload.unique_id', lambda: 'VXBsb2FkIElE')
     def test_initiate_multipart_upload_acl_with_fullcontrol_permission(self):
         status, headers, body = \
             self._test_for_s3acl('POST', '?uploads', 'test:full_control')
@@ -2232,65 +2339,69 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     @s3acl(s3acl_only=True)
     def test_list_parts_acl_without_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('GET', '?uploadId=X', 'test:other')
+            self._test_for_s3acl('GET', '?uploadId=VXBsb2FkIElE', 'test:other')
         self.assertEqual(status.split()[0], '403')
 
     @s3acl(s3acl_only=True)
     def test_list_parts_acl_with_read_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('GET', '?uploadId=X', 'test:read')
+            self._test_for_s3acl('GET', '?uploadId=VXBsb2FkIElE', 'test:read')
         self.assertEqual(status.split()[0], '200')
 
     @s3acl(s3acl_only=True)
     def test_list_parts_acl_with_fullcontrol_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('GET', '?uploadId=X', 'test:full_control')
+            self._test_for_s3acl('GET', '?uploadId=VXBsb2FkIElE',
+                                 'test:full_control')
         self.assertEqual(status.split()[0], '200')
 
     @s3acl(s3acl_only=True)
     def test_abort_multipart_upload_acl_without_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('DELETE', '?uploadId=X', 'test:other')
+            self._test_for_s3acl('DELETE', '?uploadId=VXBsb2FkIElE',
+                                 'test:other')
         self.assertEqual(status.split()[0], '403')
 
     @s3acl(s3acl_only=True)
     def test_abort_multipart_upload_acl_with_write_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('DELETE', '?uploadId=X', 'test:write')
+            self._test_for_s3acl('DELETE', '?uploadId=VXBsb2FkIElE',
+                                 'test:write')
         self.assertEqual(status.split()[0], '204')
 
     @s3acl(s3acl_only=True)
     def test_abort_multipart_upload_acl_with_fullcontrol_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('DELETE', '?uploadId=X', 'test:full_control')
+            self._test_for_s3acl('DELETE', '?uploadId=VXBsb2FkIElE',
+                                 'test:full_control')
         self.assertEqual(status.split()[0], '204')
         self.assertEqual([
             path for method, path in self.swift.calls if method == 'DELETE'
         ], [
-            '/v1/AUTH_test/bucket+segments/object/X',
-            '/v1/AUTH_test/bucket+segments/object/X/1',
-            '/v1/AUTH_test/bucket+segments/object/X/2',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/2',
         ])
 
     @s3acl(s3acl_only=True)
     def test_complete_multipart_upload_acl_without_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('POST', '?uploadId=X', 'test:other',
-                                 body=XML)
+            self._test_for_s3acl('POST', '?uploadId=VXBsb2FkIElE',
+                                 'test:other', body=XML)
         self.assertEqual(status.split()[0], '403')
 
     @s3acl(s3acl_only=True)
     def test_complete_multipart_upload_acl_with_write_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('POST', '?uploadId=X', 'test:write',
-                                 body=XML)
+            self._test_for_s3acl('POST', '?uploadId=VXBsb2FkIElE',
+                                 'test:write', body=XML)
         self.assertEqual(status.split()[0], '200')
 
     @s3acl(s3acl_only=True)
     def test_complete_multipart_upload_acl_with_fullcontrol_permission(self):
         status, headers, body = \
-            self._test_for_s3acl('POST', '?uploadId=X', 'test:full_control',
-                                 body=XML)
+            self._test_for_s3acl('POST', '?uploadId=VXBsb2FkIElE',
+                                 'test:full_control', body=XML)
         self.assertEqual(status.split()[0], '200')
 
     def _test_copy_for_s3acl(self, account, src_permission=None,
@@ -2311,7 +2422,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                        'X-Amz-Copy-Source': src_path}
         put_headers.update(put_header)
         req = Request.blank(
-            '/bucket/object?partNumber=1&uploadId=X',
+            '/bucket/object?partNumber=1&uploadId=VXBsb2FkIElE',
             environ={'REQUEST_METHOD': 'PUT'},
             headers=put_headers)
         timestamp = timestamp or time.time()
@@ -2446,9 +2557,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/X/1'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
         ])
         _, _, headers = self.swift.calls_with_headers[-2]
         self.assertEqual(headers['If-Match'], etag)
@@ -2503,9 +2614,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(self.swift.calls, [
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/X/1'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
         ])
         _, _, headers = self.swift.calls_with_headers[-2]
         self.assertEqual(headers['If-None-Match'], etag)
@@ -2560,7 +2671,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual([
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
         ], self.swift.calls)
 
@@ -2591,9 +2702,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual([
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/X'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/X/1'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
         ], self.swift.calls)
         put_headers = self.swift.calls_with_headers[-1][2]
         self.assertEqual('bytes=0-9', put_headers['Range'])
@@ -2605,7 +2716,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         content_md5 = base64.b64encode(raw_md5).strip()
         with UnreadableInput(self) as fake_input:
             req = Request.blank(
-                '/bucket/object?uploadId=X',
+                '/bucket/object?uploadId=VXBsb2FkIElE',
                 environ={
                     'REQUEST_METHOD': 'POST',
                     'wsgi.input': fake_input},

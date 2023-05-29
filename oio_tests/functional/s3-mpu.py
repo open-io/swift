@@ -616,6 +616,20 @@ class TestS3Mpu(unittest.TestCase):
             b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
             resp.content)
 
+    def test_use_upload_id_with_invalid_xml_chars(self):
+        upload_id = 'fake\u001eupload id 🙂'
+        urlencoded_upload_id = quote(upload_id)
+        client = get_boto3_client()
+        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
+
+        resp = requests.get(
+            f'http://{self.bucket}.localhost:5000/test?uploadId={urlencoded_upload_id}')
+        self.assertEqual(404, resp.status_code)
+        self.assertIn(b'<Code>NoSuchUpload</Code>', resp.content)
+        self.assertIn(
+            b'<UploadId>fake&#x1e;upload\xc2\xa0id \xf0\x9f\x99\x82</UploadId>',
+            resp.content)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

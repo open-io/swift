@@ -28,7 +28,8 @@ from swift.common.request_helpers import is_sys_meta
 
 from swift.common.middleware.s3api.utils import snake_to_camel, \
     sysmeta_prefix, sysmeta_header
-from swift.common.middleware.s3api.etree import Element, SubElement, tostring
+from swift.common.middleware.s3api.etree import Element, SubElement, \
+    tostring, init_xml_texts
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 
@@ -271,6 +272,10 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
         self.headers = HeaderKeyDict(self.headers)
 
     def _body_iter(self):
+        # This part of the XML may contain information sent by the client.
+        # There may therefore be characters that are not compatible with XML.
+        escape_xml_text, finalize_xml_texts = init_xml_texts()
+
         error_elem = Element('Error')
         SubElement(error_elem, 'Code').text = self._code
         SubElement(error_elem, 'Message').text = self._msg
@@ -278,23 +283,28 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
             request_id = self.environ['swift.trans_id']
             SubElement(error_elem, 'RequestId').text = request_id
 
-        self._dict_to_etree(error_elem, self.info)
+        self._dict_to_etree(error_elem, self.info, escape_xml_text)
 
-        yield tostring(error_elem, use_s3ns=False,
-                       xml_declaration=self.xml_declaration)
+        yield finalize_xml_texts(tostring(
+            error_elem, use_s3ns=False, xml_declaration=self.xml_declaration))
 
-    def _dict_to_etree(self, parent, d):
+    def _dict_to_etree(self, parent, d, escape_xml_text):
         for key, value in d.items():
             tag = re.sub(r'\W', '', snake_to_camel(key))
             elem = SubElement(parent, tag)
 
             if isinstance(value, (dict, MutableMapping)):
-                self._dict_to_etree(elem, value)
+                self._dict_to_etree(elem, value, escape_xml_text)
             else:
                 if isinstance(value, (int, float, bool)):
                     value = str(value)
+                if isinstance(value, bytes):
+                    try:
+                        value = value.decode('utf-8')
+                    except UnicodeDecodeError:
+                        elem.text = '(invalid string)'
                 try:
-                    elem.text = value
+                    elem.text = escape_xml_text(value)
                 except ValueError:
                     # We set an invalid string for XML.
                     elem.text = '(invalid string)'

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import base64
 import re
 
 from swift.common.http import HTTP_OK, HTTP_NOT_FOUND, HTTP_SERVICE_UNAVAILABLE
@@ -81,6 +82,11 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
 
     keymarker = get_param(req, 'key-marker', '')
     uploadid = get_param(req, 'upload-id-marker', '')
+    try:
+        base64.b64decode(uploadid)
+    except Exception as exc:
+        err_msg = 'Invalid uploadId marker'
+        raise InvalidArgument('upload-id-marker', uploadid, err_msg) from exc
     maxuploads = req.get_validated_param(
         'max-uploads', DEFAULT_MAX_UPLOADS, DEFAULT_MAX_UPLOADS)
 
