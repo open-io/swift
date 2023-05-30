@@ -442,8 +442,8 @@ class SwiftHttpProtocol(wsgi.HttpProtocol):
                 path, q, query = parts[1].partition(b'?')
                 self.__raw_path_info = path
                 # unquote first, so we don't over-quote something
-                # that was *correctly* quoted
-                path = wsgi_to_bytes(wsgi_quote(wsgi_unquote(
+                # that was *correctly* quoted (accepting the plus as space)
+                path = wsgi_to_bytes(wsgi_quote(wsgi_unquote_plus(
                     bytes_to_wsgi(path))))
                 query = b'&'.join(
                     sep.join([

@@ -569,7 +569,9 @@ class SigV4Mixin(object):
         #   RAW_PATH_INFO=//test
         return swob.wsgi_to_bytes(
             swob.wsgi_quote(
-                swob.wsgi_unquote(
+                # The signature V4 requires the space to be encoded with a %20
+                # and not a '+' in the canonical URI
+                swob.wsgi_unquote_plus(
                     self.environ.get(
                         'RAW_PATH_INFO',
                         self.path
@@ -1352,7 +1354,13 @@ class S3Request(swob.Request):
         """
         Require bucket name in canonical_uri for v2 in virtual hosted-style.
         """
-        raw_path_info = self.environ.get('RAW_PATH_INFO', self.path)
+        raw_path_info = swob.wsgi_quote(
+            # The signature V2 requires the space to be encoded with a %20
+            # and not a '+' in the canonical URI
+            swob.wsgi_unquote_plus(
+                self.environ.get('RAW_PATH_INFO', self.path)
+            )
+        )
         if self.bucket_in_host:
             raw_path_info = '/' + self.bucket_in_host + raw_path_info
         return raw_path_info
