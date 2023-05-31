@@ -21,9 +21,6 @@ import unittest
 from functools import partial
 from urllib.parse import urlparse
 
-import boto3
-
-from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from minio import Minio
@@ -236,6 +233,36 @@ class TestForcedParams(unittest.TestCase):
     def test_create_delete_marker_minio_not_reseller(self):
         client = get_minio_client(profile="user1")
         self._test_create_delete_marker_minio(client, is_reseller=False)
+
+    def _test_upload_object_set_replication_status(
+            self, client, is_reseller=True):
+        key = "upload_%04d" % (random.randint(0, 9999), )
+        data = key.encode('utf-8')
+        replica = "REPLICAS"
+        cust_header_replicas = "x-oio-?replication-status"
+        version = "1234567891.000000"
+        cust_header_version = "x-oio-?version-id"
+        put_res = client.put_object(bucket_name=self.bucket, object_name=key,
+                                    data=io.BytesIO(data), length=len(data),
+                                    metadata={cust_header_replicas: replica,
+                                              cust_header_version: version})
+
+        self._to_delete.append((key, put_res.version_id))
+        head_res = self.admin_client.head_object(Bucket=self.bucket, Key=key)
+
+        if is_reseller:
+            self.assertEqual(replica, head_res['ReplicationStatus'])
+        else:
+            self.assertEqual(None, head_res.get('ReplicationStatus'))
+
+    def test_set_replication_status(self):
+        client = get_minio_client(profile="default")
+        self._test_upload_object_set_replication_status(client)
+
+    def test_set_replication_status_not_reseller(self):
+        client = get_minio_client(profile="user1")
+        self._test_upload_object_set_replication_status(
+            client, is_reseller=False)
 
 
 if __name__ == "__main__":
