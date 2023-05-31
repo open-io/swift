@@ -105,7 +105,8 @@ from swift.common.middleware.s3api.controllers.object_lock import \
 from swift.common.middleware.s3api.multi_upload_utils import \
     list_bucket_multipart_uploads
 
-MAX_COMPLETE_UPLOAD_BODY_SIZE = 2048 * 1024
+# 10000 parts about 200 bytes each, plus envelope
+MAX_COMPLETE_UPLOAD_BODY_SIZE = 3 * 1024 * 1024
 
 
 def _get_upload_id(req):
@@ -248,8 +249,8 @@ class PartController(Controller):
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
-        req.container_name += MULTIUPLOAD_SUFFIX
-        req.object_name = '%s/%s/%d' % (req.object_name, upload_id,
+        seg_container_name = req.container_name + MULTIUPLOAD_SUFFIX
+        seg_object_name = '%s/%s/%d' % (req.object_name, upload_id,
                                         part_number)
 
         # Use the same storage class for the parts
@@ -299,11 +300,31 @@ class PartController(Controller):
                 'X-Object-Sysmeta-Slo-Size': '',
                 get_container_update_override_key('etag'): '',
             })
-        resp = req.get_response(self.app)
+        resp = req.get_response(self.app,
+                                container=seg_container_name,
+                                obj=seg_object_name)
+
+        # We want THIS request to be logged/billed,
+        # not the HEAD we do right after.
+        put_backend_path = resp.environ['PATH_INFO']
 
         if 'X-Amz-Copy-Source' in req.headers:
             resp.append_copy_resp_body(req.controller_name,
                                        req_timestamp.s3xmlformat)
+
+        try:
+            _get_upload_info(req, self.app, upload_id)
+        except NoSuchUpload:
+            self.logger.warning(
+                "Finished uploading part %d%s, "
+                "but MPU aborted in the meantime",
+                part_number,
+                " (copy)" if 'X-Amz-Copy-Source' in req.headers else "",
+            )
+            # TODO(FVE): delete the part
+            raise
+        finally:
+            req.environ['s3api.backend_path'] = put_backend_path
 
         resp.status = 200
         return resp
