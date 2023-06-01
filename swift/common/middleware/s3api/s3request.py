@@ -754,7 +754,9 @@ class S3Request(swob.Request):
     """
     S3 request object.
     """
-
+    # Account defines initially the user account name but its value may change
+    # if it is a request to a bucket in another account.
+    # In that case it will take the bucket owner's account name as value.
     account = _req_s3api_info('account')
     bucket = _req_s3api_info('bucket')
     key = _req_s3api_info('key')
@@ -850,6 +852,13 @@ class S3Request(swob.Request):
             }
         else:
             self.string_to_sign = None
+
+        # Used to differentiate user account and bucket account.
+        # Can be relevant if a user is trying to access to a bucket
+        # in another account
+        self.bucket_account = None
+        # Keep the user's account name because the request's account name
+        # may change if it is a request to a bucket in another account
         self.user_account = None
 
         # Avoids that swift.swob.Response replaces Location header value
@@ -1526,7 +1535,22 @@ class S3Request(swob.Request):
         return self.environ.get('s3api.bucket_db')
 
     def get_account(self, container):
-        account = None
+        """
+        Return the owner of the container passed in the parameter.
+        If you need to get an account of bucket owned by another user,
+        pop s3api.info key in the request environment dict before calling
+        this method. It resets the account name saved in previous
+        calls to make sure the call to get the right account is made.
+
+        :param container: container name
+        :type container: str
+        :raises NoSuchBucket: raised if container not found
+        :return: account name
+        :rtype: str
+        """
+        account = self.bucket_account
+        if account is not None:  # if account already known
+            return account
         bucket = self._get_bucket_name(container) if container else None
         if bucket:
             # Anonymous requests do not know in advance the account used.
@@ -1917,6 +1941,10 @@ class S3Request(swob.Request):
             # reuse account
             _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
                                             2, 3, True)
+            # Used to differentiate user account and bucket account.
+            # Can be relevant if a user is trying to access to a bucket
+            # in another account
+            self.bucket_account = self.account
             # Propagate swift.backend_path in environ for middleware
             # in pipeline that need Swift PATH_INFO like ceilometermiddleware.
             self.environ['s3api.backend_path'] = \

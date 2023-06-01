@@ -23,6 +23,8 @@ from io import BytesIO
 from swift.common import swob
 from swift.common.middleware.s3api import s3response, controllers
 from swift.common.middleware.s3api import s3request
+from swift.common.middleware.s3api.bucket_db import BucketDbWrapper,\
+    get_bucket_db
 from swift.common.swob import Request, HTTPNoContent
 from swift.common.middleware.s3api.utils import mktime, Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
@@ -98,6 +100,8 @@ class TestRequest(S3ApiTestCase):
     def setUp(self):
         super(TestRequest, self).setUp()
         self.s3api.conf.s3_acl = True
+        self.s3api.conf.bucket_db_connection = "dummy://"
+        self.s3api.bucket_db = get_bucket_db(self.s3api.conf)
         self.swift.s3_acl = True
         s3request.SIGV4_CHUNK_MIN_SIZE = 2
 
@@ -266,6 +270,35 @@ class TestRequest(S3ApiTestCase):
             # result to_swift_req doesn't add Authorization header and token
             self.assertNotIn('s3api.auth_details', sw_req.environ)
             self.assertNotIn('X-Auth-Token', sw_req.headers)
+
+    def test_to_swift_req_get_owner_call(self):
+        """
+        Verify if get owner is only called if account is None
+        """
+        container = 'bucket'
+        obj = 'obj'
+        method = 'GET'
+        req = Request.blank('/%s/%s' % (container, obj),
+                            environ={'REQUEST_METHOD': method},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        with patch.object(Request, 'get_response') as m_swift_resp, \
+                patch.object(Request, 'remote_user', 'authorized'):
+            m_swift_resp.return_value = FakeSwiftResponse()
+            s3_req = S3AclRequest(req.environ)
+            s3_req.environ['s3api.bucket_db'] = BucketDbWrapper(
+                self.s3api.bucket_db)
+            s3_req.bucket_account = s3_req.account
+            with patch('swift.common.middleware.s3api.bucket_db.DummyBucketDb'
+                       '.get_owner') as mock_get_owner:
+                s3_req.to_swift_req(method, container, obj)
+            mock_get_owner.assert_not_called()
+
+            s3_req.bucket_account = None
+            with patch('swift.common.middleware.s3api.bucket_db.DummyBucketDb'
+                       '.get_owner') as mock_get_owner:
+                s3_req.to_swift_req(method, container, obj)
+            mock_get_owner.assert_called_once()
 
     def test_to_swift_req_subrequest_proxy_access_log(self):
         container = 'bucket'
