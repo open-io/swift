@@ -266,7 +266,12 @@ class ReplicationController(Controller):
         source_location = source_info.get('region', '')
         target_location = target_info.get('region', '')
         if source_location == target_location:
-            sw_req = req.to_swift_req(
+            # A copy of the request is made here because we need to remove
+            # s3api.info key in the environment dict to make sure that the
+            # bucket destination owner is verified.
+            n_req = req.copy()
+            n_req.environ.pop("s3api.info", None)
+            sw_req = n_req.to_swift_req(
                 'HEAD', bucket_name, None, headers=req.headers)
             info = get_container_info(
                 sw_req.environ,

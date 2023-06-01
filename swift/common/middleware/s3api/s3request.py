@@ -1534,6 +1534,18 @@ class S3Request(swob.Request):
     def bucket_db(self):
         return self.environ.get('s3api.bucket_db')
 
+    def copy(self):
+        """
+        Create a request copy initialized with a copy of the original
+        environment
+
+        :return: S3Request
+        :rtype: copy of the current request
+        """
+        req = S3Request(self.environ.copy())
+        req.environ['s3api.info'] = self.environ['s3api.info'].copy()
+        return req
+
     def get_account(self, container):
         """
         Return the owner of the container passed in the parameter.
