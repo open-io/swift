@@ -251,6 +251,13 @@ class ContainerUpdater(Daemon):
         if self.account_suppressions.get(info['account'], 0) > time.time():
             return
 
+        # Sysmeta set through container-async-delete middleware
+        # meta value must be not empty ('' mean deleted value)
+        if broker.metadata.get(
+                'X-Container-Sysmeta-Ovh-Async-Delete', ['', '0']
+        )[0]:
+            info['bytes_used'] = -1
+
         if not broker.is_root_container():
             # Don't double-up account stats.
             # The sharder should get these stats to the root container,

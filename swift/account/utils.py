@@ -78,6 +78,8 @@ def account_listing_response(account, req, response_content_type, broker=None,
     if broker is None:
         broker = FakeAccountBroker()
 
+    from_proxy = req.user_agent and req.user_agent.startswith('proxy-server')
+
     resp_headers = get_response_headers(broker)
 
     account_list = broker.list_containers_iter(limit, marker, end_marker,
@@ -86,6 +88,8 @@ def account_listing_response(account, req, response_content_type, broker=None,
     data = []
     for (name, object_count, bytes_used, put_timestamp, is_subdir) \
             in account_list:
+        if from_proxy and bytes_used < 0:
+            continue
         name_ = name.decode('utf8') if six.PY2 else name
         if is_subdir:
             data.append({'subdir': name_})
