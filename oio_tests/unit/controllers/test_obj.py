@@ -316,7 +316,7 @@ class TestObjectController(unittest.TestCase):
         mock.assert_called_once()
         self.assertEqual(201, resp.status_int)
 
-    def test_PUT_error_during_transfer_data(self):
+    def test_PUT_error_during_data_transfer(self):
         class FakeReader(object):
             def read(self, size):
                 raise IOError()

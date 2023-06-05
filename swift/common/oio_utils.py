@@ -76,12 +76,12 @@ def handle_service_busy(fnc):
         try:
             return fnc(self, req, *args, **kwargs)
         except (ServiceBusy, ServiceUnavailable) as err:
-            if err.message == "Invalid status: frozen":
-                raise HTTPForbidden(request=req)
+            if "Invalid status: frozen" in str(err):
+                return HTTPForbidden(request=req)
             headers = {}
             headers['Retry-After'] = str(self.app.retry_after)
             return HTTPServiceUnavailable(request=req, headers=headers,
-                                          body=err.message)
+                                          body=str(err))
     return _service_busy_wrapper
 
 
@@ -93,7 +93,7 @@ def handle_not_allowed(fnc):
             return fnc(self, req, *args, **kwargs)
         except MethodNotAllowed as exc:
             headers = {}
-            if 'worm' in exc.message.lower():
+            if 'worm' in str(exc).lower():
                 headers['Allow'] = 'GET, HEAD, PUT'
             else:
                 # TODO(FVE): load Allow header from exception attributes
