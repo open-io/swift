@@ -442,7 +442,7 @@ class TestProxyLogging(unittest.TestCase):
         self.assertEqual(log_parts[11], '-')
         self.assertEqual(log_parts[13], '26/Apr/1970/17/46/40')
         self.assertEqual(log_parts[14], '10000001.000000000')
-        self.assertEqual(log_parts[15], '0.5')
+        self.assertEqual(log_parts[15], '0.5000')
         self.assertEqual(resp_body, b'FAKE APP')
 
     def test_log_msg_template_s3api(self):
