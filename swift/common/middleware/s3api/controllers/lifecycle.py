@@ -21,7 +21,7 @@ from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPOk, \
-    MalformedXML, NoSuchLifecycleConfiguration
+    MalformedXML, NoSuchLifecycleConfiguration, S3NotImplemented
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
 from swift.common.swob import HTTPNoContent
@@ -71,6 +71,9 @@ class LifecycleController(Controller):
         """
         Handles PUT Bucket lifecycle.
         """
+        if not self.conf.enable_lifecycle:
+            raise S3NotImplemented()
+
         xml = req.xml(MAX_LIFECYCLE_BODY_SIZE)
         try:
             # Just validate the body

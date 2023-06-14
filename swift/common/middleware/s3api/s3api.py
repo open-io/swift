@@ -393,6 +393,8 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('enable_object_lock', True))
         self.conf.enable_website = config_true_value(
             wsgi_conf.get('enable_website', True))
+        self.conf.enable_lifecycle = config_true_value(
+            wsgi_conf.get('enable_lifecycle', True))
         # AWS S3 requires a token to activate object lock on an existing
         # bucket. On Amazon side this token is only available if asked to
         # the support. On our side, the user will have two possibilities

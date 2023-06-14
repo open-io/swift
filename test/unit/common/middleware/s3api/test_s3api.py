@@ -136,6 +136,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_bucket_replication': True,
             'enable_object_lock': True,
             'enable_website': True,
+            'enable_lifecycle': True,
             'token_prefix': "",
         })
         s3api = S3ApiMiddleware(None, {})
@@ -178,6 +179,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_bucket_replication': False,
             'enable_object_lock': False,
             'enable_website': False,
+            'enable_lifecycle': False,
             'token_prefix': '',
         }
         s3api = S3ApiMiddleware(None, conf)
