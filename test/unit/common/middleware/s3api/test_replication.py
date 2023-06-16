@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import json
+from datetime import datetime
+from hashlib import sha256
 from uuid import UUID
 from mock import patch
 from swift.common.middleware.s3api.etree import fromstring, tostring
@@ -598,6 +600,34 @@ class TestS3ApiReplication(S3ApiTestCase):
                                 "Authorization": "AWS test:tester:hmac",
                                 "Date": self.get_date_header(),
                             })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Destination bucket must have versioning enabled.",
+                      str(body))
+
+    def test_PUT_versioning_not_enabled_on_dest_with_v4_signature(self):
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: False}, None)
+        body_sha = sha256(BASIC_CONF).hexdigest()
+        headers = {
+            'Authorization':
+                'AWS4-HMAC-SHA256 '
+                'Credential=test:tester/%s/us-east-1/s3/aws4_request, '
+                'SignedHeaders=host;x-amz-date, '
+                'Signature=hmac' % (
+                    self.get_v4_amz_date_header().split('T', 1)[0]),
+            'x-amz-date': self.get_v4_amz_date_header(),
+            'x-amz-storage-class': 'STANDARD',
+            'x-amz-content-sha256': body_sha,
+            'Date': self.get_date_header()}
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=BASIC_CONF,
+                            headers=headers)
+        req.date = datetime.now()
+        req.content_type = 'text/plain'
         status, _, body = self.call_s3api(req)
         self.assertEqual("400 Bad Request", status)
         self.assertIn("Destination bucket must have versioning enabled.",

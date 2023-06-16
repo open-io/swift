@@ -779,6 +779,7 @@ class S3Request(swob.Request):
         self._timestamp = None
         self._secret = None
         self._chunk_signature_valid = True
+        self.app = app
 
         # Reset S3 information for this new S3 request
         self.environ['s3api.info'] = {}
@@ -1537,13 +1538,14 @@ class S3Request(swob.Request):
     def copy(self):
         """
         Create a request copy initialized with a copy of the original
-        environment
+        request attributes
 
         :return: S3Request
         :rtype: copy of the current request
         """
-        req = S3Request(self.environ.copy())
-        req.environ['s3api.info'] = self.environ['s3api.info'].copy()
+        newenv = self.environ.copy()
+        newenv["s3api.info"] = self.environ["s3api.info"].copy()
+        req = type(self)(newenv, self.app, self.conf)
         return req
 
     def get_account(self, container):

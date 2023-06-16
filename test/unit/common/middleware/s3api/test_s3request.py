@@ -300,6 +300,46 @@ class TestRequest(S3ApiTestCase):
                 s3_req.to_swift_req(method, container, obj)
             mock_get_owner.assert_called_once()
 
+    def test_copy_method(self):
+        # normal X-Amz-Date header
+        date_header = {'X-Amz-Date': self.get_v4_amz_date_header()}
+        # signature v4 here
+        environ = {
+            'REQUEST_METHOD': 'GET'}
+
+        if 'X-Amz-Date' in date_header:
+            included_header = 'x-amz-date'
+            scope_date = date_header['X-Amz-Date'].split('T', 1)[0]
+        elif 'Date' in date_header:
+            included_header = 'date'
+            scope_date = self.get_v4_amz_date_header().split('T', 1)[0]
+        else:
+            self.fail('Invalid date header specified as test')
+
+        headers = {
+            'Authorization':
+                'AWS4-HMAC-SHA256 '
+                'Credential=test/%s/us-east-1/s3/aws4_request, '
+                'SignedHeaders=%s,'
+                'Signature=X' % (
+                    scope_date,
+                    ';'.join(sorted(['host', included_header]))),
+            'X-Amz-Content-SHA256': '0123456789'}
+
+        headers.update(date_header)
+        req = Request.blank('/', environ=environ, headers=headers)
+
+        with patch.object(Request, 'get_response') as m_swift_resp, \
+                patch.object(Request, 'remote_user', 'authorized'):
+            m_swift_resp.return_value = FakeSwiftResponse()
+            sigv4_req = SigV4Request(req.environ, conf=self.s3api.conf)
+            sigv4_req_copy = sigv4_req.copy()
+            self.assertIsNot(sigv4_req, sigv4_req_copy)
+            self.assertIsNot(sigv4_req.environ, sigv4_req_copy.environ)
+            self.assertIsNot(sigv4_req.environ["s3api.info"],
+                             sigv4_req_copy.environ["s3api.info"])
+            self.assertIsNot(sigv4_req.headers, sigv4_req_copy.headers)
+
     def test_to_swift_req_subrequest_proxy_access_log(self):
         container = 'bucket'
         obj = 'obj'
