@@ -36,13 +36,19 @@ BUCKET_ALLOWED_TRANSITIONS = {
     # By PCA-automation after reading RabbitMQ message
     BUCKET_STATE_LOCKED: (BUCKET_STATE_ARCHIVING),
     # By PCA after storing all objects
-    BUCKET_STATE_ARCHIVING: (BUCKET_STATE_DRAINING),
+    BUCKET_STATE_ARCHIVING: (BUCKET_STATE_ARCHIVED),
+    # By PCA when draining begins after the restore expires
     # By PCA when draining is over
-    BUCKET_STATE_DRAINING: (BUCKET_STATE_ARCHIVED),
+    BUCKET_STATE_DRAINING: (BUCKET_STATE_DRAINING, BUCKET_STATE_ARCHIVED),
     # On PutBucketIntelligentTieringConfiguration RESTORE request by user
     # On DeleteBucketIntelligentTieringConfiguration request by user
     # RabbitMQ message: restoring or deleting
-    BUCKET_STATE_ARCHIVED: (BUCKET_STATE_RESTORING, BUCKET_STATE_DELETING),
+    # By PCA, when the draining starts (after the waiting time)
+    BUCKET_STATE_ARCHIVED: (
+        BUCKET_STATE_RESTORING,
+        BUCKET_STATE_DELETING,
+        BUCKET_STATE_DRAINING,
+    ),
     # By PCA when restore is over
     BUCKET_STATE_RESTORING: (BUCKET_STATE_RESTORED),
     # On DeleteBucketIntelligentTieringConfiguration RESTORE request by user
