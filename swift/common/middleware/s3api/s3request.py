@@ -2258,7 +2258,13 @@ class S3Request(swob.Request):
         query = {'symlink': 'get'}
         if version is not None:
             query['version-id'] = version
-        resp = self.get_response(app, 'HEAD', obj=obj, query=query)
+        # We are only interested in the x-static-large-object header, disable
+        # any decryption or the middleware will complain there is no key.
+        self.environ['swift.crypto.override'] = True
+        try:
+            resp = self.get_response(app, 'HEAD', obj=obj, query=query)
+        finally:
+            self.environ['swift.crypto.override'] = False
         if not resp.is_slo:
             return {}
         elif resp.sysmeta_headers.get(sysmeta_header('object', 'etag')):

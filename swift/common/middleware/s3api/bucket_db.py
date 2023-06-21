@@ -94,6 +94,10 @@ class DummyBucketDb(object):
         """
         return {'account': self.get_owner(bucket)}
 
+    def update(self, bucket, owner=None, metadata=None, to_delete=None,
+               **kwargs):
+        pass
+
 
 class OioBucketDb(object):
     """
@@ -256,6 +260,37 @@ class OioBucketDb(object):
                     bucket, owner, exc)
             raise ServiceUnavailable from exc
 
+    def update(self, bucket, owner=None, metadata=None, to_delete=None,
+               **kwargs):
+        """
+        Update or delete bucket metadata.
+
+        :param bucket: name of the bucket
+        :param owner: name of the account owning the bucket
+        :param metadata: dictionary of properties that must be set or updated.
+        :param to_delete: list of property keys that must be removed.
+        """
+        try:
+            return self.bucket_client.bucket_update(
+                bucket,
+                account=owner,
+                metadata=metadata,
+                to_delete=to_delete,
+                **kwargs
+            )
+        except ClientException as exc:
+            if self.logger:
+                self.logger.warning(
+                    'Failed to update metadata on bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            return None
+        except OioNetworkException as exc:
+            if self.logger:
+                self.logger.error(
+                    'Failed to update metadata on bucket %s with owner %s: %s',
+                    bucket, owner, exc)
+            raise ServiceUnavailable from exc
+
 
 class BucketDbWrapper(object):
     """
@@ -297,6 +332,10 @@ class BucketDbWrapper(object):
 
     def show(self, bucket, owner=None, **kwargs):
         res = self.bucket_db.show(bucket=bucket, owner=owner, **kwargs)
+        return res
+
+    def update(self, bucket, owner=None, **kwargs):
+        res = self.bucket_db.update(bucket=bucket, owner=owner, **kwargs)
         return res
 
 

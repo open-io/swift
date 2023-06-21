@@ -43,7 +43,9 @@ def is_customer_provided_key(key_id):
     """
     Tell if the key ID represends an encryption key provided by the customer.
     """
-    return key_id and key_id.get('ssec', False)
+    return (key_id
+            and key_id.get('ssec', False)
+            and not key_id.get('sses3', False))
 
 
 def requires_customer_provided_key(crypto_meta):

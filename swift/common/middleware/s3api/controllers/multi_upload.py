@@ -565,6 +565,7 @@ class UploadsController(Controller):
             req.headers[sysmeta_header('object', 'has-content-type')] = 'no'
         req.headers['Content-Type'] = 'application/directory'
 
+        # TODO(FVE): disable encryption only if there is a SSE-C key
         # Do not encrypt metadata we put on this (empty) temporary object.
         # Later we will read it, possibly without access to the encryption key.
         req.environ['swift.crypto.override'] = True

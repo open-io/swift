@@ -15,19 +15,20 @@
 
 import base64
 import json
+from urllib.parse import quote
 
 from swift import gettext_ as _
 from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
     load_crypto_meta, extract_crypto_meta, Crypto, \
-    requires_customer_provided_key
+    requires_customer_provided_key, MISSING_KEY_MSG
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     get_sys_meta_prefix, get_user_meta_prefix, \
     get_container_update_override_key
-from swift.common.swob import Request, HTTPException, HTTPForbidden, \
-    HTTPInternalServerError, wsgi_to_bytes, bytes_to_wsgi
+from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
+    HTTPForbidden, HTTPInternalServerError, wsgi_to_bytes, bytes_to_wsgi
 from swift.common.utils import get_logger, config_true_value, \
     parse_content_range, closing_if_possible, parse_content_type, \
     FileLikeIter, multipart_byteranges_to_document_iters
@@ -230,7 +231,15 @@ class DecrypterObjContext(BaseDecrypterContext):
                 decrypted_etag_ct = self._decrypt_header(
                     etag_header, encrypted_etag, put_keys['container'])
                 if decrypted_etag and decrypted_etag_ct != decrypted_etag:
-                    self.app.logger.debug('Failed ETag verification')
+                    self.app.logger.debug(
+                        'Failed ETag verification: obj=%s ct=%s',
+                        quote(decrypted_etag),
+                        quote(decrypted_etag_ct)
+                    )
+                    if put_keys.get('id', {}).get('sses3'):
+                        # The key we have here was provided by the bucket,
+                        # whereas it should have been provided by the client.
+                        raise HTTPBadRequest(MISSING_KEY_MSG)
                     raise HTTPForbidden('Invalid key')
                 mod_hdr_pairs.append((etag_header, decrypted_etag_ct))
                 if self.crypto.ssec_mode:

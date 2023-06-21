@@ -108,6 +108,7 @@ use = egg:swift#ssec_keymaster
 #keymaster_config_path =
 meta_version_to_write = 3
 fallback_on_keymaster = True
+use_oio_kms = %OIO_KMS_ENABLED%
 
 # echo "Next-Gen Object Storage & Serverless Computing" | base64
 encryption_root_secret_0 = TmV4dC1HZW4gT2JqZWN0IFN0b3JhZ2UgJiBTZXJ2ZXJsZXNzIENvbXB1dGluZwo=

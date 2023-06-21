@@ -31,7 +31,16 @@ do
   openio-admin iam put-user-policy --policy-name "default" "$ACCOUNT" "$USER" "$RULE"
 done
 
-sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-custom-encryption.cfg.in > etc/s3-custom-encryption.cfg
+
+echo "############################################################"
+echo "# Running Ceph S3 tests with bucket-specific encryption keys"
+echo "############################################################"
+echo ""
+sed \
+  -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" \
+  -e "s/%OIO_KMS_ENABLED%/True/g" \
+  etc/s3-custom-encryption.cfg.in \
+  > etc/s3-custom-encryption.cfg
 run_functional_test s3-custom-encryption.cfg ceph-s3tests.sh
 
 exit $RET
