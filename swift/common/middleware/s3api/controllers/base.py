@@ -252,6 +252,26 @@ class Controller(object):
     def OPTIONS(self, req):
         return handle_options_request(self.app, self.conf, req)
 
+    def bypass_feature_disabled(self, req, feature):
+        """
+        Return True if beta feature has been enabled on the current account
+        and False if not
+
+        :param req: request through s3api
+        :type req: S3Reqsuest
+        :param feature: feature to activate
+        :type feature: str
+        :return: True if beta feature is enabled
+        :rtype: bool
+        """
+        account_info = req.get_account_info(self.app)
+        # All beta-features are enabled and
+        # this specific beta-feature is enabled on the account
+        return self.conf.enable_beta_features and (
+            feature
+            in
+            account_info.get("enabled_beta_features", []))
+
 
 class UnsupportedController(Controller):
     """

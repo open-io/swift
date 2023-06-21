@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from mock import patch
 from swift.common import swob
 
 from test.unit.common.middleware.s3api import S3ApiTestCase
@@ -161,6 +162,35 @@ class TestS3apiObjectLock(S3ApiTestCase):
         status, _header, body = self.call_s3api(req)
         self.assertEqual('409 Conflict', status)
         self.assertEqual(expectded_msg, self._get_error_message(body))
+
+    def test_object_lock_feature_disabled(self):
+        req = Request.blank('/bucket-2',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            headers={
+                                'Authorization': 'AWS test:tester:hmac',
+                                'X-Amz-Bucket-Object-Lock-Enabled': 'True',
+                                'Date': self.get_date_header()})
+        # All beta-feature are enabled -> enable_beta_features = True
+        # Object-lock disabled for all -> enable_object_lock = False
+        # Object-lock not enabled especially for this account
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request.get_account_info',
+                   return_value={'enabled_beta_features': []}):
+            self.s3api.conf["enable_object_lock"] = False
+            status, headers, body = self.call_s3api(req)
+            self.assertEqual("501 Not Implemented", status)
+            self.assertIn("NotImplemented", str(body))
+
+        # All beta-feature are disabled -> enable_beta_features = False
+        # Object-lock disabled for all -> enable_object_lock = False
+        # Object-lock enabled especially for this account
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request.get_account_info',
+                   return_value={'enabled_beta_features': ["object-lock"]}):
+            self.s3api.conf["enable_beta_features"] = False
+            status, _, body = self.call_s3api(req)
+            self.assertEqual("501 Not Implemented", status)
+            self.assertIn("NotImplemented", str(body))
 
 
 if __name__ == '__main__':

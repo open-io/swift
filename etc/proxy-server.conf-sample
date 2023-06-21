@@ -816,6 +816,9 @@ use = egg:swift#s3api
 # Landing page used when a client requests the endpoint without being authenticated
 #landing_page = https://aws.amazon.com/s3/
 
+# Enable or disable all beta features.
+#enable_beta_features = true
+
 # Enable or disable Bucket Logging to save S3 access logs.
 #enable_access_logging = true
 

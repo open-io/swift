@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from mock import patch
 from swift.common.middleware.s3api.controllers.website import (
     BUCKET_WEBSITE_HEADER,
     WebsiteController,
@@ -174,6 +175,32 @@ class TestS3ApiWebsite(S3ApiTestCase):
         )
         status, _, _ = self._website_PUT("/test-website", WEBSITE_XML)
         self.assertEqual("200 OK", status)
+
+    def test_PUT_feature_disabled(self):
+        self.swift.register(
+            "POST", "/v1/AUTH_test/test-website", HTTPNoContent, {}, None
+        )
+        # All beta-feature are enabled -> enable_beta_features = True
+        # Website disabled for all -> enable_website = False
+        # Website not enabled especially for this account
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request.get_account_info',
+                   return_value={'enabled_beta_features': []}):
+            self.s3api.conf["enable_website"] = False
+            status, _, body = self._website_PUT("/test-website", WEBSITE_XML)
+            self.assertEqual("501 Not Implemented", status)
+            self.assertIn("NotImplemented", str(body))
+
+        # All beta-feature are disabled -> enable_beta_features = False
+        # Website disabled for all -> enable_website = False
+        # Website enabled especially for this account
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request.get_account_info',
+                   return_value={'enabled_beta_features': ['website']}):
+            self.s3api.conf["enable_beta_features"] = False
+            status, _, body = self._website_PUT("/test-website", WEBSITE_XML)
+            self.assertEqual("501 Not Implemented", status)
+            self.assertIn("NotImplemented", str(body))
 
     def test_GET(self):
         expected_output = WebsiteController._xml_conf_to_json(WEBSITE_XML)

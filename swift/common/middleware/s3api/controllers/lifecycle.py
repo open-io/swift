@@ -72,7 +72,8 @@ class LifecycleController(Controller):
         Handles PUT Bucket lifecycle.
         """
         if not self.conf.enable_lifecycle:
-            raise S3NotImplemented()
+            if not self.bypass_feature_disabled(req, "lifecycle"):
+                raise S3NotImplemented()
 
         xml = req.xml(MAX_LIFECYCLE_BODY_SIZE)
         try:

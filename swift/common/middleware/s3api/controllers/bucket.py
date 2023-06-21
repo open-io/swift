@@ -454,7 +454,8 @@ class BucketController(Controller):
             'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED', 'False')
         if object_lock_enabled.lower() == 'true':
             if not self.conf.enable_object_lock:
-                raise S3NotImplemented()
+                if not self.bypass_feature_disabled(req, "object-lock"):
+                    raise S3NotImplemented()
             if 'object_versioning' not in get_swift_info():
                 self.logger.info(
                     'object_versioning is disabled so object lock '

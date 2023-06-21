@@ -89,7 +89,8 @@ class LoggingStatusController(Controller):
         Handles PUT Bucket logging.
         """
         if not self.conf.enable_access_logging:
-            raise S3NotImplemented()
+            if not self.bypass_feature_disabled(req, "logging"):
+                raise S3NotImplemented()
 
         body = req.xml(MAX_LOGGING_BODY_SIZE)
         if not body:

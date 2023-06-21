@@ -385,6 +385,8 @@ class S3ApiMiddleware(object):
             check_cors_rule(rule)
             self.conf.cors_rules.append(rule)
 
+        self.conf.enable_beta_features = config_true_value(
+            wsgi_conf.get('enable_beta_features', True))
         self.conf.enable_access_logging = config_true_value(
             wsgi_conf.get('enable_access_logging', True))
         self.conf.enable_bucket_replication = config_true_value(

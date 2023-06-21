@@ -164,6 +164,7 @@ def headers_to_account_info(headers, status_int=HTTP_OK):
                     policy.name), 0))}
             for policy in POLICIES
         },
+        'enabled_beta_features': headers.get('enabled-beta-features', []),
         'meta': meta,
         'sysmeta': sysmeta,
     }

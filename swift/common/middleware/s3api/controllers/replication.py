@@ -395,7 +395,8 @@ class ReplicationController(Controller):
         Handles PUT Bucket replication
         """
         if not self.conf.enable_bucket_replication:
-            raise S3NotImplemented()
+            if not self.bypass_feature_disabled(req, "replication"):
+                raise S3NotImplemented()
         info = req.get_container_info(self.app)
         object_lock = info.get('sysmeta', {}).get(
             's3api-bucket-object-lock-enabled',

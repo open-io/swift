@@ -255,6 +255,41 @@ class TestS3ApiReplication(S3ApiTestCase):
         status, _, body = self.call_s3api(req)
         self.assertEqual("400 Bad Request", status)
 
+    def test_PUT_replication_not_enabled(self):
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=BASIC_CONF,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        # All beta-feature are enabled -> enable_beta_features = True
+        # Replication disabled for all -> enable_bucket_replication = False
+        # Replication not enabled especially for this account
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request.get_account_info',
+                   return_value={'enabled_beta_features': []}):
+            self.s3api.conf["enable_bucket_replication"] = False
+            status, _, body = self.call_s3api(req)
+            self.assertEqual("501 Not Implemented", status)
+            self.assertIn("NotImplemented", str(body))
+
+        # All beta-feature are disabled -> enable_beta_features = False
+        # Replication disabled for all -> enable_bucket_replication = False
+        # Replication enabled especially for this account
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'S3Request.get_account_info',
+                   return_value={'enabled_beta_features': ["replication"]}):
+            self.s3api.conf["enable_beta_features"] = False
+            status, _, body = self.call_s3api(req)
+            self.assertEqual("501 Not Implemented", status)
+            self.assertIn("NotImplemented", str(body))
+
     def test_PUT_minimal(self):
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)

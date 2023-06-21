@@ -127,7 +127,8 @@ class WebsiteController(Controller):
         Handles PUT Bucket website.
         """
         if not self.conf.enable_website:
-            raise S3NotImplemented
+            if not self.bypass_feature_disabled(req, "website"):
+                raise S3NotImplemented()
         xml = req.xml(MAX_WEBSITE_BODY_SIZE)
 
         json_output = WebsiteController._xml_conf_to_json(xml)
