@@ -244,18 +244,20 @@ class BucketRateLimitMiddleware(object):
         else:
             previous_key = f"{key_prefix}{previous_period}"
 
-        # Fetch the keys values in memcached
+        # Fetch the keys values from memcached
         try:
             values = self.memcache_client.get_multi(
                 [key_prefix, current_key, previous_key], server_key
             )
+            if not values:
+                raise ValueError("got no response")
             bucket_ratelimit = values[0]
             current_counter = values[1]
             previous_counter = values[2]
         except Exception as exc:
             self.logger.error(
-                "[BucketRatelimit] Failed to fetch keys values in memcached "
-                "for the %s (%s): %s",
+                "[BucketRatelimit] Failed to fetch limits from memcached "
+                "for %s (%s): %s",
                 bucket,
                 group,
                 exc,
