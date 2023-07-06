@@ -908,6 +908,10 @@ http_timeout = 10.0
 # You can override the default log routing for this filter here:
 # log_name = s3token
 
+# You can change the statsd "tail" prefix (appended to
+# log_statsd_metric_prefix) here:
+# log_statsd_metric_tail_prefix = s3token
+
 # Secrets may be cached to reduce latency for the client and load on Keystone.
 # Set this to some number of seconds greater than zero to enable caching.
 # secret_cache_duration = 0

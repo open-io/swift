@@ -154,7 +154,11 @@ class S3Token(object):
         """Common initialization code."""
         self._app = app
         self._logger = get_logger(
-            conf, log_route=conf.get('log_name', 's3token'))
+            conf,
+            log_route=conf.get('log_name', 's3token'),
+            statsd_tail_prefix=conf.get('log_statsd_metric_tail_prefix',
+                                        's3token')
+        )
         self._logger.debug('Starting the %s component', PROTOCOL_NAME)
         self._timeout = float(conf.get('http_timeout', '10.0'))
         if not (0 < self._timeout <= 60):
@@ -250,14 +254,21 @@ class S3Token(object):
     def _json_request(self, creds_json, trans_id):
         headers = {'Content-Type': 'application/json',
                    'X-Openstack-Request-Id': trans_id}
+        metric_name = "check_token."
+        start = time.monotonic()
         try:
             response = requests.post(self._request_uri,
                                      headers=headers, data=creds_json,
                                      verify=self._verify,
                                      timeout=self._timeout)
+            metric_name += "%s.timing" % (response.status_code,)
         except requests.exceptions.RequestException as e:
+            # The message may have spaces, send the exception type instead
+            metric_name += "%s.timing" % (type(e),)
             self._logger.info('HTTP connection exception: %s', e)
             raise self._deny_request('InvalidURI')
+        finally:
+            self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
 
         if response.status_code < 200 or response.status_code >= 300:
             self._logger.debug('Keystone reply error: status=%s reason=%s',
@@ -342,9 +353,12 @@ class S3Token(object):
         if memcache_client:
             start = time.monotonic()
             cached_auth_data = memcache_client.get(memcache_token_key)
-            req.environ['s3token.time']['get_cache'] = \
-                time.monotonic() - start
+            duration = time.monotonic() - start
+            req.environ['s3token.time']['get_cache'] = duration
             if cached_auth_data:
+                # The cached data may be invalid, but the server answered,
+                # so we log this with code 200.
+                metric_name = "get_cache.200.timing"
                 if len(cached_auth_data) == 4:
                     # OVH: store regions_per_type in cached_auth_data
                     # for endpoint_filter.
@@ -358,6 +372,11 @@ class S3Token(object):
                 else:
                     self._logger.debug("Cached creds invalid")
                     cached_auth_data = None
+            else:
+                # We don't know if there is no cached data or if the cache
+                # server is dead. The cache miss is more probable though.
+                metric_name = "get_cache.404.timing"
+            self._logger.timing(metric_name, duration * 1000)
 
         if not cached_auth_data:
             trans_id = environ.get('swift.trans_id', 'UNKNOWN')
@@ -409,25 +428,42 @@ class S3Token(object):
                     user_id = headers.get('X-User-Id')
                     if not user_id:
                         raise ValueError
+                    start = time.monotonic()
                     try:
                         # Introduce jitter in the cache duration
                         duration = randint(self._secret_cache_duration_min,
                                            self._secret_cache_duration)
-                        start = time.monotonic()
-                        cred_ref = self.keystoneclient.ec2.get(
-                            user_id=user_id,
-                            access=access)
-                        ks_resp_end = time.monotonic()
-                        environ['s3token.time']['fetch_secret'] = \
-                            ks_resp_end - start
+                        try:
+                            cred_ref = self.keystoneclient.ec2.get(
+                                user_id=user_id,
+                                access=access)
+                            metric_name = "fetch_secret.200.timing"
+                        except Exception as exc:
+                            metric_name = "fetch_secret.%s.timing" % type(exc)
+                            raise exc
+                        finally:
+                            ks_resp_end = time.monotonic()
+                            self._logger.timing(metric_name,
+                                                (ks_resp_end - start) * 1000)
+                            environ['s3token.time']['fetch_secret'] = \
+                                ks_resp_end - start
+
                         memcache_client.set(
                             memcache_token_key,
                             # OVH: Add regions_per_type in memcached
                             (headers, regions_per_type,
                              tenant, cred_ref.secret),
                             time=duration)
+                        # XXX(FVE): the previous statement does not return
+                        # anything nor raises exceptions, we don't know if
+                        # the secret has actually been cached unless we read
+                        # the logs, so we report a code 201 every time.
+                        metric_name = "set_cache.201.timing"
+                        set_cache_duration = time.monotonic() - ks_resp_end
+                        self._logger.timing(metric_name,
+                                            set_cache_duration * 1000)
                         environ['s3token.time']['set_cache'] = \
-                            time.monotonic() - ks_resp_end
+                            set_cache_duration
                         self._logger.debug(
                             "Cached keystone credentials for %ds",
                             duration)
