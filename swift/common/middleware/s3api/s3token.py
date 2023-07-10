@@ -254,7 +254,7 @@ class S3Token(object):
     def _json_request(self, creds_json, trans_id):
         headers = {'Content-Type': 'application/json',
                    'X-Openstack-Request-Id': trans_id}
-        metric_name = "check_token."
+        metric_name = "POST.keystone.token."
         start = time.monotonic()
         try:
             response = requests.post(self._request_uri,
@@ -358,7 +358,7 @@ class S3Token(object):
             if cached_auth_data:
                 # The cached data may be invalid, but the server answered,
                 # so we log this with code 200.
-                metric_name = "get_cache.200.timing"
+                metric_name = "GET.memcached.secret.200.timing"
                 if len(cached_auth_data) == 4:
                     # OVH: store regions_per_type in cached_auth_data
                     # for endpoint_filter.
@@ -375,7 +375,7 @@ class S3Token(object):
             else:
                 # We don't know if there is no cached data or if the cache
                 # server is dead. The cache miss is more probable though.
-                metric_name = "get_cache.404.timing"
+                metric_name = "GET.memcached.secret.404.timing"
             self._logger.timing(metric_name, duration * 1000)
 
         if not cached_auth_data:
@@ -437,9 +437,10 @@ class S3Token(object):
                             cred_ref = self.keystoneclient.ec2.get(
                                 user_id=user_id,
                                 access=access)
-                            metric_name = "fetch_secret.200.timing"
+                            metric_name = "GET.keystone.secret.200.timing"
                         except Exception as exc:
-                            metric_name = "fetch_secret.%s.timing" % type(exc)
+                            metric_name = \
+                                "GET.keystone.secret.%s.timing" % type(exc)
                             raise exc
                         finally:
                             ks_resp_end = time.monotonic()
@@ -458,7 +459,7 @@ class S3Token(object):
                         # anything nor raises exceptions, we don't know if
                         # the secret has actually been cached unless we read
                         # the logs, so we report a code 201 every time.
-                        metric_name = "set_cache.201.timing"
+                        metric_name = "PUT.memcached.secret.201.timing"
                         set_cache_duration = time.monotonic() - ks_resp_end
                         self._logger.timing(metric_name,
                                             set_cache_duration * 1000)
