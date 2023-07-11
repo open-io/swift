@@ -348,7 +348,7 @@ class IntelligentTieringMiddleware(object):
         # Check the status as late as possible to get the most up-to-date
         # information (and avoid another request changing the status before
         # this one)
-        info = get_intelligent_tiering_info(self.app, req)
+        info = get_intelligent_tiering_info(self.app, req, read_caches=True)
         current_status = info["status"]
         new_status = BUCKET_STATE_LOCKED
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
@@ -384,7 +384,7 @@ class IntelligentTieringMiddleware(object):
         # Check the status as late as possible to get the most up-to-date
         # information (and avoid another request changing the status before
         # this one)
-        info = get_intelligent_tiering_info(self.app, req)
+        info = get_intelligent_tiering_info(self.app, req, read_caches=True)
         current_status = info["status"]
         new_status = BUCKET_STATE_RESTORING
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
@@ -422,7 +422,7 @@ class IntelligentTieringMiddleware(object):
         # Check the status as late as possible to get the most up-to-date
         # information (and avoid another request changing the status before
         # this one)
-        info = get_intelligent_tiering_info(self.app, req)
+        info = get_intelligent_tiering_info(self.app, req, read_caches=True)
         current_status = info["status"]
         new_status = BUCKET_STATE_DELETING
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
