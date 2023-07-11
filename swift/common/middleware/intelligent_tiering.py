@@ -338,17 +338,22 @@ class IntelligentTieringMiddleware(object):
             return False
         return True
 
-    def _put_archive(self, current_status, req, s3app):
-        new_status = BUCKET_STATE_LOCKED
-        if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
-            raise BadRequest('Archiving is not allowed in the state %s' %
-                             current_status)
-
+    def _put_archive(self, req, s3app):
         # Archive is not possible if there is an incomplete MPU
         if not self._are_all_mpu_complete(req, s3app):
             raise BadRequest('Archiving is not allowed when there are '
                              'incomplete MPU, please complete them or '
                              'delete the parts.')
+
+        # Check the status as late as possible to get the most up-to-date
+        # information (and avoid another request changing the status before
+        # this one)
+        info = get_intelligent_tiering_info(self.app, req)
+        current_status = info["status"]
+        new_status = BUCKET_STATE_LOCKED
+        if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
+            raise BadRequest('Archiving is not allowed in the state %s' %
+                             current_status)
 
         try:
             # Freeze the bucket
@@ -370,22 +375,29 @@ class IntelligentTieringMiddleware(object):
             # the client should be able to manage its container again.
             self._set_bucket_status(req, OIO_DB_ENABLED)
             raise
+        return new_status
 
-    def _put_restore(self, current_status, req):
+    def _put_restore(self, req):
+        bucket_info = req.get_bucket_info(self.app)
+        bucket_region = bucket_info.get('region')
+
+        # Check the status as late as possible to get the most up-to-date
+        # information (and avoid another request changing the status before
+        # this one)
+        info = get_intelligent_tiering_info(self.app, req)
+        current_status = info["status"]
         new_status = BUCKET_STATE_RESTORING
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
             raise BadRequest('Restoring is not allowed in the state %s' %
                              current_status)
 
-        bucket_info = req.get_bucket_info(self.app)
-        bucket_region = bucket_info.get('region')
-
         self.rabbitmq_client.start_restoring(
             req.account, req.container_name, bucket_region
         )
         self._set_archiving_status(req, current_status, new_status)
+        return new_status
 
-    def _process_PUT(self, current_status, req, tiering_conf, s3app):
+    def _process_PUT(self, req, tiering_conf, s3app):
         if tiering_conf['Status'] != 'Enabled':
             raise BadRequest('Status must be Enabled')
         if len(tiering_conf['Tierings']) != 1:
@@ -398,23 +410,29 @@ class IntelligentTieringMiddleware(object):
 
         # ARCHIVE
         if action == TIERING_ACTION_TIER_ARCHIVE:
-            self._put_archive(current_status, req, s3app)
+            return self._put_archive(req, s3app)
 
         # RESTORE
-        elif action == TIERING_ACTION_TIER_RESTORE:
-            self._put_restore(current_status, req)
-        else:
-            raise S3NotImplemented(
-                'Action %s is not implemented yet.' % action)
+        if action == TIERING_ACTION_TIER_RESTORE:
+            return self._put_restore(req)
 
-    def _process_DELETE(self, current_status, req):
+        raise S3NotImplemented('Action %s is not implemented yet.' % action)
+
+    def _process_DELETE(self, req):
+        # Check the status as late as possible to get the most up-to-date
+        # information (and avoid another request changing the status before
+        # this one)
+        info = get_intelligent_tiering_info(self.app, req)
+        current_status = info["status"]
         new_status = BUCKET_STATE_DELETING
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
             raise BadRequest('Deletion is not allowed in the state %s' %
                              current_status)
+
         self.rabbitmq_client.start_archive_deletion(req.account,
                                                     req.container_name)
         self._set_archiving_status(req, current_status, new_status)
+        return new_status
 
     def tiering_callback(self, req, tiering_conf, s3app, **kwargs):
         """
@@ -422,16 +440,14 @@ class IntelligentTieringMiddleware(object):
         Method allowed are PUT, DELETE and GET.
         :rtype: dict
         """
-        info = get_intelligent_tiering_info(self.app, req)
-        bucket_status = info["status"]
-
         if req.method == 'PUT':
-            self._process_PUT(bucket_status, req, tiering_conf, s3app)
+            bucket_status = self._process_PUT(req, tiering_conf, s3app)
         elif req.method == 'DELETE':
-            self._process_DELETE(bucket_status, req)
+            bucket_status = self._process_DELETE(req)
         elif req.method == 'GET':
-            # Nothing to do
-            pass
+            # Nothing to do, just fetch the current status
+            info = get_intelligent_tiering_info(self.app, req)
+            bucket_status = info["status"]
         else:
             raise HTTPMethodNotAllowed()
 

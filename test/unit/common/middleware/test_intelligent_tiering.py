@@ -188,8 +188,9 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_RABBIT_SEND_MESSAGE)
     @patch(MOCK_SET_ARCHIVING_STATUS)
     @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_bad_bucket_status(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_check_mpu, m_b_status, m_archiving_status, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -200,6 +201,7 @@ class TestIntelligentTiering(unittest.TestCase):
             self.return_value_get_bucket_status = {
                 'sysmeta': {'s3api-archiving-status': state}
             }
+            m_check_mpu.return_value = True
             self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
