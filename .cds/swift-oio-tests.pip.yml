@@ -78,6 +78,10 @@ jobs:
           - coverage combine
           - mv .coverage .coverage.oio.{{.cds.env.TEST_SUITE}}
           - worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.oio.{{.cds.env.TEST_SUITE}}'
+          - 'journalctl -n 50000 -o short-precise -t "OIO,NS,oioswift,1" >> oioswift.{{.cds.env.TEST_SUITE}}.log'
+          - 'journalctl -n 50000 -o short-precise -t "OIO,OPENIO,account,1" >> account.{{.cds.env.TEST_SUITE}}.log'
+          - worker upload --tag='{{.cds.version}}' 'oioswift.{{.cds.env.TEST_SUITE}}.log'
+          - worker upload --tag='{{.cds.version}}' 'account.{{.cds.env.TEST_SUITE}}.log'
 
       - optional: true
         always_executed: true
