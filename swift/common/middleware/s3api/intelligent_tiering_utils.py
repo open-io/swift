@@ -74,7 +74,7 @@ GET_BUCKET_STATE_OUTPUT = {
 }
 
 
-def get_intelligent_tiering_info(app, req, read_caches=True):
+def get_intelligent_tiering_info(app, req):
     """
     Return a dict with intelligent tiering info.
     Keys are:
@@ -83,16 +83,14 @@ def get_intelligent_tiering_info(app, req, read_caches=True):
     """
     intelligent_tiering_info = {"status": BUCKET_STATE_NONE}
     try:
-        oio_cache = None
-        if not read_caches:
-            # Extract oio_cache and remove it from req if exists
-            oio_cache = req.environ.pop('oio.cache', None)
+        # Extract oio_cache and remove it from req if exists
+        oio_cache = req.environ.pop('oio.cache', None)
         try:
-            info = req.get_container_info(app, read_caches=read_caches)
+            info = req.get_container_info(app, read_caches=False)
         finally:
+            # Put oio_cache again if exists (further request may benefit
+            # of the cache)
             if oio_cache is not None:
-                # Put oio_cache again if exists (further request may benefit
-                # of the cache)
                 req.environ['oio.cache'] = oio_cache
     except NoSuchBucket:
         return intelligent_tiering_info
