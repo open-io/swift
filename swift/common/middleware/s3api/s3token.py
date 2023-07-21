@@ -155,7 +155,7 @@ class S3Token(object):
         self._app = app
         self._logger = get_logger(
             conf,
-            log_route=conf.get('log_name', 's3token'),
+            log_route='s3token',
             statsd_tail_prefix=conf.get('log_statsd_metric_tail_prefix',
                                         's3token')
         )
