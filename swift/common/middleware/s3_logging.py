@@ -98,6 +98,22 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
     def statsd_metric_name_policy(self, req, status_int, method, policy_index):
         return None
 
+    def statsd_to_be_replicated(self, req, status_int, method):
+        """
+        Generates a name for metrics about objects going to be replicated.
+        The request contains a replication-status header with a value 'PENDING'
+        """
+        stat_type = self.get_metric_name_type(req)
+        if stat_type == 'object':
+            if method != 'PUT':
+                return None
+            repl_status = req.headers.environ.get(
+                'HTTP_X_OBJECT_SYSMETA_S3API_REPLICATION_STATUS')
+            if repl_status == 'PENDING':
+                return '.'.join(
+                    ('replication', method, stat_type, str(status_int)))
+        return None
+
     def _pre_log_request_callback(self, start_time, env):
         # Some headers and parameters are obfuscated
         pre_log_env = env.copy()
@@ -198,6 +214,20 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             req, status_int, bytes_received, bytes_sent, start_time, end_time,
             resp_headers=resp_headers, ttfb=ttfb,
             wire_status_int=wire_status_int)
+
+        method = self.method_from_req(req)
+        metric_to_be_replicated = self.statsd_to_be_replicated(
+            req, status_int, method)
+
+        duration_time = None
+        if end_time is not None:  # (final) access log
+            duration_time = end_time - start_time
+
+        if metric_to_be_replicated and duration_time is not None:
+            self.access_logger.timing(metric_to_be_replicated + '.timing',
+                                      duration_time * 1000)
+            self.access_logger.update_stats(metric_to_be_replicated + '.xfer',
+                                            bytes_received)
 
         if customer_access_logging is None:
             customer_access_logging = self.customer_access_logging
