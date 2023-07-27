@@ -15,7 +15,8 @@
 
 from functools import wraps
 from swift.common.request_helpers import split_reserved_name
-from swift.common.utils import Timestamp, config_true_value
+from swift.common.utils import Timestamp, config_positive_int_value,\
+    config_true_value
 
 from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPForbidden, HTTPNotFound, \
@@ -33,6 +34,55 @@ BUCKET_NAME_PROP = "sys.m2.bucket.name"
 BUCKET_OBJECT_LOCK_PROP = "sys.m2.bucket.objectlock.enabled"
 FORCED_VERSION_HEADER = OIO_HEADER_PREFIX + "Version-Id"
 MULTIUPLOAD_SUFFIX = '+segments'
+
+header_mapping = {
+    "container-update-override-etag": {
+        "query": ("container_update_override_etag", str),
+        "header": "x-object-sysmeta-container-update-override-etag",
+    },
+    "delete-marker": {"query": ("create_delete_marker", config_true_value),
+                      "header": "x-amz-delete-marker"},
+    "etag": {"query": ("etag", str), "header": "x-object-sysmeta-s3api-etag"},
+    "is-mpu-part": {
+        "query": ("is_mpu_part", config_true_value), "header": None
+    },
+    "replication-status": {
+        "query": ("replication_status", str),
+        "header": "x-object-sysmeta-s3api-replication-status",
+    },
+    "retention-mode": {
+        "query": ("retention_mode", str),
+        "header": "x-object-sysmeta-s3api-retention-mode"
+    },
+    "retention-retainuntildate": {
+        "query": ("retention_retainuntildate", str),
+        "header": "x-object-sysmeta-s3api-retention-retainuntildate",
+    },
+    "slo-etag": {
+        "query": ("slo_etag", str),
+        "header": "x-object-sysmeta-slo-etag"
+    },
+    "slo-size": {
+        "query": ("slo_size", config_positive_int_value),
+        "header": "x-object-sysmeta-slo-size"
+    },
+    "static-large-object": {
+        "query": ("static_large_object", config_true_value),
+        "header": "x-static-large-object",
+    },
+    "tagging": {
+        "query": ("tagging", str),
+        "header": "x-object-sysmeta-swift3-tagging"
+    },
+    "upload-id": {
+        "query": ("upload_id", str),
+        "header": "x-object-sysmeta-s3api-upload-id"
+    },
+    "version-id": {
+        "query": ("new_version", str),
+        "header": "x-object-sysmeta-version-id"
+    },
+}
 
 
 def swift_versionid_to_oio_versionid(version_id):
@@ -162,14 +212,6 @@ def extract_oio_headers(fnc):
     User must be a "reseller admin", and the parameter has to be defined here.
     """
 
-    _header_mapping = {
-        "version-id": ("new_version", str),
-        "delete-marker": ("create_delete_marker", config_true_value),
-        "replication-status": ("replication_status", str),
-        "retention-mode": ("retention_mode", str),
-        "retention-retainuntildate": ("retention_retainuntildate", str),
-    }
-
     @wraps(fnc)
     def _extract_oio_headers(self, req, *args, **kwargs):
         query = req.environ.setdefault('oio.query', {})
@@ -187,8 +229,9 @@ def extract_oio_headers(fnc):
                 lowered = key.lower()
                 if lowered.startswith(aws_oio_prefix):
                     suffix = lowered[len(aws_oio_prefix):]
-                    if suffix in _header_mapping:
-                        query_key, convert_query_val = _header_mapping[suffix]
+                    if suffix in header_mapping:
+                        query_key, convert_query_val = header_mapping[
+                            suffix]["query"]
                         query[query_key] = convert_query_val(val)
                     else:
                         self.logger.debug(

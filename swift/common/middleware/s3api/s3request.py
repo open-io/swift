@@ -69,7 +69,7 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import utf8encode, \
     S3Timestamp, mktime, sysmeta_header, validate_bucket_name, \
-    Config, is_not_ascii, MULTIUPLOAD_SUFFIX
+    Config, is_not_ascii, MULTIUPLOAD_SUFFIX, is_mpu_part_upload_replication
 from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
 from swift.common.middleware.s3api.etree import XML_DECLARATION, tostring
@@ -1521,6 +1521,13 @@ class S3Request(swob.Request):
             return ReplicationController
         if 'uploadId' in self.params:
             return UploadController
+        if is_mpu_part_upload_replication(self):
+            object_name, upload_id, part_number = self.object_name.rsplit(
+                "/", 2)
+            self.object_name = object_name
+            self.params["partNumber"] = part_number
+            self.params["uploadId"] = upload_id
+            return PartController
         if 'uploads' in self.params:
             return UploadsController
         if 'versioning' in self.params:

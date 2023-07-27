@@ -2407,6 +2407,14 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl(s3acl_only=True)
     def test_abort_multipart_upload_acl_with_fullcontrol_permission(self):
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket' + '/object',
+            swob.HTTPNotFound,
+            {'x-object-meta-foo': 'bar',
+             'content-type': 'application/directory',
+             'x-object-sysmeta-s3api-has-content-type': 'yes',
+             'x-object-sysmeta-s3api-content-type':
+             'baz/quux'}, None)
         status, headers, body = \
             self._test_for_s3acl('DELETE', '?uploadId=VXBsb2FkIElE',
                                  'test:full_control')
@@ -2414,9 +2422,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual([
             path for method, path in self.swift.calls if method == 'DELETE'
         ], [
-            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
             '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
             '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/2',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
         ])
 
     @s3acl(s3acl_only=True)
