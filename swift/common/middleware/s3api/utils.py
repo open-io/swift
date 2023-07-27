@@ -24,10 +24,27 @@ from hashlib import sha256
 from swift.common import utils
 
 MULTIUPLOAD_SUFFIX = '+segments'
+MULTIUPLOAD_PREFIX = 'repli+'
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # Content-Type by default at AWS, the official value being
 # "application/octet-stream"
 DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
+# Replicator default user agent
+REPLICATOR_USER_AGENT = "s3-replicator"
+
+
+def is_replicator(req):
+    """Check if the req is coming from the replicator
+
+    :param req: request
+    :type req: Request
+    :return: True if the request is initiated by the replicator and False
+            if not.
+    :rtype: bool
+    """
+    return (
+        req.environ.get('reseller_request', False)
+        and req.user_agent.endswith(REPLICATOR_USER_AGENT))
 
 
 def sysmeta_prefix(resource):

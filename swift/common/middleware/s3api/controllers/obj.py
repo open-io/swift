@@ -17,6 +17,7 @@ import functools
 import json
 from swift.common import constraints
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
+from swift.common.oio_utils import MULTIUPLOAD_SUFFIX, extract_oio_headers
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
     normalize_etag
@@ -154,6 +155,14 @@ class ObjectController(Controller):
 
         object_name = req.object_name
         version_id = version_id_param(req)
+        container = req.container_name
+        # This query parameter tells us if the object to fecth
+        # is a MPU part or not. If true, the object will be
+        # gathered from {container}+MULTIUPLOAD_SUFFIX else
+        # {container}
+        is_mpu_part = req.params.get('isMpuPart')
+        if is_mpu_part:
+            container += MULTIUPLOAD_SUFFIX
 
         query = {} if version_id is None else {'version-id': version_id}
         if version_id not in ('null', None):
@@ -163,7 +172,7 @@ class ObjectController(Controller):
                 # Versioning has never been enabled
                 raise NoSuchVersion(object_name, version_id)
 
-        resp = req.get_response(self.app, query=query)
+        resp = req.get_response(self.app, query=query, container=container)
         if HEADER_RETENION_MODE in resp.sysmeta_headers:
             resp.headers['ObjectLock-Mode'] = \
                 resp.sysmeta_headers[HEADER_RETENION_MODE]
@@ -228,6 +237,7 @@ class ObjectController(Controller):
     @set_s3_operation_rest_for_put_object
     @ratelimit_bucket
     @public
+    @extract_oio_headers
     @fill_cors_headers
     @check_bucket_storage_domain
     @handle_no_such_key
@@ -272,7 +282,16 @@ class ObjectController(Controller):
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason
             req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
-        resp = req.get_response(self.app)
+        container = req.container_name
+        # Check if the object pushed is a MPU part and store
+        # the part into {container}+MULTIUPLOAD_SUFFIX
+        # if true and in {container} if not.
+        if req.environ.get('oio.query', {}).get('is_mpu_part'):
+            container += MULTIUPLOAD_SUFFIX
+            # Remove the header, not needed anymore
+            req.environ.pop('HTTP_X_AMZ_META_X_OIO_?IS_MPU_PART', None)
+
+        resp = req.get_response(self.app, container=container)
 
         if 'X-Amz-Copy-Source' in req.headers:
             resp.append_copy_resp_body(req.controller_name,

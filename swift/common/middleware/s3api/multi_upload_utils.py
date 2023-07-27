@@ -21,10 +21,14 @@ from swift.common.http import HTTP_OK, HTTP_NOT_FOUND, HTTP_SERVICE_UNAVAILABLE
 from swift.common.utils import json
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, InternalError, ServiceUnavailable
-from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX
+from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
+    MULTIUPLOAD_PREFIX
 from swift.common.request_helpers import get_param
 from swift.common.wsgi import make_pre_authed_request
-
+MPU_PART_RE = re.compile('/[0-9]+$')
+# Used to forbid access on incomplete MPU on bucket destination
+MPU_PREFIX_RE = re.compile(
+    r'.+/' + re.escape(MULTIUPLOAD_PREFIX) + r'[A-Za-z0-9_=-]+$')
 
 DEFAULT_MAX_PARTS_LISTING = 1000
 DEFAULT_MAX_UPLOADS = 1000
@@ -114,7 +118,6 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
                     'last_modified': object_info['last_modified']}
         return obj_dict
 
-    is_part = re.compile('/[0-9]+$')
     while len(uploads) < maxuploads:
         try:
             if pre_auth:
@@ -140,7 +143,8 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
             break
 
         new_uploads = [object_to_upload(obj) for obj in objects if
-                       is_part.search(obj.get('name', '')) is None]
+                       MPU_PART_RE.search(obj.get('name', '')) is None and
+                       MPU_PREFIX_RE.search(obj.get('name', '')) is None]
         new_prefixes = []
         if 'delimiter' in req.params:
             prefix = get_param(req, 'prefix', '')
