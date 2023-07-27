@@ -57,8 +57,9 @@ from swift.common.middleware.s3api.etree import fromstring, XMLSyntaxError, \
     DocumentInvalid
 from swift.common.middleware.s3api.iam import iam_explicit_allow, \
     iam_is_enabled
-from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    sysmeta_header
+from swift.common.middleware.s3api.utils import \
+    MULTIUPLOAD_REPLICATION_PREFIX, \
+    MULTIUPLOAD_SUFFIX, sysmeta_header
 
 
 def get_acl_handler(controller_name):
@@ -466,7 +467,13 @@ class UploadAclHandler(MultiUploadAclHandler):
 
     def PUT(self, app):
         container = self.req.container_name + MULTIUPLOAD_SUFFIX
-        obj = '%s/%s' % (self.obj, self.req.params['uploadId'])
+        if self.req.from_replicator():  # Replicator
+            # MPU marker on destination bucket has another format
+            obj = '%s/%s%s' % (self.obj,
+                               MULTIUPLOAD_REPLICATION_PREFIX,
+                               self.req.params['uploadId'])
+        else:
+            obj = '%s/%s' % (self.obj, self.req.params['uploadId'])
         resp = self.req._get_response(app, 'HEAD', container, obj)
         self.req.headers[sysmeta_header('object', 'acl')] = \
             resp.sysmeta_headers.get(sysmeta_header('object', 'tmpacl'))

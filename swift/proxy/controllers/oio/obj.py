@@ -29,7 +29,7 @@ from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
-    REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
+    header_mapping, REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
     obj_version_from_env, oio_versionid_to_swift_versionid, \
     swift_versionid_to_oio_versionid, extract_oio_headers
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
@@ -460,12 +460,10 @@ class ObjectController(BaseObjectController):
             if aresp:
                 return aresp
 
+        # Retrieve oio query used to define specific headers
         oio_query = req.environ.setdefault('oio.query', {})
         create_delete_marker = oio_query.get('create_delete_marker')
-        replication_status = oio_query.pop('replication_status', None)
-        retention_mode = oio_query.pop('retention_mode', None)
-        retention_until_date = oio_query.pop('retention_retainuntildate', None)
-
+        replication_status = oio_query.get('replication_status')
         if create_delete_marker:
             # Only S3 object creations allow metadata to be sent freely.
             # For replication, the creation of a delete marker must also
@@ -482,9 +480,9 @@ class ObjectController(BaseObjectController):
             delete_marker_header = {
                 'x-object-sysmeta-version-id': version_id
             }
-            if replication_status is not None:
-                delete_marker_header['x-object-sysmeta-replication-status'] \
-                    = replication_status
+            if replication_status:
+                delete_marker_header[header_mapping['replication-status'][
+                    "header"]] = replication_status
 
             return HTTPCreated(
                 request=req, etag="DELETEMARKER",
@@ -532,17 +530,12 @@ class ObjectController(BaseObjectController):
             req.environ['wsgi.input'], req.content_length)
 
         headers = self._prepare_headers(req)
-        if replication_status is not None:
-            headers['x-object-sysmeta-s3api-replication-status'] = \
-                replication_status
-
-        if retention_mode is not None:
-            headers['x-object-sysmeta-s3api-retention-mode'] = retention_mode
-
-        if retention_until_date is not None:
-            headers['x-object-sysmeta-s3api-retention-retainuntildate'] = \
-                retention_until_date
-
+        # Add specific headers listed to oio query
+        for key, value in oio_query.items():
+            key = key.replace("_", "-")
+            if header_mapping.get(key):
+                if header_mapping[key]["header"]:
+                    headers[header_mapping[key]["header"]] = value
         with closing_if_possible(data_source):
             resp = self._store_object(req, data_source, headers)
         if (resp.is_success and

@@ -24,12 +24,34 @@ from hashlib import sha256
 from swift.common import utils
 
 MULTIUPLOAD_SUFFIX = '+segments'
+MULTIUPLOAD_REPLICATION_PREFIX = 'repli+'
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # Content-Type by default at AWS, the official value being
 # "application/octet-stream"
 DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
 # Replicator default user agent
 REPLICATOR_USER_AGENT = "s3-replicator"
+
+
+MPU_PART_RE = re.compile('/[0-9]+$')
+# Used to forbid access on incomplete MPU on bucket destination
+MPU_PREFIX_RE = re.compile(
+    r'.+/' + re.escape(MULTIUPLOAD_REPLICATION_PREFIX) + r'[A-Za-z0-9_=-]+$')
+
+
+def is_mpu_part_upload_replication(req):
+    """Check if it is a part upload from the replicator
+
+    :param req: request
+    :type req: Request
+    :return: True if the request is about a replication of mpu part
+    :rtype: bool
+    """
+    return (
+        req.headers.environ.get('HTTP_X_AMZ_META_X_OIO_?IS_MPU_PART')
+        and req.from_replicator()
+        and MPU_PART_RE.search(req.object_name)
+    )
 
 
 def sysmeta_prefix(resource):

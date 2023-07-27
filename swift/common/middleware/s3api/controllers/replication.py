@@ -312,6 +312,16 @@ def replication_resolve_rules(app, req, configuration, metadata=None,
             req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_PENDING
 
 
+def replication_drop_rules(req):
+    """
+    Remove registered destination rules from request headers
+
+    :param req: initial request
+    """
+    req.headers.pop("X-Replication-Destinations", None)
+    req.headers.pop(OBJECT_REPLICATION_STATUS, None)
+
+
 class ReplicationController(Controller):
     """
     Handles the following APIs:
