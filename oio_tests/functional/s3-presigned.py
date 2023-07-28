@@ -14,9 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# FIXME(FVE): these tests can be included in the main test suite,
-# they are not OpenIO SDS specific.
-
 import random
 import requests
 import unittest
@@ -24,8 +21,8 @@ import unittest
 from botocore.exceptions import ClientError
 
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, get_boto3_client, \
-    random_str
-from six.moves.urllib_parse import quote, quote_plus
+    random_str, run_openiocli, CliError
+from urllib.parse import quote, quote_plus, urlparse
 
 
 class TestPresignedUrls(unittest.TestCase):
@@ -66,26 +63,13 @@ class TestPresignedUrls(unittest.TestCase):
     # Tests
     # -------------------------------------------
 
-    def _test_delete_object(self, client):
-        key = "to_be_deleted_%04d" % (random.randint(0, 9999), )
-        self.upload_random_data(self.bucket, key)
-        url = client.generate_presigned_url(
-            'delete_object', Params={"Bucket": self.bucket, "Key": key})
-        res = requests.delete(url)
-        self.assertEqual(204, res.status_code)
-        self.assertRaises(ClientError,
-                          self.client.head_object, Bucket=self.bucket, Key=key)
-
-    def test_delete_object_v2_sign(self):
-        sigv2_client = get_boto3_client(signature_version='s3')
-        return self._test_delete_object(sigv2_client)
-
-    def test_delete_object_v4_sign(self):
-        return self._test_delete_object(self.client)
-
-    def _test_upload_object(self, client):
+    def _test_presigned_object(self, client, key_prefix=None):
+        """
+        PUT, GET, DELETE object with presigned URLs.
+        """
         # Upload the object (with at least one space)
-        key = f"upload {random_str(32, chars=RANDOM_UTF8_CHARS)}"
+        key = f"{key_prefix or ''}upload " \
+            f"{random_str(32, chars=RANDOM_UTF8_CHARS)}"
         data = key.encode('utf-8')
         self.upload_random_data(self.bucket, key)
         url = client.generate_presigned_url(
@@ -96,29 +80,45 @@ class TestPresignedUrls(unittest.TestCase):
         # Check if object is present
         head_res = self.client.head_object(Bucket=self.bucket, Key=key)
         self.assertEqual(len(data), head_res['ContentLength'])
+        # Check if object really exists with its real name (make sure an
+        # eventual leading "/" is not stripped).
+        # Openio command will raise if object does not exist.
+        run_openiocli('object', 'show', self.bucket, key, account='AUTH_demo')
 
         # Check if object is accessible with path using plus as space
-        head_url = client.generate_presigned_url(
-            'head_object', Params={"Bucket": self.bucket, "Key": key})
-        self.assertIn(f'/{quote(key)}', head_url)
-        head_url = head_url.replace('%20', '+')
-        self.assertIn(f'/{quote_plus(key, safe="/")}', head_url)
-        head_res = requests.head(head_url)
-        self.assertEqual(200, head_res.status_code)
-        self.assertEqual(len(data), int(head_res.headers['Content-Length']))
+        get_url = client.generate_presigned_url(
+            'get_object', Params={"Bucket": self.bucket, "Key": key})
+        self.assertIn(f'/{quote(key)}', get_url)
+        get_url = get_url.replace('%20', '+')
+        self.assertIn(f'/{quote_plus(key, safe="/")}', urlparse(get_url).path)
+        get_res = requests.get(get_url)
+        self.assertEqual(200, get_res.status_code)
+        self.assertEqual(len(data), int(get_res.headers['Content-Length']))
 
         # Delete the object
-        try:
-            client.delete_object(Bucket=self.bucket, Key=key)
-        except Exception:
-            pass
+        delete_url = client.generate_presigned_url(
+            'delete_object', Params={"Bucket": self.bucket, "Key": key})
+        delete_res = requests.delete(delete_url)
+        self.assertEqual(204, delete_res.status_code)
+        # Prefer checking that object is deleted with other tool.
+        with self.assertRaises(CliError) as ctx:
+            run_openiocli(
+                'object', 'show', self.bucket, key, account='AUTH_demo')
+        self.assertIn(
+            "does not exist",
+            str(ctx.exception),
+        )
 
-    def test_upload_object_v2_sign(self):
+    def test_object_v2_sign(self):
         sigv2_client = get_boto3_client(signature_version='s3')
-        return self._test_upload_object(sigv2_client)
+        self._test_presigned_object(sigv2_client)
+        self._test_presigned_object(sigv2_client, key_prefix="/")
+        self._test_presigned_object(sigv2_client, key_prefix=".")
 
-    def test_upload_object_v4_sign(self):
-        return self._test_upload_object(self.client)
+    def test_object_v4_sign(self):
+        self._test_presigned_object(self.client)
+        self._test_presigned_object(self.client, key_prefix="/")
+        self._test_presigned_object(self.client, key_prefix=".")
 
 
 if __name__ == "__main__":
