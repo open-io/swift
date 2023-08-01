@@ -1544,9 +1544,9 @@ class TestS3ApiObj(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '204')
         self.assertEqual([
-            ('HEAD', '/v1/AUTH_test/bucket/object?symlink=get'),
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
+            ('HEAD', '/v1/AUTH_test/bucket/object?symlink=get'),
             ('DELETE', '/v1/AUTH_test/bucket/object'),
         ], self.swift.calls)
 

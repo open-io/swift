@@ -115,7 +115,9 @@
               </optional>
               <optional>
                 <element name="Filter">
-                  <ref name="Filter"/>
+                  <optional>
+                    <ref name="Filter"/>
+                  </optional>
                 </element>
               </optional>
               <optional>

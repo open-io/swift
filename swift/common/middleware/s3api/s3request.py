@@ -40,7 +40,8 @@ from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
 
 from swift.common.constraints import check_utf8, valid_api_version
 from swift.proxy.controllers.base import get_account_info, \
-    get_container_info, get_info_from_infocache, set_info_in_infocache
+    get_container_info, get_object_info, get_info_from_infocache, \
+    set_info_in_infocache
 from swift.common.request_helpers import check_path_header
 
 from swift.common.middleware.s3api.controllers import ServiceController, \
@@ -2152,6 +2153,38 @@ class S3Request(swob.Request):
             return info
         elif info['status'] == 404:
             raise NoSuchBucket(self.container_name)
+        elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
+            raise ServiceUnavailable(headers={
+                'Retry-After': str(info.get('Retry-After',
+                                            self.conf.retry_after))})
+        else:
+            raise InternalError(
+                'unexpected status code %d' % info['status'])
+
+    def get_object_info(self, app):
+        """
+        get_object_info will return a result dict of get_object_info
+        from the backend Swift.
+
+        :returns: a dictionary of object info from
+                  swift.controllers.base.get_object_info
+        :raises: NoSuchKey when the object doesn't exist
+        :raises: InternalError when the request failed without 404
+        """
+        if not self.is_authenticated:
+            self._authenticate(app)
+
+        query = {}
+        if self.version_id is not None:
+            query['version-id'] = self.version_id
+
+        sw_req = self.to_swift_req(
+            app, self.container_name, self.object_name, query=query,)
+        info = get_object_info(sw_req.environ, app, swift_source='S3')
+        if is_success(info['status']):
+            return info
+        elif info['status'] == 404:
+            raise NoSuchKey(self.object_name)
         elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
             raise ServiceUnavailable(headers={
                 'Retry-After': str(info.get('Retry-After',

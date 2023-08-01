@@ -23,7 +23,7 @@ from swift.common.middleware.s3api.bucket_db import BucketDbWrapper, \
     get_bucket_db
 from swift.common.middleware.s3api.controllers.replication import \
     BUCKET_REPLICATION_HEADER, dict_conf_to_xml, replication_xml_conf_to_dict,\
-    MAX_PRIORITY_NUMBER, MIN_PRIORITY_NUMBER
+    _optimize_replication_conf, MAX_PRIORITY_NUMBER, MIN_PRIORITY_NUMBER
 from swift.common.middleware.s3api.utils import \
     OBJECT_LOCK_ENABLED_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
@@ -72,20 +72,23 @@ REPLICATION_CONF_XML = (
     b'</ReplicationConfiguration>'
 )
 
-
 REPLICATION_CONF_DICT = {
-    "Role": "arn:aws:iam::329840991682:role/replicationRole",
-    "Rules": [
-        {
-            "ID": '2dfdcf571182407293d35b52959876e3',
+    "role": "arn:aws:iam::329840991682:role/replicationRole",
+    "rules": {
+        "2dfdcf571182407293d35b52959876e3": {
+            "ID": "2dfdcf571182407293d35b52959876e3",
             "Priority": 0,
             "Status": "Enabled",
             "DeleteMarkerReplication": {"Status": "Disabled"},
             "Filter": {"Tag": {"Key": "string", "Value": "string"}},
             "Destination": {"Bucket": "arn:aws:s3:::dest"},
         }
-    ],
+    },
+    "replications": [],
+    "deletions": [],
+    "use_tags": True,
 }
+
 REPLICATION_CONF_JSON = json.dumps(REPLICATION_CONF_DICT)
 BASIC_CONF = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
@@ -122,7 +125,10 @@ class TestS3ApiReplication(S3ApiTestCase):
             "HEAD",
             "/v1/AUTH_test/test-replication",
             HTTPNoContent,
-            {BUCKET_REPLICATION_HEADER: REPLICATION_CONF_JSON},
+            {
+                BUCKET_REPLICATION_HEADER: REPLICATION_CONF_JSON,
+                SYSMETA_VERSIONS_ENABLED: True
+            },
             None
         )
         self.swift.register(
@@ -175,9 +181,9 @@ class TestS3ApiReplication(S3ApiTestCase):
 
     def test_dict_conf_to_xml(self):
         conf_dict_test = {
-            "Role": "arn:aws:iam::329840991682:role/replicationRole",
-            "Rules": [
-                {
+            "role": "arn:aws:iam::329840991682:role/replicationRole",
+            "rules": {
+                "d4e1ba32c7fe49f0bb6062838ae48bb2": {
                     "ID": 'd4e1ba32c7fe49f0bb6062838ae48bb2',
                     "Priority": 0,
                     "Status": "Enabled",
@@ -185,7 +191,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                     "Filter": {"Tag": {"Key": "string", "Value": "string"}},
                     "Destination": {"Bucket": "arn:aws:s3:::replication-dst"},
                 },
-                {
+                "2dfdcf571182407293d35b52959876e3": {
                     "ID": '2dfdcf571182407293d35b52959876e3',
                     "Priority": 0,
                     "Status": "Enabled",
@@ -203,10 +209,82 @@ class TestS3ApiReplication(S3ApiTestCase):
                     },
                     "Destination": {"Bucket": "arn:aws:s3:::replication-dst"},
                 },
-            ],
+            },
+            "replications": [],
+            "deletions": [],
+            "use_tags": False
         }
         xml_conf = dict_conf_to_xml(conf_dict_test)
         self.assertEqual(tostring(fromstring(EXPECTED)), xml_conf)
+
+    def test_optimize_configuration(self):
+        conf = {
+            "Role": "arn:aws:iam::329840991682:role/replicationRole",
+            "Rules": [
+                {
+                    "ID": "rule1",
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {
+                        "And": {
+                            "Prefix": "string",
+                            "Tags": [
+                                {"Key": "string", "Value": "string"},
+                                {"Key": "string", "Value": "string"},
+                            ],
+                        },
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
+                },
+                {
+                    "ID": "rule2",
+                    "Priority": 4,
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Enabled"},
+                    "Filter": {
+                        "Prefix": "string",
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
+                },
+                {
+                    "ID": "rule3",
+                    "Status": "Disabled",
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {
+                        "Tag": {"Key": "key", "Value": "value"},
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::bucket2"},
+                },
+                {
+                    "ID": "rule4",
+                    "Status": "Enabled",
+                    "Priority": 42,
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {
+                        "And": {
+                            "Prefix": "string",
+                            "Tags": [
+                                {"Key": "string", "Value": "string"},
+                                {"Key": "string", "Value": "string"},
+                            ],
+                        },
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
+                },
+            ]
+        }
+        optimized = _optimize_replication_conf(conf)
+        self.assertIn("role", optimized)
+        self.assertEqual(optimized["role"],
+                         "arn:aws:iam::329840991682:role/replicationRole")
+        self.assertIn("replications", optimized)
+        self.assertEqual(optimized["replications"],
+                         {"arn:aws:s3:::bucket1": ["rule4", "rule2", "rule1"]})
+        self.assertIn("deletions", optimized)
+        self.assertEqual(optimized["deletions"],
+                         {"arn:aws:s3:::bucket1": ["rule4", "rule2"]})
+        self.assertIn("use_tags", optimized)
+        self.assertEqual(optimized["use_tags"], True)
 
     def test_GET_no_configuration(self):
         req = Request.blank('/test-replication-no-conf?replication',
@@ -304,6 +382,8 @@ class TestS3ApiReplication(S3ApiTestCase):
                                 "Date": self.get_date_header(),
                             })
         status, _, body = self.call_s3api(req)
+
+        print(body)
         self.assertEqual("200 OK", status)
         self.assertFalse(body)  # empty -> False
 
@@ -1158,7 +1238,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                             HTTPNoContent, {}, None)
         self.swift.register(
             'HEAD', '/v1/AUTH_test/test-replication-lock', HTTPNoContent,
-            {OBJECT_LOCK_ENABLED_HEADER: True},
+            {OBJECT_LOCK_ENABLED_HEADER: True, SYSMETA_VERSIONS_ENABLED: True},
             None)
         self.swift.register('HEAD', '/v1/AUTH_test/dest', HTTPOk,
                             {SYSMETA_VERSIONS_ENABLED: True}, None)

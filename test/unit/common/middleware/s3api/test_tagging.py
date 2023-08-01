@@ -108,6 +108,10 @@ class TestS3ApiTagging(S3ApiTestCase):
                             None)
         self.swift.register('POST', '/v1/AUTH_test/bucket/object',
                             swob.HTTPAccepted, {}, None)
+        self.swift.register('HEAD', '/bucket/object',
+                            swob.HTTPAccepted, {}, None)
+        self.swift.register('HEAD', '/bucket/missingobject',
+                            swob.HTTPAccepted, {}, None)
 
     def _assert_error(self, req, expected_status, expected_errcode):
         status, _headers, body = self.call_s3api(req)

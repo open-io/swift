@@ -38,6 +38,9 @@ BUCKET_REPLICATION_HEADER = sysmeta_header("bucket", "replication")
 HTTP_HEADER_REPLICATION_STATUS = 'X-Amz-Meta-X-Oio-?replication-status'
 OBJECT_REPLICATION_STATUS = sysmeta_header("object", "replication-status")
 
+REPLICATION_CALLBACK = "swift.callback.replication.apply"
+OBJECT_REPLICATION_PENDING = "PENDING"
+OBJECT_REPLICATION_REPLICA = "REPLICA"
 
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
@@ -86,6 +89,10 @@ def dict_conf_to_xml(conf, root="ReplicationConfiguration"):
                     _to_xml(data[i], element=subelement)
 
     root_elem = Element(root)
+    conf = {
+        "Role": conf["role"],
+        "Rules": [r for _, r in conf["rules"].items()]
+    }
     _to_xml(conf, element=root_elem)
     body = tostring(root_elem)
     return body
@@ -149,7 +156,7 @@ def get_filters(filter_xml_item):
         # Get prefix and tag defined at root item level
         prefix = filter_xml_item.find("Prefix")
         if prefix is not None:
-            d_filters["Prefix"] = prefix.text
+            d_filters["Prefix"] = prefix.text or ""
         tags = get_tags(filter_xml_item.findall("Tag"), tag_keys=tag_keys)
         if tags:
             d_filters["Tag"] = tags[0]
@@ -199,6 +206,102 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
             }
         )
     return out
+
+
+def _optimize_replication_conf(configuration):
+    rules = {}
+    replications = {}
+    deletions = {}
+    use_tags = False
+
+    dest_priorities = {}
+
+    for rule in configuration["Rules"]:
+        rule_id = rule["ID"]
+        rules[rule_id] = rule
+        if rule["Status"] != "Enabled":
+            continue
+
+        destination = rule["Destination"]
+        bucket = destination["Bucket"]
+        priority = rule.get("Priority", -1)
+        dest_rules = replications.setdefault(bucket, [])
+        deletion_marker = \
+            rule["DeleteMarkerReplication"]["Status"] == "Enabled"
+        dest_rules.append((rule_id, priority, deletion_marker))
+
+        rule_filter = rule.get("Filter", {})
+        and_filter = rule_filter.get("And", {})
+        use_tags |= "Tag" in rule_filter or "Tags" in and_filter
+
+        # Ensure all priorities are unique
+        priorities = dest_priorities.setdefault(bucket, [])
+        if priority >= 0:
+            if priority in priorities:
+                raise InvalidRequest(f"Found duplicate priority {rule[1]}")
+            priorities.append(priority)
+
+    for dest, dest_rules in replications.items():
+        # sort rules per priority
+        dest_rules.sort(key=lambda rule: rule[1], reverse=True)
+
+        # Get all rules until the last one enabling delete marker replication
+        for idx, rule in reversed(list(enumerate(dest_rules))):
+            if rule[2]:
+                deletions[dest] = [r[0] for r in dest_rules[:idx + 1]]
+                break
+
+        replications[dest] = [r[0] for r in dest_rules]
+
+    optimized = {
+        "role": configuration["Role"],
+        "rules": rules,
+        "replications": replications,
+        "deletions": deletions,
+        "use_tags": use_tags,
+    }
+
+    return optimized
+
+
+def replication_resolve_rules(app, req, configuration, metadata=None,
+                              delete=False, tags=None,
+                              ensure_replicated=False):
+    """
+    Get a list of destination for an object
+    :param req: initial request
+    :param configuration: replication configuration
+    :param key: object key
+    :param metadata: object metadata
+    :param xml_tags: tagging to use for rule resolution
+    :param is_deletion: indicate if the object is being deleted
+    :param ensure_replicated: verify if we are dealing with a replicated object
+    """
+    replication_cb = req.environ.get(REPLICATION_CALLBACK)
+    if replication_cb:
+        if metadata is None:
+            object_info = req.get_object_info(app)
+            metadata = object_info.get("sysmeta", {})
+
+        destination_buckets = replication_cb(
+            configuration=configuration,
+            key=req.key,
+            metadata=metadata,
+            xml_tags=tags,
+            is_deletion=delete,
+            ensure_replicated=ensure_replicated
+        )
+
+        # Remove 'arn:aws:s3:::' prefix from bucket name
+        if destination_buckets:
+            req.headers["X-Replication-Destinations"] = ";".join(
+                [
+                    b[len(DEST_BUCKET_PREFIX):]
+                    if b.startswith(DEST_BUCKET_PREFIX) else b
+                    for b in destination_buckets
+                ]
+            )
+            req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_PENDING
 
 
 class ReplicationController(Controller):
@@ -418,10 +521,15 @@ class ReplicationController(Controller):
                         token, self.conf.token_prefix, account, container):
                     raise InvalidToken()
 
+        versioning = info.get('sysmeta', {}).get('versions-enabled', False)
+        if not versioning:
+            raise InvalidRequest('Bucket must have versioning enabled.')
+
         config = req.xml(MAX_REPLICATION_BODY_SIZE)
         # Validation
         self._validate_configuration(config, req)
         dict_conf = replication_xml_conf_to_dict(config)
+        dict_conf = _optimize_replication_conf(dict_conf)
         json_conf = json.dumps(dict_conf)
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
         resp = req.get_response(self.app, method="POST")

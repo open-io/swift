@@ -386,14 +386,18 @@ class ObjectController(BaseObjectController):
         policy_index = req.headers.get('X-Backend-Storage-Policy-Index',
                                        container_info['storage_policy'])
         stgpol = self._stgpol_from_policy_index(policy_index)
+        replication_destinations = req.headers.get(
+            "x-replication-destinations")
         headers = self._prepare_headers(req)
-        return self._post_object(req, headers, stgpol)
+        return self._post_object(
+            req, headers, stgpol,
+            replication_destinations=replication_destinations)
 
     def _stgpol_from_policy_index(self, policy_index):
         # TODO actually convert policy_index to oio stgpol
         return 'SINGLE'
 
-    def _post_object(self, req, headers, stgpol):
+    def _post_object(self, req, headers, stgpol, **kwargs):
         # TODO do something with stgpol
         metadata = self.load_object_metadata(headers)
         oio_headers = {REQID_HEADER: self.trans_id}
@@ -408,7 +412,7 @@ class ObjectController(BaseObjectController):
                 self.account_name, self.container_name, self.object_name,
                 metadata, clear=clear, headers=oio_headers,
                 version=obj_version_from_env(req.environ),
-                cache=oio_cache, perfdata=perfdata)
+                cache=oio_cache, perfdata=perfdata, **kwargs)
         except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
             return HTTPNotFound(request=req)
         resp = HTTPAccepted(request=req)
@@ -459,6 +463,8 @@ class ObjectController(BaseObjectController):
         oio_query = req.environ.setdefault('oio.query', {})
         create_delete_marker = oio_query.get('create_delete_marker')
         replication_status = oio_query.pop('replication_status', None)
+        retention_mode = oio_query.pop('retention_mode', None)
+        retention_until_date = oio_query.pop('retention_retainuntildate', None)
 
         if create_delete_marker:
             # Only S3 object creations allow metadata to be sent freely.
@@ -529,6 +535,13 @@ class ObjectController(BaseObjectController):
         if replication_status is not None:
             headers['x-object-sysmeta-s3api-replication-status'] = \
                 replication_status
+
+        if retention_mode is not None:
+            headers['x-object-sysmeta-s3api-retention-mode'] = retention_mode
+
+        if retention_until_date is not None:
+            headers['x-object-sysmeta-s3api-retention-retainuntildate'] = \
+                retention_until_date
 
         with closing_if_possible(data_source):
             resp = self._store_object(req, data_source, headers)
@@ -712,12 +725,15 @@ class ObjectController(BaseObjectController):
                 kwargs['version'])
 
         bucket_name = req.environ.get('s3api.bucket')
+        replication_destinations = \
+            req.headers.get("x-replication-destinations")
         if bucket_name:
             # In case a shard is being created, save the name of the S3 bucket
             # in a container property. This will be used when aggregating
             # container statistics to make bucket statistics.
             ct_props['system'][BUCKET_NAME_PROP] = bucket_name
         try:
+
             _chunks, size, checksum, meta = self._object_create(
                 self.account_name, self.container_name,
                 obj_name=self.object_name, file_or_path=data_source,
@@ -727,6 +743,7 @@ class ObjectController(BaseObjectController):
                 properties_callback=(
                     lambda: self.load_object_metadata(self._get_footers(req))),
                 cache=oio_cache, perfdata=perfdata,
+                replication_destinations=replication_destinations,
                 **kwargs)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
@@ -828,6 +845,7 @@ class ObjectController(BaseObjectController):
 
     def _delete_object(self, req):
         storage = self.app.storage
+        headers = self._prepare_headers(req)
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
@@ -837,13 +855,19 @@ class ObjectController(BaseObjectController):
         oio_version = obj_version_from_env(req.environ)
         create_delete_marker = req.environ.get(
             'oio.query', {}).get('create_delete_marker')
+
+        metadata = self.load_object_metadata(headers)
+        replication_destinations = req.headers.get(
+            "x-replication-destinations")
         try:
             del_marker, oio_version = storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
                 version=oio_version,
                 create_delete_marker=create_delete_marker,
                 bypass_governance=bypass_governance,
-                headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+                headers=oio_headers, cache=oio_cache, perfdata=perfdata,
+                properties=metadata,
+                replication_destinations=replication_destinations)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
         except exceptions.NoSuchObject:

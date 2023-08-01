@@ -84,6 +84,8 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.replication import \
+    replication_resolve_rules
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
@@ -934,6 +936,14 @@ class UploadController(Controller):
 
         too_small_message = ('s3api requires that each segment be at least '
                              '%d bytes' % self.conf.min_segment_size)
+
+        info = req.get_container_info(self.app)
+        sysmeta_info = info.get("sysmeta", {})
+        replication_resolve_rules(
+            self.app,
+            req,
+            sysmeta_info.get("s3api-replication"),
+        )
 
         def size_checker(manifest):
             # Check the size of each segment except the last and make sure

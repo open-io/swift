@@ -308,6 +308,7 @@ def headers_to_object_info(headers, status_int=HTTP_OK):
             'length': headers.get('content-length'),
             'type': headers.get('content-type'),
             'etag': headers.get('etag'),
+            'slo': headers.get('x-static-large-object', 'False'),
             'meta': meta,
             'sysmeta': sysmeta,
             'transient_sysmeta': transient_sysmeta
@@ -402,6 +403,7 @@ def get_object_info(env, app, path=None, swift_source=None):
     """
     (version, account, container, obj) = \
         split_path(path or env['PATH_INFO'], 4, 4, True)
+
     info = _get_object_info(app, env, account, container, obj,
                             swift_source=swift_source)
     if info:
@@ -825,7 +827,7 @@ def _get_info_from_caches(app, env, account, container=None):
     return info
 
 
-def _prepare_pre_auth_info_request(env, path, swift_source):
+def _prepare_pre_auth_info_request(env, path, swift_source, query_string=''):
     """
     Prepares a pre authed request to obtain info using a HEAD.
 
@@ -835,8 +837,14 @@ def _prepare_pre_auth_info_request(env, path, swift_source):
     :returns: the pre authed request
     """
     # Set the env for the pre_authed call without a query string
-    newenv = make_pre_authed_env(env, 'HEAD', path, agent='Swift',
-                                 query_string='', swift_source=swift_source)
+    newenv = make_pre_authed_env(
+        env,
+        'HEAD',
+        path,
+        agent='Swift',
+        query_string=query_string,
+        swift_source=swift_source
+    )
     # This is a sub request for container metadata- drop the Origin header from
     # the request so the it is not treated as a CORS request.
     newenv.pop('HTTP_ORIGIN', None)
@@ -901,7 +909,8 @@ def _get_object_info(app, env, account, container, obj, swift_source=None):
         return info
     # Not in cache, let's try the object servers
     path = '/v1/%s/%s/%s' % (account, container, obj)
-    req = _prepare_pre_auth_info_request(env, path, swift_source)
+    req = _prepare_pre_auth_info_request(env, path, swift_source,
+                                         query_string=None)
     # *Always* allow reserved names for get-info requests -- it's on the
     # caller to keep the result private-ish
     req.headers['X-Backend-Allow-Reserved-Names'] = 'true'

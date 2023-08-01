@@ -33,6 +33,8 @@ from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.replication import \
+    replication_resolve_rules
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -257,6 +259,15 @@ class ObjectController(Controller):
         object_lock_populate_sysmeta_headers(
             req.headers, sysmeta_info, req_timestamp)
 
+        # Replication
+        replication_resolve_rules(
+            self.app,
+            req,
+            sysmeta_info.get("s3api-replication"),
+            metadata=req.headers,
+            tags=req.headers.get(OBJECT_TAGGING_HEADER),
+        )
+
         req.check_copy_source(self.app)
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason
@@ -331,8 +342,8 @@ class ObjectController(Controller):
             check_iam_bypass(lambda x, req: None)(None, req)
             header = sysmeta_header('object', 'retention-bypass-governance')
             req.headers[header] = bypass_governance
+        container_info = req.get_container_info(self.app)
         if version_id not in ('null', None):
-            container_info = req.get_container_info(self.app)
             if not container_info.get(
                     'sysmeta', {}).get('versions-container', ''):
                 # Versioning has never been enabled
@@ -353,6 +364,14 @@ class ObjectController(Controller):
             # FIXME(FVE): only do this when allow_oio_versioning is true
             elif self._versioning_enabled(req):
                 query.pop('multipart-manifest', None)
+
+            sysmeta_info = container_info.get("sysmeta", {})
+            replication_resolve_rules(
+                self.app,
+                req,
+                sysmeta_info.get("s3api-replication"),
+                delete=True
+            )
 
             resp = req.get_response(self.app, query=query)
             if query.get('multipart-manifest') and resp.status_int == HTTP_OK:

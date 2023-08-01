@@ -22,6 +22,8 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.replication import \
+    replication_resolve_rules
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -344,8 +346,9 @@ class ObjectLockLegalHoldController(Controller):
     def PUT(self, req):
         lock_id = 'legal-hold'
         body = req.xml(10000)
+        info = req.get_container_info(self.app)
+        sysmeta_info = info.get("sysmeta", {})
         try:
-            info = req.get_container_info(self.app)
             global_lock = filter_objectlock_meta(info['sysmeta'],
                                                  's3api-bucket-')
 
@@ -359,6 +362,14 @@ class ObjectLockLegalHoldController(Controller):
                 req.headers[header] = val
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
+
+        # Retrieve object metadata
+        replication_resolve_rules(
+            self.app,
+            req,
+            sysmeta_info.get("s3api-replication"),
+            ensure_replicated=True,
+        )
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 202, HTTPOk)
 
@@ -436,8 +447,9 @@ class ObjectLockRetentionController(Controller):
         lock_id = 'retention'
 
         body = req.xml(10000)
+        info = req.get_container_info(self.app)
+        sysmeta_info = info.get("sysmeta", {})
         try:
-            info = req.get_container_info(self.app)
             global_lock = filter_objectlock_meta(info['sysmeta'],
                                                  's3api-bucket-')
 
@@ -496,6 +508,14 @@ class ObjectLockRetentionController(Controller):
                 req.headers[header] = val
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
+
+        # Retrieve object metadata
+        replication_resolve_rules(
+            self.app,
+            req,
+            sysmeta_info.get("s3api-replication"),
+            ensure_replicated=True,
+        )
         resp = req.get_response(self.app, method='POST')
         resp.status = 200
         return resp

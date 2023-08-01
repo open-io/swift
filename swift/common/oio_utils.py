@@ -165,7 +165,9 @@ def extract_oio_headers(fnc):
     _header_mapping = {
         "version-id": ("new_version", str),
         "delete-marker": ("create_delete_marker", config_true_value),
-        "replication-status": ("replication_status", str)
+        "replication-status": ("replication_status", str),
+        "retention-mode": ("retention_mode", str),
+        "retention-retainuntildate": ("retention_retainuntildate", str),
     }
 
     @wraps(fnc)

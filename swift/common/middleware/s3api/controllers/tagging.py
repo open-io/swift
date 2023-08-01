@@ -22,6 +22,8 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_storage_domain, \
     set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.replication import \
+    replication_resolve_rules
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -191,6 +193,16 @@ class TaggingController(Controller):
 
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = body
+            info = req.get_container_info(self.app)
+            sysmeta_info = info.get("sysmeta", {})
+            # Retrieve object metadata
+            replication_resolve_rules(
+                self.app,
+                req,
+                sysmeta_info.get("s3api-replication"),
+                tags=req.headers.get(OBJECT_TAGGING_HEADER),  # use new tags
+                ensure_replicated=True
+            )
         else:
             req.headers[BUCKET_TAGGING_HEADER] = body
         resp = req.get_response(self.app, 'POST',
@@ -218,8 +230,19 @@ class TaggingController(Controller):
         # Send empty header to remove any previous value.
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = ""
+
+            # Get configut
+            info = req.get_container_info(self.app)
+            sysmeta_info = info.get("sysmeta", {})
+            replication_resolve_rules(
+                self.app,
+                req,
+                sysmeta_info.get("s3api-replication"),
+                ensure_replicated=True
+            )
         else:
             req.headers[BUCKET_TAGGING_HEADER] = ""
+
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
         if resp.status_int == 202:

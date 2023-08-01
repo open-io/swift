@@ -37,7 +37,7 @@ start =
       element ExistingObjectReplication {
         element Status { "Enabled" | "Disabled" }
       }? &
-      element Filter { Filter }? &
+      element Filter { Filter? }? &
       element ID { xsd:string }? &
       element Prefix { xsd:string }? &
       element Priority { xsd:integer }? &

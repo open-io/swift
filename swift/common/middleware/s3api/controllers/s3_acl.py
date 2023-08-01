@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.s3api.controllers.replication import \
+    replication_resolve_rules
 from swift.common.utils import public
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -66,6 +68,15 @@ class S3AclController(Controller):
         Handles PUT Bucket acl and PUT Object acl.
         """
         # ACLs will be set as sysmeta
+        if req.is_object_request:
+            info = req.get_container_info(self.app)
+            sysmeta_info = info.get("sysmeta", {})
+            replication_resolve_rules(
+                self.app,
+                req,
+                sysmeta_info.get("s3api-replication"),
+                ensure_replicated=True,
+            )
         req.get_response(self.app, 'POST')
 
         return HTTPOk()
