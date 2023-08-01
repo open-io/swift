@@ -1,11 +1,13 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 # "default" is administrator
-AWSA1ADM="aws --profile default --endpoint-url http://localhost:5000"
+AWSA1ADM="aws --profile default --endpoint-url ${ENDPOINT_URL}"
 # "user1" is only allowed some operations
-AWSA1U1="aws --profile user1 --endpoint-url http://localhost:5000"
+AWSA1U1="aws --profile user1 --endpoint-url ${ENDPOINT_URL}"
 # "user2" has no IAM rule
-AWSA1U2="aws --profile user2 --endpoint-url http://localhost:5000"
+AWSA1U2="aws --profile user2 --endpoint-url ${ENDPOINT_URL}"
 
 SHARED_BUCKET="sharedbucket"
 

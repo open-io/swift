@@ -3,7 +3,9 @@
 export OIO_NS="${1:-OPENIO}"
 export OIO_ACCOUNT="${2:-AUTH_demo}"
 
-AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
+source $(pwd)/$(dirname "$0")/common.sh
+
+AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 
 set -e
 #set -x

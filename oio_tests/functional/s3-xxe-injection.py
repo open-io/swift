@@ -23,7 +23,8 @@ import botocore
 
 from swift.common.utils import md5
 
-from oio_tests.functional.common import get_boto3_client, random_str
+from oio_tests.functional.common import get_boto3_client, random_str, \
+    STORAGE_DOMAIN
 
 
 class TestS3XxeInjection(unittest.TestCase):
@@ -205,7 +206,7 @@ class TestS3XxeInjection(unittest.TestCase):
             'Access-Control-Request-Method': 'PUT'
         }
         resp = requests.options(
-            f'http://{self.bucket}.localhost:5000', headers=headers)
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000', headers=headers)
         self.assertEqual(403, resp.status_code)
         self.assertNotIn(b'xxe', resp.content)
         self.assertNotIn(b'donotreadme', resp.content)
@@ -235,7 +236,7 @@ class TestS3XxeInjection(unittest.TestCase):
         self.assertNotIn(b'donotreadme', resp.content)
 
         try:
-            _lifecycle = self.client.get_bucket_lifecycle_configuration(
+            self.client.get_bucket_lifecycle_configuration(
                 Bucket=self.bucket)
             self.fail('Now it is fixed')
         except botocore.parsers.ResponseParserError:  # FIXME(adu)
@@ -480,7 +481,7 @@ class TestS3XxeInjection(unittest.TestCase):
         self.assertNotIn(b'donotreadme', resp.content)
 
         try:
-            _tagging = self.client.get_bucket_tagging(Bucket=self.bucket)
+            self.client.get_bucket_tagging(Bucket=self.bucket)
             self.fail('Now it is fixed')
         except botocore.parsers.ResponseParserError:  # FIXME(adu)
             # self.assertNotIn(b'xxe', resp.content)

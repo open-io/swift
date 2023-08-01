@@ -1,5 +1,8 @@
 #!/bin/bash
 
+STORAGE_DOMAIN="localhost"
+ENDPOINT_URL="http://${STORAGE_DOMAIN}:5000"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NO_COLOR='\033[0m'
@@ -173,7 +176,7 @@ function configure_s3cmd() {
 access_key = demo:demo
 bucket_location = us-east-1
 default_mime_type = binary/octet-stream
-host_base = localhost:5000
+host_base = ${STORAGE_DOMAIN}:5000
 host_bucket = no
 multipart_chunk_size_mb = 5
 multipart_max_chunks = 10000

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 # Print line numbers, usefull for debugging
 #PS4='${LINENO}:'
 
@@ -7,7 +9,7 @@ export OIO_NS="${1:-OPENIO}"
 export OIO_ACCOUNT="${2:-AUTH_demo}"
 
 # "default" is administrator
-AWSA1ADM="aws --profile default --endpoint-url http://localhost:5000"
+AWSA1ADM="aws --profile default --endpoint-url ${ENDPOINT_URL}"
 
 set -e
 set -x

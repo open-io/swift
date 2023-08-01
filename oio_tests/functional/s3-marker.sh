@@ -1,6 +1,8 @@
 #!/bin/bash
 
-AWS="aws --endpoint-url http://localhost:5000"
+source $(pwd)/$(dirname "$0")/common.sh
+
+AWS="aws --endpoint-url ${ENDPOINT_URL}"
 BUCKET="bucket-${RANDOM}"
 
 set -e

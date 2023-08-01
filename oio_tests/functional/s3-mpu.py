@@ -23,7 +23,8 @@ import unittest
 from urllib.parse import quote
 
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
-    run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client
+    run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client, \
+    STORAGE_DOMAIN
 
 
 ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
@@ -544,7 +545,7 @@ class TestS3Mpu(unittest.TestCase):
 
         # Initiate MPU
         resp = requests.post(
-            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploads',
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/{urlencoded_key}?uploads',
             headers={"x-amz-acl": "public-read-write"})
         self.assertEqual(200, resp.status_code)
         self.assertIn(
@@ -558,7 +559,7 @@ class TestS3Mpu(unittest.TestCase):
 
         # List Multipart Uploads
         resp = requests.get(
-            f'http://{self.bucket}.localhost:5000/?uploads&prefix={urlencoded_key}')
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?uploads&prefix={urlencoded_key}')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
             b'<Prefix>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Prefix>',
@@ -568,7 +569,7 @@ class TestS3Mpu(unittest.TestCase):
             resp.content)
         # List Multipart Uploads (with url encoding)
         resp = requests.get(
-            f'http://{self.bucket}.localhost:5000/?uploads&prefix={urlencoded_key}&encoding-type=url')
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?uploads&prefix={urlencoded_key}&encoding-type=url')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
             b'<Prefix>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Prefix>',
@@ -579,27 +580,27 @@ class TestS3Mpu(unittest.TestCase):
 
         # Upload Part
         resp = requests.put(
-            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}&partNumber=1',
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/{urlencoded_key}?uploadId={upload_id}&partNumber=1',
             data=b'a'*5242880)
         self.assertEqual(200, resp.status_code)
 
         # List Parts
         resp = requests.get(
-            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}')
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/{urlencoded_key}?uploadId={upload_id}')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
             b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
             resp.content)
         # List Parts (with url encoding)
         resp = requests.get(
-            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}&encoding-type=url')
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/{urlencoded_key}?uploadId={upload_id}&encoding-type=url')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
             b'<Key>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Key>',
             resp.content)
 
         resp = requests.post(
-            f'http://{self.bucket}.localhost:5000/{urlencoded_key}?uploadId={upload_id}',
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/{urlencoded_key}?uploadId={upload_id}',
             data="""
 <CompleteMultipartUpload>
     <Part>
@@ -609,9 +610,9 @@ class TestS3Mpu(unittest.TestCase):
 </CompleteMultipartUpload>
 """)
         self.assertEqual(200, resp.status_code)
-        self.assertIn(
-            b'<Location>http://' + self.bucket.encode('utf-8') + b'.localhost:5000/object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md</Location>',
-            resp.content)
+        obj_url = f"http://{self.bucket}.{STORAGE_DOMAIN}:5000/object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.md"
+        location = '<Location>' + obj_url + '</Location>'
+        self.assertIn(bytes(location.encode('utf-8')), resp.content)
         self.assertIn(
             b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
             resp.content)
@@ -623,7 +624,7 @@ class TestS3Mpu(unittest.TestCase):
         client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
 
         resp = requests.get(
-            f'http://{self.bucket}.localhost:5000/test?uploadId={urlencoded_upload_id}')
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/test?uploadId={urlencoded_upload_id}')
         self.assertEqual(404, resp.status_code)
         self.assertIn(b'<Code>NoSuchUpload</Code>', resp.content)
         self.assertIn(

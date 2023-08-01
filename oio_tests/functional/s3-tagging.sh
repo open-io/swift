@@ -1,8 +1,9 @@
 #!/bin/bash
 
-GW_NETLOC="localhost:5000"
-AWS="aws --profile default --endpoint-url http://${GW_NETLOC} --no-verify-ssl"
-AWS2="aws --profile a2adm --endpoint-url http://${GW_NETLOC} --no-verify-ssl"
+source $(pwd)/$(dirname "$0")/common.sh
+
+AWS="aws --profile default --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
+AWS2="aws --profile a2adm --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 BUCKET="bucket0-${RANDOM}"
 OBJ_SRC="/etc/resolv.conf"
 

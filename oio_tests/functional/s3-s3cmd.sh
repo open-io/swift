@@ -1,7 +1,9 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 S3CMD="s3cmd"
-AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
+AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 
 BUCKET=bucket-$RANDOM
 

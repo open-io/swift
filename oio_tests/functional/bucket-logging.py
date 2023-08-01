@@ -24,7 +24,7 @@ import unittest
 from cysystemd.reader import JournalReader, JournalOpenMode, Rule
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api, run_openiocli
+    run_awscli_s3api, run_openiocli, STORAGE_DOMAIN
 
 
 LOGGING_STATUS = {
@@ -186,11 +186,9 @@ class TestBucketLogging(unittest.TestCase):
             + r' "' + method.upper() + r' ' + re.escape(path) \
             + r' HTTP\/1\.0" ' + str(status_int) + r' ' + error_code \
             + r' (-|[0-9]+) (-|[0-9]+) [0-9]+ [0-9]+ "-" ' \
-            + r'"aws-cli\/[0-9]{1,3}(\.[0-9]{1,3}){1,2} ' \
-            + r'Python\/[0-9]{1,3}(\.[0-9]{1,3}){1,2} ' \
-            + r'Linux\/[0-9]{1,3}(\.[0-9]{1,3}){1,2}[0-9a-z\-]+ ' \
+            + r'"aws-cli\/[0-9]{1,3}(\.[0-9]{1,3}){1,2}.*' \
             + r'botocore\/[0-9]{1,3}(\.[0-9]{1,3}){1,2}" - - SigV[24] - ' \
-            + r'AuthHeader ' + self.bucket + '\.localhost:5000 - -$'
+            + r'AuthHeader ' + self.bucket + r'\.' + STORAGE_DOMAIN + r':5000 - -$'
         try:
             match = re.match(regex, log_message)
             self.assertIsNotNone(

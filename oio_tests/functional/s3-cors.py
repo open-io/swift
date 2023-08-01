@@ -18,10 +18,9 @@ import requests
 import unittest
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api
+    run_awscli_s3api, ENDPOINT_URL
 
 
-URL = "http://localhost:5000/"
 LIST_PARAMS = [
     "",  # No params, just to make requests on the bucket/object
     "?acl",
@@ -74,7 +73,7 @@ class TestS3Cors(unittest.TestCase):
             "Access-Control-Request-Method": action,
             "Origin": origin,
         }
-        req = f"{URL}{self.bucket_name}/{suffix}"
+        req = f"{ENDPOINT_URL}/{self.bucket_name}/{suffix}"
         response = requests.options(req, headers=headers)
 
         self.assertEqual(expected_status_code, response.status_code)

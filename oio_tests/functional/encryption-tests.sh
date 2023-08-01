@@ -1,12 +1,14 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 # This script expects a swift gateway with encryption middleware.
 
 export OIO_NS="${OIO_NS:-OPENIO}"
 # We suppose the gateway is using tempauth and the user is "demo:demo"
 export OIO_ACCOUNT="AUTH_demo"
 
-AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
+AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 BUCKET=bucket-enc-$RANDOM
 ETAG_REGEX='s/(.*ETag.*)([[:xdigit:]]{32})(.*)/\2/p'
 WORKDIR=$(mktemp -d -t encryption-tests-XXXX)

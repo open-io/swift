@@ -1,4 +1,7 @@
 #!/bin/bash
+
+source $(pwd)/$(dirname "$0")/common.sh
+
 set -e
 
 export OIO_NS="${1:-OPENIO}"
@@ -10,7 +13,7 @@ BUCKET_3=ccc${RANDOM}
 BUCKET_4=ddd${RANDOM}
 SUBPATH=${RANDOM}
 
-AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
+AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 REDIS_CLI="redis-cli"
 
 ${AWS} s3api create-bucket --bucket ${BUCKET_1}

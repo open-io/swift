@@ -28,7 +28,8 @@ RANDOM_CHARS = string.ascii_lowercase + string.digits
 RANDOM_UTF8_CHARS = (RANDOM_CHARS + string.punctuation + 'âäçéèêëïîôöùûüÿæœ' +
                      'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ' + '🐛🐍💻💩👉🚪😂❤️🤣👍😭🙏😘🥰😍😊')
 STANDARD_IA_DOMAIN = 'standard.ia'
-ENDPOINT_URL = "http://localhost:5000"
+STORAGE_DOMAIN = "localhost"
+ENDPOINT_URL = f"http://{STORAGE_DOMAIN}:5000"
 
 
 def get_boto3_client(endpoint_url=ENDPOINT_URL,
@@ -51,7 +52,7 @@ def random_str(size, chars=RANDOM_CHARS):
 
 def run_awscli(service, *params, storage_domain=None, profile=None):
     if not storage_domain:
-        storage_domain = 'localhost'
+        storage_domain = STORAGE_DOMAIN
     cmd = ('aws', '--endpoint-url', 'http://%s:5000' % storage_domain)
     if profile:
         cmd += ('--profile', profile)

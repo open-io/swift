@@ -22,7 +22,7 @@ import unittest
 
 from botocore.exceptions import ClientError
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api, get_boto3_client
+    run_awscli_s3api, get_boto3_client, ENDPOINT_URL, STORAGE_DOMAIN
 
 
 def parse_iso8601(val):
@@ -89,13 +89,13 @@ class TestS3BasicTest(unittest.TestCase):
         )
 
     def test_landing_page(self):
-        resp = requests.get('http://localhost:5000', allow_redirects=False)
+        resp = requests.get(ENDPOINT_URL, allow_redirects=False)
         self.assertEqual(307, resp.status_code)
         self.assertEqual(
             'https://www.ovhcloud.com/fr/public-cloud/object-storage/',
             resp.headers['location'])
 
-        resp = requests.post('http://localhost:5000', allow_redirects=False)
+        resp = requests.post(ENDPOINT_URL, allow_redirects=False)
         self.assertEqual(405, resp.status_code)
 
     def test_list_delimiter(self):
@@ -118,7 +118,7 @@ class TestS3BasicTest(unittest.TestCase):
         client = get_boto3_client()
         client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
         client.put_object(Bucket=self.bucket, Key=key, Body=b'')
-        resp = requests.get(f'http://{self.bucket}.localhost:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m&encoding-type=url')
+        resp = requests.get(f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m&encoding-type=url')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
             b'<Marker>object%1E%1E%3CTest%3E%C2%A0name+with%02-%0D-%0F+%25-sign%F0%9F%99%82%0A/.m</Marker>',
@@ -145,7 +145,7 @@ class TestS3BasicTest(unittest.TestCase):
         client = get_boto3_client()
         client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
         client.put_object(Bucket=self.bucket, Key=key, Body=b'')
-        resp = requests.get(f'http://{self.bucket}.localhost:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m')
+        resp = requests.get(f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
             b'<Marker>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.m</Marker>',

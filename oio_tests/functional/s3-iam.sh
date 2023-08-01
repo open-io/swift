@@ -1,13 +1,15 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 # "default" is administrator
-AWSA1ADM="aws --profile default --endpoint-url http://localhost:5000"
+AWSA1ADM="aws --profile default --endpoint-url ${ENDPOINT_URL}"
 # "user1" is only allowed some operations
-AWSA1U1="aws --profile user1 --endpoint-url http://localhost:5000"
+AWSA1U1="aws --profile user1 --endpoint-url ${ENDPOINT_URL}"
 # "as2adm" is administrator
-AWSA2ADM="aws --profile a2adm --endpoint-url http://localhost:5000"
+AWSA2ADM="aws --profile a2adm --endpoint-url ${ENDPOINT_URL}"
 # "a2u1" is only allowed some operations
-AWSA2U1="aws --profile a2u1 --endpoint-url http://localhost:5000"
+AWSA2U1="aws --profile a2u1 --endpoint-url ${ENDPOINT_URL}"
 
 COMPANY_BUCKET="companybucket"
 SHARED_BUCKET="sharedbucket"
@@ -156,7 +158,7 @@ test_read_objects() {
   ${AWSA1ADM} s3 cp s3://${A1U1_BUCKET}/bigfiles/bigfile "$TEMPDIR/bigfile_from_A1u1_bucket"
 
   # Anonymous users can read "public-read" objects
-  curl -fI "http://${SHARED_BUCKET}.localhost:5000/public-magic"
+  curl -fI "http://${SHARED_BUCKET}.${STORAGE_DOMAIN}:5000/public-magic"
 }
 
 test_delete_objects() {

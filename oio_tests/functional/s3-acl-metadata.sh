@@ -1,6 +1,8 @@
 #!/bin/bash
 
-AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
+source $(pwd)/$(dirname "$0")/common.sh
+
+AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 
 BUCKET=bucket-acl-$RANDOM
 
@@ -59,7 +61,7 @@ fi
 ### CORS
 
 # check when no CORS configured
-curl -sS "http://${BUCKET}.localhost:5000/" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
+curl -sS "http://${BUCKET}.${STORAGE_DOMAIN}:5000/" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
 
 CORS_RULES='{
   "CORSRules": [
@@ -75,13 +77,13 @@ CORS_RULES='{
 ${AWS} s3api put-bucket-cors --bucket ${BUCKET} --cors-configuration "${CORS_RULES}"
 
 # check a valid CORS request
-curl -fsS "http://${BUCKET}.localhost:5000/" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization'
+curl -fsS "http://${BUCKET}.${STORAGE_DOMAIN}:5000/" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization'
 
 # check a denied CORS request (origin not allowed)
-curl -sS "http://${BUCKET}.localhost:5000/" -H "Origin: http://example.com" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
+curl -sS "http://${BUCKET}.${STORAGE_DOMAIN}:5000/" -H "Origin: http://example.com" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
 
 # check a denied CORS request (method not allowed)
-curl -sS "http://${BUCKET}.localhost:5000/" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: PUT" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
+curl -sS "http://${BUCKET}.${STORAGE_DOMAIN}:5000/" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: PUT" -H 'Access-Control-Request-Headers: Authorization' | grep "not allowed"
 
 # check a valid CORS request with presigned URL
 curl -fsS "$(${AWS} s3 presign s3://${BUCKET}/copy)" -H "Origin: http://openio.io" -X OPTIONS -H "Access-Control-Request-Method: GET" -H 'Access-Control-Request-Headers: Authorization'

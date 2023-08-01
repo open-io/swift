@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 # This script expects a swift gateway with OIO's custom encryption middleware.
 
 export OIO_NS="${OIO_NS:-OPENIO}"
@@ -10,7 +12,7 @@ ALGO="AES256"
 SECRET="abcdef0123456789ABCDEF0123456789"
 
 PORT=${PORT:-5000}
-AWS="aws --endpoint-url http://localhost:${PORT} --no-verify-ssl"
+AWS="aws --endpoint-url http://${STORAGE_DOMAIN}:${PORT} --no-verify-ssl"
 ENC_OPTS="--sse-c $ALGO --sse-c-key $SECRET"
 ENC_OPTS_EXT="--sse-customer-algorithm $ALGO --sse-customer-key $SECRET"
 COPY_ENC_OPTS_EXT="--copy-source-sse-customer-algorithm $ALGO --copy-source-sse-customer-key $SECRET"

@@ -24,7 +24,7 @@ import unittest
 
 from oio.common.easy_value import is_hexa
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api, run_openiocli
+    run_awscli_s3api, run_openiocli, ENDPOINT_URL
 
 from swift.common.middleware.s3api.tools.log_deliverer import LogDeliverer
 
@@ -34,7 +34,7 @@ LOG_DELIVERER_CONF = {
     'log_directory': None,
     's3_log_prefix': 'prefix_',
     'oio_namespace': 'OPENIO',
-    's3_endpoint_url': 'http://localhost:5000',
+    's3_endpoint_url': ENDPOINT_URL,
     's3_region': 'RegionOne',
     's3_access_key_id': 'logger:.log_delivery',
     's3_secret_access_key': 'LOG_DELIVERY'

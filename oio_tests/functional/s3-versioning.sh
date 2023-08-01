@@ -1,12 +1,14 @@
 #!/bin/bash
 
+source $(pwd)/$(dirname "$0")/common.sh
+
 # Print line numbers, usefull for debugging
 #PS4='${LINENO}:'
 
 export OIO_NS="${1:-OPENIO}"
 export OIO_ACCOUNT="${2:-AUTH_demo}"
 
-AWS="aws --endpoint-url http://localhost:5000 --no-verify-ssl"
+AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 
 BUCKET="bucket-vers-$RANDOM"
 
