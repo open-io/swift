@@ -13,7 +13,6 @@ workflow:
       "git.message": ""
       "git.repository": OPENIO/swift
       "git.tag": ""
-      "build_deb": "false"
 
 
   test-code-quality:
@@ -46,7 +45,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and (build_deb == "true" or git_branch == "feature/oio-backend")
+        return cds_triggered_by_username ~= "cds.scheduler" and (cds_manual == "true" or git_branch == "feature/oio-backend")
 
   tests-unit:
     pipeline: swift-tests
