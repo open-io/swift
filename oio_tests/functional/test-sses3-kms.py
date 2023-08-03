@@ -47,34 +47,17 @@ class TestSses3Kms(unittest.TestCase):
         self.account = "AUTH_demo"
         self.bucket = f"test-kms-{random_str(4)}"
         self.oio = ObjectStorageApi(OIO_NS)
+        self._buckets_to_delete = [self.bucket]
 
     def tearDown(self):
-        try:
-            # FIXME(FVE): use boto
-            run_awscli_s3("rb", "--force", bucket=self.bucket)
-        except CliError as exc:
-            if "NoSuchBucket" not in str(exc):
-                raise
+        for bucket in self._buckets_to_delete:
+            try:
+                # FIXME(FVE): use boto
+                run_awscli_s3("rb", "--force", bucket=bucket)
+            except CliError as exc:
+                if "NoSuchBucket" not in str(exc):
+                    raise
         super().tearDown()
-
-    def test_create_bucket_creates_secret(self):
-        """
-        Checks the creation of a bucket generates a new secret, and
-        that the deletion of this bucket deletes the secret.
-        """
-        # No secret at the beginning
-        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
-        self.assertFalse(secrets["secrets"])
-
-        # Exactly one secret when the bucket is created
-        self.boto.create_bucket(Bucket=self.bucket)
-        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
-        self.assertEqual(len(secrets["secrets"]), 1)
-
-        # No more secret after the bucket is deleted
-        self.boto.delete_bucket(Bucket=self.bucket)
-        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
-        self.assertFalse(secrets["secrets"])
 
     def test_object_encrypted_with_bucket_secret(self):
         key = "encrypted"
@@ -98,6 +81,107 @@ class TestSses3Kms(unittest.TestCase):
         # But still we can read it without providing a key.
         data = b"".join(get_res["Body"])
         self.assertEqual(data, key.encode("utf-8"))
+
+    def test_mpu_encrypted_with_bucket_secret(self):
+        key = "encrypted_mpu"
+        self.boto.create_bucket(Bucket=self.bucket)
+        resp = self.boto.create_multipart_upload(Bucket=self.bucket, Key=key)
+        upload_id = resp["UploadId"]
+        pdata = key.encode("utf-8") * 1024 * 1024
+        parts = []
+        for pnum in range(1, 3):
+            resp = self.boto.upload_part(
+                Bucket=self.bucket,
+                Key=key,
+                UploadId=upload_id,
+                PartNumber=pnum,
+                Body=pdata,
+            )
+            parts.append({"ETag": resp["ETag"], "PartNumber": pnum})
+
+        resp = self.boto.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+
+        for pnum in range(1, 3):
+            pname = "/".join((key, upload_id, str(pnum)))
+            meta = self.oio.object_get_properties(
+                self.account, self.bucket + "+segments", pname)
+            # The part has been encrypted, the hash must be different
+            self.assertNotEqual(parts[pnum - 1]["ETag"], meta["hash"])
+
+    def test_1_two_buckets_have_different_secrets(self):
+        """
+        Checks the creation of two buckets generates two secrets.
+        """
+        bucket2 = self.bucket + "-2"
+        self.boto.create_bucket(Bucket=self.bucket)
+        self.boto.create_bucket(Bucket=bucket2)
+        self._buckets_to_delete.append(bucket2)
+        secrets1 = self.oio.kms.list_secrets(self.account, self.bucket)
+        secrets2 = self.oio.kms.list_secrets(self.account, bucket2)
+        self.assertEqual(len(secrets1["secrets"]), 1)
+        self.assertEqual(len(secrets2["secrets"]), 1)
+
+        secret1 = self.oio.kms.get_secret(
+            self.account,
+            self.bucket,
+            secret_id=secrets1["secrets"][0]["secret_id"],
+        )
+        secret2 = self.oio.kms.get_secret(
+            self.account,
+            bucket2,
+            secret_id=secrets2["secrets"][0]["secret_id"],
+        )
+        self.assertNotEqual(secret1, secret2)
+
+    def test_2_same_object_in_two_buckets(self):
+        """
+        Checks the same object in two different buckets is encrypted
+        differently.
+        """
+        key = "encrypted"
+        bucket2 = self.bucket + "-2"
+        self.boto.create_bucket(Bucket=self.bucket)
+        self.boto.create_bucket(Bucket=bucket2)
+        self._buckets_to_delete.append(bucket2)
+        self.boto.put_object(
+            Bucket=self.bucket, Key=key, Body=key.encode("utf-8")
+        )
+        self.boto.put_object(Bucket=bucket2, Key=key, Body=key.encode("utf-8"))
+        # Compare the hashes of stored data
+        meta = self.oio.object_get_properties(self.account, self.bucket, key)
+        meta2 = self.oio.object_get_properties(self.account, bucket2, key)
+        self.assertNotEqual(meta["hash"], meta2["hash"])
+        # Ensure we can download both objects
+        get_res = self.boto.get_object(Bucket=self.bucket, Key=key)
+        get_res2 = self.boto.get_object(Bucket=self.bucket, Key=key)
+        data = b"".join(get_res["Body"])
+        data2 = b"".join(get_res2["Body"])
+        self.assertEqual(data, data2)
+        self.assertEqual(data, key.encode("utf-8"))
+
+    def test_3_delete_bucket_deletes_secret(self):
+        """
+        Checks the creation of a bucket generates a new secret, and
+        that the deletion of this bucket deletes the secret.
+        """
+        # No secret at the beginning
+        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
+        self.assertEqual(len(secrets["secrets"]), 0)
+
+        # Exactly one secret when the bucket is created
+        self.boto.create_bucket(Bucket=self.bucket)
+        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
+        self.assertEqual(len(secrets["secrets"]), 1)
+
+        # No more secret after the bucket is deleted
+        self.boto.delete_bucket(Bucket=self.bucket)
+        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
+        self.assertEqual(len(secrets["secrets"]), 0)
 
 
 if __name__ == "__main__":
