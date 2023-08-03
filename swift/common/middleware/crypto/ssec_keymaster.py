@@ -158,6 +158,9 @@ class SsecKeyMasterContext(KeyMasterContext):
             b64_secret = self.req.headers.get(crypto_utils.SSEC_KEY_HEADER)
         if not b64_secret:
             raise HTTPBadRequest(crypto_utils.MISSING_KEY_MSG)
+        elif not (crypto_utils.SSEC_ALGO_HEADER in self.req.headers
+                  or crypto_utils.SSEC_SRC_ALGO_HEADER in self.req.headers):
+            raise HTTPBadRequest(crypto_utils.MISSING_ALGO_MSG)
         try:
             secret = crypto_utils.decode_secret(b64_secret)
         except ValueError:
@@ -254,7 +257,10 @@ class SsecKeyMasterContext(KeyMasterContext):
                     self._keys['object'] = self.keymaster.create_key(
                         path, secret=secret)
                     self._keys['id']['ssec'] = True
-                except HTTPException:
+                except HTTPException as exc:
+                    if (crypto_utils.MISSING_ALGO_MSG.encode('utf-8')
+                            in exc.body):
+                        raise
                     if self._keys['bucket'] is not None:
                         self._keys['object'] = self._keys['bucket']
                         self._keys['id']['sses3'] = True

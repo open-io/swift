@@ -97,8 +97,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_delete_tags_obj_public:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_encryption_key_no_sse_c:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_invalid_md5:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_bad_download:

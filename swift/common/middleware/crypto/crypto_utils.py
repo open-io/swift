@@ -380,3 +380,4 @@ SSEC_SRC_KEY_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_HEADER)
 SSEC_SRC_KEY_MD5_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_MD5_HEADER)
 
 MISSING_KEY_MSG = 'Missing %s header' % SSEC_KEY_HEADER
+MISSING_ALGO_MSG = 'Missing %s header' % SSEC_ALGO_HEADER
