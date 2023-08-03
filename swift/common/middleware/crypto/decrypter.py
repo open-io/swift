@@ -400,6 +400,9 @@ class DecrypterObjContext(BaseDecrypterContext):
                     offset, end, total = parse_content_range(content_range)
                 resp_iter = self.response_iter(
                     app_resp, body_key, put_crypto_meta, offset)
+            if put_keys.get('id', {}).get('sses3'):
+                mod_resp_headers.append(
+                    ('x-amz-server-side-encryption', 'AES256'))
         else:
             # don't decrypt body of unencrypted or non-2xx responses
             resp_iter = app_resp

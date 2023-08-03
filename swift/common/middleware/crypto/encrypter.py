@@ -270,6 +270,9 @@ class EncrypterObjContext(CryptoWSGIContext):
                     else plaintext_etag)
                 for h, v in mod_resp_headers]
 
+        if keys.get('id', {}).get('sses3'):
+            mod_resp_headers.append(('x-amz-server-side-encryption', 'AES256'))
+
         start_response(self._response_status, mod_resp_headers,
                        self._response_exc_info)
         return resp

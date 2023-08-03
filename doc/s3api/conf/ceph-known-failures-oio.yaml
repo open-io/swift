@@ -335,14 +335,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_sse_s3_default_upload_8mb:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_sse_s3_encrypted_upload_1b:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_sse_s3_encrypted_upload_1kb:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_sse_s3_encrypted_upload_1mb:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_sse_s3_encrypted_upload_8mb:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_user_policy:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_versioning_bucket_atomic_upload_return_version_id:
