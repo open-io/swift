@@ -408,12 +408,12 @@ class TestS3ApiReplication(S3ApiTestCase):
                 </Rule>
                 <Rule>
                     <ID>2dfdcf571182407293d35b52959876e3</ID>
-                    <Priority>1</Priority>
+                    <Priority>2</Priority>
                     <DeleteMarkerReplication>
                         <Status>Enabled</Status>
                     </DeleteMarkerReplication>
                     <Filter>
-                        <Prefix>Tax</Prefix>
+                        <Prefix>Salary</Prefix>
                     </Filter>
                     <Destination>
                         <Bucket>arn:aws:s3:::dest</Bucket>
@@ -437,6 +437,58 @@ class TestS3ApiReplication(S3ApiTestCase):
         status, _, body = self.call_s3api(req)
         self.assertEqual("400 Bad Request", status)
         self.assertIn("Rule Id must be unique", str(body))
+
+    def test_PUT_priority_not_unique(self):
+        """Ensure two replication rules cannot have the same priority"""
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role></Role>
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e3</ID>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e4</ID>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Salary</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Found duplicate priority", str(body))
 
     def test_PUT_priority_not_valid(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>

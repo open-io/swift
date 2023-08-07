@@ -235,11 +235,11 @@ def _optimize_replication_conf(configuration):
         use_tags |= "Tag" in rule_filter or "Tags" in and_filter
 
         # Ensure all priorities are unique
-        priorities = dest_priorities.setdefault(bucket, [])
+        priorities = dest_priorities.setdefault(bucket, set())
         if priority >= 0:
             if priority in priorities:
-                raise InvalidRequest(f"Found duplicate priority {rule[1]}")
-            priorities.append(priority)
+                raise InvalidRequest(f"Found duplicate priority {priority}")
+            priorities.add(priority)
 
     for dest, dest_rules in replications.items():
         # sort rules per priority
