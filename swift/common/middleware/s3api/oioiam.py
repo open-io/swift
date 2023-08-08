@@ -22,7 +22,7 @@ from oio.common.utils import parse_conn_str
 from swift.common.middleware.s3api.iam import IamMiddleware, \
     StaticIamMiddleware
 from swift.common.middleware.s3api.s3response import ServiceUnavailable
-from swift.common.utils import config_auto_int_value
+from swift.common.utils import config_auto_int_value, config_float_value
 
 
 class OioIamMiddleware(IamMiddleware):
@@ -42,10 +42,16 @@ class OioIamMiddleware(IamMiddleware):
             iam_conf['namespace'] = namespace
         refresh_delay = config_auto_int_value(
             conf.get("sds_endpoint_refresh_delay"), 60)
+        connection_timeout = config_float_value(
+            conf.get("connection_timeout", 0.5), 0.001, 60.0)
+        read_timeout = config_float_value(
+            conf.get("read_timeout", 5), 0.001, 60.0)
         self.iam_client = IamClient(
             iam_conf, proxy_endpoint=conf.get('sds_proxy_url'),
             logger=self.logger,
             refresh_delay=refresh_delay,
+            connection_timeout=connection_timeout,
+            read_timeout=read_timeout,
         )
 
     def load_rules_for_user(self, account, user):

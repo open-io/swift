@@ -613,6 +613,11 @@ use = egg:swift#oioiam
 # Force a specific oioproxy URL (used to locate account services)
 #sds_proxy_url=
 
+# Configure timeouts for the requests towards the account service
+# (which hosts user policy documents).
+#connection_timeout = 0.5
+#read_timeout = 5.0
+
 [filter:bucket_ratelimit]
 use = egg:swift#bucket_ratelimit
 # Group of S3 operations (ex: REST.GET.BUCKET,REST.HEAD.OBJECT)
