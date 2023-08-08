@@ -31,6 +31,20 @@ class TestReplication(unittest.TestCase):
               <Key>key1</Key>
               <Value>value1</Value>
             </Tag>
+            <Tag>
+              <Key>key2</Key>
+              <Value>value2</Value>
+            </Tag>
+          </TagSet>
+        </Tagging>
+    """
+    TAGGING_BODY_ONE_TAG = """
+        <Tagging>
+          <TagSet>
+            <Tag>
+              <Key>key1</Key>
+              <Value>value1</Value>
+            </Tag>
           </TagSet>
         </Tagging>
     """
@@ -128,10 +142,10 @@ class TestReplication(unittest.TestCase):
                 "rule4": {
                     "ID": "rule4",
                     "Status": "Enabled",
-                    "Prefix": "/test1/",
                     "DeleteMarkerReplication": {"Status": "Enabled"},
                     "Filter": {
                         "And": {
+                            "Prefix": "/test1/",
                             "Tags": [
                                 {"Key": "key1", "Value": "value1"},
                                 {"Key": "key2", "Value": "value2"}
@@ -143,10 +157,10 @@ class TestReplication(unittest.TestCase):
                 "rule5": {
                     "ID": "rule5",
                     "Status": "Enabled",
-                    "Prefix": "/test3/",
                     "DeleteMarkerReplication": {"Status": "Enabled"},
                     "Filter": {
                         "And": {
+                            "Prefix": "/test3/",
                             "Tags": [
                                 {"Key": "key1", "Value": "value1"},
                                 {"Key": "key2", "Value": "value2"}
@@ -206,4 +220,42 @@ class TestReplication(unittest.TestCase):
         dests = self.app.replication_callback(
             rules, "/test/key",
             metadata={"s3api-replication-status": OBJECT_REPLICATION_REPLICA})
+        self.assertEqual(dests, [])
+
+    def test_replication_callback_deletemarker_one_tag_only(self):
+        rules = '''
+        {
+            "role": "role1",
+            "rules": {
+                "rule5": {
+                    "ID": "rule5",
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Enabled"},
+                    "Filter": {
+                        "And": {
+                            "Prefix": "/test3/",
+                            "Tags": [
+                                {"Key": "key1", "Value": "value1"},
+                                {"Key": "key2", "Value": "value2"}
+                            ]
+                        }
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::bucket3"}
+                }
+            },
+            "replications": {
+                "bucket3": ["rule5"]
+            },
+            "deletions": {
+                "bucket3": ["rule5"]
+            },
+            "use_tags": true
+        }
+        '''
+        # This test is the same as in the method above, except that the
+        # tagging document lack one expected tag.
+        dests = self.app.replication_callback(
+            rules, '/test3/key',
+            metadata={"s3api-tagging": self.TAGGING_BODY_ONE_TAG},
+            is_deletion=True)
         self.assertEqual(dests, [])
