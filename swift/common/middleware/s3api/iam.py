@@ -73,6 +73,7 @@ SUPPORTED_ACTIONS = {
     "s3:GetReplicationConfiguration": RT_BUCKET,
     "s3:ListBucket": RT_BUCKET,
     "s3:ListBucketMultipartUploads": RT_BUCKET,
+    "s3:ListBucketVersions": RT_BUCKET,
     "s3:ListMultipartUploadParts": RT_OBJECT,
     "s3:PutBucketAcl": RT_BUCKET,
     "s3:PutBucketCORS": RT_BUCKET,

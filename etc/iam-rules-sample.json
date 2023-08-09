@@ -19,6 +19,7 @@
                 "Sid": "User1BucketAllObjects",
                 "Action": [
                     "s3:ListBucket",
+                    "s3:ListBucketVersions",
                     "s3:GetObject",
                     "s3:PutObject",
                     "s3:DeleteObject"
@@ -129,6 +130,16 @@
                 "Resource": [
                     "arn:aws:s3:::shared-bucket-bypass",
                     "arn:aws:s3:::shared-bucket-bypass/obj-delete*"
+                ]
+            },
+            {
+                "Sid": "versions",
+                "Action": [
+                    "s3:ListBucketVersions"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                    "arn:aws:s3:::versions-bucket"
                 ]
             }
         ]

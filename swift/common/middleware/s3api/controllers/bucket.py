@@ -381,6 +381,12 @@ class BucketController(Controller):
         """
         Handle GET Bucket (List Objects) request
         """
+        if 'versions' in req.params:
+            check_iam = check_iam_access("s3:ListBucketVersions")
+        else:
+            check_iam = check_iam_access("s3:ListBucket")
+        check_iam(lambda x, req: None)(None, req)
+
         tag_max_keys = req.get_validated_param(
             'max-keys', self.conf.max_bucket_listing)
         # TODO: Separate max_bucket_listing and default_bucket_listing

@@ -15,6 +15,7 @@ COMPANY_BUCKET="companybucket"
 SHARED_BUCKET="sharedbucket"
 A1U1_BUCKET="user1bucket"
 A2U1_BUCKET="user1mybucket"
+VERSIONS_BUCKET="versions-bucket"
 
 TEMPDIR=$(mktemp -td s3-iam-XXXXXX)
 BIGFILE="$TEMPDIR/bigfile"
@@ -32,6 +33,7 @@ test_create_bucket() {
   ${AWSA1ADM} s3 mb s3://$A1U1_BUCKET
   ${AWSA1ADM} s3 mb s3://$SHARED_BUCKET
   ${AWSA1ADM} s3 mb s3://$COMPANY_BUCKET
+  ${AWSA1ADM} s3 mb s3://$VERSIONS_BUCKET
 
   # Check that an IAM authorization bypasses the rights of the user
   # (tempauth group / keystone role).
@@ -159,6 +161,21 @@ test_read_objects() {
 
   # Anonymous users can read "public-read" objects
   curl -fI "http://${SHARED_BUCKET}.${STORAGE_DOMAIN}:5000/public-magic"
+
+  # admin can list objects and versions of any bucket
+  ${AWSA1ADM} s3api list-objects --bucket "${VERSIONS_BUCKET}"
+  ${AWSA1ADM} s3api list-object-versions --bucket "${VERSIONS_BUCKET}"
+  # user1 cannot list objects, only versions of version's bucket
+  OUT=$(${AWSA1U1} s3api list-objects --bucket "${VERSIONS_BUCKET}" 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+  ${AWSA1U1} s3api list-object-versions --bucket "${VERSIONS_BUCKET}"
+  # user1 can list objects, but not versions of shared's bucket
+  ${AWSA1U1} s3api list-objects --bucket "${SHARED_BUCKET}"
+  OUT=$(${AWSA1U1} s3api list-object-versions --bucket "${SHARED_BUCKET}" 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+  # user1 can list objects and versions of user1's bucket
+  ${AWSA1U1} s3api list-objects --bucket "${A1U1_BUCKET}"
+  ${AWSA1U1} s3api list-object-versions --bucket "${A1U1_BUCKET}"
 }
 
 test_delete_objects() {
@@ -212,6 +229,7 @@ test_delete_buckets() {
   ${AWSA1ADM} s3 rb s3://$A1U1_BUCKET
   ${AWSA1ADM} s3 rb s3://$SHARED_BUCKET
   ${AWSA1ADM} s3 rb s3://$COMPANY_BUCKET
+  ${AWSA1ADM} s3 rb s3://$VERSIONS_BUCKET
 }
 
 test_create_bucket
