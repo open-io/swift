@@ -1166,9 +1166,8 @@ class TestS3ApiReplication(S3ApiTestCase):
                             environ={
                                 "REQUEST_METHOD": "PUT",
                                 'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_TOKEN':
-                                'ZTg0Y2IyNzMyM2JiOTVjYzUwZGFkMjFkNDM2OW'
-                                'EwMjMzZDRlOWM1NmU0ZWRiZjg5ZmQ3N2M0OWQ4N'
-                                'zRlOWE4MQ=='},
+                                '1l1MkpaWRu+RarBTmt1C+n3SpeDezN1GBSm25S2VPuU='
+                            },
                             body=BASIC_CONF,
                             headers={
                                 "Authorization": "AWS test:tester:hmac",

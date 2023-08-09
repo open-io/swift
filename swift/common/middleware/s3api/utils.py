@@ -134,9 +134,8 @@ def is_valid_token(token, token_prefix, account, container):
     :return: True if provided token is valid, False if not
     :rtype: bool
     """
-    secret = token_prefix + account + container
-    valid_token = base64.b64encode(
-        sha256(secret.encode()).hexdigest().encode('ascii'))
+    secret = '/'.join((token_prefix, account, container))
+    valid_token = base64.b64encode(sha256(secret.encode()).digest())
     return valid_token == token.encode('ascii')
 
 
