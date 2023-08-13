@@ -2152,7 +2152,7 @@ class S3Request(swob.Request):
             return info
         elif info['status'] == 404:
             raise NoSuchBucket(self.container_name)
-        elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
+        elif info['status'] == HTTP_SERVICE_UNAVAILABLE or info['status'] == 0:
             raise ServiceUnavailable(headers={
                 'Retry-After': str(info.get('Retry-After',
                                             self.conf.retry_after))})
