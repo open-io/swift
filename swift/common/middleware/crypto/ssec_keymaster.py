@@ -22,6 +22,7 @@ from swift.common.http import is_success
 from swift.common.middleware.crypto import crypto_utils
 from swift.common.middleware.crypto.keymaster import KeyMaster, \
     KeyMasterContext
+from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
 from swift.common.utils import config_positive_int_value, config_true_value
@@ -127,11 +128,8 @@ class SsecKeyMasterContext(KeyMasterContext):
             keymaster, account, container, obj,
             meta_version_to_write=meta_version_to_write)
         self.req = request
-        if self.keymaster.kms is not None:
-            self.kms = KmsWrapper(self.keymaster.kms,
-                                  cache=request.environ.get('swift.cache'))
-        else:
-            self.kms = None
+        self.kms = KmsWrapper(self.keymaster.kms,
+                              cache=request.environ.get('swift.cache'))
 
     @property
     def trans_id(self):
@@ -148,6 +146,8 @@ class SsecKeyMasterContext(KeyMasterContext):
         if req is None:
             req = self.req
         _, account, bucket, _ = req.split_path(2, 4, True)
+        if bucket.endswith(MULTIUPLOAD_SUFFIX):
+            bucket = bucket[:-len(MULTIUPLOAD_SUFFIX)]
         return account, bucket
 
     def _fetch_object_secret(self):
@@ -176,7 +176,7 @@ class SsecKeyMasterContext(KeyMasterContext):
         Logs a message if the deletion fails, but does not raise exceptions.
         """
         account, bucket = self.req_account_and_bucket()
-        if not (bucket and self.kms):
+        if not bucket:
             return
         try:
             self.kms.delete_bucket_secret(
@@ -199,7 +199,7 @@ class SsecKeyMasterContext(KeyMasterContext):
         # We don't use self.container here because we want "bucket" and
         # "bucket+segments" to share the same key.
         account, bucket = self.req_account_and_bucket()
-        if not (bucket and self.kms):
+        if not bucket:
             return None
         try:
             b64_secret = self.kms.get_bucket_secret(
@@ -279,8 +279,11 @@ class SsecKeyMasterContext(KeyMasterContext):
     def handle_request(self, req, start_response):
         secret_created = False
         operation = req.environ.get('s3api.info', {}).get('operation')
-        # REST.PUT.BUCKET does a HEAD on the account before the PUT
-        if operation == "REST.PUT.BUCKET" and req.method == 'PUT' and self.kms:
+        # REST.PUT.BUCKET does a HEAD on the account before the PUT, we need to
+        # check the method. Besides, we will only create a secret if the KMS is
+        # enabled.
+        if (operation == "REST.PUT.BUCKET" and req.method == 'PUT'
+                and self.keymaster.use_oio_kms):
             account, bucket = self.req_account_and_bucket(req)
             self.keymaster.logger.debug("Creating secret for %s/%s",
                                         account, bucket)
@@ -298,8 +301,8 @@ class SsecKeyMasterContext(KeyMasterContext):
                 self._delete_bucket_secret()
             raise exc
         success = is_success(self._get_status_int())
-        if self.kms and (secret_created and not success
-                         or operation == "REST.DELETE.BUCKET" and success):
+        if (secret_created and not success
+                or operation == "REST.DELETE.BUCKET" and success):
             self._delete_bucket_secret()
         return resp
 
@@ -324,13 +327,10 @@ class SsecKeyMaster(KeyMaster):
             conf.get('fallback_on_keymaster', False))
         self.sses3_secret_bytes = config_positive_int_value(
             conf.get('sses3_secret_bytes', 32))
-        use_oio_kms = config_true_value(
+        self.use_oio_kms = config_true_value(
             conf.get('use_oio_kms', False))
-        if use_oio_kms:
-            self.kms = KmsClient({"namespace": conf["sds_namespace"]},
-                                 logger=self.logger)
-        else:
-            self.kms = None
+        self.kms = KmsClient({"namespace": conf["sds_namespace"]},
+                             logger=self.logger)
 
     def __call__(self, env, start_response):
         req = Request(env)
