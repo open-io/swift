@@ -1039,6 +1039,9 @@ class UploadController(Controller):
                 for chunk in err_resp({}, lambda *a: None):
                     yield chunk
 
+        # Do not use a buffer for the heartbeat to work
+        req.environ['eventlet.minimum_write_chunk_size'] = 0
+
         resp = HTTPOk()  # assume we're good for now... but see above!
         resp.headers['x-amz-version-id'] = version_id
         resp.app_iter = reiterate(response_iter())
