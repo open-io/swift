@@ -2448,6 +2448,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         grants = [Grant(User(account), src_permission)] \
             if src_permission else [Grant(User(owner), 'FULL_CONTROL')]
         src_o_headers = encode_acl('object', ACL(Owner(owner, owner), grants))
+        src_o_headers.update({'Content-Length': 5368709122})
         src_o_headers.update({'last-modified': self.last_modified})
         src_o_headers.update(src_headers or {})
         self.swift.register('HEAD', '/v1/AUTH_test/%s' % src_path.lstrip('/'),

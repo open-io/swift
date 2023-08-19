@@ -29,7 +29,8 @@ run_functional_test s3-default.cfg \
     bucket-logging.py \
     bucket-log-deliverer.py \
     s3-acl.py \
-    s3-xxe-injection.py
+    s3-xxe-injection.py \
+    s3-server-side-copy.py
 
 configure_aws
 run_functional_test s3-default.cfg \

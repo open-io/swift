@@ -146,7 +146,7 @@ import json
 from paste.deploy import loadwsgi
 from six.moves.urllib.parse import parse_qs
 
-from swift.common.constraints import valid_api_version
+from swift.common.constraints import MAX_FILE_SIZE, valid_api_version
 from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
 from swift.common.wsgi import PipelineWrapper, loadcontext, WSGIContext
@@ -274,6 +274,13 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('max_multi_delete_objects', 1000))
         self.conf.multi_delete_concurrency = config_positive_int_value(
             wsgi_conf.get('multi_delete_concurrency', 2))
+        self.conf.max_server_side_copy_size = config_positive_int_value(
+            wsgi_conf.get('max_server_side_copy_size', MAX_FILE_SIZE))
+        if self.conf.max_server_side_copy_size > MAX_FILE_SIZE:
+            raise ValueError(
+                '"max_server_side_copy_size" cannot be larger than '
+                'the maximum size allowed for an object'
+            )
         self.conf.s3_acl = config_true_value(
             wsgi_conf.get('s3_acl', False))
         self.conf.storage_classes = list_from_csv(wsgi_conf.get(

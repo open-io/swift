@@ -49,6 +49,7 @@ class TestS3ApiObj(S3ApiTestCase):
 
         self.object_body = b'hello'
         self.etag = md5(self.object_body, usedforsecurity=False).hexdigest()
+        self.content_length = len(self.object_body)
         self.last_modified = 'Fri, 01 Apr 2014 12:00:00 GMT'
 
         self.response_headers = {'Content-Type': 'text/html',
@@ -768,8 +769,10 @@ class TestS3ApiObj(S3ApiTestCase):
             content_md5 = content_md5.decode('ascii')
 
         self.swift.register('HEAD', '/v1/AUTH_test/some/source',
-                            swob.HTTPOk, {'last-modified': self.last_modified},
-                            None)
+                            swob.HTTPOk, {
+                                'Content-Length': self.content_length,
+                                'last-modified': self.last_modified
+                            }, None)
         req = Request.blank(
             '/bucket/object',
             environ={'REQUEST_METHOD': 'PUT'},
@@ -813,6 +816,7 @@ class TestS3ApiObj(S3ApiTestCase):
         head_headers = \
             encode_acl('object',
                        ACL(Owner(account, account), grants))
+        head_headers.update({'Content-Length': self.content_length})
         head_headers.update({'last-modified': self.last_modified})
         self.swift.register('HEAD', '/v1/AUTH_test/some/source',
                             head_resp, head_headers, None)
@@ -826,6 +830,7 @@ class TestS3ApiObj(S3ApiTestCase):
         head_headers = \
             encode_acl('object',
                        ACL(Owner(account, account), grants))
+        head_headers.update({'Content-Length': self.content_length})
         head_headers.update({'last-modified': self.last_modified})
         self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
                             head_resp, head_headers, None)
@@ -1777,6 +1782,7 @@ class TestS3ApiObj(S3ApiTestCase):
             if src_permission else [Grant(User(owner), 'FULL_CONTROL')]
         src_o_headers = \
             encode_acl('object', ACL(Owner(owner, owner), grants))
+        src_o_headers.update({'Content-Length': self.content_length})
         src_o_headers.update({'last-modified': self.last_modified})
         self.swift.register(
             'HEAD', join('/v1/AUTH_test', src_path.lstrip('/')),

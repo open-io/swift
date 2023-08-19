@@ -1355,6 +1355,14 @@ class S3Request(swob.Request):
                                      headers=headers, query=query)
         if src_resp.status_int == 304:  # pylint: disable-msg=E1101
             raise PreconditionFailed()
+        if (
+            src_resp.content_length is None
+            or src_resp.content_length > self.conf.max_server_side_copy_size
+        ):
+            raise InvalidRequest(
+                "The specified copy source is larger than the maximum "
+                "allowable size for a copy source: "
+                f"{self.conf.max_server_side_copy_size}")
 
         if (self.container_name == src_bucket and
                 self.object_name == src_obj):
