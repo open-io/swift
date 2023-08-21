@@ -1383,6 +1383,8 @@ class S3Request(swob.Request):
         if query:
             self.headers['X-Amz-Copy-Source'] += \
                 '?versionId=' + query['version-id']
+        self.headers['X-Max-Bytes-Per-Second'] = \
+            self.conf.max_server_side_copy_throughput
         return src_resp
 
     def _canonical_uri(self):

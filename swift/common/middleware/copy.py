@@ -403,7 +403,13 @@ class ServerSideCopyMiddleware(object):
         # Set swift.source, data source, content length and etag
         # for the PUT request
         sink_req.environ['swift.source'] = 'SSC'
-        sink_req.environ['wsgi.input'] = FileLikeIter(source_resp.app_iter)
+        max_bytes_per_second = req.headers.get('X-Max-Bytes-Per-Second', None)
+        if max_bytes_per_second is not None:
+            max_bytes_per_second = int(max_bytes_per_second)
+        sink_req.environ['wsgi.input'] = FileLikeIter(
+            source_resp.app_iter,
+            max_bytes_per_second=max_bytes_per_second
+        )
         sink_req.content_length = source_resp.content_length
         if (source_resp.status_int == HTTP_OK and
                 'X-Static-Large-Object' not in source_resp.headers and

@@ -281,6 +281,8 @@ class S3ApiMiddleware(object):
                 '"max_server_side_copy_size" cannot be larger than '
                 'the maximum size allowed for an object'
             )
+        self.conf.max_server_side_copy_throughput = config_positive_int_value(
+            wsgi_conf.get('max_server_side_copy_throughput', 16777216))
         self.conf.s3_acl = config_true_value(
             wsgi_conf.get('s3_acl', False))
         self.conf.storage_classes = list_from_csv(wsgi_conf.get(

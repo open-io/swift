@@ -692,6 +692,9 @@ use = egg:swift#s3api
 # Set the maximum size of a server-side copied object.
 # max_server_side_copy_size = 5368709122
 #
+# Set the server-side copy throughput (bytes per second).
+# max_server_side_copy_throughput = 16777216
+#
 # If set to 'true', s3api uses its own metadata for ACLs
 # (e.g. X-Container-Sysmeta-S3Api-Acl) to achieve the best S3 compatibility.
 # If set to 'false', s3api tries to use Swift ACLs (e.g. X-Container-Read)
