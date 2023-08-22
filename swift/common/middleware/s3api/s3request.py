@@ -763,6 +763,7 @@ class S3Request(swob.Request):
     bucket = _req_s3api_info('bucket')
     key = _req_s3api_info('key')
     version_id = _req_s3api_info('version_id')
+    storage_class = _req_s3api_info('storage_class')
     style = _req_s3api_info('style')
     signature_version = _req_s3api_info('signature_version')
     authentication_type = _req_s3api_info('authentication_type')
@@ -1759,8 +1760,12 @@ class S3Request(swob.Request):
 
     def storage_policy_to_class(self, storage_policy, default='STANDARD'):
         if not storage_policy:
-            return default
-        return self.conf.storage_class_by_policy.get(storage_policy, default)
+            storage_class = default
+        else:
+            storage_class = self.conf.storage_class_by_policy.get(
+                storage_policy, default)
+            self.storage_class = storage_class
+        return storage_class
 
     def _swift_success_codes(self, method, container, obj):
         """
