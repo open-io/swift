@@ -122,7 +122,8 @@ class S3Response(S3ResponseBase, swob.Response):
     headers instead of Swift's HeaderKeyDict.  This also translates Swift
     specific headers to S3 headers.
     """
-    def __init__(self, *args, storage_policy_to_class=None, **kwargs):
+    def __init__(self, *args, sw_resp=None, storage_policy_to_class=None,
+                 **kwargs):
         swob.Response.__init__(self, *args, **kwargs)
 
         s3_sysmeta_headers = swob.HeaderKeyDict()
@@ -202,6 +203,7 @@ class S3Response(S3ResponseBase, swob.Response):
             # add double quotes to the etag header
             self.etag = self.etag
 
+        self.sw_resp = sw_resp
         # Used for pure swift header handling at the request layer
         self.sw_headers = sw_headers
         self.sysmeta_headers = s3_sysmeta_headers
@@ -221,18 +223,11 @@ class S3Response(S3ResponseBase, swob.Response):
         resp = cls(status=sw_resp.status, headers=sw_resp.headers,
                    request=sw_resp.request, body=body, app_iter=app_iter,
                    conditional_response=sw_resp.conditional_response,
-                   storage_policy_to_class=storage_policy_to_class)
+                   storage_policy_to_class=storage_policy_to_class,
+                   sw_resp=sw_resp)
         resp.environ.update(sw_resp.environ)
 
         return resp
-
-    def append_copy_resp_body(self, controller_name, last_modified):
-        elem = Element('Copy%sResult' % controller_name)
-        SubElement(elem, 'LastModified').text = last_modified
-        SubElement(elem, 'ETag').text = '"%s"' % self.etag
-        self.headers['Content-Type'] = 'application/xml'
-        self.body = tostring(elem)
-        self.etag = None
 
 
 HTTPOk = partial(S3Response, status=200)
@@ -272,7 +267,7 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
             **kwargs)
         self.headers = HeaderKeyDict(self.headers)
 
-    def _body_iter(self):
+    def _xml_body(self):
         # This part of the XML may contain information sent by the client.
         # There may therefore be characters that are not compatible with XML.
         escape_xml_text, finalize_xml_texts = init_xml_texts()
@@ -286,8 +281,13 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
 
         self._dict_to_etree(error_elem, self.info, escape_xml_text)
 
+        return error_elem, finalize_xml_texts
+
+    def _body_iter(self):
+        xml_body, finalize_xml_texts = self._xml_body()
+
         yield finalize_xml_texts(tostring(
-            error_elem, use_s3ns=False, xml_declaration=self.xml_declaration))
+            xml_body, use_s3ns=False, xml_declaration=self.xml_declaration))
 
     def _dict_to_etree(self, parent, d, escape_xml_text):
         for key, value in d.items():

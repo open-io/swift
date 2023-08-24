@@ -26,7 +26,8 @@ from six.moves.urllib.parse import quote, unquote, parse_qsl
 import string
 from sys import version_info
 
-from swift.common.utils import split_path, json, close_if_possible, md5
+from swift.common.utils import split_path, json, close_if_possible, md5, \
+    reiterate, drain_and_close
 from swift.common.registry import get_swift_info
 from swift.common import swob
 from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
@@ -64,13 +65,14 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     AuthorizationQueryParametersError, ServiceUnavailable, BrokenMPU, \
     NoSuchVersion, BadRequest, OperationAborted, XAmzContentSHA256Mismatch, \
     InvalidChunkSizeError, IncompleteBody, WebsiteErrorResponse, \
-    PermanentRedirect, InvalidAccessKeyId
+    PermanentRedirect, InvalidAccessKeyId, HTTPOk, ErrorResponse
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import utf8encode, \
     S3Timestamp, mktime, sysmeta_header, validate_bucket_name, \
     Config, is_not_ascii, MULTIUPLOAD_SUFFIX
 from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
+from swift.common.middleware.s3api.etree import XML_DECLARATION, tostring
 
 # List of sub-resources that must be maintained as part of the HMAC
 # signature string.
@@ -1982,6 +1984,7 @@ class S3Request(swob.Request):
             sw_resp = sw_req.get_response(app)
         except swob.HTTPException as err:
             sw_resp = err
+            sw_resp.request = sw_req
         else:
             # reuse account
             _, self.account, _ = split_path(sw_resp.environ['PATH_INFO'],
@@ -1999,6 +2002,15 @@ class S3Request(swob.Request):
                 if k.lower().startswith('x-backend-'):
                     self.headers.setdefault(k, v)
 
+        return self._from_swift_resp(
+            app, sw_resp, path_info=(None, self.account, container, obj))
+
+    def _from_swift_resp(self, app, sw_resp, path_info=None):
+        if path_info is None:
+            path_info = split_path(
+                sw_resp.environ['PATH_INFO'], 2, 4, True)
+        _, _, container, obj = path_info
+
         resp = S3Response.from_swift_resp(
             sw_resp, storage_policy_to_class=self.storage_policy_to_class)
         status = resp.status_int  # pylint: disable-msg=E1101
@@ -2015,9 +2027,11 @@ class S3Request(swob.Request):
                 # tempauth
                 self.user_id = self.access_key
 
-        success_codes = self._swift_success_codes(method, container, obj)
-        error_codes = self._swift_error_codes(method, container, obj,
-                                              sw_req.environ, app)
+        success_codes = self._swift_success_codes(
+            sw_resp.request.method, container, obj)
+        error_codes = self._swift_error_codes(
+            sw_resp.request.method, container, obj, sw_resp.request.environ,
+            app)
 
         if status in success_codes:
             return resp
@@ -2088,6 +2102,109 @@ class S3Request(swob.Request):
 
         return self._get_response(app, method, container, obj,
                                   headers, body, query)
+
+    def get_heartbeat_response(self, app, resp, on_success=None):
+        """
+        Keep a connection active long enough to get the full response (202)
+        to a long request. Once the XML declaration is sent, a newline is sent
+        periodically until we have the real XML response.
+        """
+        if resp.status_int == 202:
+            # The response is not over yet, wait for the whole body
+            def response_iter():
+                declaration_sent = False
+                xml_body = None
+                use_s3ns = True
+                finalize_xml_texts = None
+
+                try:
+                    body = []
+                    resp.fix_conditional_response()
+                    for chunk in resp.response_iter:
+                        if not chunk.strip():
+                            # XML requires that the XML declaration, if
+                            # present, be at the very start of the document.
+                            # Clients *will* call us out on not being valid XML
+                            # if we pass through whitespace before it.
+                            if not declaration_sent:
+                                yield XML_DECLARATION
+                                declaration_sent = True
+                            else:
+                                # Convert space to newline to be same as AWS
+                                yield b'\n'
+                            continue
+                        body.append(chunk)
+
+                    # Now that the body is complete, reconstruct the real
+                    # response
+                    body = json.loads(b''.join(body))
+                    sw_headers = resp.sw_resp.headers.copy()
+                    sw_headers.update(body['Response Headers'])
+                    sw_resp = swob.Response(
+                        status=body['Response Status'],
+                        headers=sw_headers,
+                        body=body['Response Body'],
+                        request=resp.sw_resp.request)
+                    full_resp = self._from_swift_resp(app, sw_resp)
+
+                    if on_success is not None:
+                        xml_body, finalize_xml_texts = on_success(full_resp)
+                        if xml_body is None:
+                            # The heartbeat can only work
+                            # if there is an expected body
+                            raise InternalError("Missing body")
+                except ErrorResponse as err_resp:
+                    # The response has already started, it is no longer
+                    # possible to change the HTTP status
+                    # The only way to pass the error to the client and send it
+                    # to the body (logically the client check if it's not a
+                    # 200 error response).
+                    use_s3ns = False
+                    self.environ['s3api.info']['error_code'] = err_resp._code
+                    xml_body, finalize_xml_texts = err_resp._xml_body()
+                except Exception as exc:
+                    # The response has already started, it is no longer
+                    # possible to change the HTTP status
+                    # Unexpected errors cannot be raised either.
+                    # Immediately convert this error to an internal error
+                    # to insert into the body.
+                    use_s3ns = False
+                    err_resp = InternalError(reason=str(exc))
+                    self.environ['s3api.info']['error_code'] = err_resp._code
+                    xml_body, finalize_xml_texts = err_resp._xml_body()
+                finally:
+                    drain_and_close(resp)
+
+                if xml_body is not None:
+                    body = tostring(
+                        xml_body, use_s3ns=use_s3ns,
+                        xml_declaration=not declaration_sent)
+                    if finalize_xml_texts is not None:
+                        body = finalize_xml_texts(body)
+                    yield body
+
+            # Do not use a buffer for the heartbeat to work
+            self.environ['eventlet.minimum_write_chunk_size'] = 0
+
+            s3_resp = HTTPOk()
+            s3_resp.headers.update(resp.headers)
+            s3_resp.content_type = 'application/xml'
+            s3_resp.app_iter = reiterate(response_iter())
+        else:
+            # The response is complete, we can resend it (updating the body)
+            s3_resp = resp
+            s3_resp.status = HTTP_OK
+
+            if on_success is not None:
+                xml_body, finalize_xml_texts = on_success(resp)
+                if xml_body is not None:
+                    s3_resp.content_type = 'application/xml'
+                    body = tostring(xml_body)
+                    if finalize_xml_texts is not None:
+                        body = finalize_xml_texts(body)
+                    s3_resp.body = body
+
+        return s3_resp
 
     def get_validated_param(self, param, default, limit=MAX_32BIT_INT):
         value = default

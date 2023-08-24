@@ -1516,6 +1516,11 @@ use = egg:swift#versioned_writes
 [filter:copy]
 use = egg:swift#copy
 
+# In order to keep a connection active during a potentially long PUT request,
+# clients may request that Swift send whitespace ahead of the final response
+# body. This whitespace will be yielded at most every yield_frequency seconds.
+# yield_frequency = 10
+
 # Note: To enable encryption, add the following 2 dependent pieces of crypto
 # middleware to the proxy-server pipeline. They should be to the right of all
 # other middleware apart from the final proxy-logging middleware, and in the

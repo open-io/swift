@@ -2597,7 +2597,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'
+                    '?heartbeat=on'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ])
         _, _, headers = self.swift.calls_with_headers[-3]
@@ -2655,7 +2656,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'
+                    '?heartbeat=on'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ])
         _, _, headers = self.swift.calls_with_headers[-3]
@@ -2744,7 +2746,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
+            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'
+                    '?heartbeat=on'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ], self.swift.calls)
         put_headers = self.swift.calls_with_headers[-2][2]

@@ -114,8 +114,8 @@ greater than 5GB.
 
 """
 
-from swift.common.utils import get_logger, config_true_value, FileLikeIter, \
-    close_if_possible
+from swift.common.utils import DEFAULT_YIELD_FREQUENCY, get_logger, \
+    config_true_value, FileLikeIter, close_if_possible, HeartbeatMixin
 from swift.common.swob import Request, HTTPPreconditionFailed, \
     HTTPRequestEntityTooLarge, HTTPBadRequest, HTTPException, \
     wsgi_quote, wsgi_unquote
@@ -186,19 +186,6 @@ class ServerSideCopyWebContext(WSGIContext):
             swift_source='SSC')
         return sub_req.get_response(self.app)
 
-    def send_put_req(self, req, additional_resp_headers, start_response):
-        app_resp = self._app_call(req.environ)
-        self._adjust_put_response(req, additional_resp_headers)
-        start_response(self._response_status,
-                       self._response_headers,
-                       self._response_exc_info)
-        return app_resp
-
-    def _adjust_put_response(self, req, additional_resp_headers):
-        if is_success(self._get_status_int()):
-            for header, value in additional_resp_headers.items():
-                self._response_headers.append((header, value))
-
     def handle_OPTIONS_request(self, req, start_response):
         app_resp = self._app_call(req.environ)
         if is_success(self._get_status_int()):
@@ -215,9 +202,10 @@ class ServerSideCopyWebContext(WSGIContext):
         return app_resp
 
 
-class ServerSideCopyMiddleware(object):
+class ServerSideCopyMiddleware(HeartbeatMixin):
 
-    def __init__(self, app, conf):
+    def __init__(self, app, conf, **kargs):
+        super(ServerSideCopyMiddleware, self).__init__(**kargs)
         self.app = app
         self.logger = get_logger(conf, log_route="copy")
 
@@ -444,9 +432,14 @@ class ServerSideCopyMiddleware(object):
         resp_headers = self._create_response_headers(source_path,
                                                      source_resp, sink_req)
 
-        put_resp = ssc_ctx.send_put_req(sink_req, resp_headers, start_response)
-        close_if_possible(source_resp.app_iter)
-        return put_resp
+        def _get_response():
+            try:
+                return sink_req.get_response(self.app)
+            finally:
+                close_if_possible(source_resp.app_iter)
+
+        return self.get_heartbeat_response(
+            req, start_response, _get_response, resp_headers=resp_headers)
 
     def handle_OPTIONS(self, req, start_response):
         return ServerSideCopyWebContext(self.app, self.logger).\
@@ -457,7 +450,11 @@ def filter_factory(global_conf, **local_conf):
     conf = global_conf.copy()
     conf.update(local_conf)
 
+    yield_frequency = int(conf.get('yield_frequency', DEFAULT_YIELD_FREQUENCY))
+
     def copy_filter(app):
-        return ServerSideCopyMiddleware(app, conf)
+        return ServerSideCopyMiddleware(
+            app, conf,
+            yield_frequency=yield_frequency)
 
     return copy_filter

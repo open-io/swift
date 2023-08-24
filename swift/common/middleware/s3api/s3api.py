@@ -516,7 +516,9 @@ class S3ApiMiddleware(object):
             resp = err_resp
         except Exception as e:
             self.logger.exception(e)
-            resp = InternalError(reason=str(e))
+            err_resp = InternalError(reason=str(e))
+            env.setdefault('s3api.info', {})['error_code'] = err_resp._code
+            resp = err_resp
 
         if isinstance(resp, S3ResponseBase) and 'swift.trans_id' in env:
             resp.headers['x-amz-id-2'] = env['swift.trans_id']

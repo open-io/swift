@@ -217,6 +217,12 @@ LOG_LINE_DEFAULT_FORMAT = '{remote_addr} - - [{time.d}/{time.b}/{time.Y}' \
                           '{policy_index}'
 DEFAULT_LOCK_TIMEOUT = 10
 
+# In order to keep a connection active during a potentially long PUT request,
+# clients may request that Swift send whitespace ahead of the final response
+# body. This whitespace will be yielded at most every DEFAULT_YIELD_FREQUENCY
+# seconds by default.
+DEFAULT_YIELD_FREQUENCY = 10
+
 
 class InvalidHashPathConfigError(ValueError):
 
@@ -6638,3 +6644,92 @@ def parse_auto_storage_policies(auto_storage_policies_str):
                 str(auto_storage_policies))
         previous_offset = offset
     return auto_storage_policies
+
+
+class HeartbeatMixin(object):
+    """
+    Mixin for middleware where a connection active must be maintained long
+    enough to get the response to a potentially long request.
+    """
+
+    def __init__(self, yield_frequency=DEFAULT_YIELD_FREQUENCY, **_kwargs):
+        self.yield_frequency = yield_frequency
+
+    def get_heartbeat_response(self, req, start_response, get_response,
+                               resp_headers=None):
+        """
+        In order to keep a connection active during a potentially long request,
+        clients may request that Swift send whitespace ahead of the final
+        response body. This whitespace will be yielded at most every
+        yield_frequency seconds.
+        """
+        if resp_headers is None:
+            resp_headers = {}
+        heartbeat = config_true_value(req.params.get('heartbeat'))
+        long_resp = None
+        separator = b''
+        if heartbeat:
+            thread = eventlet.spawn(get_response)
+            try:
+                # Wait a few seconds before starting the heartbeat in case
+                # the response is quick
+                with eventlet.timeout.Timeout(self.yield_frequency):
+                    long_resp = thread.wait()
+            except eventlet.timeout.Timeout:
+                pass
+            if long_resp is None:
+                # Apparently some ways of deploying require that this
+                # to happens *before* the return? Not sure why.
+                req.environ['eventlet.minimum_write_chunk_size'] = 0
+                start_response(
+                    '202 Accepted',
+                    list(resp_headers.items())
+                )
+                separator = b'\r\n\r\n'
+        else:
+            long_resp = get_response()
+
+        def _resp_iter():
+            resp = long_resp
+            if resp is None:  # heartbeat == true and long response
+                while resp is None:
+                    # wsgi won't propagate start_response calls
+                    # until some data has been yielded so make sure
+                    # first heartbeat is sent immediately
+                    yield b' '
+
+                    try:
+                        # Wait a few seconds before sending a whitespace again
+                        with eventlet.timeout.Timeout(self.yield_frequency):
+                            resp = thread.wait()
+                            break
+                    except eventlet.timeout.Timeout:
+                        # Send whitespace to keep the connection active
+                        yield b' '
+
+                try:
+                    # Send the response as a JSON object
+                    resp_dict = {'Response Status': resp.status}
+                    resp_body = resp.body
+                    if isinstance(resp_body, bytes):
+                        resp_body = resp_body.decode('utf-8')
+                    resp_dict['Response Body'] = resp_body
+                    resp_dict['Response Headers'] = resp.headers
+                    yield separator + json.dumps(resp_dict).encode('utf-8')
+                finally:
+                    drain_and_close(resp)
+            else:
+                try:
+                    # Only add headers that aren't already present
+                    # in the real response
+                    resp.headers.update({
+                        k: v for k, v in resp_headers.items()
+                        if k not in resp.headers
+                    })
+                    # Send the response as is
+                    for chunk in resp(req.environ, start_response):
+                        yield chunk
+                finally:
+                    drain_and_close(resp)
+
+        return _resp_iter()

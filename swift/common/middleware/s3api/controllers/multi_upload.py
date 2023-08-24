@@ -106,6 +106,7 @@ from swift.common.middleware.s3api.controllers.object_lock import \
     object_lock_populate_sysmeta_headers, object_lock_validate_headers
 from swift.common.middleware.s3api.multi_upload_utils import \
     list_bucket_multipart_uploads
+from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 
 # 10000 parts about 200 bytes each, plus envelope
 MAX_COMPLETE_UPLOAD_BODY_SIZE = 3 * 1024 * 1024
@@ -266,34 +267,40 @@ class PartController(Controller):
 
         req_timestamp = S3Timestamp.now()
         req.headers['X-Timestamp'] = req_timestamp.internal
+
+        is_server_side_copy = False
+        query = None
         source_resp = req.check_copy_source(self.app)
-        if 'X-Amz-Copy-Source' in req.headers and \
-                'X-Amz-Copy-Source-Range' in req.headers:
-            rng = req.headers['X-Amz-Copy-Source-Range']
+        if source_resp is not None:
+            is_server_side_copy = True
+            query = {'heartbeat': 'on'}
 
-            header_valid = True
-            try:
-                rng_obj = Range(rng)
-                if len(rng_obj.ranges) != 1:
+            if 'X-Amz-Copy-Source-Range' in req.headers:
+                rng = req.headers['X-Amz-Copy-Source-Range']
+
+                header_valid = True
+                try:
+                    rng_obj = Range(rng)
+                    if len(rng_obj.ranges) != 1:
+                        header_valid = False
+                except ValueError:
                     header_valid = False
-            except ValueError:
-                header_valid = False
-            if not header_valid:
-                err_msg = ('The x-amz-copy-source-range value must be of the '
-                           'form bytes=first-last where first and last are '
-                           'the zero-based offsets of the first and last '
-                           'bytes to copy')
-                raise InvalidArgument('x-amz-source-range', rng, err_msg)
+                if not header_valid:
+                    err_msg = ('The x-amz-copy-source-range value must be of '
+                               'the form bytes=first-last where first and '
+                               'last are the zero-based offsets of the first '
+                               'and last bytes to copy')
+                    raise InvalidArgument('x-amz-source-range', rng, err_msg)
 
-            source_size = int(source_resp.headers['Content-Length'])
-            if not rng_obj.ranges_for_length(source_size):
-                err_msg = ('Range specified is not valid for source object '
-                           'of size: %s' % source_size)
-                raise InvalidArgument('x-amz-source-range', rng, err_msg)
+                source_size = int(source_resp.headers['Content-Length'])
+                if not rng_obj.ranges_for_length(source_size):
+                    err_msg = ('Range specified is not valid for source '
+                               'object of size: %s' % source_size)
+                    raise InvalidArgument('x-amz-source-range', rng, err_msg)
 
-            req.headers['Range'] = rng
-            del req.headers['X-Amz-Copy-Source-Range']
-        if 'X-Amz-Copy-Source' in req.headers:
+                req.headers['Range'] = rng
+                del req.headers['X-Amz-Copy-Source-Range']
+
             # Clear some problematic headers that might be on the source
             req.headers.update({
                 sysmeta_header('object', 'etag'): '',
@@ -304,32 +311,40 @@ class PartController(Controller):
             })
         resp = req.get_response(self.app,
                                 container=seg_container_name,
-                                obj=seg_object_name)
+                                obj=seg_object_name,
+                                query=query)
 
-        # We want THIS request to be logged/billed,
-        # not the HEAD we do right after.
-        put_backend_path = resp.environ['PATH_INFO']
+        if is_server_side_copy:
+            etag = resp.etag
+            resp.etag = None
 
-        if 'X-Amz-Copy-Source' in req.headers:
-            resp.append_copy_resp_body(req.controller_name,
-                                       req_timestamp.s3xmlformat)
+        def _on_success(full_resp):
+            # We want THIS request to be logged/billed,
+            # not the HEAD we do right after.
+            put_backend_path = resp.environ['PATH_INFO']
+            try:
+                _get_upload_info(req, self.app, upload_id)
+            except NoSuchUpload:
+                self.logger.warning(
+                    "Finished uploading part %d%s, "
+                    "but MPU aborted in the meantime",
+                    part_number,
+                    " (copy)" if is_server_side_copy else "",
+                )
+                # TODO(FVE): delete the part
+                raise
+            finally:
+                req.environ['s3api.backend_path'] = put_backend_path
 
-        try:
-            _get_upload_info(req, self.app, upload_id)
-        except NoSuchUpload:
-            self.logger.warning(
-                "Finished uploading part %d%s, "
-                "but MPU aborted in the meantime",
-                part_number,
-                " (copy)" if 'X-Amz-Copy-Source' in req.headers else "",
-            )
-            # TODO(FVE): delete the part
-            raise
-        finally:
-            req.environ['s3api.backend_path'] = put_backend_path
+            if is_server_side_copy:
+                return make_copy_resp_xml(
+                    req.controller_name, req_timestamp.s3xmlformat,
+                    full_resp.etag or etag), None
+            else:
+                return None, None
 
-        resp.status = 200
-        return resp
+        return req.get_heartbeat_response(
+            self.app, resp, on_success=_on_success)
 
     @set_s3_operation_rest('PART')
     @ratelimit_bucket

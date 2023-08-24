@@ -45,6 +45,7 @@ from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
     object_lock_validate_headers
+from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 
 
 def version_id_param(req):
@@ -268,22 +269,33 @@ class ObjectController(Controller):
             tags=req.headers.get(OBJECT_TAGGING_HEADER),
         )
 
-        req.check_copy_source(self.app)
+        is_server_side_copy = False
+        query = None
+        if req.check_copy_source(self.app) is not None:
+            is_server_side_copy = True
+            query = {'heartbeat': 'on'}
+
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason
             req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
-        resp = req.get_response(self.app)
+        resp = req.get_response(self.app, query=query)
 
-        if 'X-Amz-Copy-Source' in req.headers:
-            resp.append_copy_resp_body(req.controller_name,
-                                       req_timestamp.s3xmlformat)
+        _on_success = None
+        if is_server_side_copy:
             # delete object metadata from response
             for key in list(resp.headers.keys()):
                 if key.lower().startswith('x-amz-meta-'):
                     del resp.headers[key]
+            etag = resp.etag
+            resp.etag = None
 
-        resp.status = HTTP_OK
-        return resp
+            def _on_success(full_resp):
+                return make_copy_resp_xml(
+                    req.controller_name, req_timestamp.s3xmlformat,
+                    full_resp.etag or etag), None
+
+        return req.get_heartbeat_response(
+            self.app, resp, on_success=_on_success)
 
     @set_s3_operation_rest('OBJECT')
     @ratelimit_bucket

@@ -28,6 +28,7 @@ from swift.common.middleware.s3api.exception import S3Exception
 from swift.common.middleware.s3api.utils import camel_to_snake, \
     utf8encode, utf8decode
 
+XML_DECLARATION = b'<?xml version="1.0" encoding="UTF-8"?>\n'
 XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
 XMLNS_XSI = 'http://www.w3.org/2001/XMLSchema-instance'
 

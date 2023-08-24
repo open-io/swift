@@ -16,6 +16,7 @@
 
 import json
 import tempfile
+import time
 import unittest
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
@@ -125,13 +126,21 @@ class TestS3ServerSideCopy(unittest.TestCase):
             obj_src, expected_etag = self._create_mpu_object_src(key, size)
         else:
             obj_src, expected_etag = self._create_object_src(key, size)
+        start = time.time()
         obj_dst = run_awscli_s3api(
             'copy-object',
             '--copy-source', f'{self.bucket_src}/{key}',
             bucket=self.bucket_dst, key=f'{key}.copy'
         )
+        request_time = time.time() - start
+        # Check the response
         self.assertEqual(obj_src['VersionId'], obj_dst['CopySourceVersionId'])
         self.assertEqual(expected_etag, obj_dst['CopyObjectResult']['ETag'])
+        # Check the response time to verify that the ratelimit is working
+        expected_request_time = size / 1048576
+        self.assertGreater(request_time, expected_request_time - 5)
+        self.assertLess(request_time, expected_request_time + 5)
+        # Check the destination
         self._check_object_dst(f'{key}.copy', size, expected_etag)
 
     def _init_mpu_object_dst(self, key):
@@ -166,6 +175,7 @@ class TestS3ServerSideCopy(unittest.TestCase):
             obj_src, expected_etag = self._create_object_src(key, size)
         upload_id = self._init_mpu_object_dst(f'{key}_mpu')
         try:
+            start = time.time()
             part_dst = run_awscli_s3api(
                 'upload-part-copy',
                 '--upload-id', upload_id,
@@ -173,10 +183,17 @@ class TestS3ServerSideCopy(unittest.TestCase):
                 '--copy-source', f'{self.bucket_src}/{key}',
                 bucket=self.bucket_dst, key=f'{key}_mpu'
             )
+            request_time = time.time() - start
+            # Check the response
             self.assertEqual(obj_src['VersionId'],
                              part_dst['CopySourceVersionId'])
             self.assertEqual(expected_etag,
                              part_dst['CopyPartResult']['ETag'])
+            # Check the response time to verify that the ratelimit is working
+            expected_request_time = size / 1048576
+            self.assertGreater(request_time, expected_request_time - 5)
+            self.assertLess(request_time, expected_request_time + 5)
+            # Check the destination
             self._check_part_dst(f'{key}_mpu', upload_id, size, expected_etag)
         finally:
             self._abort_mpu_object_dst(f'{key}_mpu', upload_id)

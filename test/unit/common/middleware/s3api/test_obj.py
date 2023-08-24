@@ -622,7 +622,7 @@ class TestS3ApiObj(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket/src_obj?version-id=foo'),
-            ('PUT', '/v1/AUTH_test/bucket/object?version-id=foo'),
+            ('PUT', '/v1/AUTH_test/bucket/object?heartbeat=on&version-id=foo'),
         ])
         _, _, headers = self.swift.calls_with_headers[-1]
         self.assertEqual(headers['x-copy-from'], '/bucket/src_obj')
