@@ -168,8 +168,11 @@ class RabbitMQClient(object):
     def start_archiving(self, account, bucket, bucket_size=None,
                         bucket_region=None):
         self._send_message(
-            account, bucket, RABBITMQ_MSG_ARCHIVING, bucket_size,
-            bucket_region)
+            account,
+            bucket,
+            RABBITMQ_MSG_ARCHIVING,
+            bucket_size=bucket_size,
+            bucket_region=bucket_region)
 
     def start_restoring(self, account, bucket, bucket_region):
         self._send_message(

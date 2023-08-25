@@ -17,7 +17,6 @@ from test.debug_logger import debug_logger
 from test.unit.common.middleware.helpers import FakeSwift
 import unittest
 from unittest.mock import patch
-from sys import version_info
 
 from oio.common.constants import OIO_DB_FROZEN
 
@@ -124,15 +123,16 @@ class TestIntelligentTiering(unittest.TestCase):
             self.assertEqual(1, m_b_status.call_count)
         else:
             self.assertEqual(0, m_b_status.call_count)
-        # Checking call_args was introduced in Python3.8
-        if version_info >= (3, 8):
-            self.assertEqual(self.expected_rabbit_args,
-                             m_rabbit.call_args.args)
-            self.assertEqual(self.expected_archiving_status_args,
-                             m_archiving_status.call_args.args)
-            if self.expected_container_status_args:
-                self.assertEqual(self.expected_container_status_args,
-                                 m_b_status.call_args.args)
+        m_rabbit.assert_called_with(
+            *self.expected_rabbit_args[0],
+            **self.expected_rabbit_args[1])
+        m_archiving_status.assert_called_with(
+            *self.expected_archiving_status_args[0],
+            **self.expected_archiving_status_args[1])
+        if self.expected_container_status_args:
+            m_b_status.assert_called_with(
+                *self.expected_container_status_args[0],
+                **self.expected_container_status_args[1])
 
     def _test_callback_ko(
             self,
@@ -168,16 +168,21 @@ class TestIntelligentTiering(unittest.TestCase):
     def test_PUT_archive_ok(
         self, m_check_mpu, m_b_status, m_archiving_status, m_rabbit
     ):
-        self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
-                                     'archive', 42, None)
+        self.expected_rabbit_args = [
+            (self.ACCOUNT, self.CONTAINER_NAME, 'archive'),
+            {'bucket_size': 42, 'bucket_region': None},
+        ]
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
 
         # Test with Status=None
-        self.expected_container_status_args = (self.req, OIO_DB_FROZEN)
-        self.expected_archiving_status_args = (
-            self.req, BUCKET_STATE_NONE,
-            BUCKET_STATE_LOCKED
-        )
+        self.expected_container_status_args = [
+            (self.req, OIO_DB_FROZEN),
+            {}
+        ]
+        self.expected_archiving_status_args = [
+            (self.req, BUCKET_STATE_NONE, BUCKET_STATE_LOCKED),
+            {}
+        ]
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
@@ -256,12 +261,14 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_SET_ARCHIVING_STATUS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_ok(self, m_b_status, m_archiving_status, m_rabbit):
-        self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
-                                     'restore', None)
-        self.expected_archiving_status_args = (
-            self.req, BUCKET_STATE_ARCHIVED,
-            BUCKET_STATE_RESTORING
-        )
+        self.expected_rabbit_args = [
+            (self.ACCOUNT, self.CONTAINER_NAME, 'restore'),
+            {'bucket_region': None}
+        ]
+        self.expected_archiving_status_args = [
+            (self.req, BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORING),
+            {}
+        ]
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
@@ -333,15 +340,20 @@ class TestIntelligentTiering(unittest.TestCase):
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_DELETE_ok(self, m_b_status, m_archiving_status, m_rabbit):
         self.req.method = 'DELETE'
-        self.expected_rabbit_args = (self.ACCOUNT, self.CONTAINER_NAME,
-                                     'delete')
-        self.expected_archiving_status_args = (self.req, BUCKET_STATE_DELETING)
+        self.expected_rabbit_args = [
+            (self.ACCOUNT, self.CONTAINER_NAME, 'delete'),
+            {}
+        ]
+        self.expected_archiving_status_args = [
+            (self.req, BUCKET_STATE_DELETING),
+            {}
+        ]
 
         # Test with Status=Archived
-        self.expected_archiving_status_args = (
-            self.req, BUCKET_STATE_ARCHIVED,
-            BUCKET_STATE_DELETING
-        )
+        self.expected_archiving_status_args = [
+            (self.req, BUCKET_STATE_ARCHIVED, BUCKET_STATE_DELETING),
+            {}
+        ]
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
@@ -350,10 +362,10 @@ class TestIntelligentTiering(unittest.TestCase):
         )
 
         # Test with Status=Restored
-        self.expected_archiving_status_args = (
-            self.req, BUCKET_STATE_RESTORED,
-            BUCKET_STATE_DELETING
-        )
+        self.expected_archiving_status_args = [
+            (self.req, BUCKET_STATE_RESTORED, BUCKET_STATE_DELETING),
+            {}
+        ]
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_RESTORED}
         }
