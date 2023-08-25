@@ -13,16 +13,15 @@ workflow:
       "git.message": ""
       "git.repository": OPENIO/swift
       "git.tag": ""
+      "build_only": "false"
 
 
   test-code-quality:
     pipeline: swift-code-tests
     application: swift
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
     depends_on:
       - root
 
@@ -45,7 +44,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and (cds_manual == "true" or git_branch == "feature/oio-backend")
+        return cds_triggered_by_username ~= "cds.scheduler" and (cds_manual == "true" or git_branch == "feature/oio-backend" or build_only == "true")
 
   tests-unit:
     pipeline: swift-tests
@@ -54,10 +53,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   oio-tests-unit:
     pipeline: swift-oio-tests
@@ -66,10 +63,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   oio-tests-s3:
     pipeline: swift-oio-tests
@@ -78,10 +73,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   oio-tests-s3-basic:
     pipeline: swift-oio-tests
@@ -90,10 +83,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   oio-tests-iam:
     pipeline: swift-oio-tests
@@ -102,10 +93,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   oio-tests-intelligent-tiering:
     pipeline: swift-oio-tests
@@ -114,10 +103,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   oio-tests-encryption:
     pipeline: swift-oio-tests
@@ -126,10 +113,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   ceph-s3-tests:
     pipeline: swift-oio-tests
@@ -138,10 +123,8 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
     optional: true
 
   tests-reports:
@@ -157,10 +140,8 @@ workflow:
       - oio-tests-intelligent-tiering
       - oio-tests-encryption
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: ne
-          value: "cds.scheduler"
+      script: |+
+        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
 
   clean-artifacts:
     pipeline: swift-clean-artifacts
