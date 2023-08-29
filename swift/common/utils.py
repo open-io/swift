@@ -3498,7 +3498,7 @@ def ratelimit_sleep(running_time, max_rate, incr_by=1, rate_buffer=5):
     # Convert rate_buffer to milliseconds and compare
     if now - running_time > rate_buffer * clock_accuracy:
         running_time = now
-    elif running_time - now > time_per_request:
+    elif running_time - now > 0:
         # Convert diff back to a floating point number of seconds and sleep
         eventlet.sleep((running_time - now) / clock_accuracy)
 
