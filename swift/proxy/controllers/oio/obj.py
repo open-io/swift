@@ -859,6 +859,8 @@ class ObjectController(BaseObjectController):
         metadata = self.load_object_metadata(headers)
         replication_destinations = req.headers.get(
             "x-replication-destinations")
+        dryrun = req.params.get('dryrun', False)
+
         try:
             del_marker, oio_version = storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
@@ -867,7 +869,8 @@ class ObjectController(BaseObjectController):
                 bypass_governance=bypass_governance,
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata,
                 properties=metadata,
-                replication_destinations=replication_destinations)
+                replication_destinations=replication_destinations,
+                dryrun=dryrun)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
         except exceptions.NoSuchObject:

@@ -134,7 +134,75 @@ test_object_lock_bypass_governance_permission() {
   echo $OUT | grep -v 'Access Denied'
 }
 
+test_object_lock_delete() {
+  # In this test:
+  # - activate lock according to the given mode
+  # - create 2 objects (classic and MPU)
+  # - delete with version (AccessDenied)
+  # - delete without version: create delete marker
+  # (TODO: - in case of Governance, delete by bypassing)
+  MODE=$1
+
+  BUCKET="lock-delete-$RANDOM"
+  WORKDIR=$(mktemp -d -t object-lock-delete-XXXX)
+  pushd "$WORKDIR"
+
+  SMALL_FILE="/etc/magic"
+  SMALL_FILE_CHECKSUM=$(md5sum "${SMALL_FILE}" | cut -d ' ' -f 1)
+
+  BIG_FILE="${WORKDIR}/bigfile_src"
+  dd if=/dev/urandom of="${BIG_FILE}" bs=1k count=20480
+  BIG_FILE_CHECKSUM=$(md5sum "${BIG_FILE}" | cut -d ' ' -f 1)
+
+  # Create bucket and put lock config
+  ${AWSA1ADM} s3api create-bucket --bucket ${BUCKET} --object-lock-enabled-for-bucket
+  ${AWSA1ADM} s3api put-object-lock-configuration --bucket ${BUCKET} --object-lock-configuration '{"ObjectLockEnabled": "Enabled", "Rule": {"DefaultRetention": {"Mode": "'${MODE}'", "Days": 9}}}'
+
+  # Push small object
+  ${AWSA1ADM} s3 cp /etc/magic s3://${BUCKET}/magic
+  DATA=$(${AWSA1ADM} s3api list-object-versions --bucket ${BUCKET} --prefix magic)
+  VERSION=$(echo $DATA | jq -r '.Versions[0].VersionId|tostring')
+  
+  # Try delete with version (object still downloadable)
+  OUT=$(${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key magic --version-id "${VERSION}") || true
+  echo $OUT | grep -v 'Access Denied'
+  ${AWSA1ADM} s3api get-object --bucket ${BUCKET} --key magic magicv1
+  echo "${SMALL_FILE_CHECKSUM} magicv1" | md5sum -c -
+
+  # Create delete marker (object still downloadable)
+  ${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key magic
+  # TODO: check delete marker creation
+
+  ${AWSA1ADM} s3api get-object --bucket ${BUCKET} --key magic --version-id "${VERSION}" magicv2
+  echo "${SMALL_FILE_CHECKSUM} magicv2" | md5sum -c -
+
+  # Push BIG OBJECT
+  ${AWSA1ADM} s3 cp ${BIG_FILE} s3://${BUCKET}/big
+  DATA=$(${AWSA1ADM} s3api list-object-versions --bucket ${BUCKET} --prefix big)
+  VERSION=$(echo $DATA | jq -r '.Versions[0].VersionId|tostring')
+  
+  # Try delete with version (object still downloadable)
+  OUT=$(${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key big --version-id "${VERSION}") || true
+  echo $OUT | grep -v 'Access Denied'
+  ${AWSA1ADM} s3api get-object --bucket ${BUCKET} --key big bigv1
+  echo "${BIG_FILE_CHECKSUM} bigv1" | md5sum -c -
+
+  # Create delete marker (object still downloadable)
+  ${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key big
+  DATA=$(${AWSA1ADM} s3api list-object-versions --bucket ${BUCKET} --prefix big)
+  echo $DATA | jq -r '.DeleteMarkers[0].Key|tostring' | grep "big"
+
+  ${AWSA1ADM} s3api get-object --bucket ${BUCKET} --key big --version-id "${VERSION}" bigv2
+  echo "${BIG_FILE_CHECKSUM} bigv2" | md5sum -c -
+
+  # TODO in GOVERNANCE: test delete object with "--bypass-governance-retention"
+  popd
+  rm -fr "${WORKDIR}"
+}
+
 test_object_lock_configuration_permission
 test_object_lock_legal_hold_permission
 test_object_lock_retention_permission
 test_object_lock_bypass_governance_permission
+test_object_lock_delete COMPLIANCE
+test_object_lock_delete GOVERNANCE

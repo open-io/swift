@@ -1123,6 +1123,9 @@ class TestSloDeleteManifest(SloTestCase):
             'GET', '/v1/AUTH_test/deltest/man_404',
             swob.HTTPNotFound, {}, None)
         self.app.register(
+            'DELETE', '/v1/AUTH_test/deltest/man_404',
+            swob.HTTPNoContent, {}, None)
+        self.app.register(
             'GET', '/v1/AUTH_test/deltest/man',
             swob.HTTPOk, {'Content-Type': 'application/json',
                           'X-Static-Large-Object': 'true'},
@@ -1245,6 +1248,9 @@ class TestSloDeleteManifest(SloTestCase):
             swob.HTTPNotFound, {}, None)
 
         self.app.register(
+            'DELETE', '/v1/AUTH_test/deltest/manifest-badjson',
+            swob.HTTPNoContent, {}, None)
+        self.app.register(
             'GET', '/v1/AUTH_test/deltest/manifest-badjson',
             swob.HTTPOk, {'Content-Type': 'application/json',
                           'X-Static-Large-Object': 'true'},
@@ -1290,6 +1296,9 @@ class TestSloDeleteManifest(SloTestCase):
                          'hash': 'c', 'bytes': '1'},
                         {'name': '/deltest/h_9',
                          'hash': 'd', 'bytes': '3'}]))
+        self.app.register(
+            'DELETE', '/v1/AUTH_test/deltest/manifest-with-too-many-segs',
+            swob.HTTPNoContent, {}, None)
 
     def test_handle_multipart_delete_man(self):
         req = Request.blank(
@@ -1304,10 +1313,7 @@ class TestSloDeleteManifest(SloTestCase):
             environ={'REQUEST_METHOD': 'DELETE',
                      'HTTP_ACCEPT': 'application/json'})
         status, headers, body = self.call_slo(req)
-        self.assertEqual(status, '200 OK')
-        resp_data = json.loads(body)
-        self.assertEqual(resp_data['Response Status'],
-                         '412 Precondition Failed')
+        self.assertEqual(status, '412 Precondition Failed')
 
     def test_handle_multipart_delete_whole_404(self):
         req = Request.blank(
@@ -1318,8 +1324,13 @@ class TestSloDeleteManifest(SloTestCase):
         resp_data = json.loads(body)
         self.assertEqual(
             self.app.calls,
-            [('GET',
-              '/v1/AUTH_test/deltest/man_404?multipart-manifest=get')])
+            [
+                ('DELETE', '/v1/AUTH_test/deltest/man_404?' +
+                    'dryrun=True&multipart-manifest=delete'),
+                ('GET', '/v1/AUTH_test/deltest/' +
+                    'man_404?multipart-manifest=get')
+            ]
+        )
         self.assertEqual(resp_data['Response Status'], '200 OK')
         self.assertEqual(resp_data['Response Body'], '')
         self.assertEqual(resp_data['Number Deleted'], 0)
@@ -1334,12 +1345,17 @@ class TestSloDeleteManifest(SloTestCase):
         status, headers, body = self.call_slo(req)
         resp_data = json.loads(body)
         self.assertEqual(
-            set(self.app.calls),
-            set([('GET',
-                  '/v1/AUTH_test/deltest/man?multipart-manifest=get'),
-                 ('DELETE', '/v1/AUTH_test/deltest/gone'),
-                 ('DELETE', '/v1/AUTH_test/deltest/b_2'),
-                 ('DELETE', '/v1/AUTH_test/deltest/man')]))
+            self.app.calls,
+            [
+                ('DELETE', '/v1/AUTH_test/deltest/man' +
+                    '?dryrun=True&multipart-manifest=delete'),
+                ('GET',
+                    '/v1/AUTH_test/deltest/man?multipart-manifest=get'),
+                ('DELETE', '/v1/AUTH_test/deltest/gone'),
+                ('DELETE', '/v1/AUTH_test/deltest/b_2'),
+                ('DELETE', '/v1/AUTH_test/deltest/man')
+            ]
+        )
         self.assertEqual(resp_data['Response Status'], '200 OK')
         self.assertEqual(resp_data['Number Deleted'], 2)
         self.assertEqual(resp_data['Number Not Found'], 1)
@@ -1349,12 +1365,18 @@ class TestSloDeleteManifest(SloTestCase):
             '/v1/AUTH_test/deltest/man-all-there?multipart-manifest=delete',
             environ={'REQUEST_METHOD': 'DELETE'})
         self.call_slo(req)
-        self.assertEqual(set(self.app.calls), set([
-            ('GET',
-             '/v1/AUTH_test/deltest/man-all-there?multipart-manifest=get'),
-            ('DELETE', '/v1/AUTH_test/deltest/b_2'),
-            ('DELETE', '/v1/AUTH_test/deltest/c_3'),
-            ('DELETE', ('/v1/AUTH_test/deltest/man-all-there'))]))
+        self.assertEqual(
+            self.app.calls,
+            [
+                ('DELETE', '/v1/AUTH_test/deltest/man-all-there' +
+                    '?dryrun=True&multipart-manifest=delete'),
+                ('GET', '/v1/AUTH_test/deltest/' +
+                 'man-all-there?multipart-manifest=get'),
+                ('DELETE', '/v1/AUTH_test/deltest/b_2'),
+                ('DELETE', '/v1/AUTH_test/deltest/c_3'),
+                ('DELETE', '/v1/AUTH_test/deltest/man-all-there')
+            ]
+        )
 
     def test_handle_multipart_delete_non_ascii(self):
         unicode_acct = u'AUTH_test-un\u00efcode'
@@ -1375,13 +1397,18 @@ class TestSloDeleteManifest(SloTestCase):
                 delete_status = int(value.split()[0])
                 self.assertEqual(200, delete_status)
 
-        self.assertEqual(set(self.app.calls), set([
-            ('GET',
-             '/v1/%s/deltest/man-all-there'
-             '?multipart-manifest=get' % wsgi_acct),
-            ('DELETE', '/v1/%s/\xe2\x98\x83/b_2' % wsgi_acct),
-            ('DELETE', '/v1/%s/\xe2\x98\x83/c_3' % wsgi_acct),
-            ('DELETE', ('/v1/%s/deltest/man-all-there' % wsgi_acct))]))
+        self.assertEqual(
+            self.app.calls,
+            [
+                ('DELETE', f'/v1/{wsgi_acct}/deltest/man-all-there' +
+                    '?dryrun=True&multipart-manifest=delete'),
+                ('GET', f'/v1/{wsgi_acct}/deltest/' +
+                    'man-all-there?multipart-manifest=get'),
+                ('DELETE', '/v1/%s/\xe2\x98\x83/b_2' % wsgi_acct),
+                ('DELETE', '/v1/%s/\xe2\x98\x83/c_3' % wsgi_acct),
+                ('DELETE', ('/v1/%s/deltest/man-all-there' % wsgi_acct))
+            ]
+        )
 
     def test_handle_multipart_delete_nested(self):
         req = Request.blank(
@@ -1391,16 +1418,21 @@ class TestSloDeleteManifest(SloTestCase):
         self.call_slo(req)
         self.assertEqual(
             set(self.app.calls),
-            {('GET', '/v1/AUTH_test/deltest/' +
-              'manifest-with-submanifest?multipart-manifest=get'),
-             ('GET', '/v1/AUTH_test/deltest/' +
-              'submanifest?multipart-manifest=get'),
-             ('DELETE', '/v1/AUTH_test/deltest/a_1'),
-             ('DELETE', '/v1/AUTH_test/deltest/b_2'),
-             ('DELETE', '/v1/AUTH_test/deltest/c_3'),
-             ('DELETE', '/v1/AUTH_test/deltest/submanifest'),
-             ('DELETE', '/v1/AUTH_test/deltest/d_3'),
-             ('DELETE', '/v1/AUTH_test/deltest/manifest-with-submanifest')})
+            {
+                ('DELETE', '/v1/AUTH_test/deltest/manifest-with-submanifest' +
+                    '?dryrun=True&multipart-manifest=delete'),
+                ('GET', '/v1/AUTH_test/deltest/' +
+                    'manifest-with-submanifest?multipart-manifest=get'),
+                ('GET', '/v1/AUTH_test/deltest/' +
+                    'submanifest?multipart-manifest=get'),
+                ('DELETE', '/v1/AUTH_test/deltest/a_1'),
+                ('DELETE', '/v1/AUTH_test/deltest/b_2'),
+                ('DELETE', '/v1/AUTH_test/deltest/c_3'),
+                ('DELETE', '/v1/AUTH_test/deltest/submanifest'),
+                ('DELETE', '/v1/AUTH_test/deltest/d_3'),
+                ('DELETE', '/v1/AUTH_test/deltest/manifest-with-submanifest')
+            }
+        )
 
     def test_handle_multipart_delete_nested_too_many_segments(self):
         req = Request.blank(
@@ -1424,15 +1456,18 @@ class TestSloDeleteManifest(SloTestCase):
                      'HTTP_ACCEPT': 'application/json'})
         status, headers, body = self.call_slo(req)
         resp_data = json.loads(body)
-        self.assertEqual(set(self.app.calls), {
+        expected_calls = [
+            ('DELETE', '/v1/AUTH_test/deltest/manifest-missing-submanifest' +
+                '?dryrun=True&multipart-manifest=delete'),
             ('GET', '/v1/AUTH_test/deltest/' +
-             'manifest-missing-submanifest?multipart-manifest=get'),
+                'manifest-missing-submanifest?multipart-manifest=get'),
+            ('GET', '/v1/AUTH_test/deltest/' +
+                'missing-submanifest?multipart-manifest=get'),
             ('DELETE', '/v1/AUTH_test/deltest/a_1'),
-            ('GET', '/v1/AUTH_test/deltest/' +
-             'missing-submanifest?multipart-manifest=get'),
             ('DELETE', '/v1/AUTH_test/deltest/d_3'),
             ('DELETE', '/v1/AUTH_test/deltest/manifest-missing-submanifest'),
-        })
+        ]
+        self.assertEqual(self.app.calls, expected_calls)
         self.assertEqual(resp_data['Response Status'], '200 OK')
         self.assertEqual(resp_data['Response Body'], '')
         self.assertEqual(resp_data['Number Deleted'], 3)
@@ -1483,7 +1518,11 @@ class TestSloDeleteManifest(SloTestCase):
         resp_data = json.loads(body)
         self.assertEqual(
             self.app.calls,
-            [('GET', '/v1/AUTH_test/deltest/a_1?multipart-manifest=get')])
+            [
+                ('DELETE', '/v1/AUTH_test/deltest/a_1?' +
+                    'dryrun=True&multipart-manifest=delete'),
+                ('GET', '/v1/AUTH_test/deltest/a_1?multipart-manifest=get'),
+            ])
         self.assertEqual(resp_data['Response Status'], '400 Bad Request')
         self.assertEqual(resp_data['Response Body'], '')
         self.assertEqual(resp_data['Number Deleted'], 0)
@@ -1498,9 +1537,11 @@ class TestSloDeleteManifest(SloTestCase):
                      'HTTP_ACCEPT': 'application/json'})
         status, headers, body = self.call_slo(req)
         resp_data = json.loads(body)
-        self.assertEqual(self.app.calls,
-                         [('GET', '/v1/AUTH_test/deltest/' +
-                           'manifest-badjson?multipart-manifest=get')])
+        self.assertEqual(self.app.calls, [
+            ('DELETE', '/v1/AUTH_test/deltest/manifest-badjson?' +
+                'dryrun=True&multipart-manifest=delete'),
+            ('GET', '/v1/AUTH_test/deltest/' +
+                'manifest-badjson?multipart-manifest=get')])
         self.assertEqual(resp_data['Response Status'], '400 Bad Request')
         self.assertEqual(resp_data['Response Body'], '')
         self.assertEqual(resp_data['Number Deleted'], 0)
@@ -1517,14 +1558,18 @@ class TestSloDeleteManifest(SloTestCase):
                      'HTTP_ACCEPT': 'application/json'})
         status, headers, body = self.call_slo(req)
         resp_data = json.loads(body)
-        self.assertEqual(
-            set(self.app.calls),
-            set([('GET', '/v1/AUTH_test/deltest/' +
-                  'manifest-with-unauth-segment?multipart-manifest=get'),
-                 ('DELETE', '/v1/AUTH_test/deltest/a_1'),
-                 ('DELETE', '/v1/AUTH_test/deltest-unauth/q_17'),
-                 ('DELETE', '/v1/AUTH_test/deltest/' +
-                  'manifest-with-unauth-segment')]))
+
+        expected_calls = [
+            ('DELETE', '/v1/AUTH_test/deltest/manifest-with-unauth-segment' +
+                '?dryrun=True&multipart-manifest=delete'),
+            ('GET', '/v1/AUTH_test/deltest/' +
+                'manifest-with-unauth-segment?multipart-manifest=get'),
+            ('DELETE', '/v1/AUTH_test/deltest/a_1'),
+            ('DELETE', '/v1/AUTH_test/deltest-unauth/q_17'),
+            ('DELETE', '/v1/AUTH_test/deltest/' +
+                'manifest-with-unauth-segment')
+        ]
+        self.assertEqual(self.app.calls, expected_calls)
         self.assertEqual(resp_data['Response Status'], '400 Bad Request')
         self.assertEqual(resp_data['Response Body'], '')
         self.assertEqual(resp_data['Number Deleted'], 2)
@@ -1543,12 +1588,14 @@ class TestSloDeleteManifest(SloTestCase):
         resp_data = json.loads(body)
         self.assertEqual(resp_data["Number Deleted"], 3)
 
-        self.assertEqual(set(self.app.calls), set([
+        self.assertEqual(self.app.calls, [
+            ('DELETE', '/v1/AUTH_test/deltest/man-all-there' +
+                '?dryrun=True&multipart-manifest=delete'),
             ('GET',
              '/v1/AUTH_test/deltest/man-all-there?multipart-manifest=get'),
             ('DELETE', '/v1/AUTH_test/deltest/b_2'),
             ('DELETE', '/v1/AUTH_test/deltest/c_3'),
-            ('DELETE', '/v1/AUTH_test/deltest/man-all-there')]))
+            ('DELETE', '/v1/AUTH_test/deltest/man-all-there')])
 
     def test_handle_async_delete_whole_404(self):
         self.slo.allow_async_delete = True
@@ -1576,12 +1623,14 @@ class TestSloDeleteManifest(SloTestCase):
         resp_data = json.loads(body)
         self.assertEqual(resp_data["Number Deleted"], 3)
 
-        self.assertEqual(set(self.app.calls), set([
+        self.assertEqual(self.app.calls, [
+            ('DELETE', '/v1/AUTH_test/deltest/man-all-there?' +
+                'async=on&dryrun=True&heartbeat=on&multipart-manifest=delete'),
             ('GET',
              '/v1/AUTH_test/deltest/man-all-there?multipart-manifest=get'),
             ('DELETE', '/v1/AUTH_test/deltest/b_2'),
             ('DELETE', '/v1/AUTH_test/deltest/c_3'),
-            ('DELETE', '/v1/AUTH_test/deltest/man-all-there')]))
+            ('DELETE', '/v1/AUTH_test/deltest/man-all-there')])
 
     def test_handle_async_delete_whole(self):
         self.slo.allow_async_delete = True

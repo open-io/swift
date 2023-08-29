@@ -341,7 +341,7 @@ from swift.common.swob import Request, HTTPBadRequest, HTTPServerError, \
     HTTPMethodNotAllowed, HTTPRequestEntityTooLarge, HTTPLengthRequired, \
     HTTPOk, HTTPPreconditionFailed, HTTPException, HTTPNotFound, \
     HTTPUnauthorized, HTTPConflict, HTTPUnprocessableEntity, \
-    HTTPServiceUnavailable, Response, Range, normalize_etag, \
+    HTTPServiceUnavailable, HTTPForbidden, Response, Range, normalize_etag, \
     RESPONSE_REASONS, str_to_wsgi, bytes_to_wsgi, wsgi_to_str, wsgi_quote
 from swift.common.utils import get_logger, config_true_value, \
     get_valid_utf8_str, override_bytes_from_content_type, split_path, \
@@ -1435,6 +1435,39 @@ class StaticLargeObject(object):
 
         return resp_iter()
 
+    def _check_manifest_deletion(self, req):
+        """
+        Try to delete the manifest.
+        In case of 204, nothing blocks the deletion, parts can be deleted.
+        Otherwise, something (lock, etc..) may block the object deletion,
+        parts should not be deleted.
+
+        :param req: a :class:`~swift.common.swob.Request` with an SLO manifest
+            in path
+        :raises HTTPForbidden: if manifest deletion is not allowed
+        """
+        if not check_utf8(wsgi_to_str(req.path_info)):
+            raise HTTPPreconditionFailed(
+                request=req, body='Invalid UTF8 or contains NULL')
+
+        new_env = req.environ.copy()
+        new_query_string = 'dryrun=True'
+        old_query_string = new_env.get('QUERY_STRING')
+        if old_query_string:
+            new_query_string = f'{old_query_string}&{new_query_string}'
+        new_env['QUERY_STRING'] = new_query_string
+
+        sub_req = make_subrequest(
+            new_env,
+            method='DELETE',
+            swift_source='SLO',
+            headers=req.headers,
+            path=req.path,
+        )
+        resp = sub_req.get_response(self.app)
+        if resp.status_int != 204:
+            raise HTTPForbidden(request=req)
+
     def get_segments_to_delete_iter(self, req):
         """
         A generator function to be used to delete all the segments and
@@ -1446,9 +1479,6 @@ class StaticLargeObject(object):
         :raises HTTPBadRequest: on too many buffered sub segments and
                                 on invalid SLO manifest path
         """
-        if not check_utf8(wsgi_to_str(req.path_info)):
-            raise HTTPPreconditionFailed(
-                request=req, body='Invalid UTF8 or contains NULL')
         vrs, account, container, obj = req.split_path(4, 4, True)
         if six.PY2:
             obj_path = ('/%s/%s' % (container, obj)).decode('utf-8')
@@ -1511,7 +1541,7 @@ class StaticLargeObject(object):
         vrs, account, _junk = req.split_path(2, 3, True)
         new_env = req.environ.copy()
         new_env['REQUEST_METHOD'] = 'GET'
-        del(new_env['wsgi.input'])
+        del new_env['wsgi.input']
         new_env['QUERY_STRING'] = 'multipart-manifest=get'
         if 'version-id' in req.params:
             new_env['QUERY_STRING'] += \
@@ -1625,8 +1655,10 @@ class StaticLargeObject(object):
 
     def handle_multipart_delete(self, req):
         """
-        Will delete all the segments in the SLO manifest and then, if
-        successful, will delete the manifest file.
+        First, will try to delete the manifest in dryrun (some triggers may
+        prevent the deletion).
+        If this dryrun is ok, will delete all the segments in the SLO manifest
+        and then, if successful, will delete the manifest file.
 
         :param req: a :class:`~swift.common.swob.Request` with an obj in path
         :returns: swob.Response whose app_iter set to Bulk.handle_delete_iter
@@ -1643,10 +1675,15 @@ class StaticLargeObject(object):
             out_content_type = None  # Ignore invalid header
         if out_content_type:
             resp.content_type = out_content_type
+
+        # If manifest deletion is not allowed, do not delete any parts
+        self._check_manifest_deletion(req)
+
         resp.app_iter = self.bulk_deleter.handle_delete_iter(
             req, objs_to_delete=self.get_segments_to_delete_iter(req),
             user_agent='MultipartDELETE', swift_source='SLO',
             out_content_type=out_content_type)
+
         return resp
 
     def handle_container_listing(self, req, start_response):

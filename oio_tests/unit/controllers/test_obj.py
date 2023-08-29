@@ -147,7 +147,7 @@ class TestObjectController(unittest.TestCase):
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, create_delete_marker=None,
             bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
-            properties=ANY, replication_destinations=None)
+            properties=ANY, replication_destinations=None, dryrun=False)
         self.assertEqual(204, resp.status_int)
         # oio-sds always sets version ids, even when versioning is suspended
         self.assertIn('x-amz-version-id', resp.headers)
@@ -159,7 +159,7 @@ class TestObjectController(unittest.TestCase):
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, create_delete_marker=None,
             bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
-            properties=ANY, replication_destinations=None)
+            properties=ANY, replication_destinations=None, dryrun=False)
         self.assertEqual(204, resp.status_int)
 
     def test_HEAD_simple(self):
