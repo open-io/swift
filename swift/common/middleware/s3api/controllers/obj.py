@@ -65,23 +65,6 @@ def version_id_param(req):
     return version_id
 
 
-def set_s3_operation_rest_for_get_object(func):
-    """
-    A decorator to set the specified operation and command name
-    to the s3api.info fields.
-    """
-    @functools.wraps(func)
-    def _set_s3_operation(self, req, *args, **kwargs):
-        if 'X-Amz-Copy-Source' in req.headers:
-            set_s3_operation_wrapper = set_s3_operation_rest(
-                'OBJECT_GET', method='COPY')
-        else:
-            set_s3_operation_wrapper = set_s3_operation_rest('OBJECT')
-        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
-
-    return _set_s3_operation
-
-
 def set_s3_operation_rest_for_put_object(func):
     """
     A decorator to set the specified operation and command name
@@ -213,7 +196,7 @@ class ObjectController(Controller):
 
         return resp
 
-    @set_s3_operation_rest_for_get_object
+    @set_s3_operation_rest('OBJECT')
     @ratelimit_bucket
     @public
     @fill_cors_headers

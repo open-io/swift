@@ -334,6 +334,19 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
         source_path = '/%s/%s/%s/%s' % (ver, src_account_name,
                                         src_container_name, src_obj_name)
 
+        s3api_info = req.environ.get('s3api.info')
+        _on_read = None
+        if s3api_info is not None:
+            # FIXME(adu): A real S3 request would avoid this kind of smell code
+            s3api_info['source.account'] = src_account_name
+            s3api_info['source.bucket'] = src_container_name
+            s3api_info['source.key'] = src_obj_name
+            s3api_info['source.bytes_sent'] = 0
+
+            def _on_read(chunk):
+                s3api_info['source.bytes_sent'] = \
+                    s3api_info['source.bytes_sent'] + len(chunk)
+
         # GET the source object, bail out on error
         ssc_ctx = ServerSideCopyWebContext(self.app, self.logger)
         source_resp = self._get_source_object(ssc_ctx, source_path, req)
@@ -396,7 +409,8 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
             max_bytes_per_second = int(max_bytes_per_second)
         sink_req.environ['wsgi.input'] = FileLikeIter(
             source_resp.app_iter,
-            max_bytes_per_second=max_bytes_per_second
+            max_bytes_per_second=max_bytes_per_second,
+            on_read=_on_read
         )
         sink_req.content_length = source_resp.content_length
         if (source_resp.status_int == HTTP_OK and

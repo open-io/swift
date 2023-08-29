@@ -819,7 +819,7 @@ def config_fallocate_value(reserve_value):
 
 class FileLikeIter(object):
 
-    def __init__(self, iterable, max_bytes_per_second=None):
+    def __init__(self, iterable, max_bytes_per_second=None, on_read=None):
         """
         Wraps an iterable to behave as a file-like object.
 
@@ -833,6 +833,7 @@ class FileLikeIter(object):
 
         self.bytes_running_time = 0
         self.max_bytes_per_second = max_bytes_per_second
+        self.on_read = on_read
 
     def __iter__(self):
         return self
@@ -884,6 +885,9 @@ class FileLikeIter(object):
                 self.bytes_running_time,
                 self.max_bytes_per_second,
                 incr_by=chunk_len)
+
+        if self.on_read is not None:
+            self.on_read(chunk)
 
         return chunk
 

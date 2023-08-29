@@ -168,6 +168,32 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
     def log_request(self, req, status_int, bytes_received, bytes_sent,
                     start_time, end_time, resp_headers=None, ttfb=None,
                     wire_status_int=None, customer_access_logging=None):
+        s3_info = req.environ.get('s3api.info')
+
+        if s3_info is not None and 'source.account' in s3_info:
+            # FIXME(adu): A real S3 request would avoid this kind of smell code
+            original_method = req.method
+            # Fetch source info
+            src_s3_info = s3_info.copy()
+            for key in ('account', 'bucket', 'key'):
+                src_s3_info[key] = src_s3_info.pop(f'source.{key}', None)
+            src_bytes_sent = src_s3_info.pop('source.bytes_sent', 0)
+            src_s3_info['operation'] = 'REST.COPY.OBJECT_GET'
+            # Log the source request
+            try:
+                req.method = 'GET'
+                req.environ['s3api.info'] = src_s3_info
+                self.log_request(
+                    req, status_int, 0, src_bytes_sent, start_time, end_time,
+                    resp_headers=resp_headers, ttfb=None,
+                    wire_status_int=wire_status_int,
+                    customer_access_logging=customer_access_logging)
+            except Exception as exc:
+                self.logger.warning('Failed to log source request: %s', exc)
+            finally:
+                req.method = original_method
+                req.environ['s3api.info'] = s3_info
+
         super(S3LoggingMiddleware, self).log_request(
             req, status_int, bytes_received, bytes_sent, start_time, end_time,
             resp_headers=resp_headers, ttfb=ttfb,
@@ -180,7 +206,6 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             # that have S3 Server Access Logging enabled
             return
 
-        s3_info = req.environ.get('s3api.info')
         if not s3_info:
             # Not S3 request
             return
