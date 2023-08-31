@@ -25,7 +25,8 @@ from swift.common.middleware.crypto.keymaster import KeyMaster, \
 from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
-from swift.common.utils import config_positive_int_value, config_true_value
+from swift.common.utils import config_positive_int_value, config_true_value, \
+    non_negative_int
 from swift.common import wsgi
 
 from oio.account.kms_client import KmsClient
@@ -38,6 +39,7 @@ CRYPTO_ENV_KEYS = (crypto_utils.SSEC_ALGO_ENV_KEY,
                    crypto_utils.SSEC_SRC_KEY_ENV_KEY,
                    crypto_utils.SSEC_KEY_MD5_ENV_KEY,
                    crypto_utils.SSEC_SRC_KEY_MD5_ENV_KEY)
+NO_SECRET = "__NO_SECRET__"
 
 
 def make_encrypted_env(env, method=None, path=None, agent='Swift',
@@ -69,13 +71,21 @@ def make_encrypted_subrequest(env, method=None, path=None, body=None,
 # This abstraction exists so we can replace it with a real KMS without having
 # to rework the whole key creation/deletion logic.
 class KmsWrapper(object):
-    """KMS implementation using OpenIO's bucket database (unsafe)."""
+    """
+    KMS implementation using OpenIO's bucket database (unsafe).
 
-    def __init__(self, kms, cache=None):
+    When the KMS returns no key, keep in cache the fact that there is no key,
+    so we don't query it too often.
+    """
+
+    def __init__(self, kms, cache=None,
+                 cache_time=0, no_secret_cache_time=15 * 60):
         self.kms = kms
         self.cache = cache
+        self.cache_time = cache_time
+        self.no_secret_cache_time = no_secret_cache_time
 
-    def create_bucket_secret(self, bucket, account=None, secret_id=None,
+    def create_bucket_secret(self, bucket, account, secret_id=None,
                              secret_bytes=32, reqid=None):
         secret_meta = self.kms.create_secret(
             account,
@@ -84,12 +94,12 @@ class KmsWrapper(object):
             secret_bytes=secret_bytes,
             reqid=reqid,
         )
-        ckey = f"sses3/{bucket}/{secret_id}"
+        ckey = f"sses3/{account}/{bucket}/{secret_id}"
         if self.cache is not None:
-            self.cache.set(ckey, secret_meta["secret"])
+            self.cache.set(ckey, secret_meta["secret"], time=self.cache_time)
         return secret_meta["secret"]
 
-    def delete_bucket_secret(self, bucket, account=None,
+    def delete_bucket_secret(self, bucket, account,
                              secret_id=None, reqid=None):
         self.kms.delete_secret(
             account,
@@ -97,26 +107,40 @@ class KmsWrapper(object):
             secret_id=secret_id,
             reqid=reqid,
         )
-        ckey = f"sses3/{bucket}/{secret_id}"
+        ckey = f"sses3/{account}/{bucket}/{secret_id}"
         if self.cache is not None:
+            # Send two requests to the cache to decrease the
+            # probability of a stale cache entry.
+            self.cache.set(ckey, NO_SECRET, time=1)
             self.cache.delete(ckey)
 
-    def get_bucket_secret(self, bucket, account=None, secret_id=None,
+    def get_bucket_secret(self, bucket, account, secret_id=None,
                           reqid=None):
-        ckey = f"sses3/{bucket}/{secret_id}"
+        ckey = f"sses3/{account}/{bucket}/{secret_id}"
         if self.cache is not None:
             secret = self.cache.get(ckey)
-            if secret:
+            if secret == NO_SECRET:
+                return None
+            elif secret:
                 return secret
-        secret_meta = self.kms.get_secret(
-            account,
-            bucket,
-            secret_id=secret_id,
-            reqid=reqid
-        )
-        secret = secret_meta["secret"]
-        if self.cache is not None and secret is not None:
-            self.cache.set(ckey, secret)
+        try:
+            secret_meta = self.kms.get_secret(
+                account,
+                bucket,
+                secret_id=secret_id,
+                reqid=reqid,
+            )
+            secret = secret_meta["secret"]
+        except NotFound:
+            secret = None
+        if self.cache is not None:
+            if secret is None:
+                cache_time = self.no_secret_cache_time
+                secret_to_cache = NO_SECRET
+            else:
+                cache_time = self.cache_time
+                secret_to_cache = secret
+            self.cache.set(ckey, secret_to_cache, time=cache_time)
         return secret
 
 
@@ -128,8 +152,12 @@ class SsecKeyMasterContext(KeyMasterContext):
             keymaster, account, container, obj,
             meta_version_to_write=meta_version_to_write)
         self.req = request
-        self.kms = KmsWrapper(self.keymaster.kms,
-                              cache=request.environ.get('swift.cache'))
+        self.kms = KmsWrapper(
+            self.keymaster.kms,
+            cache=request.environ.get('swift.cache'),
+            cache_time=self.keymaster.secret_cache_time,
+            no_secret_cache_time=self.keymaster.no_secret_cache_time
+        )
 
     @property
     def trans_id(self):
@@ -201,15 +229,12 @@ class SsecKeyMasterContext(KeyMasterContext):
         account, bucket = self.req_account_and_bucket()
         if not bucket:
             return None
-        try:
-            b64_secret = self.kms.get_bucket_secret(
-                bucket,
-                account=account,
-                secret_id=secret_id,
-                reqid=self.trans_id
-            )
-        except NotFound:
-            b64_secret = None
+        b64_secret = self.kms.get_bucket_secret(
+            bucket,
+            account=account,
+            secret_id=secret_id,
+            reqid=self.trans_id
+        )
 
         if b64_secret:
             return crypto_utils.decode_secret(b64_secret)
@@ -331,6 +356,10 @@ class SsecKeyMaster(KeyMaster):
             conf.get('use_oio_kms', False))
         self.kms = KmsClient({"namespace": conf["sds_namespace"]},
                              logger=self.logger)
+        self.secret_cache_time = non_negative_int(
+            conf.get('secret_cache_time', 24 * 60 * 60))
+        self.no_secret_cache_time = non_negative_int(
+            conf.get('no_secret_cache_time', 15 * 60))
 
     def __call__(self, env, start_response):
         req = Request(env)

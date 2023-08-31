@@ -109,6 +109,12 @@ use = egg:swift#ssec_keymaster
 meta_version_to_write = 3
 fallback_on_keymaster = True
 use_oio_kms = %OIO_KMS_ENABLED%
+# How long (seconds) to keep in cache the bucket secret
+# (defaults to 1 day)
+secret_cache_time = 30
+# How long (seconds) to keep in cache the fact that there is no bucket secret
+# (defaults to 15 minutes)
+no_secret_cache_time = 5
 
 # echo "Next-Gen Object Storage & Serverless Computing" | base64
 encryption_root_secret_0 = TmV4dC1HZW4gT2JqZWN0IFN0b3JhZ2UgJiBTZXJ2ZXJsZXNzIENvbXB1dGluZwo=
