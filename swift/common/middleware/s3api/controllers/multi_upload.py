@@ -959,6 +959,7 @@ class UploadController(Controller):
             self.app,
             req,
             sysmeta_info.get("s3api-replication"),
+            metadata=headers,
         )
 
         def size_checker(manifest):

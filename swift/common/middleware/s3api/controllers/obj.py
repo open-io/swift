@@ -248,7 +248,7 @@ class ObjectController(Controller):
             self.app,
             req,
             sysmeta_info.get("s3api-replication"),
-            metadata=req.headers,
+            metadata={},
             tags=req.headers.get(OBJECT_TAGGING_HEADER),
         )
 

@@ -26,8 +26,8 @@ from swift.common.middleware.s3api.etree import DocumentInvalid, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
-    MalformedXML, ReplicationConfigurationNotFoundError, S3NotImplemented, \
-    ServiceUnavailable
+    MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
+    S3NotImplemented, ServiceUnavailable
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header, is_valid_token
 from swift.common.utils import config_true_value, public
@@ -279,9 +279,17 @@ def replication_resolve_rules(app, req, configuration, metadata=None,
     """
     replication_cb = req.environ.get(REPLICATION_CALLBACK)
     if replication_cb:
+        if delete or metadata is None:
+            try:
+                object_info = req.get_object_info(app)
+                metadata = object_info.get("sysmeta", {})
+            except NoSuchKey:
+                raise
+            except Exception as exc:
+                raise InternalError from exc
+
         if metadata is None:
-            object_info = req.get_object_info(app)
-            metadata = object_info.get("sysmeta", {})
+            raise InternalError("Missing metadata in replication callback")
 
         destination_buckets = replication_cb(
             configuration=configuration,
