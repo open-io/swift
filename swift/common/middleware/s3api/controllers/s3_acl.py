@@ -69,12 +69,9 @@ class S3AclController(Controller):
         """
         # ACLs will be set as sysmeta
         if req.is_object_request:
-            info = req.get_container_info(self.app)
-            sysmeta_info = info.get("sysmeta", {})
             replication_resolve_rules(
                 self.app,
                 req,
-                sysmeta_info.get("s3api-replication"),
                 ensure_replicated=True,
             )
         req.get_response(self.app, 'POST')

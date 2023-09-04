@@ -367,7 +367,7 @@ class ObjectLockLegalHoldController(Controller):
         replication_resolve_rules(
             self.app,
             req,
-            sysmeta_info.get("s3api-replication"),
+            sysmeta_info=sysmeta_info,
             ensure_replicated=True,
         )
         resp = req.get_response(self.app, method='POST')
@@ -513,7 +513,7 @@ class ObjectLockRetentionController(Controller):
         replication_resolve_rules(
             self.app,
             req,
-            sysmeta_info.get("s3api-replication"),
+            sysmeta_info=sysmeta_info,
             ensure_replicated=True,
         )
         resp = req.get_response(self.app, method='POST')

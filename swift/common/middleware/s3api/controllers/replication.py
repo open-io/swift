@@ -264,7 +264,7 @@ def _optimize_replication_conf(configuration):
     return optimized
 
 
-def replication_resolve_rules(app, req, configuration, metadata=None,
+def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
                               delete=False, tags=None,
                               ensure_replicated=False):
     """
@@ -279,6 +279,10 @@ def replication_resolve_rules(app, req, configuration, metadata=None,
     """
     replication_cb = req.environ.get(REPLICATION_CALLBACK)
     if replication_cb:
+        if not sysmeta_info:
+            info = req.get_container_info(app)
+            sysmeta_info = info.get("sysmeta", {})
+        configuration = sysmeta_info.get("s3api-replication")
         if metadata is None:
             object_info = req.get_object_info(app)
             metadata = object_info.get("sysmeta", {})
