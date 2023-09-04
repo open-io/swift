@@ -21,6 +21,7 @@ from swift.common.wsgi import make_env as orig_make_env, \
 
 
 PASSTHROUGH_ENV_KEYS = (
+    'HTTP_X_AMZ_BYPASS_GOVERNANCE_RETENTION',
     'HTTP_X_BACKEND_VERSIONING_MODE_OVERRIDE',
     'oio.cache', 'oio.list_mpu'
 )

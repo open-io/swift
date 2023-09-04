@@ -195,7 +195,44 @@ test_object_lock_delete() {
   ${AWSA1ADM} s3api get-object --bucket ${BUCKET} --key big --version-id "${VERSION}" bigv2
   echo "${BIG_FILE_CHECKSUM} bigv2" | md5sum -c -
 
-  # TODO in GOVERNANCE: test delete object with "--bypass-governance-retention"
+  # Test in GOVERNANCE: test delete object with "--bypass-governance-retention"
+  if [[ $MODE == "GOVERNANCE" ]];  then
+    # Test mpu is deleted using bypass-governance-retention
+    ${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key big --version-id "${VERSION}" --bypass-governance-retention
+    DATA=$(${AWSA1ADM} s3api list-object-versions --bucket ${BUCKET} --prefix big)
+    echo "${DATA}" || grep -v "${VERSION}"
+
+    # Delete remaining objects
+    while true
+    do
+        DATA=$(${AWSA1ADM} s3api list-object-versions --bucket ${BUCKET})
+        VERSION=$(echo $DATA | jq -r '.Versions[0].VersionId|tostring')
+        OBJECT=$(echo $DATA | jq -r '.Versions[0].Key|tostring')
+        if [[ $VERSION  == null ]] || [[ $VERSION  == '' ]]; then
+            break;
+        fi
+        ${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key "${OBJECT}" --version-id "${VERSION}" --bypass-governance-retention
+
+    done
+
+    # Delete remaining markers
+    while true
+    do
+        DATA=$(${AWSA1ADM} s3api list-object-versions --bucket ${BUCKET})
+        VERSION=$(echo $DATA | jq -r '.DeleteMarkers[0].VersionId|tostring')
+        OBJECT=$(echo $DATA | jq -r '.DeleteMarkers[0].Key|tostring')
+        if [[ $VERSION  == null ]] || [[ $VERSION  == '' ]]; then
+            break;
+        fi
+        ${AWSA1ADM} s3api delete-object --bucket ${BUCKET} --key "${OBJECT}" --version-id "${VERSION}" --bypass-governance-retention
+
+    done
+    # Remove bucket
+    echo "Remove bucket: ${BUCKET}"
+    ${AWSA1ADM} s3api delete-bucket --bucket ${BUCKET}
+
+  fi
+
   popd
   rm -fr "${WORKDIR}"
 }
