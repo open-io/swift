@@ -337,7 +337,7 @@ class PartController(Controller):
         replication_resolve_rules(
             self.app,
             req,
-            sysmeta_info.get("s3api-replication"),
+            sysmeta_info=sysmeta_info,
             metadata=resp.headers,
         )
         resp = req.get_response(self.app,
@@ -656,7 +656,7 @@ class UploadsController(Controller):
         replication_resolve_rules(
             self.app,
             req,
-            sysmeta_info.get("s3api-replication"),
+            sysmeta_info=sysmeta_info,
             metadata=req.headers,
         )
         object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
@@ -868,13 +868,11 @@ class UploadController(Controller):
             resp = req.get_response(self.app, 'GET', container, '',
                                     query=query)
             objects = json.loads(resp.body)
-        info = req.get_container_info(self.app)
-        sysmeta_info = info.get("sysmeta", {})
+
         # Replication
         replication_resolve_rules(
             self.app,
             req,
-            sysmeta_info.get("s3api-replication"),
             metadata=resp.headers,
             delete=True,
         )
@@ -1015,9 +1013,10 @@ class UploadController(Controller):
 
         too_small_message = ('s3api requires that each segment be at least '
                              '%d bytes' % self.conf.min_segment_size)
-        info = req.get_container_info(self.app)
-        sysmeta_info = info.get("sysmeta", {})
+
         if is_replicator(req):  # Complete MPU from replicator
+            info = req.get_container_info(self.app)
+            sysmeta_info = info.get("sysmeta", {})
             # Set replication status on destination side
             headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_REPLICA
             headers[
@@ -1027,7 +1026,6 @@ class UploadController(Controller):
             replication_resolve_rules(
                 self.app,
                 req,
-                sysmeta_info.get("s3api-replication"),
                 metadata=resp.headers,
             )
 

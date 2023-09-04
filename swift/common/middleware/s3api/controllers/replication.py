@@ -264,21 +264,24 @@ def _optimize_replication_conf(configuration):
     return optimized
 
 
-def replication_resolve_rules(app, req, configuration, metadata=None,
+def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
                               delete=False, tags=None,
                               ensure_replicated=False):
     """
     Get a list of destination for an object
     :param req: initial request
-    :param configuration: replication configuration
-    :param key: object key
+    :param sysmeta_info: sysmeta container info
     :param metadata: object metadata
-    :param xml_tags: tagging to use for rule resolution
+    :param tags: tagging to use for rule resolution
     :param is_deletion: indicate if the object is being deleted
     :param ensure_replicated: verify if we are dealing with a replicated object
     """
     replication_cb = req.environ.get(REPLICATION_CALLBACK)
     if replication_cb:
+        if not sysmeta_info:
+            info = req.get_container_info(app)
+            sysmeta_info = info.get("sysmeta", {})
+        configuration = sysmeta_info.get("s3api-replication")
         if metadata is None:
             object_info = req.get_object_info(app)
             metadata = object_info.get("sysmeta", {})

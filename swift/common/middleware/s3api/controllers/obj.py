@@ -259,7 +259,7 @@ class ObjectController(Controller):
         replication_resolve_rules(
             self.app,
             req,
-            sysmeta_info.get("s3api-replication"),
+            sysmeta_info=sysmeta_info,
             metadata=req.headers,
             tags=req.headers.get(OBJECT_TAGGING_HEADER),
         )
@@ -385,7 +385,7 @@ class ObjectController(Controller):
             replication_resolve_rules(
                 self.app,
                 req,
-                sysmeta_info.get("s3api-replication"),
+                sysmeta_info=sysmeta_info,
                 delete=True
             )
 
