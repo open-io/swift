@@ -193,15 +193,12 @@ class TaggingController(Controller):
 
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = body
-            info = req.get_container_info(self.app)
-            sysmeta_info = info.get("sysmeta", {})
             # Retrieve object metadata
             replication_resolve_rules(
                 self.app,
                 req,
-                sysmeta_info.get("s3api-replication"),
                 tags=req.headers.get(OBJECT_TAGGING_HEADER),  # use new tags
-                ensure_replicated=True
+                ensure_replicated=True,
             )
         else:
             req.headers[BUCKET_TAGGING_HEADER] = body
@@ -231,13 +228,10 @@ class TaggingController(Controller):
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = ""
 
-            # Get configut
-            info = req.get_container_info(self.app)
-            sysmeta_info = info.get("sysmeta", {})
+            # Replication
             replication_resolve_rules(
                 self.app,
                 req,
-                sysmeta_info.get("s3api-replication"),
                 ensure_replicated=True
             )
         else:
