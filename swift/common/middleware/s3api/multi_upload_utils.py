@@ -15,20 +15,15 @@
 
 
 import base64
-import re
 
 from swift.common.http import HTTP_OK, HTTP_NOT_FOUND, HTTP_SERVICE_UNAVAILABLE
 from swift.common.utils import json
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, InternalError, ServiceUnavailable
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    MULTIUPLOAD_PREFIX
+    MPU_PART_RE, MPU_PREFIX_RE
 from swift.common.request_helpers import get_param
 from swift.common.wsgi import make_pre_authed_request
-MPU_PART_RE = re.compile('/[0-9]+$')
-# Used to forbid access on incomplete MPU on bucket destination
-MPU_PREFIX_RE = re.compile(
-    r'.+/' + re.escape(MULTIUPLOAD_PREFIX) + r'[A-Za-z0-9_=-]+$')
 
 DEFAULT_MAX_PARTS_LISTING = 1000
 DEFAULT_MAX_UPLOADS = 1000

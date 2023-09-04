@@ -24,7 +24,7 @@ from hashlib import sha256
 from swift.common import utils
 
 MULTIUPLOAD_SUFFIX = '+segments'
-MULTIUPLOAD_PREFIX = 'repli+'
+MULTIUPLOAD_REPLICATION_PREFIX = 'repli+'
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # Content-Type by default at AWS, the official value being
 # "application/octet-stream"
@@ -33,18 +33,47 @@ DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
 REPLICATOR_USER_AGENT = "s3-replicator"
 
 
-def is_replicator(req):
+MPU_PART_RE = re.compile('/[0-9]+$')
+# Used to forbid access on incomplete MPU on bucket destination
+MPU_PREFIX_RE = re.compile(
+    r'.+/' + re.escape(MULTIUPLOAD_REPLICATION_PREFIX) + r'[A-Za-z0-9_=-]+$')
+
+
+def is_replicator(req, from_minio=False):
     """Check if the req is coming from the replicator
 
     :param req: request
     :type req: Request
+    :param from_minio: True if the request comes from Minio
+        client and False if not
+    :type from_minio: bool
     :return: True if the request is initiated by the replicator and False
             if not.
     :rtype: bool
     """
+    if not from_minio:  # Boto3 client
+        # With Boto3, we are able to check also if
+        # the user agent is the expected one.
+        return (
+            req.environ.get('reseller_request', False)
+            and req.user_agent.endswith(REPLICATOR_USER_AGENT))
+    # Minio client
+    return req.environ.get('reseller_request', False)
+
+
+def is_mpu_part_upload_replication(req):
+    """Check if it is a part upload from the replicator
+
+    :param req: request
+    :type req: Request
+    :return: True if the request is about a replication of mpu part
+    :rtype: bool
+    """
     return (
-        req.environ.get('reseller_request', False)
-        and req.user_agent.endswith(REPLICATOR_USER_AGENT))
+        req.headers.environ.get('HTTP_X_AMZ_META_X_OIO_?IS_MPU_PART')
+        and is_replicator(req, from_minio=True)
+        and MPU_PART_RE.search(req.object_name)
+    )
 
 
 def sysmeta_prefix(resource):

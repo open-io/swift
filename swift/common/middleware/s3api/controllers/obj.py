@@ -29,7 +29,7 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
-    S3Timestamp, sysmeta_header
+    S3Timestamp, is_replicator, sysmeta_header
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
@@ -38,7 +38,8 @@ from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
-from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
+    check_iam_access
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError, BadRequest
@@ -161,8 +162,9 @@ class ObjectController(Controller):
         # gathered from {container}+MULTIUPLOAD_SUFFIX else
         # {container}
         is_mpu_part = req.params.get('isMpuPart')
-        if is_mpu_part:
+        if is_mpu_part and is_replicator(req, from_minio=True):
             container += MULTIUPLOAD_SUFFIX
+            req.environ[IAM_EXPLICIT_ALLOW] = True
 
         query = {} if version_id is None else {'version-id': version_id}
         if version_id not in ('null', None):

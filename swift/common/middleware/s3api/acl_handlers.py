@@ -57,7 +57,8 @@ from swift.common.middleware.s3api.etree import fromstring, XMLSyntaxError, \
     DocumentInvalid
 from swift.common.middleware.s3api.iam import iam_explicit_allow, \
     iam_is_enabled
-from swift.common.middleware.s3api.utils import MULTIUPLOAD_PREFIX, \
+from swift.common.middleware.s3api.utils import \
+    MULTIUPLOAD_REPLICATION_PREFIX, \
     MULTIUPLOAD_SUFFIX, is_replicator, sysmeta_header
 
 
@@ -469,7 +470,7 @@ class UploadAclHandler(MultiUploadAclHandler):
         if is_replicator(self.req):  # Replicator
             # MPU marker on destination bucket has another format
             obj = '%s/%s%s' % (self.obj,
-                               MULTIUPLOAD_PREFIX,
+                               MULTIUPLOAD_REPLICATION_PREFIX,
                                self.req.params['uploadId'])
         else:
             obj = '%s/%s' % (self.obj, self.req.params['uploadId'])
