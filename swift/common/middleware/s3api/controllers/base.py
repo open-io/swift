@@ -219,7 +219,8 @@ class Controller(object):
             subreq.container_name = str_to_wsgi(
                 req.environ['s3api.info']['bucket'])
             subreq.object_name = None
-            subreq.params = {}
+            # We need to pass this in case user policy has s3:prefix condition
+            subreq.params = {'prefix': req.object_name}
 
             # Reset the permissions of user policies and ACLs
             # for this new request

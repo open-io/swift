@@ -12,6 +12,7 @@ AWSA2ADM="aws --profile a2adm --endpoint-url ${ENDPOINT_URL}"
 AWSA2U1="aws --profile a2u1 --endpoint-url ${ENDPOINT_URL}"
 
 COMPANY_BUCKET="companybucket"
+COMPLEX_BUCKET="complexbucket"
 SHARED_BUCKET="sharedbucket"
 A1U1_BUCKET="user1bucket"
 A2U1_BUCKET="user1mybucket"
@@ -20,6 +21,8 @@ VERSIONS_BUCKET="versions-bucket"
 TEMPDIR=$(mktemp -td s3-iam-XXXXXX)
 BIGFILE="$TEMPDIR/bigfile"
 dd if=/dev/urandom of="${BIGFILE}" bs=1M count=16
+
+LONGKEY="my-complex-test/f7796638-d62e-47ee-a27d-c9f06fcdf1ac/277485ff-f83e-4a2c-8917-eb98ff4b312d/15/timeline"
 
 set -e
 set -x
@@ -232,6 +235,18 @@ test_delete_buckets() {
   ${AWSA1ADM} s3 rb s3://$VERSIONS_BUCKET
 }
 
+test_head_missing_object() {
+  ${AWSA1ADM} s3 mb s3://$COMPLEX_BUCKET
+  # We expect "Not Found" and not "Forbidden" or "AccessDenied",
+  # because the user has s3:ListBucket (with prefix) permission.
+  OUT=$(${AWSA1U1} s3api head-object --bucket ${COMPLEX_BUCKET} --key "$LONGKEY" 2>&1 | tail -n 1)
+  echo "$OUT" | grep "Not Found"
+  # We expect "Forbidden" because the requested key does not match the prefix.
+  OUT=$(${AWSA1U1} s3api head-object --bucket ${COMPLEX_BUCKET} --key "any-key-not-matching-pattern" 2>&1 | tail -n 1)
+  echo "$OUT" | grep "Forbidden"
+  ${AWSA1ADM} s3 rb s3://$COMPLEX_BUCKET
+}
+
 test_create_bucket
 test_bucket_acls
 test_create_objects
@@ -239,5 +254,6 @@ test_multipart_ops
 test_read_objects
 test_delete_objects
 test_delete_buckets
+test_head_missing_object
 
 rm -r "$TEMPDIR"

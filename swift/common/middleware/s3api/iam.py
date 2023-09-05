@@ -276,6 +276,9 @@ class IamRulesMatcher(object):
                         continue
                 cond_val = self.resolve_cond_key(cond_key, req)
                 if not operator(cond_val, values):
+                    self.logger.debug(
+                        "%s %r did not match %s(%s)",
+                        cond_key, cond_val, opname, values)
                     # One of the conditions is not satisfied
                     return False
         # All conditions are satisfied
