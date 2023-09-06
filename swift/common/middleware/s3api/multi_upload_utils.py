@@ -93,6 +93,7 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
     query = {
         'format': 'json',
         'marker': '',
+        'mpu_marker_only': True,
     }
 
     if uploadid and keymarker:

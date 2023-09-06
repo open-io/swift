@@ -133,6 +133,8 @@ class ContainerController(SwiftContainerController):
         prefix = get_param(req, 'prefix')
         delimiter = get_param(req, 'delimiter')
         marker = get_param(req, 'marker', '')
+        mpu_marker_only = config_true_value(
+            get_param(req, 'mpu_marker_only', False))
         version_marker = None
         if marker:
             marker, version_marker = split_oio_version_from_name(marker)
@@ -162,6 +164,7 @@ class ContainerController(SwiftContainerController):
                 limit=limit, delimiter=delimiter, marker=marker,
                 version_marker=version_marker, end_marker=end_marker,
                 properties=True, versions=opts.get('versions', False),
+                mpu_marker_only=mpu_marker_only,
                 deleted=opts.get('deleted', False),
                 force_master=opts.get('force_master', False),
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)

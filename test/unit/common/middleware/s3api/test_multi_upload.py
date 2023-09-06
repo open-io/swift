@@ -18,6 +18,7 @@ import binascii
 import hashlib
 from mock import patch
 import os
+import re
 import time
 import unittest
 from six.moves.urllib.parse import parse_qs, quote, quote_plus
@@ -102,6 +103,7 @@ MULTIPARTS_TEMPLATE = \
 S3_ETAG = '"%s-2"' % md5(binascii.a2b_hex(
     '0123456789abcdef0123456789abcdef'
     'fedcba9876543210fedcba9876543210'), usedforsecurity=False).hexdigest()
+MPU_PART_RE = re.compile('/[0-9]+$')
 
 
 class TestS3ApiMultiUpload(S3ApiTestCase):
@@ -128,6 +130,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register('GET', '%s?format=json&marker=%s' % (
                             self.segment_bucket, objects[-1]['name']),
                             swob.HTTPOk, {}, json.dumps([]))
+        self.swift.register(
+            'GET', '%s?%s' % (self.segment_bucket,
+                              'format=json&mpu_marker_only=True'),
+            swob.HTTPOk, {}, json.dumps([]))
         # but for the listing when aborting an upload, break it up into pages
         self.swift.register(
             'GET', '%s?delimiter=/&format=json&marker=&'
@@ -264,9 +270,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def _test_bucket_multipart_uploads_GET(self, query='',
                                            multiparts=None):
         objects = multiparts or MULTIPARTS_TEMPLATE
-        objects = [{'name': item[0], 'last_modified': item[1],
-                    'hash': item[2], 'bytes': item[3]}
-                   for item in objects]
+        objects = [
+            {
+                'name': item[0], 'last_modified': item[1],
+                'hash': item[2], 'bytes': item[3]
+            } for item in objects if MPU_PART_RE.search(item[0]) is None
+        ]
         object_list = json.dumps(objects).encode('ascii')
         query_parts = parse_qs(query)
         swift_query = {'format': 'json'}
@@ -278,7 +287,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             swift_query['marker'] = '%s/~' % (query_parts['key-marker'][0])
         if 'prefix' in query_parts:
             swift_query['prefix'] = query_parts['prefix'][0]
-
+        swift_query['mpu_marker_only'] = 'True'
         self.swift.register(
             'GET', '%s?%s' % (self.segment_bucket,
                               '&'.join(['%s=%s' % (k, v)
@@ -286,10 +295,15 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             swob.HTTPOk, {}, object_list)
         swift_query['marker'] = objects[-1]['name']
         self.swift.register(
-            'GET', '%s?%s' % (self.segment_bucket,
-                              '&'.join(['%s=%s' % (k, v)
-                                        for k, v in swift_query.items()])),
-            swob.HTTPOk, {}, json.dumps([]))
+            'GET',
+            '%s?%s' % (
+                self.segment_bucket,
+                '&'.join([
+                    '%s=%s' % (k, v) for k, v in swift_query.items()
+                ])
+            ),
+            swob.HTTPOk, {}, json.dumps([])
+        )
 
         query = '?uploads&' + query if query else '?uploads'
         req = Request.blank('/bucket/%s' % query,
@@ -314,15 +328,22 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         while True:
             if end == 1000:
                 self.swift.register(
-                    'GET', '%s?format=json' % (self.segment_bucket),
-                    swob.HTTPOk, {}, json.dumps(objects[:end]))
+                    'GET',
+                    '%s?format=json&mpu_marker_only=True' % (
+                        self.segment_bucket),
+                    swob.HTTPOk, {}, json.dumps([objects[end - 1000]]))
             else:
+                if not objects[end - 1000:end]:
+                    self.swift.register(
+                        'GET',
+                        '%s?format=json&marker=%s&mpu_marker_only=True' % (
+                            self.segment_bucket, objects[end - 2000]['name']),
+                        swob.HTTPOk, {}, json.dumps([]))
+                    break
                 self.swift.register(
-                    'GET', '%s?format=json&marker=%s' % (
-                        self.segment_bucket, objects[end - 1001]['name']),
-                    swob.HTTPOk, {}, json.dumps(objects[end - 1000:end]))
-            if not objects[end - 1000:end]:
-                break
+                    'GET', '%s?format=json&marker=%s&mpu_marker_only=True' % (
+                        self.segment_bucket, objects[end - 2000]['name']),
+                    swob.HTTPOk, {}, json.dumps([objects[end - 1000]]))
             end += 1000
         req = Request.blank('/bucket/?uploads',
                             environ={'REQUEST_METHOD': 'GET'},
@@ -468,9 +489,15 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_id_and_key_marker(self):
-        query = 'upload-id-marker=VXBsb2FkIElF&key-marker=object'
+        query = 'upload-id-marker=VXBsb2FkIElE&key-marker=object'
         multiparts = \
-            (('object/VXBsb2FkIElF', '2014-05-07T19:47:53.592270',
+            (('object/VXBsb2FkIElE', '2014-05-07T19:47:53.592270',
+              'HASH', 2),
+             ('object/VXBsb2FkIElE/1', '2014-05-07T19:47:54.592270',
+              'HASH', 12),
+             ('object/VXBsb2FkIElE/2', '2014-05-07T19:47:55.592270',
+              'HASH', 22),
+             ('object/VXBsb2FkIElF', '2014-05-07T19:47:53.592270',
               'HASH', 2),
              ('object/VXBsb2FkIElF/1', '2014-05-07T19:47:54.592270',
               'HASH', 12),
@@ -478,12 +505,13 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
               'HASH', 22))
 
         status, headers, body = \
-            self._test_bucket_multipart_uploads_GET(query, multiparts)
+            self._test_bucket_multipart_uploads_GET(query, multiparts[-3:])
         elem = fromstring(body, 'ListMultipartUploadsResult')
         self.assertEqual(elem.find('KeyMarker').text, 'object')
-        self.assertEqual(elem.find('UploadIdMarker').text, 'VXBsb2FkIElF')
+        self.assertEqual(elem.find('UploadIdMarker').text, 'VXBsb2FkIElE')
         self.assertEqual(len(elem.findall('Upload')), 1)
-        objects = [(o[0], o[1][:-3] + 'Z') for o in multiparts]
+        objects = [(o[0], o[1][:-3] + 'Z') for o in multiparts[-3:] if
+                   MPU_PART_RE.search(o[0]) is None]
         for u in elem.findall('Upload'):
             name = u.find('Key').text + '/' + u.find('UploadId').text
             initiated = u.find('Initiated').text
@@ -497,7 +525,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             key, arg = q.split('=')
             query[key] = arg
         self.assertEqual(query['format'], 'json')
-        self.assertEqual(query['marker'], quote_plus('object/VXBsb2FkIElF/2'))
+        self.assertEqual(query['marker'], quote_plus('object/VXBsb2FkIElF'))
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_key_marker(self):
@@ -522,7 +550,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(elem.find('NextKeyMarker').text, 'object')
         self.assertEqual(elem.find('NextUploadIdMarker').text, 'VXBsb2FkIElF')
         self.assertEqual(len(elem.findall('Upload')), 2)
-        objects = [(o[0], o[1][:-3] + 'Z') for o in multiparts]
+        objects = [(o[0], o[1][:-3] + 'Z') for o in multiparts if
+                   MPU_PART_RE.search(o[0]) is None]
         for u in elem.findall('Upload'):
             name = u.find('Key').text + '/' + u.find('UploadId').text
             initiated = u.find('Initiated').text
@@ -536,7 +565,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             key, arg = q.split('=')
             query[key] = arg
         self.assertEqual(query['format'], 'json')
-        self.assertEqual(query['marker'], quote_plus('object/VXBsb2FkIElF/2'))
+        self.assertEqual(query['marker'], quote_plus('object/VXBsb2FkIElF'))
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_prefix(self):
