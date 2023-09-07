@@ -337,7 +337,8 @@ class BaseKeyMaster(object):
             raise UnknownSecretIdError(secret_id)
         else:
             if not six.PY2:
-                path = path.encode('utf-8')
+                # wsgi_to_str decodes with 'surrogateescape'
+                path = path.encode('utf-8', errors='surrogateescape')
             return hmac.new(key, path, digestmod=hashlib.sha256).digest()
 
 
