@@ -36,21 +36,24 @@ jobs:
           echo "export PIP_INDEX_URL=https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/" >> $HOME/swift-env.sh
           echo "export PYTHONPATH=$(find /opt/${PYTHON_PACKAGE}/lib/ -name 'site-packages')" >> $HOME/swift-env.sh
           source $HOME/swift-env.sh
+          PIP_EXTRA_INDEX_URL="https://${CDS_INTEGRATION_ARTIFACT_MANAGER_TOKEN_NAME}:${CDS_INTEGRATION_ARTIFACT_MANAGER_TOKEN}@artifactory.ovhcloud.tools/artifactory/api/pypi/pypi-remote/simple"
           mkdir /tmp/oio
           /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
           cat << EOF > $HOME/swiftenv/pip.conf
           [global]
           index-url = https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
-          extra_index_url = https://pypi.org/simple
+          extra-index-url = ${PIP_EXTRA_INDEX_URL}
+          [install]
+          progress-bar = off
           EOF
           . $HOME/swiftenv/bin/activate
-          pip install --progress-bar off --upgrade pip setuptools virtualenv "tox<4.0.0" -r test-requirements.txt
+          pip install --upgrade pip setuptools tox virtualenv -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
           eval $(worker key install --env-git proj-ssh-openio)
           git submodule update --init --remote
-          cd third_party/oio-sds && pip install --progress-bar off -e ".[all]" && cd ../..
-          pip install --progress-bar off -e .
-          ./third_party/oio-sds/tools/patch-python-modules.sh
+          cd third_party/oio-sds && pip install -e ".[all]" && cd ../..
+          pip install -e .
+          ./third_party/oio-sds/tools/patch-python-modules.sh || true
 
       - name: Run unit tests
         script: |+
@@ -65,18 +68,21 @@ jobs:
 
       - name: Save coverage information
         always_executed: true
-        script:
-          - . $HOME/swiftenv/bin/activate
-          - coverage combine
-          - mv .coverage .coverage.{{.cds.env.TEST_SUITE}}
-          - worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.{{.cds.env.TEST_SUITE}}'
+        script: |+
+          #!/bin/bash
+          source $HOME/swift-env.sh
+          . $HOME/swiftenv/bin/activate
+          python -m coverage combine
+          mv .coverage .coverage.{{.cds.env.TEST_SUITE}}
+          worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.{{.cds.env.TEST_SUITE}}'
 
       - optional: true
         always_executed: true
         name: Save tests report
-        script:
-          - "[ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'"
-          - "[ ! -f 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'"
+        script: |+
+          #!/bin/bash
+          [ ! -f tests_report.xml ] || mv tests_report.xml 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'
+          [ ! -f 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml' ] || worker upload --tag='{{.cds.version}}' 'tests_report.swift.{{.cds.env.TEST_SUITE}}.xml'
 
       - optional: true
         always_executed: true

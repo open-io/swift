@@ -19,17 +19,19 @@
 import io
 import json
 import os
+import pytest
 import queue
 import re
 import requests
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
-from time import sleep
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 from logging import getLogger
+from time import sleep
 from urllib.parse import quote
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, \
     random_str, run_awscli_s3, run_awscli_s3api, CliError, \
@@ -478,7 +480,7 @@ class TestS3Mpu(unittest.TestCase):
         self.assertEqual(path2, data['Key'])
         self.assertTrue(data['ETag'].endswith('-2"'))
 
-        with self.assertRaises(CliError) as ctx:
+        with self.assertRaises(CliError):
             run_awscli_s3api(
                 "list-parts",
                 "--upload-id", upload_id,
@@ -1103,7 +1105,7 @@ class TestS3Mpu(unittest.TestCase):
             Body=b"whatever",
         )
         mpu_parts = [{"ETag": resp['ETag'], "PartNumber": 1}]
-        final = self.boto_client.complete_multipart_upload(
+        self.boto_client.complete_multipart_upload(
             Bucket=self.bucket,
             Key=path,
             MultipartUpload={
@@ -1151,4 +1153,4 @@ class TestS3Mpu(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    sys.exit(pytest.main())

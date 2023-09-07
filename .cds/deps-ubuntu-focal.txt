@@ -21,4 +21,3 @@ redis-tools
 rsyslog
 sqlite3
 tox
-virtualenv

@@ -2,13 +2,13 @@
 
 DESTDIR=$(CURDIR)/debian/${PACKAGE}
 PREFIX=/opt/${PACKAGE}
-
-export DH_VIRTUALENV_INSTALL_ROOT=/opt/
-PYTHON_PATH=$(shell readlink -f /opt/python-*)
+PYTHON_PATH=$(shell readlink -f /opt/python-* | sort -V | tail -n 1)
 
 export CFLAGS=-I${PYTHON_PATH}/include/
 export LIBRARY_PATH=${PYTHON_PATH}/lib
 export LD_LIBRARY_PATH=${LIBRARY_PATH}
+
+export DH_VIRTUALENV_INSTALL_ROOT=/opt
 
 %:
 	dh $@ --with python-virtualenv

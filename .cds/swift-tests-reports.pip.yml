@@ -33,11 +33,11 @@ jobs:
           #!/bin/bash
           . $HOME/oiovenv/bin/activate
           cd {{.cds.workspace}}
-          coverage combine
-          coverage html \
+          python -m coverage combine
+          python -m coverage html \
             --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" \
             --show-contexts --skip-empty --ignore-errors -d coverage-report-py
-          coverage json \
+          python -m coverage json \
             --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" \
             --ignore-errors -o coverage-report-py-full.json
           jq -f .cds/python-coverage-filter.jq coverage-report-py-full.json > coverage-report-py.json
