@@ -58,6 +58,18 @@ if [ $(echo "$data" | grep -c Grantee) -ne 3 ]; then
     exit 1
 fi
 
+### Bad character encoding
+
+${AWS} s3api put-bucket-acl --bucket ${BUCKET} --acl public-read-write
+
+# %F4 is not valid unicode (once urldecoded).
+# We used to get either InternalServerError (500) or PreconditionFailed (412),
+# but the appropriate error is InvalidURI (400).
+curl -sS -XPUT "http://${BUCKET}.${STORAGE_DOMAIN}:5000/Le%20Tr%F4ne%20de%20Fer" -d "whatever" | grep "InvalidURI"
+
+${AWS} s3api put-bucket-acl --bucket ${BUCKET} --acl private
+
+
 ### CORS
 
 # check when no CORS configured

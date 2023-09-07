@@ -994,18 +994,15 @@ class S3Request(swob.Request):
         # done on PATH_INFO while parsing request in python version < 3.8.
         # RAW_PATH_INFO still contains '//' but requires decoding.
         if version_info < (3, 8):
-            path_info = self.environ.get(
-                'RAW_PATH_INFO', self.environ['PATH_INFO'])
+            path_info = self.environ.get('RAW_PATH_INFO')
+            if path_info is None:
+                path_info = self.environ['PATH_INFO']
+            else:
+                path_info = swob.wsgi_unquote_plus(path_info)
 
         # NB: returns WSGI strings
         if not check_utf8(swob.wsgi_to_str(path_info)):
             raise InvalidURI(self.path)
-
-        if version_info < (3, 8):
-            # Decode RAW_PATH_INFO with special caution with spaces
-            # encoded as '+'.
-            path_info = swob.wsgi_unquote(
-                swob.wsgi_quote(swob.wsgi_unquote_plus(path_info)))
 
         if self.bucket_in_host:
             obj = path_info[1:] or None
