@@ -238,7 +238,7 @@ def _optimize_replication_conf(configuration):
         priorities = dest_priorities.setdefault(bucket, set())
         if priority >= 0:
             if priority in priorities:
-                raise InvalidRequest(f"Found duplicate priority {priority}")
+                raise InvalidRequest(f"Found duplicate priority {priority}.")
             priorities.add(priority)
 
     for dest, dest_rules in replications.items():
