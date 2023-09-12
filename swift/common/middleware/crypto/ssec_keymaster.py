@@ -326,8 +326,9 @@ class SsecKeyMasterContext(KeyMasterContext):
                 self._delete_bucket_secret()
             raise exc
         success = is_success(self._get_status_int())
-        if (secret_created and not success
-                or operation == "REST.DELETE.BUCKET" and success):
+        if ((secret_created and not success)
+                or (operation == "REST.DELETE.BUCKET"
+                    and req.method == 'DELETE' and success)):
             self._delete_bucket_secret()
         return resp
 
@@ -369,7 +370,7 @@ class SsecKeyMaster(KeyMaster):
         except ValueError:
             return self.app(env, start_response)
 
-        if req.method in ('PUT', 'POST', 'GET', 'HEAD'):
+        if req.method in ('PUT', 'POST', 'GET', 'HEAD', 'DELETE'):
             # handle only those request methods that may require keys
             km_context = SsecKeyMasterContext(
                 self, req, *parts[1:],
