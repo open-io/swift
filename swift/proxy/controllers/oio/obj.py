@@ -463,7 +463,9 @@ class ObjectController(BaseObjectController):
         # Retrieve oio query used to define specific headers
         oio_query = req.environ.setdefault('oio.query', {})
         create_delete_marker = oio_query.get('create_delete_marker')
-        replication_status = oio_query.get('replication_status')
+        replication_status = oio_query.pop('replication_status', None)
+        retention_mode = oio_query.pop('retention_mode', None)
+        retention_until_date = oio_query.pop('retention_retainuntildate', None)
         if create_delete_marker:
             # Only S3 object creations allow metadata to be sent freely.
             # For replication, the creation of a delete marker must also
@@ -530,12 +532,18 @@ class ObjectController(BaseObjectController):
             req.environ['wsgi.input'], req.content_length)
 
         headers = self._prepare_headers(req)
-        # Add specific headers listed to oio query
-        for key, value in oio_query.items():
-            key = key.replace("_", "-")
-            if header_mapping.get(key):
-                if header_mapping[key]["header"]:
-                    headers[header_mapping[key]["header"]] = value
+        if replication_status is not None:
+            headers[header_mapping["replication-status"]["header"]] = \
+                replication_status
+
+        if retention_mode is not None:
+            headers[header_mapping["retention-mode"]["header"]] = \
+                retention_mode
+
+        if retention_until_date is not None:
+            headers[header_mapping["retention-retainuntildate"]["header"]] = \
+                retention_until_date
+
         with closing_if_possible(data_source):
             resp = self._store_object(req, data_source, headers)
         if (resp.is_success and

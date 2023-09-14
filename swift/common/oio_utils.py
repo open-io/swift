@@ -15,8 +15,7 @@
 
 from functools import wraps
 from swift.common.request_helpers import split_reserved_name
-from swift.common.utils import Timestamp, config_positive_int_value,\
-    config_true_value
+from swift.common.utils import Timestamp, config_true_value
 
 from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPForbidden, HTTPNotFound, \
@@ -36,16 +35,8 @@ FORCED_VERSION_HEADER = OIO_HEADER_PREFIX + "Version-Id"
 MULTIUPLOAD_SUFFIX = '+segments'
 
 header_mapping = {
-    "container-update-override-etag": {
-        "query": ("container_update_override_etag", str),
-        "header": "x-object-sysmeta-container-update-override-etag",
-    },
     "delete-marker": {"query": ("create_delete_marker", config_true_value),
                       "header": "x-amz-delete-marker"},
-    "etag": {"query": ("etag", str), "header": "x-object-sysmeta-s3api-etag"},
-    "is-mpu-part": {
-        "query": ("is_mpu_part", config_true_value), "header": None
-    },
     "replication-status": {
         "query": ("replication_status", str),
         "header": "x-object-sysmeta-s3api-replication-status",
@@ -57,26 +48,6 @@ header_mapping = {
     "retention-retainuntildate": {
         "query": ("retention_retainuntildate", str),
         "header": "x-object-sysmeta-s3api-retention-retainuntildate",
-    },
-    "slo-etag": {
-        "query": ("slo_etag", str),
-        "header": "x-object-sysmeta-slo-etag"
-    },
-    "slo-size": {
-        "query": ("slo_size", config_positive_int_value),
-        "header": "x-object-sysmeta-slo-size"
-    },
-    "static-large-object": {
-        "query": ("static_large_object", config_true_value),
-        "header": "x-static-large-object",
-    },
-    "tagging": {
-        "query": ("tagging", str),
-        "header": "x-object-sysmeta-swift3-tagging"
-    },
-    "upload-id": {
-        "query": ("upload_id", str),
-        "header": "x-object-sysmeta-s3api-upload-id"
     },
     "version-id": {
         "query": ("new_version", str),

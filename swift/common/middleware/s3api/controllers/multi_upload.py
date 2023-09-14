@@ -69,6 +69,7 @@ import time
 import six
 
 from swift.common import constraints
+from swift.common.middleware.s3api.controllers.obj import version_id_param
 from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, \
     str_to_wsgi, wsgi_to_str
 from swift.common.utils import json, public, reiterate, md5, list_from_csv, \
@@ -93,13 +94,13 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     ErrorResponse, MalformedXML, BadDigest, KeyTooLongError, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
-    NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange
+    NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange, NoSuchVersion
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
 from swift.common.middleware.s3api.utils import unique_id, \
-    MULTIUPLOAD_REPLICATION_PREFIX, MULTIUPLOAD_SUFFIX, \
-    DEFAULT_CONTENT_TYPE, S3Timestamp, sysmeta_header
+    MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, \
+    sysmeta_header
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
@@ -123,16 +124,10 @@ def _get_upload_id(req):
     return upload_id
 
 
-def _get_upload_info(req, app, upload_id, obj=None):
+def _get_upload_info(req, app, upload_id):
 
     container = req.container_name + MULTIUPLOAD_SUFFIX
-    if not obj:
-        obj = '%s/%s' % (req.object_name, upload_id)
-        if req.from_replicator():  # Replicator
-            # MPU marker on destination bucket has another format
-            obj = '%s/%s%s' % (
-                req.object_name, MULTIUPLOAD_REPLICATION_PREFIX, upload_id)
-
+    obj = '%s/%s' % (req.object_name, upload_id)
     # XXX: if we leave the copy-source header, somewhere later we might
     # drop in a ?version-id=... query string that's utterly inappropriate
     # for the upload marker. Until we get around to fixing that, just pop
@@ -209,17 +204,6 @@ def set_s3_operation_rest_for_put_part(func):
         return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
 
     return _set_s3_operation
-
-
-def set_acl(req, sysmeta_info, resource="object"):
-    """
-    According to the given resource, set the corresponding S3api acl header if
-    ACL defined in container sysmeta info
-    """
-    if sysmeta_info.get("s3api-acl"):
-        # Grant replicator user access to marker
-        req.headers[sysmeta_header(resource, "acl")] = \
-            sysmeta_info["s3api-acl"]
 
 
 class PartController(Controller):
@@ -335,13 +319,10 @@ class PartController(Controller):
                 'X-Object-Sysmeta-Slo-Size': '',
                 get_container_update_override_key('etag'): '',
             })
-        # Enable replication after MPU part upload
-        # Replication
-        replication_resolve_rules(
-            self.app,
-            req,
-            metadata=resp.headers,
-        )
+        if req.from_replicator():  # Upload part from replicator
+            # Set replication status on destination side
+            req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_REPLICA
+
         resp = req.get_response(self.app,
                                 container=seg_container_name,
                                 obj=seg_object_name,
@@ -431,10 +412,22 @@ class PartController(Controller):
             # Update where to look
             update_etag_is_at_header(req, sysmeta_header('object', 'etag'))
 
+        query = {
+            'multipart-manifest': 'get',
+            'format': 'raw',
+        }
+        version_id = version_id_param(req)
+        if version_id not in ('null', None):
+            container_info = req.get_container_info(self.app)
+            if not container_info.get(
+                    'sysmeta', {}).get('versions-container', ''):
+                # Versioning has never been enabled
+                raise NoSuchVersion(req.object_name, version_id)
+            query['version-id'] = version_id
         # Get the list of parts. Must be raw to get all response headers.
         slo_resp = req.get_response(
             self.app, 'GET', req.container_name, req.object_name,
-            query={'multipart-manifest': 'get', 'format': 'raw'})
+            query=query)
 
         # Check if the object is really a SLO. If not, and user asked
         # for the first part, do a regular request.
@@ -459,6 +452,7 @@ class PartController(Controller):
         _, req.container_name, req.object_name = part['path'].split('/', 2)
         req.container_name = str_to_wsgi(req.container_name)
         req.object_name = str_to_wsgi(req.object_name)
+        req.params.pop("versionId", None)
         # The etag check was performed with the manifest
         if had_match:
             for match_header in ('if-match', 'if-none-match'):
@@ -649,16 +643,8 @@ class UploadsController(Controller):
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)
 
-        # Enable replication after MPU part upload
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
-        # Replication
-        replication_resolve_rules(
-            self.app,
-            req,
-            sysmeta_info=sysmeta_info,
-            metadata=req.headers,
-        )
         object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
         req.get_response(self.app, 'PUT', seg_container, obj, body='')
 
@@ -820,22 +806,11 @@ class UploadController(Controller):
         upload_id = _get_upload_id(req)
         # Inital mpu marker format
         marker = '%s/%s' % (req.object_name, upload_id)
-        if req.from_replicator():  # Replicator
-            # MPU marker on destination bucket has another format
-            marker = '%s/%s%s' % (req.object_name,
-                                  MULTIUPLOAD_REPLICATION_PREFIX, upload_id)
+        container = req.container_name + MULTIUPLOAD_SUFFIX
         # First check to see if this multi-part upload has been already
         # completed.
-        _get_upload_info(req, self.app, upload_id, obj=marker)
-
-        container = req.container_name + MULTIUPLOAD_SUFFIX
-        try:
-            resp = req.get_response(
-                self.app,
-                'HEAD',
-                container=container,
-                obj=marker)
-        except NoSuchKey:
+        resp = _get_upload_info(req, self.app, upload_id)
+        if upload_id not in resp.environ["PATH_INFO"]:  # Head on the manifest
             # The MPU has been already completed.
             # As amazon seems to do not return an error
             # in case of an abort of a completed MPU,
@@ -869,13 +844,6 @@ class UploadController(Controller):
                                     query=query)
             objects = json.loads(resp.body)
 
-        # Replication
-        replication_resolve_rules(
-            self.app,
-            req,
-            metadata=resp.headers,
-            delete=True,
-        )
         req.get_response(self.app, container=container, obj=marker)
         return HTTPNoContent()
 
@@ -1018,13 +986,8 @@ class UploadController(Controller):
                              '%d bytes' % self.conf.min_segment_size)
 
         if req.from_replicator():  # Complete MPU from replicator
-            info = req.get_container_info(self.app)
-            sysmeta_info = info.get("sysmeta", {})
             # Set replication status on destination side
             headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_REPLICA
-            headers[
-                sysmeta_header('object', 'acl')
-            ] = sysmeta_info.get("s3api-acl")
         else:
             replication_resolve_rules(
                 self.app,
@@ -1104,16 +1067,11 @@ class UploadController(Controller):
                         raise
                 finally:
                     req.environ['oio.query'].pop('new_version')
+
                 # clean up the multipart-upload record
-                if req.from_replicator():
-                    # MPU marker on destination bucket has another format
-                    obj = '%s/%s%s' % (req.object_name,
-                                       MULTIUPLOAD_REPLICATION_PREFIX,
-                                       upload_id)
-                else:
-                    obj = '%s/%s' % (req.object_name, upload_id)
+                obj = '%s/%s' % (req.object_name, upload_id)
                 try:
-                    # Remove replicataion rules added previously
+                    # Remove replication rules added previously
                     replication_drop_rules(req)
                     req.get_response(self.app, 'DELETE', container, obj)
                 except NoSuchKey:

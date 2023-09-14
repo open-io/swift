@@ -21,7 +21,7 @@ from swift.common.utils import json
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, InternalError, ServiceUnavailable
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    MPU_PART_RE, MPU_PREFIX_RE
+    MPU_PART_RE
 from swift.common.request_helpers import get_param
 from swift.common.wsgi import make_pre_authed_request
 
@@ -139,8 +139,7 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
             break
 
         new_uploads = [object_to_upload(obj) for obj in objects if
-                       MPU_PART_RE.search(obj.get('name', '')) is None and
-                       MPU_PREFIX_RE.search(obj.get('name', '')) is None]
+                       MPU_PART_RE.search(obj.get('name', '')) is None]
         new_prefixes = []
         if 'delimiter' in req.params:
             prefix = get_param(req, 'prefix', '')
