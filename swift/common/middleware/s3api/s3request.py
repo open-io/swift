@@ -1354,9 +1354,11 @@ class S3Request(swob.Request):
                                      headers=headers, query=query)
         if src_resp.status_int == 304:  # pylint: disable-msg=E1101
             raise PreconditionFailed()
+        # Range is decoded in PartController, we will check it there
         if (
-            src_resp.content_length is None
-            or src_resp.content_length > self.conf.max_server_side_copy_size
+            (src_resp.content_length is None
+             or src_resp.content_length > self.conf.max_server_side_copy_size)
+            and 'X-Amz-Copy-Source-Range' not in self.headers
         ):
             raise InvalidRequest(
                 "The specified copy source is larger than the maximum "

@@ -293,11 +293,19 @@ class PartController(Controller):
                     raise InvalidArgument('x-amz-source-range', rng, err_msg)
 
                 source_size = int(source_resp.headers['Content-Length'])
-                if not rng_obj.ranges_for_length(source_size):
+                ranges = rng_obj.ranges_for_length(source_size)
+                if not ranges:
                     err_msg = ('Range specified is not valid for source '
                                'object of size: %s' % source_size)
                     raise InvalidArgument('x-amz-source-range', rng, err_msg)
 
+                range_size = ranges[0][1] - ranges[0][0]
+                if range_size > self.conf.max_server_side_copy_size:
+                    raise InvalidRequest(
+                        "The specified copy source is larger than the maximum "
+                        "allowable size for a copy source: "
+                        f"{self.conf.max_server_side_copy_size}"
+                    )
                 req.headers['Range'] = rng
                 del req.headers['X-Amz-Copy-Source-Range']
 
