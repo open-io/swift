@@ -870,10 +870,13 @@ class UploadController(Controller):
                 HEADER_LEGAL_HOLD_STATUS
             )
         ]
+        tagging_header = None
         for key, val in resp.sysmeta_headers.items():
             _key = key.lower()
             if _key in sysmeta_headers_to_keep:
                 headers[key] = val
+                if _key == OBJECT_TAGGING_HEADER:
+                    tagging_header = val
 
         hct_header = sysmeta_header('object', 'has-content-type')
         if resp.sysmeta_headers.get(hct_header) == 'yes':
@@ -967,6 +970,7 @@ class UploadController(Controller):
             self.app,
             req,
             sysmeta_info.get("s3api-replication"),
+            tags=tagging_header,
             metadata=headers,
         )
 
