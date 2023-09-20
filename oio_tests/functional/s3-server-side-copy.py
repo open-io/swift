@@ -44,20 +44,20 @@ class TestS3ServerSideCopy(unittest.TestCase):
 
     def _create_object_src(self, key, size):
         etag = md5(usedforsecurity=False)
-        with tempfile.NamedTemporaryFile() as file:
+        with tempfile.NamedTemporaryFile() as myfile:
             for _ in range(size // BUFFER_SIZE):
                 data = b" " * (BUFFER_SIZE - 1) + random_str(1).encode('utf-8')
-                file.write(data)
+                myfile.write(data)
                 etag.update(data)
             remaining = size % BUFFER_SIZE
             if remaining:
                 data = b" " * (remaining - 1) + random_str(1).encode('utf-8')
-                file.write(data)
+                myfile.write(data)
                 etag.update(data)
-            file.flush()
+            myfile.flush()
             res = run_awscli_s3api(
                 'put-object',
-                '--body', file.name,
+                '--body', myfile.name,
                 bucket=self.bucket_src, key=key
             )
             expected_etag = f'"{etag.hexdigest()}"'
@@ -65,22 +65,22 @@ class TestS3ServerSideCopy(unittest.TestCase):
             return res, expected_etag
 
     def _create_part_src(self, key, upload_id, part_number, size, etag):
-        with tempfile.NamedTemporaryFile() as file:
+        with tempfile.NamedTemporaryFile() as myfile:
             for _ in range(size // BUFFER_SIZE):
                 data = b" " * (BUFFER_SIZE - 1) + random_str(1).encode('utf-8')
-                file.write(data)
+                myfile.write(data)
                 etag.update(data)
             remaining = size % BUFFER_SIZE
             if remaining:
                 data = b" " * (remaining - 1) + random_str(1).encode('utf-8')
-                file.write(data)
+                myfile.write(data)
                 etag.update(data)
-            file.flush()
+            myfile.flush()
             return run_awscli_s3api(
                 'upload-part',
                 '--upload-id', upload_id,
                 '--part-number', str(part_number),
-                '--body', file.name,
+                '--body', myfile.name,
                 bucket=self.bucket_src, key=key
             )
 
@@ -165,14 +165,20 @@ class TestS3ServerSideCopy(unittest.TestCase):
         )
         self.assertEqual(1, len(res['Parts']))
         self.assertEqual(expected_size, res['Parts'][0]['Size'])
-        self.assertEqual(expected_etag, res['Parts'][0]['ETag'])
+        if expected_etag:
+            self.assertEqual(expected_etag, res['Parts'][0]['ETag'])
 
-    def _test_upload_part_copy(self, size, with_mpu_object_src=False):
+    def _test_upload_part_copy(self, size, with_mpu_object_src=False,
+                               expected_size=None, check_etag=True,
+                               awscli_args=[]):
         key = random_str(8)
         if with_mpu_object_src:
-            obj_src, expected_etag = self._create_mpu_object_src(key, size)
+            obj_src, src_etag = self._create_mpu_object_src(key, size)
         else:
-            obj_src, expected_etag = self._create_object_src(key, size)
+            obj_src, src_etag = self._create_object_src(key, size)
+        expected_etag = src_etag if check_etag else None
+        if expected_size is None:
+            expected_size = size
         upload_id = self._init_mpu_object_dst(f'{key}_mpu')
         try:
             start = time.time()
@@ -181,20 +187,23 @@ class TestS3ServerSideCopy(unittest.TestCase):
                 '--upload-id', upload_id,
                 '--part-number', '1',
                 '--copy-source', f'{self.bucket_src}/{key}',
-                bucket=self.bucket_dst, key=f'{key}_mpu'
+                bucket=self.bucket_dst, key=f'{key}_mpu',
+                *awscli_args,
             )
             request_time = time.time() - start
             # Check the response
             self.assertEqual(obj_src['VersionId'],
                              part_dst['CopySourceVersionId'])
-            self.assertEqual(expected_etag,
-                             part_dst['CopyPartResult']['ETag'])
+            if expected_etag:
+                self.assertEqual(expected_etag,
+                                 part_dst['CopyPartResult']['ETag'])
             # Check the response time to verify that the ratelimit is working
-            expected_request_time = size / 1048576
+            expected_request_time = expected_size / 1048576
             self.assertGreater(request_time, expected_request_time - 5)
             self.assertLess(request_time, expected_request_time + 5)
             # Check the destination
-            self._check_part_dst(f'{key}_mpu', upload_id, size, expected_etag)
+            self._check_part_dst(f'{key}_mpu', upload_id,
+                                 expected_size, expected_etag)
         finally:
             self._abort_mpu_object_dst(f'{key}_mpu', upload_id)
 
@@ -235,6 +244,68 @@ class TestS3ServerSideCopy(unittest.TestCase):
         self._test_upload_part_copy(
             104857600,  # 100 MB
             with_mpu_object_src=True)
+
+    def test_upload_part_copy_range_basic(self):
+        self._test_upload_part_copy(
+            104857601,  # 100 MB + 1 B
+            check_etag=False,
+            expected_size=1,
+            with_mpu_object_src=True,
+            awscli_args=["--copy-source-range", "bytes=0-0"],
+        )
+
+    def test_upload_part_copy_range_n_bytes_from_the_end(self):
+        self._test_upload_part_copy(
+            104857601,  # 100 MB + 1 B
+            check_etag=False,
+            expected_size=1,
+            with_mpu_object_src=True,
+            awscli_args=["--copy-source-range", "bytes=-1"],
+        )
+
+    def test_upload_part_copy_range_middle_to_the_end(self):
+        self._test_upload_part_copy(
+            104857601,  # 100 MB + 1 B
+            check_etag=False,
+            expected_size=1,
+            with_mpu_object_src=True,
+            awscli_args=["--copy-source-range", "bytes=104857600-"],
+        )
+
+    def test_upload_part_copy_range_beyond_end(self):
+        self._test_upload_part_copy(
+            104857601,  # 100 MB + 1 B
+            check_etag=False,
+            expected_size=1,
+            with_mpu_object_src=True,
+            awscli_args=["--copy-source-range", "bytes=104857600-104857610"],
+        )
+
+    def test_upload_part_copy_range_max_size(self):
+        self._test_upload_part_copy(
+            104857601,  # 100 MB + 1 B
+            check_etag=False,
+            expected_size=104857600,
+            with_mpu_object_src=True,
+            awscli_args=["--copy-source-range", "bytes=1-104857601"],
+        )
+
+    def test_upload_part_copy_range_too_large(self):
+        key = "large-mpu-" + random_str(3)
+        self._create_mpu_object_src(key, 104857603)  # 100 MB + 3 bytes
+        upload_id = self._init_mpu_object_dst(f'{key}_copy')
+        try:
+            self.assertRaisesRegex(
+                CliError, 'InvalidRequest', run_awscli_s3api,
+                'upload-part-copy',
+                '--upload-id', upload_id,
+                '--part-number', '1',
+                '--copy-source', f'{self.bucket_src}/{key}',
+                '--copy-source-range', 'bytes=1-104857602',
+                bucket=self.bucket_dst, key=f'{key}_copy'
+            )
+        finally:
+            self._abort_mpu_object_dst(f'{key}_copy', upload_id)
 
     def test_copy_object_with_too_large_object_src(self):
         key = random_str(8)
