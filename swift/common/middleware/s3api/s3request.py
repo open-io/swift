@@ -67,10 +67,11 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidChunkSizeError, IncompleteBody, WebsiteErrorResponse, \
     PermanentRedirect, InvalidAccessKeyId, HTTPOk, ErrorResponse
 from swift.common.middleware.s3api.exception import NotS3Request
-from swift.common.middleware.s3api.utils import utf8encode, \
-    S3Timestamp, mktime, sysmeta_header, validate_bucket_name, \
-    Config, is_not_ascii, MULTIUPLOAD_SUFFIX
-from swift.common.middleware.s3api.subresource import decode_acl, encode_acl
+from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
+    REPLICATOR_USER_AGENT, Config, S3Timestamp, utf8encode, mktime, \
+    sysmeta_header, validate_bucket_name, is_not_ascii
+from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
+    decode_acl, encode_acl
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
 from swift.common.middleware.s3api.etree import XML_DECLARATION, tostring
 
@@ -844,7 +845,7 @@ class S3Request(swob.Request):
                     #   Do not replace the main exception with another one
 
         # Check parameters and headers
-        self.storage_class = self._get_storage_class()
+        self.storage_class = self._get_storage_class_before_authentication()
         self._validate_headers()
         if not self._is_anonymous:
             # Lock in string-to-sign now, before we start messing
@@ -1107,6 +1108,10 @@ class S3Request(swob.Request):
         Get the storage class requested by the client, or the default one of
         the requested storage domain (endpoint) if the client did not
         specify any (or ignore_storage_class_header is True).
+
+        This method should not be used outside
+        of the '_get_storage_class_before_authentication'
+        and '_get_storage_class_after_authentication' methods.
         """
         storage_class = None
         if self.object_name and self.method in ('PUT', 'POST'):
@@ -1128,6 +1133,14 @@ class S3Request(swob.Request):
             if storage_class not in self.conf.storage_classes:
                 raise InvalidStorageClass()
         return storage_class
+
+    def _get_storage_class_before_authentication(self):
+        """
+        Get the storage class requested by the client, or the default one of
+        the requested storage domain (endpoint) if the client did not
+        specify any (or ignore_storage_class_header is True).
+        """
+        return self._get_storage_class()
 
     def _validate_expire_param(self):
         """
@@ -2409,6 +2422,45 @@ class S3Request(swob.Request):
     def set_acl_handler(self, handler):
         pass
 
+    def from_log_deliverer(self):
+        """
+        Check if the req is coming from the log deliverer
+
+        :param self: S3 request
+        :type self: S3Request
+        :return: True if the request is initiated by the log deliverer
+                 and False if not.
+        :rtype: bool
+        """
+        if self.user_id:
+            if ':' in self.user_id:
+                _, user = self.user_id.split(':', 1)
+            else:
+                user = self.user_id
+            return user == LOG_DELIVERY_USER
+        return False
+
+    def from_replicator(self):
+        """
+        Check if the req is coming from the replicator
+
+        :param self: S3 request
+        :type self: S3Request
+        :return: True if the request is initiated by the replicator
+                 and False if not.
+        :rtype: bool
+        """
+        # With Boto3, we are able to check if
+        # the user agent is the expected one
+        return (
+            self.environ.get('reseller_request', False)
+            and self.user_agent
+            and self.user_agent.endswith(REPLICATOR_USER_AGENT)
+        )
+
+    def from_internal_tool(self):
+        return self.from_log_deliverer() or self.from_replicator()
+
 
 class S3AclRequest(S3Request):
     """
@@ -2419,6 +2471,7 @@ class S3AclRequest(S3Request):
         if not self._is_anonymous:
             self.authenticate(app)
         self.acl_handler = None
+        self.storage_class = self._get_storage_class_after_authentication()
 
     @property
     def controller(self):
@@ -2532,6 +2585,29 @@ class S3AclRequest(S3Request):
 
     def set_acl_handler(self, acl_handler):
         self.acl_handler = acl_handler
+
+    def _get_storage_class_before_authentication(self):
+        """
+        To have a different behavior for internal tools, authentication must
+        have already taken place to know the name and rights of the user.
+        """
+        return None
+
+    def _get_storage_class_after_authentication(self):
+        """
+        For the internal tools, get the real storage class requested
+        by the client if it is supported, otherwise use 'STANDARD' by default.
+        For other requests, keep the same behavior as before authentication.
+        """
+        storage_class = None
+        if self.from_internal_tool():
+            if self.object_name and self.method in ('PUT', 'POST'):
+                storage_class = self.headers.get('x-amz-storage-class')
+                if storage_class not in self.conf.storage_classes:
+                    storage_class = 'STANDARD'
+        else:
+            storage_class = self._get_storage_class()
+        return storage_class
 
 
 class SigV4Request(SigV4Mixin, S3Request):

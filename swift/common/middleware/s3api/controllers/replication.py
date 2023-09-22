@@ -538,7 +538,7 @@ class ReplicationController(Controller):
         self._validate_configuration(config, req)
         dict_conf = replication_xml_conf_to_dict(config)
         dict_conf = _optimize_replication_conf(dict_conf)
-        json_conf = json.dumps(dict_conf)
+        json_conf = json.dumps(dict_conf, separators=(',', ':'))
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 204, HTTPOk)

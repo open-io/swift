@@ -25,7 +25,6 @@ from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRequest, BadEndpoint, NoSuchBucket, AccessDenied, NoSuchKey, \
     NoSuchVersion
-from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER
 from swift.common.middleware.s3api.utils import camel_to_snake
 from swift.common.swob import str_to_wsgi
 from swift.common.utils import drain_and_close, public
@@ -92,18 +91,13 @@ def check_bucket_storage_domain(func):
     @functools.wraps(func)
     def _check_bucket_storage_domain(self, req):
         if self.conf.check_bucket_storage_domain:
-            if req.user_id:
-                if ':' in req.user_id:
-                    _, user = req.user_id.split(':', 1)
-                else:
-                    user = req.user_id
-                if user == LOG_DELIVERY_USER:
-                    # Log files are always uploaded with the STANDARD storage
-                    # class (if available).
-                    # And since in some configurations the STANDARD storage
-                    # class is only allowed from a specific storage domain,
-                    # all users in the LogDelevery group must skip this check.
-                    return func(self, req)
+            if req.from_internal_tool():
+                # Internal tool are always uploaded with the all
+                # storage classes available.
+                # And since in some configurations, some storage classes are
+                # only allowed from a specific storage domain,
+                # the internal tools must skip this check.
+                return func(self, req)
 
             try:
                 info = req.get_container_info(self.app)
