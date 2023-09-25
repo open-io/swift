@@ -98,10 +98,13 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
     def statsd_metric_name_policy(self, req, status_int, method, policy_index):
         return None
 
-    def statsd_to_be_replicated(self, req, status_int, method):
+    def statsd_replication(self, req, status_int, method):
         """
-        Generates a name for metrics about objects going to be replicated.
+        Generates a name for metrics about objects:
+         - going to be replicated (from clients).
         The request contains a replication-status header with a value 'PENDING'
+         - replicated (from s3-replicator)
+        The request contains a replication-status header with a value 'REPLICA'
         """
         stat_type = self.get_metric_name_type(req)
         if stat_type == 'object':
@@ -111,7 +114,16 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 'HTTP_X_OBJECT_SYSMETA_S3API_REPLICATION_STATUS')
             if repl_status == 'PENDING':
                 return '.'.join(
-                    ('replication', method, stat_type, str(status_int)))
+                    ('replication.customer',
+                     method, stat_type, str(status_int)))
+
+            repl_status = req.headers.environ.get(
+                'HTTP_X_AMZ_META_X_OIO_?REPLICATION_STATUS')
+            if repl_status == 'REPLICA':
+                return '.'.join(
+                    ('replication.s3-replicator',
+                     method, stat_type, str(status_int)))
+
         return None
 
     def _pre_log_request_callback(self, start_time, env):
@@ -216,17 +228,17 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             wire_status_int=wire_status_int)
 
         method = self.method_from_req(req)
-        metric_to_be_replicated = self.statsd_to_be_replicated(
+        metric_repli = self.statsd_replication(
             req, status_int, method)
 
         duration_time = None
         if end_time is not None:  # (final) access log
             duration_time = end_time - start_time
 
-        if metric_to_be_replicated and duration_time is not None:
-            self.access_logger.timing(metric_to_be_replicated + '.timing',
+        if metric_repli and duration_time is not None:
+            self.access_logger.timing(metric_repli + '.timing',
                                       duration_time * 1000)
-            self.access_logger.update_stats(metric_to_be_replicated + '.xfer',
+            self.access_logger.update_stats(metric_repli + '.xfer',
                                             bytes_received)
 
         if customer_access_logging is None:
