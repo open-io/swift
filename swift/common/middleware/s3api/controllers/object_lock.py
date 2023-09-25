@@ -124,6 +124,7 @@ def object_lock_populate_sysmeta_headers(
     """
     Populate sysmeta headers with bucket retention or header provided values
     """
+    lock_requested = False
     if timestamp is None:
         timestamp = S3Timestamp.now()
     if 's3api-lock-bucket-defaultretention' in sysmeta_info:
@@ -140,13 +141,31 @@ def object_lock_populate_sysmeta_headers(
     if 'x-amz-object-lock-mode' in headers:
         header = sysmeta_header('object', 'retention-Mode')
         headers[header] = headers['x-amz-object-lock-mode']
+        lock_requested = True
+
     if 'x-amz-object-lock-retain-until-date' in headers:
         header = sysmeta_header('object', 'retention-RetainUntilDate')
         headers[header] = \
             headers['x-amz-object-lock-retain-until-date']
+        lock_requested = True
+
     if 'x-amz-object-lock-legal-hold' in headers:
         header = sysmeta_header('object', 'legal-hold' + '-' + 'status')
         headers[header] = headers['x-amz-object-lock-legal-hold']
+        lock_requested = True
+
+    # Specific oio headers
+    if 'X-Amz-Meta-x-oio-?retention-mode' in headers:
+        lock_requested = True
+    if 'X-Amz-Meta-x-oio-?retention-retainuntildate' in headers:
+        lock_requested = True
+
+    if lock_requested:
+        global_lock = filter_objectlock_meta(
+            sysmeta_info, 's3api-bucket-')
+        if 'object-lock-enabled' not in global_lock.keys() or \
+           global_lock['object-lock-enabled'] == 'False':
+            raise InvalidRequest(MISSING_LOCK_CONFIGURATION)
 
 
 MISSING_LOCK_CONFIGURATION = 'Bucket is missing Object Lock Configuration'
