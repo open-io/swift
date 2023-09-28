@@ -304,6 +304,7 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
                         value = value.decode('utf-8')
                     except UnicodeDecodeError:
                         elem.text = '(invalid string)'
+                        continue
                 try:
                     elem.text = escape_xml_text(value)
                 except ValueError:
