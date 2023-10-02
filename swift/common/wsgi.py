@@ -600,6 +600,14 @@ class SwiftHttpProxiedProtocol(SwiftHttpProtocol):
         return SwiftHttpProtocol.handle(self)
 
     def get_environ(self, *args, **kwargs):
+        if self.client_address:
+            # Set x-cluster-client-ip as IPLB do with real client IP
+            # so we are confident with this value in get_remote_client
+            # Delete before set as explain here:
+            # https://docs.python.org/3/library/email.message.html#email.message.EmailMessage.__setitem__
+            del self.headers['x-cluster-client-ip']
+            self.headers['x-cluster-client-ip'] = wsgi.addr_to_host_port(
+                self.client_address)[0]
         environ = SwiftHttpProtocol.get_environ(self, *args, **kwargs)
         if self.proxy_address:
             environ['SERVER_ADDR'] = self.proxy_address[0]

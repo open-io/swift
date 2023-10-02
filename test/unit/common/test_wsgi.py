@@ -1376,7 +1376,7 @@ class TestProxyProtocol(ProtocolTest):
                                      url_length_limit=777,
                                      log=mock.Mock())
         proxy_obj.send_error = mock.Mock()
-
+        proxy_obj.headers = proxy_obj.MessageClass()
         proxy_obj.rfile = BytesIO(
             b'PROXY TCP4 111.111.111.111 222.222.222.222 111 222'
         )
@@ -1391,6 +1391,8 @@ class TestProxyProtocol(ProtocolTest):
             'OTHER_ENV_KEY': 'OTHER_ENV_VALUE'
         }
         self.assertEqual(proxy_obj.get_environ(), expected_env)
+        self.assertEqual(proxy_obj.headers['x-cluster-client-ip'],
+                         '111.111.111.111')
 
 
 class CommonTestMixin(object):
