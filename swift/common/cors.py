@@ -77,8 +77,13 @@ def get_cors(app, conf, req, method, origin):
     # Add CORS rules from the configuration
     rules += conf.cors_rules
     for rule in rules:
-        item = rule.find('AllowedOrigin')
-        if match_cors(item.text, origin):
+        items = rule.findall('AllowedOrigin')
+        allowed_match = False
+        for item in items:
+            if match_cors(item.text, origin):
+                allowed_match = True
+                break
+        if allowed_match:
             # check AllowedMethod
             rule_methods = rule.findall('AllowedMethod')
             for rule_meth in rule_methods:

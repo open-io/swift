@@ -361,6 +361,57 @@ class TestS3Cors(unittest.TestCase):
         self.assertNotIn("Access-Control-Expose-Headers", response.headers)
         self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
 
+    def test_optional_id(self):
+        # Create bucket
+        run_awscli_s3('mb', bucket=self.bucket_name)
+
+        # Create object
+        key = random_str(20)
+        run_awscli_s3api("put-object", bucket=self.bucket_name, key=key)
+
+        # Configure CORS for this bucket
+        run_awscli_s3api(
+            'put-bucket-cors',
+            '--cors-configuration', """
+                {
+                    "CORSRules": [
+                        {
+                            "ID": "test",
+                            "ExposeHeaders": ["Access-Control-Allow-Origin"],
+                            "AllowedHeaders": ["Authorization"],
+                            "AllowedOrigins": ["http://openio.io",
+                                              "http://example.io"],
+                            "AllowedMethods": ["GET"]
+                        }
+                    ]
+                }
+            """,
+            bucket=self.bucket_name
+        )
+
+        resp = run_awscli_s3api(
+            'get-bucket-cors',
+            bucket=self.bucket_name
+        )
+        self.assertEqual(resp["CORSRules"][0]["ID"], "test")
+        origins = resp["CORSRules"][0]["AllowedOrigins"]
+        self.assertIn("http://openio.io", origins)
+        self.assertIn("http://example.io", origins)
+
+        self._check_all_option_requests(
+            action="GET",
+            origin="http://openio.io",
+            expected_status_code=200,
+            expected_message=None,
+        )
+
+        self._check_all_option_requests(
+            action="GET",
+            origin="http://example.io",
+            expected_status_code=200,
+            expected_message=None,
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
