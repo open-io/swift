@@ -23,7 +23,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
-    replication_resolve_rules
+    OBJECT_REPLICATION_STATUS, replication_resolve_rules
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -31,7 +31,8 @@ from swift.common.middleware.s3api.intelligent_tiering_utils import \
     get_intelligent_tiering_info, GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
-from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp
+from swift.common.middleware.s3api.utils import REPLICATOR_USER_AGENT, \
+    sysmeta_header, S3Timestamp
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
@@ -53,10 +54,47 @@ INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'parameters without tag name duplicates.'
 
 RESERVED_PREFIXES = ('ovh:', 'aws:')
+ALLOWED_PREFIX = 'ovh:'
 
 INTELLIGENT_TIERING_STATUS_KEY = 'ovh:intelligent_tiering_status'
 INTELLIGENT_TIERING_RESTO_END_KEY = \
     'ovh:intelligent_tiering_restoration_end_date'
+
+
+def _set_replication_status(req, status):
+    """
+    Used to set replication status using tagging
+    """
+    req.headers[OBJECT_REPLICATION_STATUS] = status
+
+
+ALLOWED_ACTION_BY_AGENT = {
+    REPLICATOR_USER_AGENT: {"replication_status": _set_replication_status}}
+
+
+def _is_allowed_action(key, agent):
+    """Check if the action is allowed for the
+    specified agent and return the function to execute.
+
+    :param key: the key tag used to identify the action
+        to execute
+    :type key: str
+    :param agent: user agent
+    :type agent: str
+    :return: function to execute
+    :rtype: function
+    """
+    for prefix in RESERVED_PREFIXES:
+        if key.startswith(prefix) and prefix != ALLOWED_PREFIX:
+            raise InvalidTag()
+        key_name = key[len(prefix):]
+        if (
+            agent in ALLOWED_ACTION_BY_AGENT
+            and
+            key_name in ALLOWED_ACTION_BY_AGENT[agent]
+        ):
+            return ALLOWED_ACTION_BY_AGENT[agent][key_name]
+    return None
 
 
 def _create_tagging_xml_document():
@@ -186,20 +224,45 @@ class TaggingController(Controller):
             # Validate the body and reserved keys
             tagging = fromstring(body, 'Tagging')
             tagset = tagging.find('TagSet')
-            for tag in tagset.xpath('//Tag'):
-                _check_key_prefix(tag.find('Key').text)
+            from_replicator = req.from_replicator()
+            tags = tagset.xpath('//Tag')
+            nb_tags = len(tags)
+            for tag in tags:
+                key = tag.find('Key').text
+                value = tag.find('Value').text
+                if (
+                    from_replicator
+                    and
+                    nb_tags == 1
+                    and
+                    req.object_name
+                ):
+                    # From the replicator we expect only one key
+                    # starting with reserved prefixes, and there cannot be
+                    # another tag beside the expected one.
+                    action = _is_allowed_action(key, REPLICATOR_USER_AGENT)
+                    if action:
+                        action(req, value)
+                        continue
+                _check_key_prefix(key)
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
         if req.object_name:
             req.headers[OBJECT_TAGGING_HEADER] = body
-            # Retrieve object metadata
-            replication_resolve_rules(
-                self.app,
-                req,
-                tags=req.headers.get(OBJECT_TAGGING_HEADER),  # use new tags
-                ensure_replicated=True,
-            )
+            # In case of replicator request we do need to trigger
+            # replication here because either it is an update of
+            # tags on the destination or an update of replication
+            # status on the source.
+            if not from_replicator:
+                # Retrieve object metadata
+                replication_resolve_rules(
+                    self.app,
+                    req,
+                    # use new tags
+                    tags=req.headers.get(OBJECT_TAGGING_HEADER),
+                    ensure_replicated=True,
+                )
         else:
             req.headers[BUCKET_TAGGING_HEADER] = body
         resp = req.get_response(self.app, 'POST',
