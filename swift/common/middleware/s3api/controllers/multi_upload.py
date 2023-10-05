@@ -471,6 +471,11 @@ class PartController(Controller):
             slo_resp.headers['Content-Length']
         # Add the number of parts in this object
         slo_resp.headers['X-Amz-Mp-Parts-Count'] = len(slo)
+        if req.from_internal_tool():
+            # X-Amz-Part-ETag
+            # This header is not part of the S3 API.
+            # This header is added to help verify data integrity.
+            slo_resp.headers['X-Amz-Part-ETag'] = resp.headers['ETag']
         return slo_resp
 
     @set_s3_operation_rest('PREFLIGHT')

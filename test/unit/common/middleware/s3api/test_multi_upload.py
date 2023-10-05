@@ -2068,6 +2068,22 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertIn('X-Amz-Mp-Parts-Count', headers)
         self.assertEqual(S3_ETAG, headers['ETag'])
         self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+        self.assertNotIn('X-Amz-Part-ETag', headers)
+
+    @s3acl
+    @patch(
+        "swift.common.middleware.s3api.s3request.S3Request.from_replicator",
+        return_value=True,
+    )
+    def test_object_head_part_from_replicator(self, _from_replicator):
+        status, headers, body = self._test_object_head_part()
+        self.assertEqual('200', status.split()[0])
+        self.assertFalse(body)
+        self.assertIn('ETag', headers)
+        self.assertIn('X-Amz-Mp-Parts-Count', headers)
+        self.assertEqual(S3_ETAG, headers['ETag'])
+        self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+        self.assertEqual('"0123456789abcdef"', headers['X-Amz-Part-ETag'])
 
     @s3acl
     def test_object_head_part_error(self):
