@@ -256,3 +256,10 @@ def convert_response(req, resp, success_code, response_class):
                 resp.sw_headers[VERSION_ID_HEADER]
         return response_class(headers=headers)
     return resp
+
+
+def update_response_header_with_response_params(req, resp):
+    for key in ('content-type', 'content-language', 'expires', 'cache-control',
+                'content-disposition', 'content-encoding'):
+        if 'response-' + key in req.params:
+            resp.headers[key] = req.params['response-' + key]

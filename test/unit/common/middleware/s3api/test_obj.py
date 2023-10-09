@@ -379,7 +379,15 @@ class TestS3ApiObj(S3ApiTestCase):
         self.assertEqual(code, 'InvalidRange')
 
     @s3acl
-    def test_object_GET_Response(self):
+    def test_object_GET_Part_error(self):
+        code = self._test_method_error('GET', '/bucket/object?partNumber=12',
+                                       swob.HTTPRequestedRangeNotSatisfiable)
+        self.assertEqual(code, 'InvalidPartNumber')
+
+    def _test_object_GET_Response(self, use_first_part=False):
+        part_number = ''
+        if use_first_part:
+            part_number = 'partNumber=1'
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'GET',
                                      'QUERY_STRING':
@@ -388,12 +396,13 @@ class TestS3ApiObj(S3ApiTestCase):
                                      'response-expires=%s&'
                                      'response-cache-control=%s&'
                                      'response-content-disposition=%s&'
-                                     'response-content-encoding=%s&'
+                                     'response-content-encoding=%s&%s'
                                      % ('text/plain', 'en',
                                         'Fri, 01 Apr 2014 12:00:00 GMT',
                                         'no-cache',
                                         'attachment',
-                                        'gzip')},
+                                        'gzip',
+                                        part_number)},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
@@ -412,6 +421,14 @@ class TestS3ApiObj(S3ApiTestCase):
                          'attachment')
         self.assertTrue('content-encoding' in headers)
         self.assertEqual(headers['content-encoding'], 'gzip')
+
+    @s3acl
+    def test_object_GET_Response(self):
+        self._test_object_GET_Response()
+
+    @s3acl
+    def test_object_GET_Response_using_first_part(self):
+        self._test_object_GET_Response(use_first_part=True)
 
     @s3acl
     def test_object_GET_version_id_not_implemented(self):

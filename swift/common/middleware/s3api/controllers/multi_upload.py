@@ -94,13 +94,13 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     ErrorResponse, MalformedXML, BadDigest, KeyTooLongError, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
-    NoSuchBucket, BucketAlreadyOwnedByYou, InvalidRange, NoSuchVersion
+    NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
 from swift.common.middleware.s3api.utils import unique_id, \
     MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, \
-    sysmeta_header
+    sysmeta_header, update_response_header_with_response_params
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
@@ -436,17 +436,18 @@ class PartController(Controller):
                 if slo_resp.is_success and req.method == 'HEAD':
                     # Clear body
                     slo_resp.body = b''
+                update_response_header_with_response_params(req, slo_resp)
                 return slo_resp
             else:
                 close_if_possible(slo_resp.app_iter)
-                raise InvalidRange()
+                raise InvalidPartNumber(part_number, 1)
 
         # Locate the part
         slo = json.loads(slo_resp.body)
         try:
             part = slo[part_number - 1]
-        except IndexError:
-            raise InvalidRange()
+        except IndexError as exc:
+            raise InvalidPartNumber(part_number, len(slo)) from exc
 
         # Redirect the request on the part
         _, req.container_name, req.object_name = part['path'].split('/', 2)
@@ -476,6 +477,8 @@ class PartController(Controller):
             # This header is not part of the S3 API.
             # This header is added to help verify data integrity.
             slo_resp.headers['X-Amz-Part-ETag'] = resp.headers['ETag']
+
+        update_response_header_with_response_params(req, slo_resp)
         return slo_resp
 
     @set_s3_operation_rest('PREFLIGHT')

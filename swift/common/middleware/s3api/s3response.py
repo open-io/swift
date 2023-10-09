@@ -580,6 +580,20 @@ class InvalidRange(ErrorResponse):
     _msg = 'The requested range cannot be satisfied.'
 
 
+class InvalidPartNumber(ErrorResponse):
+    _status = '416 Requested Range Not Satisfiable'
+    _msg = 'The requested partnumber is not satisfiable'
+
+    def __init__(self, requested, actual_count, *args, **kwargs):
+        ErrorResponse.__init__(
+            self,
+            part_number_requested=requested,
+            actual_part_count=actual_count,
+            *args,
+            **kwargs,
+        )
+
+
 class InvalidRequest(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'Invalid Request.'

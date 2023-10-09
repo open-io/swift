@@ -28,7 +28,7 @@ from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
-    S3Timestamp, sysmeta_header
+    S3Timestamp, sysmeta_header, update_response_header_with_response_params
 from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
@@ -170,11 +170,7 @@ class ObjectController(Controller):
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)
 
-        for key in ('content-type', 'content-language', 'expires',
-                    'cache-control', 'content-disposition',
-                    'content-encoding'):
-            if 'response-' + key in req.params:
-                resp.headers[key] = req.params['response-' + key]
+        update_response_header_with_response_params(req, resp)
         return resp
 
     @set_s3_operation_rest('OBJECT')
