@@ -2090,11 +2090,14 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         status, headers, body = self._test_object_head_part(12)
         self.assertEqual('416', status.split()[0])
 
-    def _test_object_get_part(self, part_number=1):
+    def _test_object_get_part(self, part_number=1, headers=None):
+        if headers is None:
+            headers = {}
+        headers.update({'Authorization': 'AWS test:tester:hmac',
+                        'Date': self.get_date_header()})
         req = Request.blank('/bucket/object?partNumber=%d' % part_number,
                             environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()},
+                            headers=headers,
                             body=None)
         return self.call_s3api(req)
 
@@ -2103,6 +2106,13 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         status, headers, body = self._test_object_get_part(12)
         self.assertEqual('416', status.split()[0])
         self.assertEqual(self._get_error_code(body), 'InvalidPartNumber')
+
+    @s3acl
+    def test_object_get_part_with_range(self):
+        status, headers, body = self._test_object_get_part(
+            1, headers={"range": "bytes=0-"})
+        self.assertEqual('400', status.split()[0])
+        self.assertEqual(self._get_error_code(body), 'InvalidRequest')
 
     @s3acl
     def test_object_list_parts_error(self):

@@ -384,6 +384,13 @@ class TestS3ApiObj(S3ApiTestCase):
                                        swob.HTTPRequestedRangeNotSatisfiable)
         self.assertEqual(code, 'InvalidPartNumber')
 
+    @s3acl
+    def test_object_GET_Part_with_range(self):
+        code = self._test_method_error('GET', '/bucket/object?partNumber=1',
+                                       swob.HTTPRequestedRangeNotSatisfiable,
+                                       headers={"range": "bytes=0-"})
+        self.assertEqual(code, 'InvalidRequest')
+
     def _test_object_GET_Response(self, use_first_part=False):
         part_number = ''
         if use_first_part:

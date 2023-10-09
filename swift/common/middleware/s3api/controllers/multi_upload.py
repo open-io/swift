@@ -373,6 +373,10 @@ class PartController(Controller):
         """
         Handles Get Part (regular Get but with ?part-number=N).
         """
+        if 'range' in req.headers:
+            raise InvalidRequest('Cannot specify both Range header '
+                                 'and partNumber query parameter')
+
         return self.GETorHEAD(req)
 
     @set_s3_operation_rest('PART')
