@@ -104,7 +104,7 @@ class ObjectController(Controller):
 
         ranges = content_range.ranges_for_length(length)
         if ranges == []:
-            raise InvalidRange()
+            raise InvalidRange(req_range, length)
         elif ranges:
             if len(ranges) == 1:
                 start, end = ranges[0]

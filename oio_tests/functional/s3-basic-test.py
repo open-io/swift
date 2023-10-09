@@ -177,6 +177,20 @@ class TestS3BasicTest(unittest.TestCase):
             bucket=self.bucket, key=key)
         self.assertEqual(111, data['ContentLength'])
 
+    def test_get_object_with_bad_range(self):
+        key = "badrange-" + random_str(6)
+        client = get_boto3_client()
+        client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
+        with self.assertRaises(ClientError) as ctx:
+            client.get_object(Bucket=self.bucket, Key=key,
+                              Range='bytes=200-300')
+        self.assertEqual('InvalidRange',
+                         ctx.exception.response['Error']['Code'])
+        self.assertEqual('4',
+                         ctx.exception.response['Error']['ActualObjectSize'])
+        self.assertEqual('bytes=200-300',
+                         ctx.exception.response['Error']['RangeRequested'])
+
     def test_non_ascii_access_key_in_presigned_url(self):
         # Create object
         key = random_str(20)

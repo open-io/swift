@@ -1919,6 +1919,12 @@ class S3Request(swob.Request):
                     return NoSuchKey(obj)
                 return NoSuchBucket(container)
 
+            def invalid_range_handler():
+                return InvalidRange(
+                    self.headers.get('range'),
+                    get_object_info(env, app, swift_source='S3').get('length')
+                )
+
             code_map = {
                 'HEAD': {
                     HTTP_NOT_FOUND: not_found_handler,
@@ -1927,7 +1933,8 @@ class S3Request(swob.Request):
                 'GET': {
                     HTTP_NOT_FOUND: not_found_handler,
                     HTTP_PRECONDITION_FAILED: PreconditionFailed,
-                    HTTP_REQUESTED_RANGE_NOT_SATISFIABLE: InvalidRange,
+                    HTTP_REQUESTED_RANGE_NOT_SATISFIABLE:
+                        invalid_range_handler,
                 },
                 'PUT': {
                     HTTP_NOT_FOUND: (NoSuchBucket, container),

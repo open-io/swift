@@ -577,7 +577,16 @@ class InvalidPolicyDocument(ErrorResponse):
 
 class InvalidRange(ErrorResponse):
     _status = '416 Requested Range Not Satisfiable'
-    _msg = 'The requested range cannot be satisfied.'
+    _msg = 'The requested range is not satisfiable'
+
+    def __init__(self, range_requested, length, *args, **kwargs):
+        ErrorResponse.__init__(
+            self,
+            range_requested=range_requested,
+            actual_object_size=length,
+            *args,
+            **kwargs,
+        )
 
 
 class InvalidPartNumber(ErrorResponse):
