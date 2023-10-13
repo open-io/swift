@@ -16,7 +16,6 @@
 import json
 import uuid
 from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, check_container_existence, \
     set_s3_operation_rest
@@ -24,6 +23,7 @@ from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring, tostring, SubElement, Element
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
     MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
@@ -129,7 +129,7 @@ def get_filters(filter_xml_item):
 
     :param filter_xml_item: XML item gathering filters
     :type filter_xml_item: bytes
-    :return: dictionnary of tags and prefixes
+    :return: dictionary of tags and prefixes
     :rtype: dict
     """
     d_filters = {}
@@ -171,7 +171,7 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
 
     :param conf: the replication configuration XML document
     :type conf: bytes
-    :return: dict repesenting replication configuration
+    :return: dict representing replication configuration
     :rtype: dict
     """
     replication_conf = fromstring(conf, root)
@@ -507,7 +507,7 @@ class ReplicationController(Controller):
             self._validate_rule(rule, req)
 
     @set_s3_operation_rest('REPLICATION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -557,7 +557,7 @@ class ReplicationController(Controller):
         return convert_response(req, resp, 204, HTTPOk)
 
     @set_s3_operation_rest('REPLICATION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -578,7 +578,7 @@ class ReplicationController(Controller):
         return HTTPOk(body=generated_body, content_type="application/xml")
 
     @set_s3_operation_rest('REPLICATION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation

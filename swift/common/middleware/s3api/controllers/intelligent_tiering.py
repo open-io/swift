@@ -23,11 +23,11 @@ from swift.common.middleware.s3api.etree import Element, SubElement, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.intelligent_tiering_utils import \
     GET_BUCKET_STATE_OUTPUT
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, NoSuchConfiguration, S3NotImplemented
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.swob import HTTPNotFound
 from swift.common.utils import public
 
@@ -118,7 +118,7 @@ class IntelligentTieringController(Controller):
         return document if stored_id == tiering_id else None
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -179,7 +179,7 @@ class IntelligentTieringController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -238,7 +238,7 @@ class IntelligentTieringController(Controller):
                                 204, HTTPOk)
 
     @set_s3_operation_rest('INTELLIGENT_TIERING')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation

@@ -18,12 +18,12 @@ from swift.common.middleware.s3api.utils import convert_response
 from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, tostring, \
     fromstring, XMLSyntaxError, DocumentInvalid, SubElement
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, MalformedXML, InvalidBucketState
 
@@ -40,7 +40,7 @@ class VersioningController(Controller):
     Those APIs are logged as VERSIONING operations in the S3 server log.
     """
     @set_s3_operation_rest('VERSIONING')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -63,7 +63,7 @@ class VersioningController(Controller):
         return HTTPOk(body=body, content_type=None)
 
     @set_s3_operation_rest('VERSIONING')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation

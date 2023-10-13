@@ -26,17 +26,17 @@ from swift.common.registry import get_swift_info
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.object_lock import \
+    HEADER_BYPASS_GOVERNANCE
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, NoSuchKey, ErrorResponse, MalformedXML, \
     UserKeyMustBeSpecified, AccessDenied, MissingRequestBodyError, \
     NoSuchVersion
 from swift.common.middleware.s3api.utils import sysmeta_header
-from swift.common.middleware.s3api.controllers.object_lock import \
-    HEADER_BYPASS_GOVERNANCE
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 
 def set_s3_operation_batch_delete_object(func):
@@ -68,7 +68,7 @@ class MultiObjectDeleteController(Controller):
         return tostring(elem)
 
     @set_s3_operation_batch_delete_object
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation

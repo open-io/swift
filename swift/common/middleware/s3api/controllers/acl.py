@@ -26,7 +26,7 @@ from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
 from swift.common.middleware.s3api.etree import Element, SubElement, tostring
 from swift.common.middleware.s3api.acl_utils import swift_acl_translate, \
     XMLNS_XSI
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 
 
 MAX_ACL_BODY_SIZE = 200 * 1024
@@ -88,7 +88,7 @@ class AclController(Controller):
     Those APIs are logged as ACL operations in the S3 server log.
     """
     @set_s3_operation_rest('ACL', 'OBJECT_ACL')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -102,7 +102,7 @@ class AclController(Controller):
         return get_acl(req.user_id, resp.headers)
 
     @set_s3_operation_rest('ACL', 'OBJECT_ACL')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

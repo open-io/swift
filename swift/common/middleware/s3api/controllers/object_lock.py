@@ -20,13 +20,13 @@ from re import compile, sub
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_storage_domain, object_operation, \
     set_s3_operation_rest, handle_no_such_key
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     HTTPOk, InvalidArgument, InvalidBucketState, InvalidRequest, \
     InvalidRetentionPeriod, MalformedXML, \
@@ -180,7 +180,7 @@ class BucketLockController(Controller):
     operation_id = 'Object-Lock'
 
     @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -211,7 +211,7 @@ class BucketLockController(Controller):
         return HTTPOk(body=xml_out, content_type='application/xml')
 
     @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -312,7 +312,7 @@ class ObjectLockLegalHoldController(Controller):
     """
 
     @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -355,7 +355,7 @@ class ObjectLockLegalHoldController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -412,7 +412,7 @@ class ObjectLockRetentionController(Controller):
     """
 
     @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -455,7 +455,7 @@ class ObjectLockRetentionController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation

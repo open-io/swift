@@ -33,6 +33,7 @@ from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
@@ -40,7 +41,6 @@ from swift.common.middleware.s3api.s3response import \
     BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     sysmeta_header, OBJECT_LOCK_ENABLED_HEADER
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
@@ -135,7 +135,7 @@ class BucketController(Controller):
                 oio_query['force_master'] = force_master
 
     @set_s3_operation_rest('BUCKET')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -372,7 +372,7 @@ class BucketController(Controller):
                                  fetch_owner)
 
     @set_s3_operation_rest_for_list_objects
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -421,7 +421,7 @@ class BucketController(Controller):
         return resp
 
     @set_s3_operation_rest('BUCKET')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_iam_access("s3:CreateBucket")
@@ -477,7 +477,7 @@ class BucketController(Controller):
         return resp
 
     @set_s3_operation_rest('BUCKET')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

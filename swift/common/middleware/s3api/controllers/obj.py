@@ -29,7 +29,6 @@ from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
     S3Timestamp, sysmeta_header, update_response_header_with_response_params
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -38,6 +37,7 @@ from swift.common.middleware.s3api.controllers.replication import \
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
     PreconditionFailed, KeyTooLongError, BadRequest
@@ -174,7 +174,7 @@ class ObjectController(Controller):
         return resp
 
     @set_s3_operation_rest('OBJECT')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -193,7 +193,7 @@ class ObjectController(Controller):
         return resp
 
     @set_s3_operation_rest('OBJECT')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -206,7 +206,7 @@ class ObjectController(Controller):
         return self.GETorHEAD(req)
 
     @set_s3_operation_rest_for_put_object
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
@@ -277,7 +277,7 @@ class ObjectController(Controller):
             self.app, resp, on_success=_on_success)
 
     @set_s3_operation_rest('OBJECT')
-    @ratelimit_bucket
+    @ratelimit
     @public
     def POST(self, req):
         raise S3NotImplemented()
@@ -315,7 +315,7 @@ class ObjectController(Controller):
             container_info.get('sysmeta', {}).get('versions-enabled', False))
 
     @set_s3_operation_rest('OBJECT')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain

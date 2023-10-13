@@ -80,7 +80,6 @@ from swift.common.request_helpers import get_container_update_override_key, \
 from six.moves.urllib.parse import unquote, quote_plus, urlparse
 
 from swift.common.cors import handle_options_request
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
     check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
@@ -98,6 +97,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.utils import unique_id, \
     MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, \
     sysmeta_header, update_response_header_with_response_params
@@ -233,7 +233,7 @@ class PartController(Controller):
         return part_number
 
     @set_s3_operation_rest_for_put_part
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -361,7 +361,7 @@ class PartController(Controller):
             self.app, resp, on_success=_on_success)
 
     @set_s3_operation_rest('PART')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -380,7 +380,7 @@ class PartController(Controller):
         return self.GETorHEAD(req)
 
     @set_s3_operation_rest('PART')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -486,7 +486,7 @@ class PartController(Controller):
         return slo_resp
 
     @set_s3_operation_rest('PREFLIGHT')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @object_operation  # required
     @check_bucket_storage_domain
@@ -515,7 +515,7 @@ class UploadsController(Controller):
     Those APIs are logged as UPLOADS operations in the S3 server log.
     """
     @set_s3_operation_rest('UPLOADS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=InvalidRequest,
@@ -588,7 +588,7 @@ class UploadsController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('UPLOADS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -685,7 +685,7 @@ class UploadController(Controller):
     Those APIs are logged as UPLOAD operations in the S3 server log.
     """
     @set_s3_operation_rest('UPLOAD')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -803,7 +803,7 @@ class UploadController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('UPLOAD')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation
@@ -860,7 +860,7 @@ class UploadController(Controller):
         return HTTPNoContent()
 
     @set_s3_operation_rest('UPLOAD')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @object_operation

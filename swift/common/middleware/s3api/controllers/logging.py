@@ -23,13 +23,13 @@ from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, tostring, fromstring
 from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
     NoLoggingStatusForKey, MalformedXML, CrossLocationLoggingProhibitted, \
     InvalidTargetBucketForLogging
 from swift.common.middleware.s3api.subresource import Grant, decode_grants
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 
 LOGGING_HEADER = sysmeta_header('container', 'logging')
@@ -46,7 +46,7 @@ class LoggingStatusController(Controller):
     Those APIs are logged as LOGGING_STATUS operations in the S3 server log.
     """
     @set_s3_operation_rest('LOGGING_STATUS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
@@ -78,7 +78,7 @@ class LoggingStatusController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('LOGGING_STATUS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)

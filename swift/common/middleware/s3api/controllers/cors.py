@@ -24,10 +24,10 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, XMLSyntaxError
+from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, HTTPNoContent, \
     MalformedXML, NoSuchCORSConfiguration, CORSInvalidAccessControlRequest, \
     ErrorResponse
-from swift.common.middleware.s3api.bucket_ratelimit import ratelimit_bucket
 
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header
@@ -77,7 +77,7 @@ class CorsController(Controller):
     """
 
     @set_s3_operation_rest('CORS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -95,7 +95,7 @@ class CorsController(Controller):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('CORS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
@@ -123,7 +123,7 @@ class CorsController(Controller):
         return convert_response(req, resp, 204, HTTPOk)
 
     @set_s3_operation_rest('CORS')
-    @ratelimit_bucket
+    @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_storage_domain
