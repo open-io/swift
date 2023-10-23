@@ -1545,8 +1545,8 @@ class S3Request(swob.Request):
         if 'tagging' in self.params:
             return TaggingController
 
-        unsupported = ('notification', 'policy', 'requestPayment', 'torrent',
-                       'restore')
+        unsupported = ('attributes', 'notification', 'policy',
+                       'requestPayment', 'torrent', 'restore')
         if set(unsupported) & set(self.params):
             return UnsupportedController
 
