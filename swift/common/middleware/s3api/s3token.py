@@ -437,6 +437,9 @@ class S3Token(object):
                             cred_ref = self.keystoneclient.ec2.get(
                                 user_id=user_id,
                                 access=access)
+                            # Call check_signature method that will store
+                            # secret in s3request class atribute self._secret.
+                            s3_auth_details['check_signature'](cred_ref.secret)
                             metric_name = "GET.keystone.secret.200.timing"
                         except Exception as exc:
                             metric_name = \
