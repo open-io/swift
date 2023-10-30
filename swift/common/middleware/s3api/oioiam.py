@@ -16,7 +16,7 @@
 # limitations under the License.
 
 from oio.account.iam_client import IamClient
-from oio.common.exceptions import OioNetworkException
+from oio.common.exceptions import DeadlineReached, OioNetworkException
 from oio.common.utils import parse_conn_str
 
 from swift.common.middleware.s3api.iam import IamMiddleware, \
@@ -61,7 +61,7 @@ class OioIamMiddleware(IamMiddleware):
         try:
             return self.iam_client.load_merged_user_policies(
                 account, user, use_cache=True)
-        except OioNetworkException as exc:
+        except (DeadlineReached, OioNetworkException) as exc:
             self.logger.error(
                 'Failed to load merged user policies for user %s/%s: %s',
                 account, user, exc)
