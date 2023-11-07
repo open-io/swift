@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # Copyright (c) 2020 OpenStack Foundation
+# Copyright (c) 2023 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,10 +34,10 @@ ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
 class TestS3Mpu(unittest.TestCase):
 
     def setUp(self):
-        self.bucket = random_str(10)
+        self.bucket = "test-mpu-" + random_str(4)
         data = run_awscli_s3api("create-bucket", bucket=self.bucket)
         self.assertEqual('/%s' % self.bucket, data['Location'])
-        self.bucket_object_lock = random_str(10)
+        self.bucket_object_lock = "test-mpu-lock-" + random_str(4)
         data = run_awscli_s3api(
             "create-bucket",
             "--object-lock-enabled-for-bucket",
@@ -630,6 +631,44 @@ class TestS3Mpu(unittest.TestCase):
         self.assertIn(
             b'<UploadId>fake&#x1e;upload\xc2\xa0id \xf0\x9f\x99\x82</UploadId>',
             resp.content)
+
+    def test_upload_part_after_complete(self):
+        path = "new-part-after-complete-" + random_str(4)
+
+        # Create a legitimate multipart upload
+        data = self._create_multipart_upload(self.bucket, path)
+        self.assertEqual(path, data['Key'])
+        upload_id = data["UploadId"]
+        mpu_parts = []
+        part = run_awscli_s3api(
+            "upload-part",
+            "--part-number", "1",
+            "--upload-id", upload_id,
+            "--body", "/etc/magic",
+            bucket=self.bucket, key=path)
+        mpu_parts.append({"ETag": part['ETag'], "PartNumber": 1})
+
+        # Complete it (one part is enough)
+        final = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload",
+            json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket, key=path)
+        self.assertEqual(final['Key'], path)
+
+        # Create a 2nd part, should fail
+        self.assertRaisesRegex(
+            CliError,
+            "The specified multipart upload does not exist",
+            run_awscli_s3api,
+            "upload-part",
+            "--part-number", "2",
+            "--upload-id", upload_id,
+            "--body", "/etc/magic",
+            bucket=self.bucket,
+            key=path
+        )
 
 
 if __name__ == "__main__":

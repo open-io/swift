@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2014 OpenStack Foundation.
+# Copyright (c) 2010-2023 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -253,6 +253,10 @@ class PartController(Controller):
 
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
+
+        # We cannot add a part to an already completed MPU
+        if resp.sw_headers.get('X-Static-Large-Object'):
+            raise NoSuchUpload(upload_id=upload_id)
 
         seg_container_name = req.container_name + MULTIUPLOAD_SUFFIX
         seg_object_name = '%s/%s/%d' % (req.object_name, upload_id,
