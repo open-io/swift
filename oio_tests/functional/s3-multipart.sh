@@ -179,6 +179,54 @@ test_mpu_overwrite() {
   echo "OK"
 }
 
+test_mpu_update_metadata() {
+  BUCKET="bucket-$RANDOM"
+  META_VALUE="updated"
+  MULTI_FILE=$(mktemp -t multipart_XXXXXX.dat)
+  dd if=/dev/zero of="${MULTI_FILE}" count=21 bs=1M
+
+  echo
+  echo "Testing the update of MPU metadata"
+  echo "--------------------------------------------------------------------"
+  echo
+  echo "Creating bucket ${BUCKET}"
+  echo
+  ${AWS} s3 mb "s3://$BUCKET"
+  echo "Uploading a multipart object in bucket ${BUCKET}"
+  ${AWS} s3 cp "$MULTI_FILE" "s3://$BUCKET/obj"
+
+  echo "Counting segments with openio CLI"
+  SEGS=$(openio object list ${BUCKET}+segments -f value)
+  [ -n "$SEGS" ]
+  SEG_COUNT=$(echo -n "${SEGS}" | wc -l)
+
+  echo "Changing object metadata"
+  ${AWS} s3 cp "s3://$BUCKET/obj" "s3://$BUCKET/obj" --metadata "status=${META_VALUE}" --metadata-directive "REPLACE"
+
+  echo "Checking new metadata"
+  DATA=$(${AWS} s3api head-object --bucket ${BUCKET} --key obj)
+  NEW_META_VALUE=$(echo "$DATA" | jq -r .Metadata.status)
+  [ "$NEW_META_VALUE" = "$META_VALUE" ]
+
+  echo "Counting segments with openio CLI (should be the same, we just changed metadata)"
+  SEGS2=$(openio object list ${BUCKET}+segments -f value)
+  [ -n "$SEGS2" ]
+  SEG_COUNT2=$(echo -n "${SEGS2}" | wc -l)
+  [ "$SEG_COUNT" -eq "$SEG_COUNT2" ]
+  # Note: segments are not the same, we did not optimize user metadata changes
+  # (but we did optimize ACL changes, see above).
+  [ "$SEGS" != "$SEGS2" ]
+
+  echo
+  echo "Cleanup"
+  echo "-------"
+  ${AWS} s3 rm "s3://$BUCKET/obj"
+  ${AWS} s3 rb "s3://$BUCKET"
+  rm "$MULTI_FILE"
+  echo "OK"
+}
+
 test_mpu_abort__no_parts
 test_mpu_abort__with_parts
 test_mpu_overwrite
+test_mpu_update_metadata

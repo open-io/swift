@@ -272,7 +272,11 @@ class PartController(Controller):
 
         is_server_side_copy = False
         query = None
-        source_resp = req.check_copy_source(self.app)
+        source_resp = req.check_copy_source(
+            self.app,
+            dst_container=seg_container_name,
+            dst_obj=seg_object_name
+        )
         if source_resp is not None:
             is_server_side_copy = True
             query = {'heartbeat': 'on'}

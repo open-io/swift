@@ -1332,7 +1332,7 @@ class S3Request(swob.Request):
 
         return swob.HeaderEnvironProxy(env)
 
-    def check_copy_source(self, app):
+    def check_copy_source(self, app, dst_container=None, dst_obj=None):
         """
         check_copy_source checks the copy source existence and if copying an
         object to itself, for illegal request parameters
@@ -1355,6 +1355,10 @@ class S3Request(swob.Request):
                                   self.headers['X-Amz-Copy-Source'],
                                   'Unsupported copy source parameter.')
 
+        if dst_container is None:
+            dst_container = self.container_name
+        if dst_obj is None:
+            dst_obj = self.object_name
         src_path = unquote(src_path)
         src_path = src_path if src_path.startswith('/') else ('/' + src_path)
         src_bucket, src_obj = split_path(src_path, 0, 2, True)
@@ -1378,8 +1382,7 @@ class S3Request(swob.Request):
                 "allowable size for a copy source: "
                 f"{self.conf.max_server_side_copy_size}")
 
-        if (self.container_name == src_bucket and
-                self.object_name == src_obj):
+        if (dst_container == src_bucket and dst_obj == src_obj):
             if (self.headers.get('x-amz-metadata-directive',
                                  'COPY') == 'COPY' and not query):
                 raise InvalidRequest("This copy request is illegal "
