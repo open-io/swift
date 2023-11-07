@@ -101,7 +101,8 @@ class StreamRangeIterator(object):
         try:
             for dat in self._stream:
                 yield dat
-        except (exceptions.ServiceBusy, exceptions.ServiceUnavailable) as err:
+        except (exceptions.ServiceBusy, exceptions.ServiceUnavailable,
+                exceptions.UnrecoverableContent) as err:
             # We cannot use the handle_service_busy() decorator
             # because it returns the exception object instead of raising it.
             headers = dict()
