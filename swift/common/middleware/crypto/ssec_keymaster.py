@@ -26,7 +26,7 @@ from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
 from swift.common.utils import config_positive_int_value, config_true_value, \
-    non_negative_int
+    non_negative_int, list_from_csv
 from swift.common import wsgi
 
 from oio.account.kms_client import KmsClient
@@ -310,15 +310,18 @@ class SsecKeyMasterContext(KeyMasterContext):
         if (operation == "REST.PUT.BUCKET" and req.method == 'PUT'
                 and self.keymaster.use_oio_kms):
             account, bucket = self.req_account_and_bucket(req)
-            self.keymaster.logger.debug("Creating secret for %s/%s",
-                                        account, bucket)
-            secret_created = self.kms.create_bucket_secret(
-                bucket,
-                account=account,
-                secret_id=self.keymaster.active_secret_id,
-                secret_bytes=self.keymaster.sses3_secret_bytes,
-                reqid=self.trans_id
-            )
+            # Empty whitelist will be ignored
+            if (not self.keymaster.account_whitelist
+                    or account in self.keymaster.account_whitelist):
+                self.keymaster.logger.debug("Creating secret for %s/%s",
+                                            account, bucket)
+                secret_created = self.kms.create_bucket_secret(
+                    bucket,
+                    account=account,
+                    secret_id=self.keymaster.active_secret_id,
+                    secret_bytes=self.keymaster.sses3_secret_bytes,
+                    reqid=self.trans_id
+                )
         try:
             resp = super().handle_request(req, start_response)
         except Exception as exc:
@@ -355,6 +358,7 @@ class SsecKeyMaster(KeyMaster):
             conf.get('sses3_secret_bytes', 32))
         self.use_oio_kms = config_true_value(
             conf.get('use_oio_kms', False))
+        self.account_whitelist = list_from_csv(conf.get('account_whitelist'))
         self.kms = KmsClient({"namespace": conf["sds_namespace"]},
                              logger=self.logger)
         self.secret_cache_time = non_negative_int(

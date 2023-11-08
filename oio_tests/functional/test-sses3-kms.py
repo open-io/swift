@@ -34,17 +34,20 @@ from oio_tests.functional.common import (
 
 CRYPTO_META_KEY = "x-object-sysmeta-crypto-body-meta"
 OIO_NS = os.getenv("OIO_NS", "OPENIO")
+OIO_ACCOUNT = os.getenv("OIO_ACCOUNT", "AUTH_demo")
+BOTO_PROFILE = os.getenv("BOTO_PROFILE", "default")
+ACCOUNT_WHITELIST = os.getenv("ACCOUNT_WHITELIST")
 
 
 class TestSses3Kms(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.boto = get_boto3_client(profile="default")
+        cls.boto = get_boto3_client(profile=BOTO_PROFILE)
 
     def setUp(self):
         super().setUp()
-        self.account = "AUTH_demo"
+        self.account = OIO_ACCOUNT
         self.bucket = f"test-kms-{random_str(4)}"
         self.oio = ObjectStorageApi(OIO_NS)
         self._buckets_to_delete = [self.bucket]
@@ -53,7 +56,7 @@ class TestSses3Kms(unittest.TestCase):
         for bucket in self._buckets_to_delete:
             try:
                 # FIXME(FVE): use boto
-                run_awscli_s3("rb", "--force", bucket=bucket)
+                run_awscli_s3("rb", "--force", bucket=bucket, profile=BOTO_PROFILE)
             except CliError as exc:
                 if "NoSuchBucket" not in str(exc):
                     raise
@@ -68,6 +71,12 @@ class TestSses3Kms(unittest.TestCase):
         meta = self.oio.object_get_properties(self.account, self.bucket, key)
         # When an object is encrypted, there is extra metadata.
         raw_crypto_meta = meta["properties"].get(CRYPTO_META_KEY)
+        if ACCOUNT_WHITELIST:
+            whitelist = [x.strip() for x in ACCOUNT_WHITELIST.split(",")]
+            if self.account not in whitelist:
+                # Encryption is not enabled for this account
+                self.assertIsNone(raw_crypto_meta)
+                return
         self.assertIsNotNone(raw_crypto_meta)
         crypto_meta = json.loads(unquote_plus(raw_crypto_meta))
         # Ensure the object has been encrypted with the bucket secret, and
@@ -82,6 +91,7 @@ class TestSses3Kms(unittest.TestCase):
         data = b"".join(get_res["Body"])
         self.assertEqual(data, key.encode("utf-8"))
 
+    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
     def test_mpu_encrypted_with_bucket_secret(self):
         key = "encrypted_mpu"
         self.boto.create_bucket(Bucket=self.bucket)
@@ -113,6 +123,7 @@ class TestSses3Kms(unittest.TestCase):
             # The part has been encrypted, the hash must be different
             self.assertNotEqual(parts[pnum - 1]["ETag"], meta["hash"])
 
+    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
     def test_1_two_buckets_have_different_secrets(self):
         """
         Checks the creation of two buckets generates two secrets.
@@ -138,6 +149,7 @@ class TestSses3Kms(unittest.TestCase):
         )
         self.assertNotEqual(secret1, secret2)
 
+    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
     def test_2_same_object_in_two_buckets(self):
         """
         Checks the same object in two different buckets is encrypted
@@ -164,6 +176,7 @@ class TestSses3Kms(unittest.TestCase):
         self.assertEqual(data, data2)
         self.assertEqual(data, key.encode("utf-8"))
 
+    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
     def test_3_delete_bucket_deletes_secret(self):
         """
         Checks the creation of a bucket generates a new secret, and

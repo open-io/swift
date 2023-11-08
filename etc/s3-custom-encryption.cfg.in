@@ -82,6 +82,8 @@ user_demo_demo = DEMO_PASS .admin
 # Unpriviledged users of the account AUTH_demo
 user_demo_user1 = USER_PASS
 user_demo_user2 = USER_PASS
+# Main user of the account AUTH_account2
+user_account2_admin = ADMIN_PASS .admin
 
 user_tester2_tester2 = TESTER2 .admin
 
@@ -107,8 +109,10 @@ use = egg:swift#ssec_keymaster
 # Sets the path from which the keymaster config options should be read.
 #keymaster_config_path =
 meta_version_to_write = 3
-fallback_on_keymaster = True
+fallback_on_keymaster = %FALLBACK_ON_KEYMASTER%
 use_oio_kms = %OIO_KMS_ENABLED%
+# Enable encryption for these accounts only. Empty whitelist will be ignored.
+account_whitelist = %ACCOUNT_WHITELIST%
 # How long (seconds) to keep in cache the bucket secret
 # (defaults to 1 day)
 secret_cache_time = 30
