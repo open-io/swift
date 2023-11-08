@@ -219,6 +219,7 @@ class TestS3Mpu(unittest.TestCase):
             parts.add(part['PartNumber'])
         self.assertEqual(10, len(parts))
 
+
     def _test_mpu(self, path):
         """
         It will create a bucket, upload an object with MPU:
@@ -340,6 +341,12 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket, key=path2)
         self.assertEqual(path2, data['Key'])
         self.assertTrue(data['ETag'].endswith('-2"'))
+
+        with self.assertRaises(CliError) as ctx:
+            run_awscli_s3api(
+                "list-parts",
+                "--upload-id", upload_id,
+                bucket=self.bucket, key=path2)
 
         data = run_awscli_s3api("head-object", bucket=self.bucket, key=path2)
         self.assertEqual(size * 2, data['ContentLength'])

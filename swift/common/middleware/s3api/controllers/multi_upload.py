@@ -711,6 +711,9 @@ class UploadController(Controller):
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
+        # We cannot list parts on an already completed MPU
+        if resp.sw_headers.get('X-Static-Large-Object'):
+            raise NoSuchUpload(upload_id=upload_id)
         storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
 
         maxparts = req.get_validated_param(
