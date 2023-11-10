@@ -43,7 +43,8 @@ from swift.common.constraints import check_utf8, valid_api_version
 from swift.proxy.controllers.base import get_account_info, \
     get_container_info, get_object_info, get_info_from_infocache, \
     set_info_in_infocache
-from swift.common.request_helpers import check_path_header
+from swift.common.request_helpers import check_path_header, \
+    get_container_update_override_key
 
 from swift.common.middleware.s3api.controllers import ServiceController, \
     ObjectController, AclController, MultiObjectDeleteController, \
@@ -1382,18 +1383,18 @@ class S3Request(swob.Request):
                 "allowable size for a copy source: "
                 f"{self.conf.max_server_side_copy_size}")
 
-        if (dst_container == src_bucket and dst_obj == src_obj):
-            if (self.headers.get('x-amz-metadata-directive',
-                                 'COPY') == 'COPY' and not query):
-                raise InvalidRequest("This copy request is illegal "
-                                     "because it is trying to copy an "
-                                     "object to itself without "
-                                     "changing the object's metadata, "
-                                     "storage class, website redirect "
-                                     "location or encryption "
-                                     "attributes.")
-            else:
-                self.environ['s3api.copy_to_itself'] = True
+        if (
+            dst_container == src_bucket and dst_obj == src_obj
+            and self.headers.get('x-amz-metadata-directive', 'COPY') == 'COPY'
+            and not query
+        ):
+            raise InvalidRequest("This copy request is illegal "
+                                 "because it is trying to copy an "
+                                 "object to itself without "
+                                 "changing the object's metadata, "
+                                 "storage class, website redirect "
+                                 "location or encryption "
+                                 "attributes.")
         # We've done some normalizing; write back so it's ready for
         # to_swift_req
         self.headers['X-Amz-Copy-Source'] = quote(src_path)
@@ -1402,6 +1403,16 @@ class S3Request(swob.Request):
                 '?versionId=' + query['version-id']
         self.headers['X-Max-Bytes-Per-Second'] = \
             self.conf.max_server_side_copy_throughput
+
+        # Clear some problematic headers that might be on the source
+        self.headers.update({
+            sysmeta_header('object', 'etag'): '',
+            'X-Object-Sysmeta-Swift3-Etag': '',  # for legacy data
+            'X-Object-Sysmeta-Slo-Etag': '',
+            'X-Object-Sysmeta-Slo-Size': '',
+            'X-Object-Sysmeta-S3Api-Upload-Id': '',
+            get_container_update_override_key('etag'): '',
+        })
         return src_resp
 
     def _canonical_uri(self):
@@ -1730,10 +1741,6 @@ class S3Request(swob.Request):
                 for key in list(env.keys()):
                     if key.startswith('HTTP_X_OBJECT_META_'):
                         del env[key]
-            if env.get('s3api.copy_to_itself', False):
-                if query is None:
-                    query = dict()
-                query['multipart-manifest'] = 'get'
 
         if force_swift_request_proxy_log:
             env['swift.proxy_access_log_made'] = False

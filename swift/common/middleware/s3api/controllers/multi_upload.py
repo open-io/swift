@@ -314,15 +314,6 @@ class PartController(Controller):
                     )
                 req.headers['Range'] = rng
                 del req.headers['X-Amz-Copy-Source-Range']
-
-            # Clear some problematic headers that might be on the source
-            req.headers.update({
-                sysmeta_header('object', 'etag'): '',
-                'X-Object-Sysmeta-Swift3-Etag': '',  # for legacy data
-                'X-Object-Sysmeta-Slo-Etag': '',
-                'X-Object-Sysmeta-Slo-Size': '',
-                get_container_update_override_key('etag'): '',
-            })
         if req.from_replicator():  # Upload part from replicator
             # Set replication status on destination side
             req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_REPLICA
