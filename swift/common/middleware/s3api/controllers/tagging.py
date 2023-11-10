@@ -220,51 +220,55 @@ class TaggingController(Controller):
         Handles PUT Bucket and Object tagging.
         """
         body = req.xml(MAX_TAGGING_BODY_SIZE)
+        action = None
         try:
             # Validate the body and reserved keys
             tagging = fromstring(body, 'Tagging')
             tagset = tagging.find('TagSet')
             from_replicator = req.from_replicator()
             tags = tagset.xpath('//Tag')
-            nb_tags = len(tags)
-            for tag in tags:
-                key = tag.find('Key').text
-                value = tag.find('Value').text
-                if (
-                    from_replicator
-                    and
-                    nb_tags == 1
-                    and
-                    req.object_name
-                ):
-                    # From the replicator we expect only one key
-                    # starting with reserved prefixes, and there cannot be
-                    # another tag beside the expected one.
-                    action = _is_allowed_action(key, REPLICATOR_USER_AGENT)
-                    if action:
-                        action(req, value)
-                        continue
-                _check_key_prefix(key)
+
+            # Special handling for updating replication status
+            if (from_replicator and len(tags) == 1 and req.object_name):
+                # From the replicator we expect only one key
+                # starting with reserved prefixes, and there cannot be
+                # another tag beside the expected one.
+                key = tags[0].find('Key').text
+                value = tags[0].find('Value').text
+                action = _is_allowed_action(key, REPLICATOR_USER_AGENT)
+                if action:
+                    action(req, value)
+
+            # If an action was found, tags won't be updated, no need to check
+            # prefixes.
+            if not action:
+                for tag in tags:
+                    key = tag.find('Key').text
+                    value = tag.find('Value').text
+                    _check_key_prefix(key)
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
-        if req.object_name:
-            req.headers[OBJECT_TAGGING_HEADER] = body
-            # In case of replicator request we do need to trigger
-            # replication here because either it is an update of
-            # tags on the destination or an update of replication
-            # status on the source.
-            if not from_replicator:
-                # Retrieve object metadata
-                replication_resolve_rules(
-                    self.app,
-                    req,
-                    # use new tags
-                    tags=req.headers.get(OBJECT_TAGGING_HEADER),
-                    ensure_replicated=True,
-                )
-        else:
-            req.headers[BUCKET_TAGGING_HEADER] = body
+        # If an action occurred, tags should not be updated.
+        if not action:
+            if req.object_name:
+                req.headers[OBJECT_TAGGING_HEADER] = body
+                # In case of replicator request we do need to trigger
+                # replication here because either it is an update of
+                # tags on the destination or an update of replication
+                # status on the source.
+                if not from_replicator:
+                    # Retrieve object metadata
+                    replication_resolve_rules(
+                        self.app,
+                        req,
+                        # use new tags
+                        tags=req.headers.get(OBJECT_TAGGING_HEADER),
+                        ensure_replicated=True,
+                    )
+            else:
+                # Bucket tagging
+                req.headers[BUCKET_TAGGING_HEADER] = body
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
         if resp.status_int == 202:
