@@ -100,6 +100,7 @@ test_intelligent_tiering() {
   echo "$OUT" | grep "AccessDenied"
 
   # Ask for ARCHIVE operation
+  sleep 2
   ${AWSA1U1} s3api put-bucket-intelligent-tiering-configuration \
     --bucket ${SHARED_BUCKET} --id myid \
     --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}"
@@ -118,7 +119,7 @@ test_intelligent_tiering() {
     # Expected size: magic + user1_magic + user1_bigobject + user1_bigobject/<upload-id>/1
     # size = 111 + 111 + 252 + 111 = 585
     # because the size of the manifest of user1_bigobject is 252
-    echo $OUT | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 585, \"region\": \"REGIONONE\"}"
+    echo "$OUT" | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 585, \"region\": \"REGIONONE\"}"
   fi
 
   # user1 cannot create anymore (Intelligent-tiering deny)
