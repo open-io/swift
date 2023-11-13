@@ -240,6 +240,43 @@ class TestS3ServerSideCopy(unittest.TestCase):
             104857600,  # 100 MB
             with_mpu_object_src=True)
 
+    def test_copy_same_objec_replace_directive(self):
+        key = random_str(8)
+        size = 8388608
+        obj_src, expected_etag = self._create_mpu_object_src(key, size)
+        start = time.time()
+
+        to_format = time.gmtime(start)
+        self.assertRaisesRegex(
+            CliError, 'InvalidRequest', run_awscli_s3api,
+            'copy-object',
+            '--copy-source', f'{self.bucket_src}/{key}',
+            bucket=self.bucket_src, key=f'{key}'
+        )
+
+        format_time = time.strftime("%Y-%m-%d %H:%M:%S", to_format)
+        metadata = f'updated-at={format_time}'
+
+        obj_dst = run_awscli_s3api(
+            'copy-object',
+            '--copy-source', f'{self.bucket_src}/{key}',
+            '--metadata', f'{metadata}',
+            '--metadata-directive', 'REPLACE',
+            bucket=self.bucket_src, key=f'{key}',
+        )
+
+        # Check the response
+        self.assertEqual(obj_src['VersionId'], obj_dst['CopySourceVersionId'])
+        # Check dst is a new version
+        self.assertNotEqual(obj_src['VersionId'], obj_dst['VersionId'])
+        self.assertEqual(expected_etag, obj_dst['CopyObjectResult']['ETag'])
+
+        # Check after update
+        res = run_awscli_s3api('head-object', bucket=self.bucket_src, key=key)
+        self.assertEqual(size, res['ContentLength'])
+        self.assertEqual(expected_etag, res['ETag'])
+        self.assertEqual(res['Metadata']['updated-at'], format_time)
+
     def test_upload_part_copy_with_big_mpu_object_src(self):
         self._test_upload_part_copy(
             104857600,  # 100 MB
