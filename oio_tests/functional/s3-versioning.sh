@@ -426,8 +426,28 @@ SEGS4=$(openio object list ${BUCKET}+segments -f value)
 SEG_COUNT4=$(echo -n "${SEGS4}" | wc -l)
 [ "$SEG_COUNT4" -eq "0" ]
 
-echo "Deleting the delete marker (without specifying any version)"
+echo "Creating a second delete marker"
+DATA=$(${AWS} s3api list-object-versions --bucket "$BUCKET" --prefix "obj")
+NB_DELETE_MARKERS=$(echo $DATA | jq -r ".DeleteMarkers|length")
+[[ "$NB_DELETE_MARKERS" -eq "1" ]]
 ${AWS} s3 rm "s3://$BUCKET/obj"
+DATA=$(${AWS} s3api list-object-versions --bucket "$BUCKET" --prefix "obj")
+NB_DELETE_MARKERS=$(echo $DATA | jq -r ".DeleteMarkers|length")
+[[ "$NB_DELETE_MARKERS" -eq "2" ]]
+
+echo "Deleting one of the two delete markers"
+V=$(echo $DATA | jq -r '.DeleteMarkers[0].VersionId|tostring')
+${AWS} s3api delete-object --bucket ${BUCKET} --key "obj" --version-id $V
+DATA=$(${AWS} s3api list-object-versions --bucket "$BUCKET" --prefix "obj")
+NB_DELETE_MARKERS=$(echo $DATA | jq -r ".DeleteMarkers|length")
+[[ "$NB_DELETE_MARKERS" -eq "1" ]]
+
+echo "Deleting the last delete marker"
+V=$(echo $DATA | jq -r '.DeleteMarkers[0].VersionId|tostring')
+${AWS} s3api delete-object --bucket ${BUCKET} --key "obj" --version-id $V
+DATA=$(${AWS} s3api list-object-versions --bucket "$BUCKET" --prefix "obj")
+NB_DELETE_MARKERS=$(echo $DATA | jq -r ".DeleteMarkers|length")
+[[ "$NB_DELETE_MARKERS" -eq "0" ]]
 
 echo "######################################"
 echo "### Prefixes with versioning       ###"
