@@ -215,6 +215,7 @@ LOG_LINE_DEFAULT_FORMAT = '{remote_addr} - - [{time.d}/{time.b}/{time.Y}' \
                           '"{referer}" "{txn_id}" "{user_agent}" ' \
                           '{trans_time:.4f} "{additional_info}" {pid} ' \
                           '{policy_index}'
+IGNORE_CUSTOMER_ACCESS_LOG = 'swift.s3_logging.ignore_customer_access_log'
 DEFAULT_LOCK_TIMEOUT = 10
 
 # In order to keep a connection active during a potentially long PUT request,

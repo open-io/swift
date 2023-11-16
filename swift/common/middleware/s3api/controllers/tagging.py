@@ -34,6 +34,7 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
 from swift.common.middleware.s3api.utils import REPLICATOR_USER_AGENT, \
     sysmeta_header, S3Timestamp
+from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 
@@ -65,6 +66,10 @@ def _set_replication_status(req, status):
     """
     Used to set replication status using tagging
     """
+    # This log is internal only (allows to update the replication status
+    # while updating the cache).
+    # There is no need for this request to be logged as a s3 request.
+    req.environ[IGNORE_CUSTOMER_ACCESS_LOG] = True
     req.headers[OBJECT_REPLICATION_STATUS] = status
 
 

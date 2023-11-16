@@ -25,7 +25,7 @@ from swift.common.middleware.s3api.s3request import S3Request
 from swift.common.registry import register_sensitive_header
 from swift.common.swob import str_to_wsgi, Request
 from swift.common.utils import LogStringFormatter, StrAnonymizer, get_logger, \
-    get_remote_client, config_true_value
+    get_remote_client, config_true_value, IGNORE_CUSTOMER_ACCESS_LOG
 from swift.proxy.controllers.base import get_container_info
 
 
@@ -244,8 +244,12 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
         if customer_access_logging is None:
             customer_access_logging = self.customer_access_logging
         if not customer_access_logging:
-            # Do not log requests from clients
-            # that have S3 Server Access Logging enabled
+            # Do not log requests from clients even if they
+            # have S3 Server Access Logging enabled
+            return
+
+        if req.environ.get(IGNORE_CUSTOMER_ACCESS_LOG, False):
+            # Explicit ignore access logging for this request
             return
 
         if not s3_info:
