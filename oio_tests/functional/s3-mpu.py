@@ -670,6 +670,19 @@ class TestS3Mpu(unittest.TestCase):
             key=path
         )
 
+    def test_list_multipart_uploads(self):
+        name = "list-upload-" + random_str(4)
+        datas = []
+        for i in range(5):
+            path = "-".join([name, str(i)])
+            data = self._create_multipart_upload(self.bucket, path)
+            datas.append(data)
+        listing = run_awscli_s3api(
+            "list-multipart-uploads",
+            "--prefix=list-upload-",
+            "--page-size=1", bucket=self.bucket)
+        self.assertEqual(len(listing['Uploads']), 5)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

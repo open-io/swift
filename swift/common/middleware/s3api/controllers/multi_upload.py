@@ -532,7 +532,7 @@ class UploadsController(Controller):
         # Convert parts as json to xml
         nextkeymarker = ''
         nextuploadmarker = ''
-        if len(uploads) > 1:
+        if len(uploads) >= 1:
             nextuploadmarker = uploads[-1]['upload_id']
             nextkeymarker = uploads[-1]['key']
 
