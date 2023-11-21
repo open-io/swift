@@ -223,14 +223,23 @@ class OioContainerContext(ContainerContext):
         For container listings of a versioned container, update the object's
         bytes and etag to use the target's instead of using the symlink info.
         """
-        app_resp = self._app_call(req.environ)
+        # When asking for object versions, we do a first request only to know
+        # if versioning is actually enabled. We don't need to do a GET, a HEAD
+        # is enough, and way faster.
+        is_get_vers = req.method == 'GET' and 'versions' in req.params
+        if is_get_vers:
+            first_env = req.environ.copy()
+            first_env["REQUEST_METHOD"] = 'HEAD'
+        else:
+            first_env = req.environ
+        app_resp = self._app_call(first_env)
         _, _, container, _ = req.split_path(3, 4, True)
         for _, (header, value) in enumerate(self._response_headers):
             if header.lower() == SYSMETA_VERSIONS_ENABLED:
                 self._response_headers.extend([
                     (CLIENT_VERSIONS_ENABLED.title(), value)])
 
-        if req.method == 'GET' and 'versions' in req.params:
+        if is_get_vers:
             return self._list_versions(
                 req, start_response, container)
 
