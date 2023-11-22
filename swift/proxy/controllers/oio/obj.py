@@ -104,10 +104,13 @@ class StreamRangeIterator(object):
         except (exceptions.ServiceBusy, exceptions.ServiceUnavailable) as err:
             # We cannot use the handle_service_busy() decorator
             # because it returns the exception object instead of raising it.
-            headers = dict()
-            headers['Retry-After'] = '1'
+            headers = {'Retry-After': '1'}
             raise HTTPServiceUnavailable(request=self.req, headers=headers,
                                          body=str(err))
+        except exceptions.UnrecoverableContent as err:
+            # There is no proper code for this. Catching it here should
+            # make stack traces a little shorter.
+            raise HTTPInternalServerError(request=self.req, body=str(err))
 
     def __iter__(self):
         return self.stream()
