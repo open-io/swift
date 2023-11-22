@@ -60,20 +60,21 @@ def handle_options_request(app, conf, req):
     return cors_fill_headers(req, resp, rule)
 
 
-def get_cors(app, conf, req, method, origin):
+def get_cors(app, conf, req, method, origin, fetch_bucket_cors_rules=True):
     """
     Find a match between the origin and method, and the CORS rules of the
     bucket specified by the request.
 
     :returns: the rule which matched, or None if nothing matched
     """
-    sysmeta = req.get_container_info(app).get('sysmeta', {})
-    body = sysmeta.get('s3api-cors')
     rules = []
-    if body:
-        data = fromstring(body.encode('utf-8'), "CorsConfiguration")
-        # We have to iterate over each rule to find a match with origin.
-        rules += data.findall('CORSRule')
+    if fetch_bucket_cors_rules:
+        sysmeta = req.get_container_info(app).get('sysmeta', {})
+        body = sysmeta.get('s3api-cors')
+        if body:
+            data = fromstring(body.encode('utf-8'), "CorsConfiguration")
+            # We have to iterate over each rule to find a match with origin.
+            rules += data.findall('CORSRule')
     # Add CORS rules from the configuration
     rules += conf.cors_rules
     for rule in rules:

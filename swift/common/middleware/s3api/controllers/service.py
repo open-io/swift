@@ -19,6 +19,7 @@ from swift.common.swob import bytes_to_wsgi
 from swift.common.utils import json, public, last_modified_date_to_timestamp
 
 from swift.common.middleware.s3api.controllers.base import Controller
+from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, tostring
 from swift.common.middleware.s3api.s3response import HTTPOk, AccessDenied, \
     NoSuchBucket
@@ -46,6 +47,7 @@ class ServiceController(Controller):
     """
     @set_s3_operation_soap('ListAllMyBuckets')
     @public
+    @fill_cors_headers
     def GET(self, req):
         """
         Handle GET Service request

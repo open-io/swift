@@ -52,8 +52,18 @@ def fill_cors_headers(func):
             raise CORSInvalidAccessControlRequest(method=method)
         cors_rule = None
         if origin:
-            cors_rule = get_cors(controller.app, controller.conf, req,
-                                 method, origin)
+            fetch_bucket_cors_rules = not (
+                # List the buckets
+                req.is_service_request
+                # Create the bucket
+                or (
+                    controller.resource_type() in ('UNIQUE_BUCKET', 'BUCKET')
+                    and req.method == 'PUT'
+                )
+            )
+            cors_rule = get_cors(
+                controller.app, controller.conf, req, method, origin,
+                fetch_bucket_cors_rules=fetch_bucket_cors_rules)
         try:
             resp = func(*args, **kwargs)
             if cors_rule is not None:

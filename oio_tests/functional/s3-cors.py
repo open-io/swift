@@ -18,7 +18,7 @@ import requests
 import unittest
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api, ENDPOINT_URL
+    run_awscli_s3api, ENDPOINT_URL, get_boto3_client
 
 
 LIST_PARAMS = [
@@ -50,11 +50,12 @@ class TestS3Cors(unittest.TestCase):
         self.bucket_name = f"test-cors-{random_str(8)}"
 
     def tearDown(self):
-        try:
-            run_awscli_s3('rb', '--force', bucket=self.bucket_name)
-        except CliError as exc:
-            if 'NoSuchBucket' not in str(exc):
-                raise
+        if self.bucket_name:
+            try:
+                run_awscli_s3('rb', '--force', bucket=self.bucket_name)
+            except CliError as exc:
+                if 'NoSuchBucket' not in str(exc):
+                    raise
         super(TestS3Cors, self).tearDown()
 
     def _check_single_option_request(
@@ -244,7 +245,121 @@ class TestS3Cors(unittest.TestCase):
             expected_message=message
         )
 
-    def test_non_options_requests(self):
+    def _test_non_options_requests(self, method, get_presigned_url, request):
+        expected_access_controls = {
+            "https://ovh.com": {
+                "Access-Control-Allow-Origin": "https://ovh.com",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Methods": "GET,HEAD,PUT,POST,DELETE",
+                "Access-Control-Expose-Headers": None,
+                "Access-Control-Allow-Credentials": "true",
+            }
+        }
+        if self.bucket_name:
+            # Configure CORS for this bucket
+            run_awscli_s3api(
+                'put-bucket-cors',
+                '--cors-configuration', """
+                    {
+                        "CORSRules": [
+                            {
+                                "ExposeHeaders": ["Access-Control-Allow-Origin"],
+                                "AllowedHeaders": ["Authorization"],
+                                "AllowedOrigins": ["http://openio.io"],
+                                "AllowedMethods": ["%s"]
+                            }
+                        ]
+                    }
+                """ % method,
+                bucket=self.bucket_name
+            )
+            expected_access_controls["http://openio.io"] = {
+                "Access-Control-Allow-Origin": "http://openio.io",
+                "Access-Control-Allow-Headers": "Authorization",
+                "Access-Control-Allow-Methods": method,
+                "Access-Control-Expose-Headers": "Access-Control-Allow-Origin",
+                "Access-Control-Allow-Credentials": "true",
+            }
+
+        def _check_response(response, expected_access_control):
+            self.assertEqual(200, response.status_code)
+            for access_control_headers in (
+                "Access-Control-Allow-Origin",
+                "Access-Control-Allow-Headers",  # Note: not present on AWS
+                "Access-Control-Allow-Methods",
+                "Access-Control-Expose-Headers",
+                "Access-Control-Allow-Credentials",
+            ):
+                if expected_access_control:
+                    expected_header_value = expected_access_control[
+                        access_control_headers
+                    ]
+                    if expected_header_value:
+                        self.assertEqual(
+                            expected_header_value,
+                            response.headers[access_control_headers])
+                else:
+                    self.assertNotIn(access_control_headers, response.headers)
+
+        # Check with no CORS headers in request
+        url = get_presigned_url()
+        headers = None
+        response = request(url, headers=headers)
+        _check_response(response, None)
+
+        # Check with only method in headers
+        # (nothing expected as origin not provided)
+        url = get_presigned_url()
+        headers = {
+            "Access-Control-Request-Method": method,
+        }
+        response = request(url, headers=headers)
+        _check_response(response, None)
+
+        for origin, expected_access_control in expected_access_controls.items():
+            # Check with only origin in headers
+            url = get_presigned_url()
+            headers = {
+                "Origin": origin,
+            }
+            response = request(url, headers=headers)
+            _check_response(response, expected_access_control)
+
+            # Check with method + origin
+            url = get_presigned_url()
+            headers = {
+                "Access-Control-Request-Method": method,
+                "Origin": origin,
+            }
+            response = request(url, headers=headers)
+            _check_response(response, expected_access_control)
+
+            # Check with wrong method + correct origin
+            # (should returns 200 but no CORS headers filled)
+            url = get_presigned_url()
+            headers = {
+                "Access-Control-Request-Method": "POST",
+                "Origin": origin,
+            }
+            response = request(url, headers=headers)
+            if "POST" in expected_access_control[
+                "Access-Control-Allow-Methods"
+            ]:
+                _check_response(response, expected_access_control)
+            else:
+                _check_response(response, None)
+
+        # Check with wrong origin + correct method
+        # (should returns 200 but no CORS headers filled)
+        url = get_presigned_url()
+        headers = {
+            "Access-Control-Request-Method": method,
+            "Origin": "http://example.com",
+        }
+        response = request(url, headers=headers)
+        _check_response(response, None)
+
+    def test_get_object_requests(self):
         # Create bucket
         run_awscli_s3('mb', bucket=self.bucket_name)
 
@@ -252,114 +367,56 @@ class TestS3Cors(unittest.TestCase):
         key = random_str(20)
         run_awscli_s3api("put-object", bucket=self.bucket_name, key=key)
 
-        # Configure CORS for this bucket
-        run_awscli_s3api(
-            'put-bucket-cors',
-            '--cors-configuration', """
-                {
-                    "CORSRules": [
-                        {
-                            "ExposeHeaders": ["Access-Control-Allow-Origin"],
-                            "AllowedHeaders": ["Authorization"],
-                            "AllowedOrigins": ["http://openio.io"],
-                            "AllowedMethods": ["GET"]
-                        }
-                    ]
-                }
-            """,
-            bucket=self.bucket_name
-        )
+        client = get_boto3_client()
 
-        url = run_awscli_s3('presign', bucket=self.bucket_name, key=key)
-        url = url.strip()  # remove trailing \n
+        def _get_presigned_url():
+            return client.generate_presigned_url(
+                "get_object", {"Bucket": self.bucket_name, "Key": key})
 
-        # Check with no CORS headers in request
-        headers = None
-        response = requests.get(url, headers=headers)
-        self.assertEqual(200, response.status_code)
-        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
-        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
-        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+        def _request(url, headers=None):
+            return requests.get(url, headers=headers)
 
-        # Check with only method in headers
-        # (nothing expected as origin not provided)
-        headers = {
-            "Access-Control-Request-Method": "GET",
-        }
-        response = requests.get(url, headers=headers)
-        self.assertEqual(200, response.status_code)
-        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
-        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
-        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+        self._test_non_options_requests("GET", _get_presigned_url, _request)
 
-        # Check with only origin in headers
-        headers = {
-            "Origin": "http://openio.io",
-        }
-        response = requests.get(url, headers=headers)
-        self.assertEqual(200, response.status_code)
-        self.assertEqual("http://openio.io",
-                         response.headers["Access-Control-Allow-Origin"])
-        # Note: not present on AWS
-        self.assertEqual("Authorization",
-                         response.headers["Access-Control-Allow-Headers"])
-        self.assertEqual("GET",
-                         response.headers["Access-Control-Allow-Methods"])
-        self.assertEqual("Access-Control-Allow-Origin",
-                         response.headers["Access-Control-Expose-Headers"])
-        self.assertEqual("true",
-                         response.headers["Access-Control-Allow-Credentials"])
+    def test_create_bucket_requests(self):
+        self.bucket_name = None
+        buckets = []
 
-        # Check with method + origin
-        headers = {
-            "Access-Control-Request-Method": "GET",
-            "Origin": "http://openio.io",
-        }
-        response = requests.options(url, headers=headers)
-        self.assertEqual(200, response.status_code)
-        self.assertEqual("http://openio.io",
-                         response.headers["Access-Control-Allow-Origin"])
-        # Note: not present on AWS
-        self.assertEqual("Authorization",
-                         response.headers["Access-Control-Allow-Headers"])
-        self.assertEqual("GET",
-                         response.headers["Access-Control-Allow-Methods"])
-        self.assertEqual("Access-Control-Allow-Origin",
-                         response.headers["Access-Control-Expose-Headers"])
-        self.assertEqual("true",
-                         response.headers["Access-Control-Allow-Credentials"])
+        client = get_boto3_client()
 
-        # Check with wrong method + correct origin
-        # (should returns 200 but no CORS headers filled)
-        headers = {
-            "Access-Control-Request-Method": "PUT",
-            "Origin": "http://openio.io",
-        }
-        response = requests.get(url, headers=headers)
-        self.assertEqual(200, response.status_code)
-        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
-        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
-        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+        def _get_presigned_url():
+            bucket = f"test-cors-{random_str(8)}"
+            buckets.append(bucket)
+            return client.generate_presigned_url(
+                "create_bucket", {"Bucket": bucket})
 
-        # Check with wrong origin + correct method
-        # (should returns 200 but no CORS headers filled)
-        headers = {
-            "Access-Control-Request-Method": "GET",
-            "Origin": "http://example.com",
-        }
-        response = requests.get(url, headers=headers)
-        self.assertEqual(200, response.status_code)
-        self.assertNotIn("Access-Control-Allow-Origin", response.headers)
-        self.assertNotIn("Access-Control-Allow-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Methods", response.headers)
-        self.assertNotIn("Access-Control-Expose-Headers", response.headers)
-        self.assertNotIn("Access-Control-Allow-Credentials", response.headers)
+        def _request(url, headers=None):
+            return requests.put(url, headers=headers)
+
+        try:
+            self._test_non_options_requests(
+                "PUT", _get_presigned_url, _request)
+        finally:
+            for bucket in buckets:
+                try:
+                    run_awscli_s3('rb', '--force', bucket=bucket)
+                except CliError as exc:
+                    if 'NoSuchBucket' not in str(exc):
+                        raise
+
+    def test_list_buckets_requests(self):
+        self.bucket_name = None
+
+        client = get_boto3_client()
+
+        def _get_presigned_url():
+            return client.generate_presigned_url("list_buckets")
+
+        def _request(url, headers=None):
+            return requests.get(url, headers=headers)
+
+        self._test_non_options_requests(
+            "GET", _get_presigned_url, _request)
 
     def test_optional_id(self):
         # Create bucket
