@@ -15,6 +15,7 @@
 
 import copy
 import functools
+import ipaddress
 
 from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
@@ -27,7 +28,7 @@ from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     NoSuchVersion
 from swift.common.middleware.s3api.utils import camel_to_snake
 from swift.common.swob import str_to_wsgi
-from swift.common.utils import drain_and_close, public
+from swift.common.utils import drain_and_close, get_remote_client, public
 
 
 def bucket_operation(func=None, err_resp=None, err_msg=None):
@@ -84,12 +85,33 @@ def check_container_existence(func):
     return check_container
 
 
-def check_bucket_storage_domain(func):
+def check_bucket_access(func):
     """
-    A decorator to ensure the bucket's storage domain.
+    A decorator to ensure the bucket's storage domain and ip whitelist.
     """
     @functools.wraps(func)
-    def _check_bucket_storage_domain(self, req):
+    def _check_bucket_access(self, req):
+        if self.conf.check_ip_whitelist:
+            try:
+                info = req.get_container_info(self.app)
+            except NoSuchBucket:
+                pass
+            else:
+                whitelist_cfg = info.get("sysmeta", {}).get(
+                    "s3api-ip-whitelist"
+                )
+                if whitelist_cfg is not None:
+                    try:
+                        whitelist = [
+                            ipaddress.ip_network(ip.strip(), strict=False)
+                            for ip in whitelist_cfg.split(",")
+                        ]
+                        ip = ipaddress.ip_address(get_remote_client(req))
+                    except ValueError:
+                        raise AccessDenied
+                    if not any(ip in network for network in whitelist):
+                        raise AccessDenied
+
         if self.conf.check_bucket_storage_domain:
             if req.from_internal_tool():
                 # Internal tool are always uploaded with the all
@@ -109,9 +131,10 @@ def check_bucket_storage_domain(func):
             except NoSuchBucket:
                 # The bucket does not exist, the request is authorized
                 pass
+
         return func(self, req)
 
-    return _check_bucket_storage_domain
+    return _check_bucket_access
 
 
 def set_s3_operation_rest(resource_type, object_resource_type=None,
@@ -243,7 +266,7 @@ class Controller(object):
     @set_s3_operation_rest('PREFLIGHT')
     @ratelimit
     @public
-    @check_bucket_storage_domain
+    @check_bucket_access
     def OPTIONS(self, req):
         return handle_options_request(self.app, self.conf, req)
 

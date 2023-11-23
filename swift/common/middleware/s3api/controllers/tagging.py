@@ -19,7 +19,7 @@ from six.moves.urllib.parse import parse_qs
 from swift.common.utils import close_if_possible, public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_container_existence, check_bucket_storage_domain, \
+    check_container_existence, check_bucket_access, \
     set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
@@ -178,7 +178,7 @@ class TaggingController(Controller):
     @public
     @fill_cors_headers
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:GetObjectTagging', 's3:GetBucketTagging')
     def GET(self, req):  # pylint: disable=invalid-name
@@ -217,7 +217,7 @@ class TaggingController(Controller):
     @public
     @fill_cors_headers
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:PutObjectTagging', 's3:PutBucketTagging')
     def PUT(self, req):  # pylint: disable=invalid-name
@@ -289,7 +289,7 @@ class TaggingController(Controller):
     @public
     @fill_cors_headers
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:DeleteObjectTagging', 's3:DeleteBucketTagging')
     def DELETE(self, req):  # pylint: disable=invalid-name

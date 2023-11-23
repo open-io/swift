@@ -17,7 +17,7 @@ from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -40,7 +40,7 @@ class S3AclController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:GetObjectAcl', 's3:GetBucketAcl')
     def GET(self, req):
@@ -60,7 +60,7 @@ class S3AclController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:PutObjectAcl', 's3:PutBucketAcl')
     def PUT(self, req):

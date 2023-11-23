@@ -317,6 +317,8 @@ class S3ApiMiddleware(object):
             self.conf.storage_domains[storage_domain] = storage_class
             if not self.conf.default_storage_domain:
                 self.conf.default_storage_domain = storage_domain
+        self.conf.check_ip_whitelist = config_true_value(
+            wsgi_conf.get('check_ip_whitelist', False))
         self.conf.auth_pipeline_check = config_true_value(
             wsgi_conf.get('auth_pipeline_check', True))
         self.conf.max_upload_part_num = config_positive_int_value(

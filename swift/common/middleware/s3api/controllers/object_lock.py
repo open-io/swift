@@ -18,7 +18,7 @@ from datetime import datetime
 from dict2xml import dict2xml
 from re import compile, sub
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, object_operation, \
+    bucket_operation, check_bucket_access, object_operation, \
     set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
@@ -184,7 +184,7 @@ class BucketLockController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:GetBucketObjectLockConfiguration")
     def GET(self, req):
         resp = req.get_response(self.app, method='HEAD')
@@ -215,7 +215,7 @@ class BucketLockController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:PutBucketObjectLockConfiguration")
     def PUT(self, req):
         resp = req.get_response(self.app, method='HEAD')
@@ -316,7 +316,7 @@ class ObjectLockLegalHoldController(Controller):
     @public
     @fill_cors_headers
     @object_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:GetObjectLegalHold")
     def GET(self, req):
@@ -359,7 +359,7 @@ class ObjectLockLegalHoldController(Controller):
     @public
     @fill_cors_headers
     @object_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:PutObjectLegalHold")
     def PUT(self, req):
@@ -416,7 +416,7 @@ class ObjectLockRetentionController(Controller):
     @public
     @fill_cors_headers
     @object_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:GetObjectRetention")
     def GET(self, req):
@@ -459,7 +459,7 @@ class ObjectLockRetentionController(Controller):
     @public
     @fill_cors_headers
     @object_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:PutObjectRetention")
     def PUT(self, req):

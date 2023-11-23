@@ -19,7 +19,7 @@ from swift.common.cors import check_cors_rule, get_cors, cors_fill_headers
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_container_existence, check_bucket_storage_domain, \
+    bucket_operation, check_container_existence, check_bucket_access, \
     set_s3_operation_rest
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
@@ -92,7 +92,7 @@ class CorsController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:GetBucketCORS')
     def GET(self, req):  # pylint: disable=invalid-name
         """
@@ -110,7 +110,7 @@ class CorsController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:PutBucketCORS')
     def PUT(self, req):  # pylint: disable=invalid-name
         """
@@ -136,7 +136,7 @@ class CorsController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @bucket_operation
     @check_container_existence
     @check_iam_access('s3:PutBucketCORS')  # No specific permission for DELETE

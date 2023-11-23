@@ -16,7 +16,7 @@
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+    bucket_operation, check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -34,7 +34,7 @@ class LocationController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:GetBucketLocation')
     def GET(self, req):
         """

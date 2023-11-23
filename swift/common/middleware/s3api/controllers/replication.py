@@ -17,7 +17,7 @@ import json
 import uuid
 from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, check_container_existence, \
+    bucket_operation, check_bucket_access, check_container_existence, \
     set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
@@ -511,7 +511,7 @@ class ReplicationController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_container_existence
     @check_iam_access("s3:PutReplicationConfiguration")
     def PUT(self, req):
@@ -561,7 +561,7 @@ class ReplicationController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_container_existence
     @check_iam_access("s3:GetReplicationConfiguration")
     def GET(self, req):
@@ -582,7 +582,7 @@ class ReplicationController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_container_existence
     @check_iam_access("s3:PutReplicationConfiguration")
     def DELETE(self, req):

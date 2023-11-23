@@ -30,7 +30,7 @@ from swift.common.middleware.versioned_writes.object_versioning import \
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
     S3Timestamp, sysmeta_header, update_response_header_with_response_params
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
@@ -177,7 +177,7 @@ class ObjectController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
@@ -196,7 +196,7 @@ class ObjectController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:GetObject")
     def GET(self, req):
@@ -209,7 +209,7 @@ class ObjectController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:PutObject")
     def PUT(self, req):
@@ -318,7 +318,7 @@ class ObjectController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:DeleteObject")
     def DELETE(self, req):

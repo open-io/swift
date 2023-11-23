@@ -19,7 +19,7 @@ from swift.common.utils import public
 
 from swift.common.middleware.s3api.exception import ACLError
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
     MalformedACLError, UnexpectedContent, MissingSecurityHeader
@@ -91,7 +91,7 @@ class AclController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     def GET(self, req):
         """
@@ -105,7 +105,7 @@ class AclController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     def PUT(self, req):
         """

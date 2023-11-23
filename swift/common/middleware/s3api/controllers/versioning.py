@@ -19,7 +19,7 @@ from swift.common.utils import public, config_true_value
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+    bucket_operation, check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, tostring, \
     fromstring, XMLSyntaxError, DocumentInvalid, SubElement
@@ -44,7 +44,7 @@ class VersioningController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:GetBucketVersioning')
     def GET(self, req):
         """
@@ -67,7 +67,7 @@ class VersioningController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:PutBucketVersioning')
     def PUT(self, req):
         """

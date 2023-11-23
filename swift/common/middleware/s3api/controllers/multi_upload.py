@@ -82,7 +82,7 @@ from six.moves.urllib.parse import unquote, quote_plus, urlparse
 from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
-    check_bucket_storage_domain, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
     OBJECT_REPLICATION_REPLICA, OBJECT_REPLICATION_STATUS, \
@@ -238,7 +238,7 @@ class PartController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:PutObject')
     def PUT(self, req):
@@ -365,7 +365,7 @@ class PartController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:GetObject")
     def GET(self, req):
@@ -384,7 +384,7 @@ class PartController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access("s3:GetObject")
     def HEAD(self, req):
@@ -488,7 +488,7 @@ class PartController(Controller):
     @ratelimit
     @public
     @object_operation  # required
-    @check_bucket_storage_domain
+    @check_bucket_access
     def OPTIONS(self, req):
         # Here, we need to handle the request
         resp = handle_options_request(self.app, self.conf, req)
@@ -521,7 +521,7 @@ class UploadsController(Controller):
                       err_msg="Key is not expected for the GET method "
                               "?uploads subresource")
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:ListBucketMultipartUploads')
     def GET(self, req):
         """
@@ -592,7 +592,7 @@ class UploadsController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:PutObject')
     def POST(self, req):
@@ -689,7 +689,7 @@ class UploadController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:ListMultipartUploadParts')
     def GET(self, req):
@@ -810,7 +810,7 @@ class UploadController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:AbortMultipartUpload')
     def DELETE(self, req):
@@ -867,7 +867,7 @@ class UploadController(Controller):
     @fill_cors_headers
     @object_operation
     @check_container_existence
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     @check_iam_access('s3:PutObject')
     def POST(self, req):

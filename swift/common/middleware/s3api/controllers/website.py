@@ -27,7 +27,7 @@ from swift.common.utils import drain_and_close, public
 from swift.common.middleware.s3api.controllers.base import (
     Controller,
     bucket_operation,
-    check_bucket_storage_domain,
+    check_bucket_access,
     check_container_existence,
     handle_no_such_key,
     set_s3_operation_rest,
@@ -98,7 +98,7 @@ class WebsiteController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_container_existence
     @check_iam_access("s3:GetBucketWebsite")
     def GET(self, req):
@@ -119,7 +119,7 @@ class WebsiteController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_container_existence
     @check_iam_access("s3:PutBucketWebsite")
     def PUT(self, req):
@@ -142,7 +142,7 @@ class WebsiteController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_container_existence
     @check_iam_access("s3:DeleteBucketWebsite")
     def DELETE(self, req):
@@ -315,7 +315,7 @@ class S3WebsiteController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     # FIXME(adu): Remove when the management of user policies
     # and ACLs has been rewritten
@@ -330,7 +330,7 @@ class S3WebsiteController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @handle_no_such_key
     # FIXME(adu): Remove when the management of user policies
     # and ACLs has been rewritten

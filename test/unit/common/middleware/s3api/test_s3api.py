@@ -115,6 +115,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'bucket_db_read_only': False,
             'check_account_enabled': False,
             'check_bucket_owner': False,
+            'check_ip_whitelist': False,
             'check_bucket_storage_domain': False,
             'cors_rules': [],
             'landing_page': 'https://aws.amazon.com/s3/',
@@ -162,6 +163,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'bucket_db_read_only': True,
             'check_account_enabled': True,
             'check_bucket_owner': True,
+            'check_ip_whitelist': True,
             'check_bucket_storage_domain': True,
             'cors_allow_origin': 'somewhere.com,some.*.where.io',
             'landing_page':

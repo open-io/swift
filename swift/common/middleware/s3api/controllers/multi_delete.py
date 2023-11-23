@@ -24,7 +24,7 @@ from swift.common.utils import config_true_value, public, StreamingPile
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain
+    bucket_operation, check_bucket_access
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE
@@ -72,7 +72,7 @@ class MultiObjectDeleteController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     def POST(self, req):
         """
         Handles Delete Multiple Objects.

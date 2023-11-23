@@ -94,6 +94,7 @@ ignore_storage_class_header = False
 storage_classes = STANDARD,STANDARD_IA
 storage_domain = s3.sbg.perf.cloud.ovh.net,localhost,standard.ia:STANDARD_IA,s3.lo.team-swift.ovh
 check_bucket_storage_domain = true
+check_ip_whitelist = true
 s3_acl = true
 check_bucket_owner = true
 #min_segment_size = 8

@@ -28,7 +28,7 @@ from swift.common.utils import json, public, config_true_value, Timestamp
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_storage_domain, set_s3_operation_rest
+    check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, init_xml_texts, XMLSyntaxError, DocumentInvalid
@@ -138,7 +138,7 @@ class BucketController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:ListBucket")
     def HEAD(self, req):
         """
@@ -375,7 +375,7 @@ class BucketController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:ListBucket")
     def GET(self, req):
         """
@@ -480,7 +480,7 @@ class BucketController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:DeleteBucket")
     def DELETE(self, req):
         """

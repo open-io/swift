@@ -16,7 +16,7 @@
 from dict2xml import dict2xml
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+    bucket_operation, check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
@@ -122,7 +122,7 @@ class IntelligentTieringController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:GetIntelligentTieringConfiguration")
     def GET(self, req):
         """
@@ -183,7 +183,7 @@ class IntelligentTieringController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:PutIntelligentTieringConfiguration")
     def PUT(self, req):
         """
@@ -242,7 +242,7 @@ class IntelligentTieringController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access("s3:DeleteIntelligentTieringConfiguration")
     def DELETE(self, req):
         """

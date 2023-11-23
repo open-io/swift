@@ -18,7 +18,7 @@ import json
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+    bucket_operation, check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, tostring, fromstring
@@ -50,7 +50,7 @@ class LoggingStatusController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:GetBucketLogging')
     def GET(self, req):
         """
@@ -82,7 +82,7 @@ class LoggingStatusController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:PutBucketLogging')
     def PUT(self, req):
         """

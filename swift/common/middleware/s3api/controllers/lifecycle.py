@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_storage_domain, set_s3_operation_rest
+    bucket_operation, check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import fromstring, \
     DocumentInvalid, XMLSyntaxError
@@ -47,7 +47,7 @@ class LifecycleController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:GetLifecycleConfiguration')
     def GET(self, req):
         """
@@ -65,7 +65,7 @@ class LifecycleController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     @check_iam_access('s3:PutLifecycleConfiguration')
     def PUT(self, req):
         """
@@ -91,7 +91,7 @@ class LifecycleController(Controller):
     @public
     @fill_cors_headers
     @bucket_operation
-    @check_bucket_storage_domain
+    @check_bucket_access
     # No specific permission for DELETE
     @check_iam_access('s3:PutLifecycleConfiguration')
     def DELETE(self, req):
