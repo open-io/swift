@@ -76,7 +76,9 @@ class TestS3Mpu(unittest.TestCase):
     def test_create_abort_mpu(self):
         listing = run_awscli_s3api(
             "list-multipart-uploads", bucket=self.bucket)
-        self.assertEqual('', listing)
+        listing.pop("RequestCharged")
+        self.assertFalse(listing)
+
         path = random_str(10)
         data = self._create_multipart_upload(self.bucket, path)
         listing = run_awscli_s3api(
@@ -90,7 +92,8 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket, key=path)
         listing = run_awscli_s3api(
             "list-multipart-uploads", bucket=self.bucket)
-        self.assertEqual('', listing)
+        listing.pop("RequestCharged")
+        self.assertFalse(listing)
 
     def test_complete_mpu_with_headers(self):
         path = random_str(10)
@@ -542,7 +545,8 @@ class TestS3Mpu(unittest.TestCase):
         uploads = run_awscli_s3api(
             "list-multipart-uploads",
             bucket=self.bucket_object_lock)
-        self.assertEqual('', uploads)
+        uploads.pop("RequestCharged")
+        self.assertFalse(uploads)
 
     def test_create_mpu_with_invalid_xml_chars(self):
         # Using invalid XML characters prevents us from using regular clients

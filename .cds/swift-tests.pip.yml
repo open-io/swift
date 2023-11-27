@@ -34,6 +34,7 @@ jobs:
           cat << EOF > $HOME/swiftenv/pip.conf
           [global]
           index-url = https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
+          extra_index_url = https://pypi.org/simple
           EOF
           . $HOME/swiftenv/bin/activate
           pip install --upgrade pip setuptools virtualenv "tox<4.0.0" -r test-requirements.txt

@@ -95,6 +95,7 @@ class TestBucketLogDelivery(unittest.TestCase):
                                  profile=None):
         data = run_awscli_s3api(
             'list-objects', bucket=logging_bucket, profile=profile)
+        data.pop("RequestCharged")
         if data:
             keys = [obj['Key'] for obj in data['Contents']]
         else:

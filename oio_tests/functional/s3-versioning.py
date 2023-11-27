@@ -218,6 +218,7 @@ class TestS3Versioning(unittest.TestCase):
                 "--version-id", entry['VersionId'],
                 bucket=self.bucket, key=entry['Key'])
         data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
+        data.pop("RequestCharged")
         self.assertFalse(data)
 
     def test_create_different_objects(self):
@@ -252,6 +253,7 @@ class TestS3Versioning(unittest.TestCase):
                 "--version-id", version,
                 bucket=self.bucket, key=key)
         data = run_awscli_s3api("list-object-versions", bucket=self.bucket)
+        data.pop("RequestCharged")
         self.assertFalse(data)
 
 

@@ -24,7 +24,8 @@ override_dh_virtualenv:
 	  --preinstall "setuptools>=48.0.0" \
 	  --preinstall wheel \
 	  --requirements debian/requirements.txt \
-	  --index-url https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
+	  --index-url https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/ \
+	  --extra-index-url https://pypi.org/simple
 	# fix shebangs
 	find $(DESTDIR)$(PREFIX)/bin/ -type f -exec sed -i "s@${DESTDIR}@@" {} \;
 	./third_party/oio-sds/tools/patch-python-modules.sh "${DESTDIR}${PREFIX}"
