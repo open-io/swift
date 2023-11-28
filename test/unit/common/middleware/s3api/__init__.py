@@ -67,6 +67,7 @@ class FakeApp(object):
 class S3ApiTestCase(unittest.TestCase):
     def __init__(self, name):
         unittest.TestCase.__init__(self, name)
+        self.update_conf = {}
 
     def setUp(self):
         # setup default config dict
@@ -77,6 +78,7 @@ class S3ApiTestCase(unittest.TestCase):
             'max_bucket_listing': 1000,
             'max_parts_listing': 1000,
             'max_multi_delete_objects': 1000,
+            'check_ip_whitelist': False,
             's3_acl': False,
             'storage_domain': 'localhost',
             'auth_pipeline_check': True,
@@ -87,6 +89,7 @@ class S3ApiTestCase(unittest.TestCase):
             'min_segment_size': 5242880,
             'log_level': 'debug',
         }
+        self.conf.update(self.update_conf)
 
         self.app = FakeApp()
         self.swift = self.app.swift
