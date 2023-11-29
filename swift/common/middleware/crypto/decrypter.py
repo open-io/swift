@@ -22,7 +22,7 @@ from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
     load_crypto_meta, extract_crypto_meta, Crypto, \
-    requires_customer_provided_key, MISSING_KEY_MSG
+    requires_customer_provided_key, MISSING_KEY_MSG, CIPHER_NAME
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     get_sys_meta_prefix, get_user_meta_prefix, \
@@ -406,6 +406,14 @@ class DecrypterObjContext(BaseDecrypterContext):
         else:
             # don't decrypt body of unencrypted or non-2xx responses
             resp_iter = app_resp
+
+        if put_crypto_meta and req.method in ('GET', 'HEAD') and \
+                is_success(self._get_status_int()):
+            cipher = put_crypto_meta.get('cipher')
+            if cipher:
+                cipher_name = CIPHER_NAME.get(cipher, 'AES256')
+                mod_resp_headers.append(
+                    ('x-amz-server-side-encryption', cipher_name))
 
         mod_resp_headers = purge_crypto_sysmeta_headers(mod_resp_headers)
         start_response(self._response_status, mod_resp_headers,

@@ -27,6 +27,7 @@ from swift.common.constraints import MAX_FILE_SIZE, check_metadata, \
 from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
+from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
     header_mapping, REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
@@ -54,6 +55,7 @@ from oio.common.storage_method import STORAGE_METHODS
 from oio.api.object_storage import _sort_chunks
 
 from oio.common.exceptions import SourceReadTimeout
+
 
 BUCKET_NAME_HEADER = 'X-Object-Sysmeta-Oio-Bucket-Name'
 SLO = 'x-static-large-object'
@@ -200,6 +202,15 @@ class ObjectController(BaseObjectController):
             resp = self.get_object_fetch_resp(req)
         set_object_info_cache(self.app, req.environ, self.account_name,
                               self.container_name, self.object_name, resp)
+
+        upload_id = resp.headers.get('X-Object-Sysmeta-S3api-Upload-Id')
+        if upload_id:
+            cipher_header = sysmeta_header('object', 'cipher-name')
+            cipher_name = resp.headers.pop(
+                cipher_header, None)
+            if cipher_name:
+                resp.headers['x-amz-server-side-encryption'] = cipher_name
+
         if ';' in resp.headers.get('content-type', ''):
             resp.content_type = clean_content_type(
                 resp.headers['content-type'])

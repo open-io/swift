@@ -1188,6 +1188,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker exists
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
             # Create the SLO
             ('PUT', '/v1/AUTH_test/bucket/object'
                     '?heartbeat=on&multipart-manifest=put'),
@@ -1210,6 +1211,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
         self.swift.register(
             'HEAD', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE' %
+            wsgi_snowman, swob.HTTPOk, {}, None)
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE/1' %
             wsgi_snowman, swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_test/bucket/%s' % wsgi_snowman,
                             swob.HTTPCreated, {}, None)
@@ -1237,6 +1241,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             # Upload marker exists
             ('HEAD', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE' %
+             wsgi_snowman),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/%s/VXBsb2FkIElE/1' %
              wsgi_snowman),
             # Create the SLO
             ('PUT', '/v1/AUTH_test/bucket/%s'
@@ -1326,6 +1332,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             # But the object does, and with the same upload ID
             ('HEAD', '/v1/AUTH_test/bucket/object'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
             # Create the SLO
             ('PUT', '/v1/AUTH_test/bucket/object'
                     '?heartbeat=on&multipart-manifest=put'),
@@ -1438,6 +1445,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             'HEAD', '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE',
             swob.HTTPOk, {}, None)
         self.swift.register(
+            'HEAD',
+            '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE/1',
+            swob.HTTPOk, {}, None)
+        self.swift.register(
             'GET', '/v1/AUTH_test/bucket+segments', swob.HTTPOk, {},
             json.dumps([
                 {'name': item[0].replace('object', 'heartbeat-ok'),
@@ -1482,6 +1493,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD',
              '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE'),
+            ('HEAD',
+             '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/bucket/heartbeat-ok?'
                     'heartbeat=on&multipart-manifest=put'),
             ('DELETE',
@@ -1494,6 +1507,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register(
             'HEAD',
             '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE',
+            swob.HTTPOk, {}, None)
+        self.swift.register(
+            'HEAD',
+            '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE/1',
             swob.HTTPOk, {}, None)
         self.swift.register(
             'GET', '/v1/AUTH_test/bucket+segments', swob.HTTPOk, {},
@@ -1536,6 +1553,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD',
              '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE'),
+            ('HEAD',
+             '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/bucket/heartbeat-fail?'
                     'heartbeat=on&multipart-manifest=put'),
         ])
@@ -1546,6 +1565,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register(
             'HEAD',
             '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE',
+            swob.HTTPOk, {}, None)
+        self.swift.register(
+            'HEAD',
+            '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE/1',
             swob.HTTPOk, {}, None)
         self.swift.register(
             'GET', '/v1/AUTH_test/bucket+segments', swob.HTTPOk, {},
@@ -1588,6 +1611,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD',
              '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE'),
+            ('HEAD',
+             '/v1/AUTH_test/bucket+segments/heartbeat-fail/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/bucket/heartbeat-fail?'
                     'heartbeat=on&multipart-manifest=put'),
         ])
@@ -1680,6 +1705,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/bucket/object'
              '?heartbeat=on&multipart-manifest=put'),
         ])
@@ -1706,6 +1732,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/bucket/object'
              '?heartbeat=on&multipart-manifest=put'),
         ])
@@ -1779,6 +1806,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register('DELETE', segment_bucket + '/object/VXBsb2FkIElE',
                             swob.HTTPOk, {}, None)
 
+        self.swift.register('HEAD', segment_bucket + '/object/VXBsb2FkIElE/1',
+                            swob.HTTPOk, {}, None)
+
         xml = '<CompleteMultipartUpload>' \
             '<Part>' \
             '<PartNumber>1</PartNumber>' \
@@ -1800,6 +1830,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/empty-bucket'),
             ('HEAD',
              '/v1/AUTH_test/empty-bucket+segments/object/VXBsb2FkIElE'),
+            ('HEAD',
+             '/v1/AUTH_test/empty-bucket+segments/object/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/empty-bucket/object?'
                     'heartbeat=on&multipart-manifest=put'),
             ('DELETE',
@@ -1873,6 +1905,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test'),
             ('HEAD', '/v1/AUTH_test/bucket'),
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
+            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
             ('PUT', '/v1/AUTH_test/bucket/object?'
                     'heartbeat=on&multipart-manifest=put'),
             ('DELETE', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),

@@ -474,6 +474,11 @@ class PartController(Controller):
             slo_resp.headers['Content-Length']
         # Add the number of parts in this object
         slo_resp.headers['X-Amz-Mp-Parts-Count'] = len(slo)
+        encryption_header = resp.headers.get('x-amz-server-side-encryption')
+        if encryption_header:
+            slo_resp.headers['x-amz-server-side-encryption'] = \
+                encryption_header
+
         if req.from_internal_tool():
             # X-Amz-Part-ETag
             # This header is not part of the S3 API.
@@ -1003,6 +1008,23 @@ class UploadController(Controller):
                 tags=tagging_header,
                 metadata=headers,
             )
+
+        def get_part_info(app, req, upload_id):
+            container = req.container_name + MULTIUPLOAD_SUFFIX
+            obj = '%s/%s/1' % (req.object_name, upload_id)
+            try:
+                return req.get_response(
+                    app, 'HEAD', container=container, obj=obj)
+            except NoSuchKey:
+                return None
+
+        resp_part = get_part_info(self.app, req, upload_id)
+        if resp_part:
+            header_encryption_name = 'x-amz-server-side-encryption'
+            encryption_header = resp_part.headers.get(header_encryption_name)
+            if encryption_header:
+                headers[sysmeta_header('object', 'cipher-name')] = \
+                    encryption_header
 
         def size_checker(manifest):
             # Check the size of each segment except the last and make sure

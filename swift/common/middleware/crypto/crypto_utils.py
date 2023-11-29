@@ -37,6 +37,9 @@ CUSTOM_HASHER = {
     'blake3': blake3,
     # 'xxhash': xxhash3_128
 }
+CIPHER_NAME = {
+    'AES_CTR_256': 'AES256'
+}
 
 
 def is_customer_provided_key(key_id):

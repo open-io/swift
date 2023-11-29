@@ -21,7 +21,7 @@ from swift.common.constraints import check_metadata
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
     dump_crypto_meta, append_crypto_meta, get_hasher, Crypto, \
-    CRYPTO_KEY_CALLBACK, MISSING_KEY_MSG
+    CIPHER_NAME, CRYPTO_KEY_CALLBACK, MISSING_KEY_MSG
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     strip_user_meta_prefix, is_user_meta, update_etag_is_at_header, \
     get_container_update_override_key
@@ -270,8 +270,13 @@ class EncrypterObjContext(CryptoWSGIContext):
                     else plaintext_etag)
                 for h, v in mod_resp_headers]
 
-        if keys.get('id', {}).get('sses3'):
-            mod_resp_headers.append(('x-amz-server-side-encryption', 'AES256'))
+            put_crypto_meta = enc_input_proxy.body_crypto_meta
+            if put_crypto_meta:
+                cipher = put_crypto_meta.get('cipher')
+                if cipher:
+                    cipher_name = CIPHER_NAME.get(cipher, 'AES256')
+                    mod_resp_headers.append(
+                        ('x-amz-server-side-encryption', cipher_name))
 
         start_response(self._response_status, mod_resp_headers,
                        self._response_exc_info)
