@@ -69,7 +69,8 @@ class StreamRangeIterator(object):
     Data stream wrapper that handles range requests and deals with exceptions.
     """
 
-    def __init__(self, request, stream):
+    def __init__(self, request, stream, logger):
+        self.logger = logger
         self.req = request
         self._stream = stream
 
@@ -110,6 +111,8 @@ class StreamRangeIterator(object):
         except exceptions.UnrecoverableContent as err:
             # There is no proper code for this. Catching it here should
             # make stack traces a little shorter.
+            # Still, print the error body, because we suspect the caller won't.
+            self.logger.error("UnrecoverableContent: %s", err)
             raise HTTPInternalServerError(request=self.req, body=str(err))
 
     def __iter__(self):
@@ -336,7 +339,7 @@ class ObjectController(BaseObjectController):
         if stream:
             # Whether we are bothered with ranges or not, we wrap the
             # stream in order to handle exceptions.
-            resp.app_iter = StreamRangeIterator(req, stream)
+            resp.app_iter = StreamRangeIterator(req, stream, self.app.logger)
 
         length_ = metadata.get('length')
         if length_ is not None:
@@ -434,7 +437,7 @@ class ObjectController(BaseObjectController):
             try:
                 del_req = make_subrequest(req.environ, 'DELETE', path=path)
                 resp = del_req.get_response(self.app)
-                if resp.status_int != 204:
+                if resp.status_int not in (204, 404):
                     raise Exception(
                         f"{resp.status}: {resp.body.decode('utf-8')}")
             except Exception as exc:
