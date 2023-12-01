@@ -76,6 +76,8 @@ echo ""
 sed \
   -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" \
   -e "s/%OIO_KMS_ENABLED%/False/g" \
+  -e "s/%FALLBACK_ON_KEYMASTER%/True/g" \
+  -e "s/%ACCOUNT_WHITELIST%/${ACCOUNT_WHITELIST}/g" \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-custom-encryption.cfg
 run_functional_test s3-custom-encryption.cfg \

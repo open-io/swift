@@ -57,6 +57,7 @@ class TestS3BasicTest(unittest.TestCase):
         data = run_awscli_s3api("head-object", bucket=self.bucket, key=key)
         create_from_hdr = parse_rfc822(data['LastModified'])
 
+        self.assertNotIn('ServerSideEncryption', data)
         # retrieve LastModifier from listing
         data = run_awscli_s3api("list-objects", bucket=self.bucket)
         create_from_lst = parse_iso8601(data['Contents'][0]['LastModified'])

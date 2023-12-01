@@ -19,6 +19,7 @@ COPY_ENC_OPTS_EXT="--copy-source-sse-customer-algorithm $ALGO --copy-source-sse-
 
 BUCKET=bucket-$RANDOM
 ETAG_REGEX='s/(.*ETag.*)([[:xdigit:]]{32})(.*)/\2/p'
+SSE_REGEX='s/(.*ServerSideEncryption.*)"([[:alnum:]]+)",/\2/p'
 WORKDIR=$(mktemp -d -t encryption-tests-XXXX)
 OBJ_1_SRC="/etc/magic"
 OBJ_2_SRC="${WORKDIR}/bigfile_src"
@@ -54,6 +55,12 @@ echo "$LISTING" | grep "obj_2_cyphered"
 echo "Checking reported checksum of obj_1"
 OBJ_1_ETAG=$(${AWS} s3api head-object --bucket "$BUCKET" --key "obj_1" | sed -n -E -e "${ETAG_REGEX}")
 [ "$OBJ_1_ETAG" == "$OBJ_1_CHECKSUM" ]
+
+OBJ_1_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "obj_1" | sed -n -E -e "${SSE_REGEX}")
+[ "$OBJ_1_SSE" == "$ALGO" ]
+
+OBJ_1_SSE=$(${AWS} s3api get-object --bucket "$BUCKET" --key "obj_1" ./ob1_copy | sed -n -E -e "${SSE_REGEX}")
+[ "$OBJ_1_SSE" == "$ALGO" ]
 
 echo "Downloading it"
 ${AWS} s3 cp "s3://$BUCKET/obj_1" ./
@@ -160,6 +167,22 @@ fi
 echo "Upload SLO object"
 ${AWS} s3 cp "$OBJ_2_SRC" "s3://${BUCKET}/32M" \
     --sse-c-key "$SECRET" --sse-c AES256
+
+OBJ_2_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "32M" | sed -n -E -e "${SSE_REGEX}")
+[ "$OBJ_2_SSE" == "$ALGO" ]
+
+OBJ_2_PART_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "32M" --part-number 1 | sed -n -E -e "${SSE_REGEX}")
+[ "$OBJ_2_PART_SSE" == "$ALGO" ]
+
+echo "Download object and check Encryption field"
+OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "32M" "$WORKDIR/32M_1" \
+    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 | sed -n -E -e "${SSE_REGEX}")
+[ "$OUT" == "$ALGO" ]
+
+echo "Download part and check Encryption field"
+OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "32M" --part-number 1 "$WORKDIR/32M_1" \
+    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 | sed -n -E -e "${SSE_REGEX}")
+[ "$OUT" == "$ALGO" ]
 
 echo "Download object with proper key"
 ${AWS} s3 cp "s3://${BUCKET}/32M" "$WORKDIR/32M" \
