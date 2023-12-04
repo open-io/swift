@@ -429,6 +429,25 @@ class TestObjectController(unittest.TestCase):
         resp = req.get_response(self.app)
         self.assertEqual(409, resp.status_int)
 
+    def test_PUT_db_busy_error(self):
+        req = Request.blank('/v1/a/c/o.jpg', method='PUT',
+                            body='test body')
+        self._patch_object_create(
+            side_effect=exc.ServiceBusy(
+                message="DB busy (deadline reached after 12 us)"))
+        resp = req.get_response(self.app)
+        self.assertEqual(503, resp.status_int)
+
+    def test_PUT_load_too_high_error(self):
+        req = Request.blank('/v1/a/c/o.jpg', method='PUT',
+                            body='test body')
+        self._patch_object_create(
+            side_effect=exc.ServiceBusy(message=(
+                "Load too high (waiting_requests=42, deadline_reached=false)"
+            )))
+        resp = req.get_response(self.app)
+        self.assertEqual(429, resp.status_int)
+
     def test_exception_during_transfer_data(self):
         class FakeReader(object):
             def read(self, size):

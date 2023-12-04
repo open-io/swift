@@ -19,7 +19,8 @@ from swift.common.utils import Timestamp, config_true_value
 
 from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPForbidden, HTTPNotFound, \
-    HTTPNotModified, HTTPPreconditionFailed, HTTPServiceUnavailable
+    HTTPNotModified, HTTPPreconditionFailed, HTTPServiceUnavailable, \
+    HTTPTooManyRequests
 
 from oio.common.constants import REQID_HEADER, \
     HEADER_PREFIX as OIO_HEADER_PREFIX
@@ -97,6 +98,8 @@ def handle_service_busy(fnc):
         try:
             return fnc(self, req, *args, **kwargs)
         except (ServiceBusy, ServiceUnavailable) as err:
+            if "Load too high" in str(err):
+                return HTTPTooManyRequests(request=req)
             if "Invalid status: frozen" in str(err):
                 return HTTPForbidden(request=req)
             headers = {}

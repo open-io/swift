@@ -2326,6 +2326,10 @@ class S3Request(swob.Request):
             raise ServiceUnavailable(headers={
                 'Retry-After': str(info.get('Retry-After',
                                             self.conf.retry_after))})
+        elif info['status'] in (HTTP_RATE_LIMITED, HTTP_TOO_MANY_REQUESTS):
+            if self.conf.ratelimit_as_client_error:
+                raise SlowDown(status='429 Slow Down')
+            raise SlowDown()
         else:
             raise InternalError(
                 'unexpected status code %d' % info['status'])
@@ -2358,6 +2362,10 @@ class S3Request(swob.Request):
             raise ServiceUnavailable(headers={
                 'Retry-After': str(info.get('Retry-After',
                                             self.conf.retry_after))})
+        elif info['status'] in (HTTP_RATE_LIMITED, HTTP_TOO_MANY_REQUESTS):
+            if self.conf.ratelimit_as_client_error:
+                raise SlowDown(status='429 Slow Down')
+            raise SlowDown()
         else:
             raise InternalError(
                 'unexpected status code %d' % info['status'])

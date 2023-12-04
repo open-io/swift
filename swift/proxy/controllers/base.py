@@ -479,6 +479,8 @@ def get_container_info(env, app, swift_source=None, read_caches=True):
             info = get_info_from_infocache(env, account, container)
         if info is None:
             info = set_info_cache(app, env, account, container, resp)
+        if info is None and resp.status_int == 429:
+            info = headers_to_container_info(resp.headers, resp.status_int)
 
     if info:
         info = deepcopy(info)  # avoid mutating what's in swift.infocache

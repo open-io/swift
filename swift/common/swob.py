@@ -102,6 +102,7 @@ RESPONSE_REASONS = {
     417: ('Expectation Failed', 'Expectation failed.'),
     422: ('Unprocessable Entity', 'Unable to process the contained '
           'instructions'),
+    429: ('Too Many Requests', 'Please reduce your request rate'),
     499: ('Client Disconnect', 'The client was disconnected during request.'),
     500: ('Internal Error', 'The server has either erred or is incapable of '
           'performing the requested operation.'),
@@ -1613,6 +1614,7 @@ HTTPPreconditionFailed = status_map[412]
 HTTPRequestEntityTooLarge = status_map[413]
 HTTPRequestedRangeNotSatisfiable = status_map[416]
 HTTPUnprocessableEntity = status_map[422]
+HTTPTooManyRequests = status_map[429]
 HTTPClientDisconnect = status_map[499]
 HTTPServerError = status_map[500]
 HTTPInternalServerError = status_map[500]
