@@ -647,9 +647,10 @@ class ObjectController(BaseObjectController):
             raise HTTPClientDisconnect(request=req)
         except exceptions.EtagMismatch:
             raise HTTPUnprocessableEntity(request=req)
-        except (exceptions.ServiceBusy, exceptions.OioTimeout,
+        # OioNetworkException includes OioProtocolError and OioTimeout
+        except (exceptions.ServiceBusy, exceptions.OioNetworkException,
                 exceptions.DeadlineReached):
-            raise
+            raise  # see handle_oio_timeout
         except (exceptions.NoSuchContainer, exceptions.NotFound):
             raise HTTPNotFound(request=req)
         except exceptions.ClientException as err:
@@ -683,15 +684,6 @@ class ObjectController(BaseObjectController):
             'swift.callback.update_footers', lambda _footer: None)
         footer_callback(footers)
         return footers
-
-    def _object_create(self, account, container, **kwargs):
-        storage = self.app.storage
-        if hasattr(storage, 'object_create_ext'):
-            return storage.object_create_ext(account, container, **kwargs)
-
-        _chunks, _size, checksum = storage.object_create(account, container,
-                                                         **kwargs)
-        return _chunks, _size, checksum, {}
 
     def _store_object(self, req, data_source, headers):
         kwargs = req.environ.get('oio.query', {}).copy()
@@ -741,7 +733,7 @@ class ObjectController(BaseObjectController):
             ct_props['system'][BUCKET_NAME_PROP] = bucket_name
         try:
 
-            _chunks, size, checksum, meta = self._object_create(
+            _chunks, size, checksum, meta = self.app.storage.object_create_ext(
                 self.account_name, self.container_name,
                 obj_name=self.object_name, file_or_path=data_source,
                 mime_type=content_type, policy=policy, headers=oio_headers,
@@ -771,9 +763,10 @@ class ObjectController(BaseObjectController):
             return HTTPRequestEntityTooLarge(request=req)
         except exceptions.EtagMismatch:
             raise HTTPUnprocessableEntity(request=req)
-        except (exceptions.ServiceBusy, exceptions.OioTimeout,
+        # OioNetworkException includes OioProtocolError and OioTimeout
+        except (exceptions.ServiceBusy, exceptions.OioNetworkException,
                 exceptions.DeadlineReached):
-            raise
+            raise  # see handle_oio_timeout
         except exceptions.NoSuchContainer:
             raise HTTPNotFound(request=req)
         except exceptions.ClientException as err:
