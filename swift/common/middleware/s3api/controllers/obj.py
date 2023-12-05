@@ -15,7 +15,6 @@
 
 import functools
 import json
-from swift.common import constraints
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
@@ -40,7 +39,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, KeyTooLongError, BadRequest
+    PreconditionFailed, BadRequest
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
@@ -218,8 +217,6 @@ class ObjectController(Controller):
         """
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
-        if len(req.object_name) > constraints.MAX_OBJECT_NAME_LENGTH:
-            raise KeyTooLongError()
         # set X-Timestamp by s3api to use at copy resp body
         req_timestamp = S3Timestamp.now()
         req.headers['X-Timestamp'] = req_timestamp.internal

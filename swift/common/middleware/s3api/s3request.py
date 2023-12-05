@@ -29,7 +29,7 @@ from sys import version_info
 from swift.common.utils import split_path, json, close_if_possible, md5, \
     reiterate, drain_and_close, config_true_value
 from swift.common.registry import get_swift_info
-from swift.common import swob
+from swift.common import constraints, swob
 from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
     HTTP_NO_CONTENT, HTTP_UNAUTHORIZED, HTTP_FORBIDDEN, HTTP_NOT_FOUND, \
     HTTP_CONFLICT, HTTP_UNPROCESSABLE_ENTITY, HTTP_REQUEST_ENTITY_TOO_LARGE, \
@@ -66,7 +66,8 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     AuthorizationQueryParametersError, ServiceUnavailable, BrokenMPU, \
     NoSuchVersion, BadRequest, OperationAborted, XAmzContentSHA256Mismatch, \
     InvalidChunkSizeError, IncompleteBody, WebsiteErrorResponse, \
-    PermanentRedirect, InvalidAccessKeyId, HTTPOk, ErrorResponse
+    PermanentRedirect, InvalidAccessKeyId, HTTPOk, ErrorResponse, \
+    KeyTooLongError
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     REPLICATOR_USER_AGENT, Config, S3Timestamp, utf8encode, mktime, \
@@ -1007,10 +1008,12 @@ class S3Request(swob.Request):
             raise InvalidURI(self.path)
 
         if self.bucket_in_host:
-            obj = path_info[1:] or None
             if not validate_bucket_name(self.bucket_in_host,
                                         self.conf.dns_compliant_bucket_names):
                 raise InvalidBucketName(self.bucket_in_host)
+            obj = path_info[1:] or None
+            if obj and len(obj) > constraints.MAX_OBJECT_NAME_LENGTH:
+                raise KeyTooLongError()
             return self.bucket_in_host, obj
 
         try:
@@ -1022,6 +1025,8 @@ class S3Request(swob.Request):
                 bucket, self.conf.dns_compliant_bucket_names):
             # Ignore GET service case
             raise InvalidBucketName(bucket)
+        if obj and len(obj) > constraints.MAX_OBJECT_NAME_LENGTH:
+            raise KeyTooLongError()
         return (bucket, obj)
 
     def _parse_query_authentication(self):
