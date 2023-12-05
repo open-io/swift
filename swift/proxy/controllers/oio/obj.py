@@ -239,6 +239,8 @@ class ObjectController(BaseObjectController):
                 # To be sure, we must go check the master
                 # in case of desynchronization.
                 force_master = True
+            except exceptions.BadRequest:
+                return HTTPBadRequest(request=req)
 
         if self.app.check_state:
             storage_method = STORAGE_METHODS.load(metadata['chunk_method'])
