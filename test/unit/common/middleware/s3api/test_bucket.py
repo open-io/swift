@@ -1134,55 +1134,71 @@ class TestS3ApiBucket(S3ApiTestCase):
         ])
 
     @s3acl
-    def test_bucket_PUT_error(self):
-        code = self._test_method_error('PUT', '/bucket', swob.HTTPCreated,
-                                       headers={'Content-Length': 'a'})
+    def _test_bucket_PUT_error(self, virtual_style=True):
+        def _test_method_error(method, bucket, response_class,
+                               env={}, **kwargs):
+            if virtual_style:
+                path = "/"
+                env['HTTP_HOST'] = f'{bucket}.localhost'
+            else:
+                path = f'/{bucket}'
+            return self._test_method_error(method, path, response_class,
+                                           env=env, **kwargs)
+
+        code = _test_method_error('PUT', 'bucket', swob.HTTPCreated,
+                                  headers={'Content-Length': 'a'})
         self.assertEqual(code, 'InvalidArgument')
-        code = self._test_method_error('PUT', '/bucket', swob.HTTPCreated,
-                                       headers={'Content-Length': '-1'})
+        code = _test_method_error('PUT', 'bucket', swob.HTTPCreated,
+                                  headers={'Content-Length': '-1'})
         self.assertEqual(code, 'InvalidArgument')
-        code = self._test_method_error('PUT', '/bucket', swob.HTTPUnauthorized)
+        code = _test_method_error('PUT', 'bucket', swob.HTTPUnauthorized)
         self.assertEqual(code, 'SignatureDoesNotMatch')
-        code = self._test_method_error('PUT', '/bucket', swob.HTTPForbidden)
+        code = _test_method_error('PUT', 'bucket', swob.HTTPForbidden)
         self.assertEqual(code, 'AccessDenied')
-        code = self._test_method_error('PUT', '/bucket', swob.HTTPAccepted)
+        code = _test_method_error('PUT', 'bucket', swob.HTTPAccepted)
         self.assertEqual(code, 'BucketAlreadyOwnedByYou')
         with mock.patch(
                 'swift.common.middleware.s3api.s3request.get_container_info',
                 return_value={'sysmeta': {'s3api-acl': '{"Owner": "nope"}'}}):
-            code = self._test_method_error(
-                'PUT', '/bucket', swob.HTTPAccepted)
+            code = _test_method_error(
+                'PUT', 'bucket', swob.HTTPAccepted)
         self.assertEqual(code, 'BucketAlreadyExists')
         if self.s3api.bucket_db:
             self.s3api.bucket_db.reserve('bucket', 'AUTH_test')
-            code = self._test_method_error('PUT', '/bucket', swob.HTTPAccepted)
+            code = _test_method_error('PUT', 'bucket', swob.HTTPAccepted)
             self.assertEqual(code, 'BucketAlreadyOwnedByYou')
             self.s3api.bucket_db.release('bucket', 'AUTH_test')
-        code = self._test_method_error('PUT', '/bucket', swob.HTTPServerError)
+        code = _test_method_error('PUT', 'bucket', swob.HTTPServerError)
         self.assertEqual(code, 'InternalError')
-        code = self._test_method_error(
-            'PUT', '/bucket', swob.HTTPServiceUnavailable)
+        code = _test_method_error(
+            'PUT', 'bucket', swob.HTTPServiceUnavailable)
         self.assertEqual(code, 'ServiceUnavailable')
-        code = self._test_method_error(
-            'PUT', '/bucket+bucket', swob.HTTPCreated)
+        code = _test_method_error(
+            'PUT', 'bucket+bucket', swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
-        code = self._test_method_error(
-            'PUT', '/192.168.11.1', swob.HTTPCreated)
+        code = _test_method_error(
+            'PUT', '192.168.11.1', swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
-        code = self._test_method_error(
-            'PUT', '/bucket.-bucket', swob.HTTPCreated)
+        code = _test_method_error(
+            'PUT', 'bucket.-bucket', swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
-        code = self._test_method_error(
-            'PUT', '/bucket-.bucket', swob.HTTPCreated)
+        code = _test_method_error(
+            'PUT', 'bucket-.bucket', swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
-        code = self._test_method_error('PUT', '/bucket*', swob.HTTPCreated)
+        code = _test_method_error('PUT', 'bucket*', swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
-        code = self._test_method_error('PUT', '/b', swob.HTTPCreated)
+        code = _test_method_error('PUT', 'b', swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
-        code = self._test_method_error(
-            'PUT', '/%s' % ''.join(['b' for x in range(64)]),
+        code = _test_method_error(
+            'PUT', '%s' % ''.join(['b' for x in range(64)]),
             swob.HTTPCreated)
         self.assertEqual(code, 'InvalidBucketName')
+
+    def test_bucket_PUT_error_with_virtual_style(self):
+        self._test_bucket_PUT_error(virtual_style=True)
+
+    def test_bucket_PUT_error_with_path_style(self):
+        self._test_bucket_PUT_error(virtual_style=False)
 
     @s3acl(s3acl_only=True)
     def test_bucket_PUT_error_non_swift_owner(self):

@@ -1008,6 +1008,9 @@ class S3Request(swob.Request):
 
         if self.bucket_in_host:
             obj = path_info[1:] or None
+            if not validate_bucket_name(self.bucket_in_host,
+                                        self.conf.dns_compliant_bucket_names):
+                raise InvalidBucketName(self.bucket_in_host)
             return self.bucket_in_host, obj
 
         try:

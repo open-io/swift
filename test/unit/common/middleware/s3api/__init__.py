@@ -140,13 +140,16 @@ class S3ApiTestCase(unittest.TestCase):
         return elem.find('./Message').text
 
     def _test_method_error(self, method, path, response_class, headers={},
-                           env={}, expected_xml_tags=None,
+                           env={}, virtual_style=False, expected_xml_tags=None,
                            expected_status=None):
         if not path.startswith('/'):
             path = '/' + path  # add a missing slash before the path
 
         uri = '/v1/AUTH_test'
-        if path != '/':
+        bucket_in_host = env.get('HTTP_HOST', '').split('.', 1)[0]
+        if bucket_in_host:
+            uri += f"/{bucket_in_host}"
+        elif path != '/':
             uri += path
 
         self.swift.register(method, uri, response_class, headers, None)
