@@ -1007,6 +1007,10 @@ class S3Request(swob.Request):
             raise InvalidURI(self.path)
 
         if self.bucket_in_host:
+            if not validate_bucket_name(
+               self.bucket_in_host, self.conf.dns_compliant_bucket_names):
+                # Ignore GET service case
+                raise InvalidBucketName(self.bucket_in_host)
             obj = path_info[1:] or None
             return self.bucket_in_host, obj
 
