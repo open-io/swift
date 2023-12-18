@@ -179,7 +179,10 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 s3_info.get('key'), self.anonymization_method,
                 self.anonymization_salt),
             'version_id': StrAnonymizer(
-                s3_info.get('version_id'), self.anonymization_method,
+                (
+                    s3_info.get('version_id')  # From the request
+                    or resp_headers.get('x-amz-version-id')  # From the response
+                ), self.anonymization_method,
                 self.anonymization_salt),
             'storage_class': s3_info.get('storage_class'),
             'requester': StrAnonymizer(
@@ -196,6 +199,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
     def log_request(self, req, status_int, bytes_received, bytes_sent,
                     start_time, end_time, resp_headers=None, ttfb=None,
                     wire_status_int=None, customer_access_logging=None):
+        resp_headers = resp_headers or {}
         s3_info = req.environ.get('s3api.info')
 
         if s3_info is not None and 'source.account' in s3_info:
@@ -325,7 +329,10 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'turn_around_time': turn_around_time,
             'referer': req.referer,
             'user_agent': req.user_agent,
-            'version_id': s3_info.get('version_id'),
+            'version_id': (
+                s3_info.get('version_id')  # From the request
+                or resp_headers.get('x-amz-version-id')  # From the response
+            ),
             'host_id': None,  # ignored
             'signature_version': s3_info.get('signature_version'),
             'cipher_suite': None,  # ignored
