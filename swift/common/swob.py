@@ -897,6 +897,7 @@ class Request(object):
     host = _req_environ_property('HTTP_HOST')
     host_url = _host_url_property()
     remote_addr = _req_environ_property('REMOTE_ADDR')
+    remote_port = _req_environ_property('REMOTE_PORT')
     remote_user = _req_environ_property('REMOTE_USER')
     user_agent = _req_environ_property('HTTP_USER_AGENT')
     query_string = _req_environ_property('QUERY_STRING')

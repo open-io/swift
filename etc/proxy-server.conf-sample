@@ -1280,7 +1280,7 @@ use = egg:swift#proxy_logging
 #
 # Template used to format access logs. All words surrounded by curly brackets
 # will be substituted with the appropriate values
-# log_msg_template = {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index} {s3token_time[check_token]} {slo_time[manifest_read]}
+# log_msg_template = {client_ip} {remote_addr} {remote_port} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index} {s3token_time[check_token]} {slo_time[manifest_read]}
 #
 # Log, in addition, the request before processing it.
 # pre_log = false
@@ -1299,7 +1299,7 @@ use = egg:swift#s3_logging
 #
 # Template used to format access logs. All words surrounded by curly brackets
 # will be substituted with the appropriate values
-# log_msg_template = {client_ip} {remote_addr} {requester} {end_time.datetime} {method} {path} {protocol} {status_int} {operation} {error_code} {referer} {user_agent} {auth_token} {signature_version} {authentication_type} {aws_chunked} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time}
+# log_msg_template = {client_ip} {remote_addr} {remote_port} {requester} {end_time.datetime} {method} {path} {protocol} {status_int} {operation} {error_code} {referer} {user_agent} {auth_token} {signature_version} {authentication_type} {aws_chunked} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time}
 #
 # Log requests from clients that have S3 Server Access Logging enabled.
 # customer_access_logging = false

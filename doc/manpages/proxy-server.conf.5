@@ -749,6 +749,7 @@ Template used to format access logs. All words surrounded by curly brackets will
 .RS 7
 .IP "client_ip              (anonymizable)"
 .IP "remote_addr            (anonymizable)"
+.IP "remote_port            (anonymizable)"
 .IP "method                 (request method)"
 .IP "path                   (anonymizable)"
 .IP "protocol"
@@ -775,8 +776,8 @@ Template used to format access logs. All words surrounded by curly brackets will
 .PD
 .RE
 
-.IP "Example: '{client_ip.anonymized} {remote_addr.anonymized} {start_time.iso8601} {end_time.H}:{end_time.M} {method} acc:{account} cnt:{container} obj:{object.anonymized}'"
-.IP "Default: '{client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index}'"
+.IP "Example: '{client_ip.anonymized} {remote_addr.anonymized} {remote_port.anonymized} {start_time.iso8601} {end_time.H}:{end_time.M} {method} acc:{account} cnt:{container} obj:{object.anonymized}'"
+.IP "Default: '{client_ip} {remote_addr} {remote_port} {end_time.datetime} {method} {path} {protocol} {status_int} {referer} {user_agent} {auth_token} {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers} {request_time} {source} {log_info} {start_time} {end_time} {policy_index}'"
 .IP "Warning: A bad log message template will raise an error in initialization."
 .RE
 .PD

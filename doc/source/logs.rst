@@ -30,10 +30,11 @@ designed to provide robust information and simple processing. It is possible
 to change this format with  the ``log_msg_template`` config parameter.
 The default log format is::
 
-    {client_ip} {remote_addr} {end_time.datetime} {method} {path} {protocol}
-        {status_int} {referer} {user_agent} {auth_token} {bytes_recvd}
-        {bytes_sent} {client_etag} {transaction_id} {headers} {request_time}
-        {source} {log_info} {start_time} {end_time} {policy_index}
+    {client_ip} {remote_addr} {remote_port} {end_time.datetime} {method} {path}
+        {protocol} {status_int} {referer} {user_agent} {auth_token}
+        {bytes_recvd} {bytes_sent} {client_etag} {transaction_id} {headers}
+        {request_time} {source} {log_info} {start_time} {end_time}
+        {policy_index}
 
 Some keywords, signaled by the (anonymizable) flag, can be anonymized by
 using the transformer 'anonymized'. The data are applied the hashing method of
@@ -46,7 +47,8 @@ seconds, milliseconds, microseconds and nanoseconds. Python's strftime
 directives can also be used as tranformers (a, A, b, B, c, d, H, I, j, m, M, p,
 S, U, w, W, x, X, y, Y, Z).
 
-Example {client_ip.anonymized} {remote_addr.anonymized} {start_time.iso8601}
+Example {client_ip.anonymized} {remote_addr.anonymized}
+            {remote_port.anonymized} {start_time.iso8601}
             {end_time.H}:{end_time.M} {method} acc:{account} cnt:{container}
             obj:{object.anonymized}
 
@@ -56,6 +58,8 @@ Example {client_ip.anonymized} {remote_addr.anonymized} {start_time.iso8601}
 client_ip           Swift's guess at the end-client IP, taken from various
                     headers in the request. (anonymizable)
 remote_addr         The IP address of the other end of the TCP connection.
+                    (anonymizable)
+remote_port         The port of the other end of the TCP connection.
                     (anonymizable)
 end_time            Timestamp of the request. (timestamp)
 method              The HTTP verb in the request.

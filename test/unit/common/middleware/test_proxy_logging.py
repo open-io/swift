@@ -397,12 +397,12 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'FAKE APP')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
 
     def test_basic_req_second_time(self):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})
@@ -498,12 +498,12 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'somechunksof data')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
         self.assertUpdateStats([('SOS.GET.200.xfer', len(resp_body))], app)
 
     def test_log_headers(self):
@@ -516,7 +516,7 @@ class TestProxyLogging(unittest.TestCase):
             # exhaust generator
             [x for x in resp]
             log_parts = self._log_parts(app)
-            headers = unquote(log_parts[14]).split('\n')
+            headers = unquote(log_parts[15]).split('\n')
             self.assertTrue('Host: localhost:80' in headers)
 
     def test_access_log_headers_only(self):
@@ -533,7 +533,7 @@ class TestProxyLogging(unittest.TestCase):
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
-        headers = unquote(log_parts[14]).split('\n')
+        headers = unquote(log_parts[15]).split('\n')
         self.assertIn('First: 1', headers)
         self.assertIn('Second: 2', headers)
         self.assertNotIn('Third: 3', headers)
@@ -552,8 +552,8 @@ class TestProxyLogging(unittest.TestCase):
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[11], str(len('FAKE APP')))
-        self.assertEqual(log_parts[10], str(len('some stuff')))
+        self.assertEqual(log_parts[12], str(len('FAKE APP')))
+        self.assertEqual(log_parts[11], str(len('some stuff')))
         self.assertUpdateStats([('object.PUT.200.xfer',
                                  len('some stuff') + len('FAKE APP')),
                                 ('object.policy.0.PUT.200.xfer',
@@ -572,8 +572,8 @@ class TestProxyLogging(unittest.TestCase):
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[11], str(len('FAKE APP')))
-        self.assertEqual(log_parts[10], str(len('some stuff')))
+        self.assertEqual(log_parts[12], str(len('FAKE APP')))
+        self.assertEqual(log_parts[11], str(len('some stuff')))
         self.assertUpdateStats([('object.PUT.200.xfer',
                                  len('some stuff') + len('FAKE APP'))],
                                app)
@@ -590,8 +590,8 @@ class TestProxyLogging(unittest.TestCase):
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[11], str(len('FAKE APP')))
-        self.assertEqual(log_parts[10], str(len('some stuff')))
+        self.assertEqual(log_parts[12], str(len('FAKE APP')))
+        self.assertEqual(log_parts[11], str(len('some stuff')))
         self.assertUpdateStats([('object.PUT.200.xfer',
                                  len('some stuff') + len('FAKE APP'))],
                                app)
@@ -608,8 +608,8 @@ class TestProxyLogging(unittest.TestCase):
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[11], str(len('FAKE APP')))
-        self.assertEqual(log_parts[10], str(len('some stuff\n')))
+        self.assertEqual(log_parts[12], str(len('FAKE APP')))
+        self.assertEqual(log_parts[11], str(len('some stuff\n')))
         self.assertUpdateStats([('container.POST.200.xfer',
                                len('some stuff\n') + len('FAKE APP'))],
                                app)
@@ -623,19 +623,21 @@ class TestProxyLogging(unittest.TestCase):
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
-        self.assertEqual(unquote(log_parts[4]), '/?x=3')
+        self.assertEqual(unquote(log_parts[5]), '/?x=3')
 
     def test_client_logging(self):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})
         app.access_logger = debug_logger()
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET',
-                                          'REMOTE_ADDR': '1.2.3.4'})
+                                          'REMOTE_ADDR': '1.2.3.4',
+                                          'REMOTE_PORT': '1234'})
         resp = app(req.environ, start_response)
         # exhaust generator
         [x for x in resp]
         log_parts = self._log_parts(app)
         self.assertEqual(log_parts[0], '1.2.3.4')  # client ip
         self.assertEqual(log_parts[1], '1.2.3.4')  # remote addr
+        self.assertEqual(log_parts[2], '1234')  # remote port
 
     def test_iterator_closing(self):
 
@@ -680,6 +682,7 @@ class TestProxyLogging(unittest.TestCase):
         req = Request.blank('/', environ={
             'REQUEST_METHOD': 'GET',
             'REMOTE_ADDR': '1.2.3.4',
+            'REMOTE_PORT': '1234',
             'HTTP_X_FORWARDED_FOR': '4.5.6.7,8.9.10.11'})
         resp = app(req.environ, start_response)
         # exhaust generator
@@ -687,12 +690,14 @@ class TestProxyLogging(unittest.TestCase):
         log_parts = self._log_parts(app)
         self.assertEqual(log_parts[0], '4.5.6.7')  # client ip
         self.assertEqual(log_parts[1], '1.2.3.4')  # remote addr
+        self.assertEqual(log_parts[2], '1234')  # remote port
 
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})
         app.access_logger = debug_logger()
         req = Request.blank('/', environ={
             'REQUEST_METHOD': 'GET',
             'REMOTE_ADDR': '1.2.3.4',
+            'REMOTE_PORT': '1234',
             'HTTP_X_CLUSTER_CLIENT_IP': '4.5.6.7'})
         resp = app(req.environ, start_response)
         # exhaust generator
@@ -700,6 +705,7 @@ class TestProxyLogging(unittest.TestCase):
         log_parts = self._log_parts(app)
         self.assertEqual(log_parts[0], '4.5.6.7')  # client ip
         self.assertEqual(log_parts[1], '1.2.3.4')  # remote addr
+        self.assertEqual(log_parts[2], '1234')  # remote port
 
     def test_facility(self):
         app = proxy_logging.ProxyLoggingMiddleware(
@@ -732,8 +738,8 @@ class TestProxyLogging(unittest.TestCase):
         next(resp)
         resp.close()  # raise a GeneratorExit in middleware app_iter loop
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[6], '499')
-        self.assertEqual(log_parts[11], '4')  # write length
+        self.assertEqual(log_parts[7], '499')
+        self.assertEqual(log_parts[12], '4')  # write length
 
     def test_exploding_body(self):
 
@@ -768,8 +774,8 @@ class TestProxyLogging(unittest.TestCase):
         except IOError:
             pass
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[6], '499')
-        self.assertEqual(log_parts[10], '-')  # read length
+        self.assertEqual(log_parts[7], '499')
+        self.assertEqual(log_parts[11], '-')  # read length
 
     def test_disconnect_on_read(self):
         app = proxy_logging.ProxyLoggingMiddleware(
@@ -784,8 +790,8 @@ class TestProxyLogging(unittest.TestCase):
         except IOError:
             pass
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[6], '499')
-        self.assertEqual(log_parts[10], '-')  # read length
+        self.assertEqual(log_parts[7], '499')
+        self.assertEqual(log_parts[11], '-')  # read length
 
     def test_app_exception(self):
         app = proxy_logging.ProxyLoggingMiddleware(
@@ -797,8 +803,8 @@ class TestProxyLogging(unittest.TestCase):
         except Exception:
             pass
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[6], '500')
-        self.assertEqual(log_parts[10], '-')  # read length
+        self.assertEqual(log_parts[7], '500')
+        self.assertEqual(log_parts[11], '-')  # read length
 
     def test_no_content_length_no_transfer_encoding_with_list_body(self):
         app = proxy_logging.ProxyLoggingMiddleware(
@@ -811,12 +817,12 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'line1\nline2\n')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
 
     def test_no_content_length_no_transfer_encoding_with_empty_strings(self):
         app = proxy_logging.ProxyLoggingMiddleware(
@@ -829,12 +835,12 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'')
-        self.assertEqual(log_parts[11], '-')
+        self.assertEqual(log_parts[12], '-')
 
     def test_no_content_length_no_transfer_encoding_with_generator(self):
 
@@ -854,12 +860,12 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'abc')
-        self.assertEqual(log_parts[11], '3')
+        self.assertEqual(log_parts[12], '3')
 
     def test_req_path_info_popping(self):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})
@@ -870,12 +876,12 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/v1/something')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/v1/something')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'FAKE APP')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
 
     def test_ipv6(self):
         ipv6addr = '2001:db8:85a3:8d3:1319:8a2e:370:7348'
@@ -883,17 +889,19 @@ class TestProxyLogging(unittest.TestCase):
         app.access_logger = debug_logger()
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'})
         req.remote_addr = ipv6addr
+        req.remote_port = '1234'
         resp = app(req.environ, start_response)
         resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
         self.assertEqual(log_parts[0], ipv6addr)
         self.assertEqual(log_parts[1], ipv6addr)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[2], '1234')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'FAKE APP')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
 
     def test_log_info_none(self):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})
@@ -918,7 +926,7 @@ class TestProxyLogging(unittest.TestCase):
         req.environ['swift.log_info'] = ['one']
         list(app(req.environ, start_response))
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[17], 'one')
+        self.assertEqual(log_parts[18], 'one')
 
     def test_log_info_multiple(self):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})
@@ -927,7 +935,7 @@ class TestProxyLogging(unittest.TestCase):
         req.environ['swift.log_info'] = ['one', 'and two']
         list(app(req.environ, start_response))
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[17], 'one%2Cand%20two')
+        self.assertEqual(log_parts[18], 'one%2Cand%20two')
 
     def test_log_auth_token(self):
         auth_token = 'b05bf940-0464-4c0e-8c70-87717d2d73e8'
@@ -940,7 +948,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], '-')
+            self.assertEqual(log_parts[10], '-')
             # Has x-auth-token header
             app = proxy_logging.filter_factory({})(FakeApp())
             app.access_logger = debug_logger()
@@ -949,7 +957,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], 'b05bf940-0464-4c...', log_parts)
+            self.assertEqual(log_parts[10], 'b05bf940-0464-4c...', log_parts)
 
             # Truncate to first 8 characters
             app = proxy_logging.filter_factory(
@@ -959,7 +967,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], '-')
+            self.assertEqual(log_parts[10], '-')
             app = proxy_logging.filter_factory(
                 {'reveal_sensitive_prefix': '8'})(FakeApp())
             app.access_logger = debug_logger()
@@ -968,7 +976,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], 'b05bf940...')
+            self.assertEqual(log_parts[10], 'b05bf940...')
 
             # Token length and reveal_sensitive_prefix are same (no truncate)
             app = proxy_logging.filter_factory(
@@ -979,7 +987,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], auth_token)
+            self.assertEqual(log_parts[10], auth_token)
 
             # No effective limit on auth token
             app = proxy_logging.filter_factory(
@@ -991,7 +999,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], auth_token)
+            self.assertEqual(log_parts[10], auth_token)
 
             # Don't log x-auth-token
             app = proxy_logging.filter_factory(
@@ -1001,7 +1009,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], '-')
+            self.assertEqual(log_parts[10], '-')
             app = proxy_logging.filter_factory(
                 {'reveal_sensitive_prefix': '0'})(FakeApp())
             app.access_logger = debug_logger()
@@ -1010,7 +1018,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
             log_parts = self._log_parts(app)
-            self.assertEqual(log_parts[9], '...')
+            self.assertEqual(log_parts[10], '...')
 
             # Avoids pyflakes error, "local variable 'resp_body' is assigned to
             # but never used
@@ -1026,29 +1034,30 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(len(log_parts), 21)
+        self.assertEqual(len(log_parts), 22)
         self.assertEqual(log_parts[0], '-')
         self.assertEqual(log_parts[1], '-')
-        self.assertEqual(log_parts[2], '26/Apr/1970/17/46/41')
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
-        self.assertEqual(log_parts[7], '-')
+        self.assertEqual(log_parts[2], '-')
+        self.assertEqual(log_parts[3], '26/Apr/1970/17/46/41')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(log_parts[8], '-')
         self.assertEqual(log_parts[9], '-')
         self.assertEqual(log_parts[10], '-')
+        self.assertEqual(log_parts[11], '-')
         self.assertEqual(resp_body, b'FAKE APP')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
-        self.assertEqual(log_parts[12], '-')
+        self.assertEqual(log_parts[12], str(len(resp_body)))
         self.assertEqual(log_parts[13], '-')
         self.assertEqual(log_parts[14], '-')
-        self.assertEqual(log_parts[15], '1.0000')
-        self.assertEqual(log_parts[16], '-')
+        self.assertEqual(log_parts[15], '-')
+        self.assertEqual(log_parts[16], '1.0000')
         self.assertEqual(log_parts[17], '-')
-        self.assertEqual(log_parts[18], '10000000.000000000')
-        self.assertEqual(log_parts[19], '10000001.000000000')
-        self.assertEqual(log_parts[20], '-')
+        self.assertEqual(log_parts[18], '-')
+        self.assertEqual(log_parts[19], '10000000.000000000')
+        self.assertEqual(log_parts[20], '10000001.000000000')
+        self.assertEqual(log_parts[21], '-')
 
     def test_dual_logging_middlewares(self):
         # Since no internal request is being made, outer most proxy logging
@@ -1065,12 +1074,12 @@ class TestProxyLogging(unittest.TestCase):
         resp_body = b''.join(resp)
         self._log_parts(log0, should_be_empty=True)
         log_parts = self._log_parts(log1)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'FAKE APP')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
 
     def test_dual_logging_middlewares_w_inner(self):
 
@@ -1116,20 +1125,20 @@ class TestProxyLogging(unittest.TestCase):
 
         # Inner most logger should have logged the app's response
         log_parts = self._log_parts(log0)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
-        self.assertEqual(log_parts[11], str(len('FAKE APP')))
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
+        self.assertEqual(log_parts[12], str(len('FAKE APP')))
 
         # Outer most logger should have logged the other middleware's response
         log_parts = self._log_parts(log1)
-        self.assertEqual(log_parts[3], 'GET')
-        self.assertEqual(log_parts[4], '/')
-        self.assertEqual(log_parts[5], 'HTTP/1.0')
-        self.assertEqual(log_parts[6], '200')
+        self.assertEqual(log_parts[4], 'GET')
+        self.assertEqual(log_parts[5], '/')
+        self.assertEqual(log_parts[6], 'HTTP/1.0')
+        self.assertEqual(log_parts[7], '200')
         self.assertEqual(resp_body, b'FAKE MIDDLEWARE')
-        self.assertEqual(log_parts[11], str(len(resp_body)))
+        self.assertEqual(log_parts[12], str(len(resp_body)))
 
     def test_policy_index(self):
         # Policy index can be specified by X-Backend-Storage-Policy-Index
@@ -1140,7 +1149,7 @@ class TestProxyLogging(unittest.TestCase):
         resp = app(req.environ, start_response)
         b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[20], '1')
+        self.assertEqual(log_parts[21], '1')
 
         # Policy index can be specified by X-Backend-Storage-Policy-Index
         # in the response header for container API
@@ -1161,7 +1170,7 @@ class TestProxyLogging(unittest.TestCase):
             resp = app(req.environ, start_response)
             b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[20], '1')
+        self.assertEqual(log_parts[21], '1')
 
     def test_obscure_req(self):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {})

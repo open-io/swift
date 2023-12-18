@@ -21,7 +21,7 @@ to plug in your own logging format/method.
 
 The logging format implemented below is as follows:
 
-client_ip remote_addr end_time.datetime method path protocol
+client_ip remote_addr remote_port end_time.datetime method path protocol
     status_int referer user_agent auth_token bytes_recvd bytes_sent
     client_etag transaction_id headers request_time source log_info
     start_time end_time policy_index
@@ -33,6 +33,8 @@ be separated with a simple .split()
   client_ip is swift's best guess at the end-user IP, extracted variously
   from the X-Forwarded-For header, X-Cluster-Ip header, or the REMOTE_ADDR
   environment variable.
+
+* remote_port is the contents of the REMOTE_PORT environment variable.
 
 * source (swift.source in the WSGI environment) indicates the code
   that generated the request, such as most middleware. (See below for
@@ -143,11 +145,11 @@ class ProxyLoggingMiddleware(object):
         self, app, conf, logger=None, default_log_route='proxy-logging',
         default_access_log_route='proxy-access',
         default_log_msg_template=(
-            '{client_ip} {remote_addr} {end_time.datetime} {method} {path} '
-            '{protocol} {status_int} {referer} {user_agent} {auth_token} '
-            '{bytes_recvd} {bytes_sent} {client_etag} {transaction_id} '
-            '{headers} {request_time} {source} {log_info} {start_time} '
-            '{end_time} {policy_index}'
+            '{client_ip} {remote_addr} {remote_port} {end_time.datetime} '
+            '{method} {path} {protocol} {status_int} {referer} {user_agent} '
+            '{auth_token} {bytes_recvd} {bytes_sent} {client_etag} '
+            '{transaction_id} {headers} {request_time} {source} {log_info} '
+            '{start_time} {end_time} {policy_index}'
         )
     ):
         self.app = app
@@ -241,6 +243,8 @@ class ProxyLoggingMiddleware(object):
             'client_ip': StrAnonymizer('1.2.3.4', self.anonymization_method,
                                        self.anonymization_salt),
             'remote_addr': StrAnonymizer('4.3.2.1', self.anonymization_method,
+                                         self.anonymization_salt),
+            'remote_port': StrAnonymizer('1234', self.anonymization_method,
                                          self.anonymization_salt),
             'path': StrAnonymizer('/', self.anonymization_method,
                                   self.anonymization_salt),
@@ -368,6 +372,9 @@ class ProxyLoggingMiddleware(object):
                                        self.anonymization_method,
                                        self.anonymization_salt),
             'remote_addr': StrAnonymizer(req.remote_addr,
+                                         self.anonymization_method,
+                                         self.anonymization_salt),
+            'remote_port': StrAnonymizer(req.remote_port,
                                          self.anonymization_method,
                                          self.anonymization_salt),
             'path': StrAnonymizer(req.path_qs, self.anonymization_method,

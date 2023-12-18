@@ -190,7 +190,7 @@ class TestS3ApiObj(S3ApiTestCase):
         access_lines = self.logger.get_lines_for_level('info')
         self.assertEqual(1, len(access_lines))
         parts = access_lines[0].split()
-        self.assertEqual(' '.join(parts[3:7]),
+        self.assertEqual(' '.join(parts[4:8]),
                          'GET /bucket/object HTTP/1.0 200')
         self.assertEqual(parts[-1], '2')
 
