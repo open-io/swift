@@ -181,13 +181,17 @@ class RateLimitMiddleware(object):
                     "ratelimit_listing/%s/%s" % (account_name, container_name),
                     container_rate))
 
-        if account_name and req.method in ('PUT', 'DELETE', 'POST', 'COPY'):
+        if account_name:
             if global_ratelimit:
+                if req.method in ('PUT', 'DELETE', 'POST', 'COPY'):
+                    _type = "write"
+                else:
+                    _type = "read"
                 try:
                     global_ratelimit = float(global_ratelimit)
                     if global_ratelimit > 0:
                         keys.append((
-                            "ratelimit/global-write/%s" % account_name,
+                            "ratelimit/global-%s/%s" % (_type, account_name),
                             global_ratelimit))
                 except ValueError:
                     pass
@@ -250,8 +254,14 @@ class RateLimitMiddleware(object):
         try:
             account_info = get_account_info(req.environ, self.app,
                                             swift_source='RL')
-            account_global_ratelimit = \
-                account_info.get('sysmeta', {}).get('global-write-ratelimit')
+            if req.method in ('PUT', 'DELETE', 'POST', 'COPY'):
+                account_global_ratelimit = \
+                    account_info.get('sysmeta',
+                                     {}).get('global-write-ratelimit')
+            else:
+                account_global_ratelimit = \
+                    account_info.get('sysmeta',
+                                     {}).get('global-read-ratelimit')
         except ValueError:
             account_global_ratelimit = None
 
