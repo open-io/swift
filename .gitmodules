@@ -1,7 +1,7 @@
 [submodule "oio-sds"]
 	path = third_party/oio-sds
 	url = ssh://git@stash.ovh.net:7999/openio/oio-sds.git
-	branch = master
+	branch = dev/lmetzger/encryption-tool
 
 [submodule "ceph-s3tests"]
 	path = third_party/ceph-s3tests

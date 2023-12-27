@@ -20,7 +20,8 @@ echo ""
 run_functional_test s3-encryption.cfg.in \
   encryption-tests.sh \
   s3-multipart.sh \
-  s3-mpu.py
+  s3-mpu.py \
+  encryption-tool.py
 
 echo "############################################################"
 echo "# Data at rest encryption tests, with bucket-specific keys"
