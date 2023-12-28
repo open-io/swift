@@ -210,7 +210,7 @@ class Application(object):
             conf.get('recoverable_node_timeout', self.node_timeout))
         self.conn_timeout = float(conf.get('conn_timeout', 0.5))
         self.client_timeout = float(conf.get('client_timeout', 60))
-        self.retry_after = float(conf.get('retry_after', 1))
+        self.retry_after = int(conf.get('retry_after', 1))
         self.object_chunk_size = int(conf.get('object_chunk_size', 65536))
         self.client_chunk_size = int(conf.get('client_chunk_size', 65536))
         self.trans_id_suffix = conf.get('trans_id_suffix', '')

@@ -27,9 +27,21 @@ from mock import MagicMock
 from oio.common.exceptions import MethodNotAllowed, ServiceBusy
 from swift.common.oio_utils import handle_not_allowed, handle_service_busy
 from swift.common.swob import HTTPException
+from swift.common.ring import FakeRing
+from swift.proxy import oio_server as proxy_server
+from oio_tests.unit import FakeStorageAPI, debug_logger
 
 
 class TestOioUtils(unittest.TestCase):
+    def setUp(self):
+        self.logger = debug_logger('proxy-server')
+        self.storage = FakeStorageAPI(logger=self.logger)
+
+        self.app = proxy_server.Application(
+            {'sds_namespace': "TEST"},
+            account_ring=FakeRing(), container_ring=FakeRing(),
+            storage=self.storage, logger=self.logger)
+
     def test_handle_not_allowed(self):
         def worm_cluster(*args, **kwargs):
             raise MethodNotAllowed("Cluster is read only")
@@ -60,6 +72,18 @@ class TestOioUtils(unittest.TestCase):
         self.assertEqual(res.status_int, 503)
         self.assertIn("Retry-After", res.headers)
         mself.app.retry_after.__str__.assert_called_once()
+
+    def test_retry_after_value(self):
+        def busy_cluster(*args, **kwargs):
+            raise ServiceBusy("jpp")
+
+        mself = MagicMock()
+        mself.app = self.app
+        wrapped = handle_service_busy(busy_cluster)
+        res = wrapped(mself, None)
+        self.assertIsInstance(res, HTTPException)
+        self.assertEqual(res.status_int, 503)
+        self.assertEqual(res.headers["Retry-After"], str(1))
 
     def test_handle_service_busy_frozen(self):
         def busy_cluster(*args, **kwargs):
