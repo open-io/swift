@@ -864,6 +864,7 @@ class SloGetContext(WSGIContext):
             if not slo_marker:  # will also catch non-2xx responses
                 got_timestamp = self._response_header_value(
                     'x-backend-timestamp') or '0'
+                slo_timestamp = slo_timestamp or '0'
                 if Timestamp(got_timestamp) >= Timestamp(slo_timestamp):
                     # We've got a newer response available, so serve that.
                     # Note that if there's data, it's going to be a 200 now,
