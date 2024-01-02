@@ -146,7 +146,6 @@ ceph_s3:
   s3tests.functional.test_s3.test_encryption_sse_c_other_key: {status: KNOWN}
   s3tests.functional.test_s3.test_encryption_sse_c_post_object_authenticated_request: {status: KNOWN}
   s3tests.functional.test_s3.test_encryption_sse_c_present: {status: KNOWN}
-  s3tests.functional.test_s3.test_get_obj_head_tagging: {status: KNOWN}
   s3tests.functional.test_s3.test_get_obj_tagging: {status: KNOWN}
   s3tests.functional.test_s3.test_get_tags_acl_public: {status: KNOWN}
   s3tests.functional.test_s3.test_lifecycle_deletemarker_expiration: {status: KNOWN}

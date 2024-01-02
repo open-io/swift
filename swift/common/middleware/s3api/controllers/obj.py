@@ -15,6 +15,7 @@
 
 import functools
 import json
+import xmltodict
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
@@ -156,6 +157,15 @@ class ObjectController(Controller):
         if HEADER_LEGAL_HOLD_STATUS in resp.sysmeta_headers:
             resp.headers['ObjectLock-LegalHoldStatus'] = \
                 resp.sysmeta_headers[HEADER_LEGAL_HOLD_STATUS]
+
+        if OBJECT_TAGGING_HEADER in resp.sysmeta_headers:
+            xml_tags = resp.sysmeta_headers[OBJECT_TAGGING_HEADER]
+            tags_json = xmltodict.parse(xml_tags)
+            tagset = tags_json["Tagging"]["TagSet"]
+            if not isinstance(tagset["Tag"], list):
+                tagset["Tag"] = [tagset["Tag"]]
+            resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
+
         if req.method == 'HEAD':
             resp.app_iter = None
             # HEAD requests without keys on encrypted objects are allowed for

@@ -154,6 +154,43 @@ class TestS3BasicTest(unittest.TestCase):
             b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
             resp.content)
 
+    def test_object_tag_count(self):
+        key = "obj-tagged"
+        with tempfile.NamedTemporaryFile() as file:
+            file.write(b' ' * 111)
+            file.flush()
+            run_awscli_s3api('put-object', '--body', file.name,
+                             bucket=self.bucket, key=key)
+        run_awscli_s3api(
+            'put-object-tagging',
+            '--tagging', 'TagSet=[{Key=k1,Value=v1}]',
+            bucket=self.bucket, key=key)
+
+        data = run_awscli_s3api(
+            "get-object", '/dev/null',
+            bucket=self.bucket, key=key)
+        self.assertEqual(1, data['TagCount'])
+
+        run_awscli_s3api(
+            'put-object-tagging',
+            '--tagging',
+            'TagSet=[{Key=k1,Value=v1}, {Key=k2,Value=v2}, {Key=k3,Value=v3}]',
+            bucket=self.bucket, key=key)
+
+        data = run_awscli_s3api(
+            "get-object", '/dev/null',
+            bucket=self.bucket, key=key)
+        self.assertEqual(3, data['TagCount'])
+
+        run_awscli_s3api(
+            'delete-object-tagging',
+            bucket=self.bucket, key=key)
+
+        data = run_awscli_s3api(
+            "get-object", '/dev/null',
+            bucket=self.bucket, key=key)
+        self.assertNotIn('TagCount', data)
+
     def test_get_object_with_range(self):
         key = "file"
         with tempfile.NamedTemporaryFile() as file:

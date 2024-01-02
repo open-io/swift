@@ -127,8 +127,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_get_nonpublicpolicy_deny_bucket_policy_status:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_get_obj_head_tagging:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_get_public_acl_bucket_policy_status:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_get_publicpolicy_acl_bucket_policy_status:
