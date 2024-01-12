@@ -34,7 +34,7 @@ from test.unit.common.middleware.s3api import S3ApiTestCase
 EXPECTED = (
     b'<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<ReplicationConfiguration'
     b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
-    b'<Role>arn:aws:iam::329840991682:role/replicationRole</Role>'
+    b'<Role>arn:aws:iam::012345678942:role/replicationRole</Role>'
     b'<Rule><DeleteMarkerReplication><Status>Disabled</Status>'
     b'</DeleteMarkerReplication><Destination>'
     b'<Bucket>arn:aws:s3:::replication-dst</Bucket></Destination>'
@@ -52,7 +52,7 @@ EXPECTED = (
 REPLICATION_CONF_XML = (
     b'<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<ReplicationConfiguration'
     b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
-    b'<Role>arn:aws:iam::329840991682:role/replicationRole</Role>'
+    b'<Role>arn:aws:iam::012345678942:role/replicationRole</Role>'
     b'<Rule><DeleteMarkerReplication>'
     b'<Status>Disabled</Status>'
     b'</DeleteMarkerReplication>'
@@ -73,7 +73,7 @@ REPLICATION_CONF_XML = (
 )
 
 REPLICATION_CONF_DICT = {
-    "role": "arn:aws:iam::329840991682:role/replicationRole",
+    "role": "arn:aws:iam::012345678942:role/replicationRole",
     "rules": {
         "2dfdcf571182407293d35b52959876e3": {
             "ID": "2dfdcf571182407293d35b52959876e3",
@@ -93,7 +93,7 @@ REPLICATION_CONF_JSON = json.dumps(REPLICATION_CONF_DICT)
 BASIC_CONF = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -152,7 +152,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role>arn:aws:iam::329840991682:role/replicationRole</Role>
+                <Role>arn:aws:iam::012345678942:role/replicationRole</Role>
                 <Rule>
                     <DeleteMarkerReplication>
                         <Status>Disabled</Status>
@@ -181,7 +181,7 @@ class TestS3ApiReplication(S3ApiTestCase):
 
     def test_dict_conf_to_xml(self):
         conf_dict_test = {
-            "role": "arn:aws:iam::329840991682:role/replicationRole",
+            "role": "arn:aws:iam::012345678942:role/replicationRole",
             "rules": {
                 "d4e1ba32c7fe49f0bb6062838ae48bb2": {
                     "ID": 'd4e1ba32c7fe49f0bb6062838ae48bb2',
@@ -219,7 +219,7 @@ class TestS3ApiReplication(S3ApiTestCase):
 
     def test_optimize_configuration(self):
         conf = {
-            "Role": "arn:aws:iam::329840991682:role/replicationRole",
+            "Role": "arn:aws:iam::012345678942:role/replicationRole",
             "Rules": [
                 {
                     "ID": "rule1",
@@ -276,7 +276,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         optimized = _optimize_replication_conf(conf)
         self.assertIn("role", optimized)
         self.assertEqual(optimized["role"],
-                         "arn:aws:iam::329840991682:role/replicationRole")
+                         "arn:aws:iam::012345678942:role/replicationRole")
         self.assertIn("replications", optimized)
         self.assertEqual(optimized["replications"],
                          {"arn:aws:s3:::bucket1": ["rule4", "rule2", "rule1"]})
@@ -391,7 +391,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <ID>2dfdcf571182407293d35b52959876e3</ID>
                     <Priority>1</Priority>
@@ -443,7 +443,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <ID>2dfdcf571182407293d35b52959876e3</ID>
                     <Priority>1</Priority>
@@ -490,11 +490,161 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("400 Bad Request", status)
         self.assertIn("Found duplicate priority", str(body))
 
-    def test_PUT_priority_not_valid(self):
+    def test_PUT_no_role(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e3</ID>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Expecting an element Role, got nothing", str(body))
+
+    def test_PUT_role_empty(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
                 <Role></Role>
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e3</ID>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn("Expecting an element Role, got nothing", str(body))
+
+    def test_PUT_role_malformed(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>this-role-is-malformed</Role>
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e3</ID>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn(
+            "Invalid Role specified in replication config",
+            str(body)
+        )
+
+    def test_PUT_role_wrong_project_id(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::admin:role/replicationRole</Role>
+                <Rule>
+                    <ID>2dfdcf571182407293d35b52959876e3</ID>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("403 Forbidden", status)
+        self.assertIn("Access Denied", str(body))
+
+    def test_PUT_priority_not_valid(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <ID>2dfdcf571182407293d35b52959876e3</ID>
                     <Priority>-1</Priority>
@@ -533,7 +683,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <ID>2dfdcf571182407293d35b52959876e3</ID>
                     <Priority>1</Priority>
@@ -580,7 +730,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -615,7 +765,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <DeleteMarkerReplication>
                         <Status>Enabled</Status>
@@ -653,7 +803,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <Filter>
@@ -689,7 +839,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -725,7 +875,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -804,7 +954,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = """<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <ID>fõõ</ID>
                     <Destination>
@@ -834,7 +984,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = f"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <ID>{rule_id}</ID>
                     <Destination>
@@ -863,7 +1013,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Prefix>
         """
@@ -900,7 +1050,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
         """
         for _ in range(1001):
             config += rule
@@ -939,7 +1089,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -976,7 +1126,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -1017,7 +1167,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -1057,7 +1207,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -1095,7 +1245,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -1131,7 +1281,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -1169,7 +1319,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>
@@ -1208,7 +1358,7 @@ class TestS3ApiReplication(S3ApiTestCase):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-                <Role></Role>
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
                 <Rule>
                     <Priority>1</Priority>
                     <DeleteMarkerReplication>

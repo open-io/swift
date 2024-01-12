@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import json
+import re
 import uuid
 from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -27,7 +28,7 @@ from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
     MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
-    S3NotImplemented, ServiceUnavailable
+    S3NotImplemented, ServiceUnavailable, AccessDenied
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header, is_valid_token
 from swift.common.utils import config_true_value, public
@@ -50,6 +51,11 @@ MAX_REPLICATION_BODY_SIZE = 256 * 1024  # Arbitrary
 MAX_RULES_ALLOWED = 1000
 ARN_AWS_PREFIX = "arn:aws:"
 DEST_BUCKET_PREFIX = ARN_AWS_PREFIX + "s3:::"
+
+
+replication_role_re = re.compile(
+    "arn:aws:iam::([a-zA-Z0-9]+):role/([a-zA-Z0-9]+)"
+)
 
 
 def is_ascii(content):
@@ -506,6 +512,27 @@ class ReplicationController(Controller):
         for rule in rules:
             self._validate_rule(rule, req)
 
+    def _validate_role(self, role, req):
+        """
+        Ensure that the owner of the bucket and the project_id are equals.
+        <role> looks like: "arn:aws:iam::<project_id>:role/<role_id>"
+        """
+        # This should already been check by <_validate_configuration()>
+        if not role:
+            raise InvalidRequest("Expecting an element Role, got nothing")
+        match = replication_role_re.search(role)
+        if not match:
+            raise InvalidArgument(
+                "Role",
+                role,
+                "Invalid Role specified in replication configuration"
+            )
+        role_account_id = match.group(1)
+        if role_account_id != req.account.split("_")[1]:
+            raise AccessDenied()
+        # role_replicator_id = match.group(2)
+        # role_replicator_id is not used yet but needs to exist.
+
     @set_s3_operation_rest('REPLICATION')
     @ratelimit
     @public
@@ -550,6 +577,7 @@ class ReplicationController(Controller):
         # Validation
         self._validate_configuration(config, req)
         dict_conf = replication_xml_conf_to_dict(config)
+        self._validate_role(dict_conf.get("Role"), req)
         dict_conf = _optimize_replication_conf(dict_conf)
         json_conf = json.dumps(dict_conf, separators=(',', ':'))
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
