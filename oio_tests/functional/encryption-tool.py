@@ -35,6 +35,8 @@ class TestEncryptionTool(unittest.TestCase):
             if "NoSuchBucket" not in str(exc):
                 raise
 
+    def call_decrypter(self)
+
     def test_object_re_encryption(self):
         object = random_str(10)
         body = random_str(10).encode()
@@ -95,6 +97,7 @@ class TestEncryptionTool(unittest.TestCase):
             process1 = subprocess.Popen(
                 ["cat", encrypted_data_file.name], stdout=subprocess.PIPE
             )
+            encrypted_data, err = process1.communicate()
 
             # Decrypt data
             cmd = [
@@ -112,8 +115,10 @@ class TestEncryptionTool(unittest.TestCase):
             ]
             print(*cmd)
             process2 = subprocess.Popen(
-                cmd, stdin=process1.stdout, stdout=subprocess.PIPE
+                #cmd, stdin=process1.stdout, stdout=subprocess.PIPE
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE
             )
+            process2.stdin.write(encrypted_data)
             decrypted_data, err = process2.communicate()
             metadata_json_file.seek(0)
             m = metadata_json_file.read()
@@ -184,6 +189,31 @@ class TestEncryptionTool(unittest.TestCase):
                     json.loads(start_metadata).get(key),
                     json.loads(reencrypted_metadata).get(key),
                 )
+
+            # Re decrypt obj
+            cat_process = subprocess.Popen(
+                ["cat", encrypted_data_file.name], stdout=subprocess.PIPE
+            )
+            cmd = [
+                "./third_party/oio-sds/tools/decrypter.py",
+                "--account",
+                self.account,
+                "--container",
+                self.bucket,
+                "--obj",
+                object,
+                "--metadata",
+                metadata_json_file.name,
+                "--iv",
+                iv_json_file.name,
+            ]
+            print(*cmd)
+            decrypt_process = subprocess.Popen(
+                cmd, stdin=cat_process.stdout, stdout=subprocess.PIPE
+            )
+            decrypted_data, err = decrypt_process.communicate()
+            metadata_json_file.seek(0)
+            m = metadata_json_file.read()
 
 
 if __name__ == "__main__":
