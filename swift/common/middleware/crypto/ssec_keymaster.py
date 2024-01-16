@@ -85,11 +85,12 @@ class KmsWrapper(object):
         self.cache_time = cache_time
         self.no_secret_cache_time = no_secret_cache_time
 
-    def create_bucket_secret(self, bucket, account, secret_id=None,
+    def create_bucket_secret(self, bucket, account, region, secret_id=None,
                              secret_bytes=32, reqid=None):
         secret_meta = self.kms.create_secret(
             account,
             bucket,
+            region,
             secret_id=secret_id,
             secret_bytes=secret_bytes,
             reqid=reqid,
@@ -114,7 +115,7 @@ class KmsWrapper(object):
             self.cache.set(ckey, NO_SECRET, time=1)
             self.cache.delete(ckey)
 
-    def get_bucket_secret(self, bucket, account, secret_id=None,
+    def get_bucket_secret(self, bucket, account, region, secret_id=None,
                           reqid=None):
         ckey = f"sses3/{account}/{bucket}/{secret_id}"
         if self.cache is not None:
@@ -127,6 +128,7 @@ class KmsWrapper(object):
             secret_meta = self.kms.get_secret(
                 account,
                 bucket,
+                region,
                 secret_id=secret_id,
                 reqid=reqid,
             )
@@ -229,9 +231,12 @@ class SsecKeyMasterContext(KeyMasterContext):
         account, bucket = self.req_account_and_bucket()
         if not bucket:
             return None
+        bucket_info = self.req.get_bucket_info(self.app)
+        region = bucket_info.get('region')
         b64_secret = self.kms.get_bucket_secret(
             bucket,
             account=account,
+            region=region,
             secret_id=secret_id,
             reqid=self.trans_id
         )
@@ -313,11 +318,14 @@ class SsecKeyMasterContext(KeyMasterContext):
             # Empty whitelist will be ignored
             if (not self.keymaster.account_whitelist
                     or account in self.keymaster.account_whitelist):
-                self.keymaster.logger.debug("Creating secret for %s/%s",
-                                            account, bucket)
+                bucket_info = req.get_bucket_info(self.app)
+                region = bucket_info.get('region')
+                self.keymaster.logger.debug("Creating secret for %s/%s/%s",
+                                            account, bucket, region)
                 secret_created = self.kms.create_bucket_secret(
                     bucket,
                     account=account,
+                    region=region,
                     secret_id=self.keymaster.active_secret_id,
                     secret_bytes=self.keymaster.sses3_secret_bytes,
                     reqid=self.trans_id
