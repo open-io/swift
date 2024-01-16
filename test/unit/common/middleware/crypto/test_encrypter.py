@@ -532,12 +532,34 @@ class TestEncrypter(unittest.TestCase):
         req = Request.blank('/v1/a/c/o', environ=env, body='', headers=hdrs)
 
         call_headers = []
-        resp = req.get_response(encrypter.Encrypter(NonReadingApp(), {}))
+        body_key = os.urandom(32)
+        object_key = fetch_crypto_keys()['object']
+        with mock.patch(
+            'swift.common.middleware.crypto.crypto_utils.'
+            'Crypto.create_random_key',
+                return_value=body_key):
+            resp = req.get_response(encrypter.Encrypter(NonReadingApp(), {}))
         self.assertEqual('201 Created', resp.status)
         self.assertEqual('response etag', resp.headers['Etag'])
         self.assertEqual(1, len(call_headers))
         self.assertEqual('etag from client', call_headers[0]['etag'])
+
+        # verify body crypto meta
+        actual = call_headers[0]['X-Object-Sysmeta-Crypto-Body-Meta']
+        actual = json.loads(urlparse.unquote_plus(actual))
+        self.assertEqual(Crypto().cipher, actual['cipher'])
+        self.assertEqual(FAKE_IV, base64.b64decode(actual['iv']))
+
+        # verify wrapped body key
+        expected_wrapped_key = encrypt(body_key, object_key, FAKE_IV)
+        self.assertEqual(expected_wrapped_key,
+                         base64.b64decode(actual['body_key']['key']))
+        self.assertEqual(FAKE_IV,
+                         base64.b64decode(actual['body_key']['iv']))
+        self.assertEqual(fetch_crypto_keys()['id'], actual['key_id'])
+
         # verify no encryption footers
+        call_headers[0].pop('X-Object-Sysmeta-Crypto-Body-Meta')
         for k in call_headers[0]:
             self.assertFalse(k.lower().startswith('x-object-sysmeta-crypto-'))
 
@@ -584,6 +606,7 @@ class TestEncrypter(unittest.TestCase):
         for k, v in other_footers.items():
             self.assertEqual(v, call_headers[0][k])
         # verify no encryption footers
+        call_headers[0].pop('X-Object-Sysmeta-Crypto-Body-Meta')
         for k in call_headers[0]:
             self.assertFalse(k.lower().startswith('x-object-sysmeta-crypto-'))
 
@@ -607,6 +630,7 @@ class TestEncrypter(unittest.TestCase):
         for k, v in other_footers.items():
             self.assertEqual(v, call_headers[0][k])
         # verify no encryption footers
+        call_headers[0].pop('X-Object-Sysmeta-Crypto-Body-Meta')
         for k in call_headers[0]:
             self.assertFalse(k.lower().startswith('x-object-sysmeta-crypto-'))
 
@@ -630,6 +654,7 @@ class TestEncrypter(unittest.TestCase):
         for k, v in other_footers.items():
             self.assertEqual(v, call_headers[0][k])
         # verify no encryption footers
+        call_headers[0].pop('X-Object-Sysmeta-Crypto-Body-Meta')
         for k in call_headers[0]:
             self.assertFalse(k.lower().startswith('x-object-sysmeta-crypto-'))
 

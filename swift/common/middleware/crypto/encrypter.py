@@ -80,16 +80,23 @@ class EncInputWrapper(object):
         self.ciphertext_hash = None
         self.logger = logger
         self.install_footers_callback(req)
+        self.body_crypto_meta = self.crypto.create_crypto_meta()
+        # body_key is not exposed outside of the class
+        body_key = self.crypto.create_random_key()
+        # wrap the body key with object key
+        self.body_crypto_meta['body_key'] = self.crypto.wrap_key(
+            self.keys['object'], body_key
+        )
+        self.body_crypto_meta['key_id'] = self.keys['id']
 
     def _init_encryption_context(self):
         # do this once when body is first read
         if self.body_crypto_ctxt is None:
-            self.body_crypto_meta = self.crypto.create_crypto_meta()
-            body_key = self.crypto.create_random_key()
-            # wrap the body key with object key
-            self.body_crypto_meta['body_key'] = self.crypto.wrap_key(
-                self.keys['object'], body_key)
-            self.body_crypto_meta['key_id'] = self.keys['id']
+            # Load body_key from wrapped_body_key
+            body_key = self.crypto.unwrap_key(
+                self.keys['object'],
+                self.body_crypto_meta['body_key']
+            )
             self.body_crypto_ctxt = self.crypto.create_encryption_ctxt(
                 body_key, self.body_crypto_meta.get('iv'))
             self.plaintext_md5 = md5(usedforsecurity=False)
@@ -249,6 +256,9 @@ class EncrypterObjContext(CryptoWSGIContext):
         self.encrypt_user_metadata(req, keys)
 
         enc_input_proxy = EncInputWrapper(self.crypto, keys, req, self.logger)
+        req.headers['X-Object-Sysmeta-Crypto-Body-Meta'] = dump_crypto_meta(
+            enc_input_proxy.body_crypto_meta
+        )
         req.environ['wsgi.input'] = enc_input_proxy
         req.environ.setdefault('oio.query', {})['object_checksum_algo'] = \
             self.crypto.ciphertext_hash_algo
