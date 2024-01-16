@@ -69,31 +69,20 @@ def _hmac_etag(key, etag):
 
 class EncInputWrapper(object):
     """File-like object to be swapped in for wsgi.input."""
-    def __init__(self, crypto, keys, req, logger):
+    def __init__(self, crypto, body_crypto_ctxt, keys, req, logger):
         self.env = req.environ
         self.wsgi_input = req.environ['wsgi.input']
         self.path = req.path
         self.crypto = crypto
         self.body_crypto_ctxt = None
         self.keys = keys
+        self.body_crypto_ctxt = body_crypto_ctxt
         self.plaintext_md5 = None
         self.ciphertext_hash = None
         self.logger = logger
         self.install_footers_callback(req)
-
-    def _init_encryption_context(self):
-        # do this once when body is first read
-        if self.body_crypto_ctxt is None:
-            self.body_crypto_meta = self.crypto.create_crypto_meta()
-            body_key = self.crypto.create_random_key()
-            # wrap the body key with object key
-            self.body_crypto_meta['body_key'] = self.crypto.wrap_key(
-                self.keys['object'], body_key)
-            self.body_crypto_meta['key_id'] = self.keys['id']
-            self.body_crypto_ctxt = self.crypto.create_encryption_ctxt(
-                body_key, self.body_crypto_meta.get('iv'))
-            self.plaintext_md5 = md5(usedforsecurity=False)
-            self.ciphertext_hash = get_hasher(self.crypto.ciphertext_hash_algo)
+        self.plaintext_md5 = md5(usedforsecurity=False)
+        self.ciphertext_hash = get_hasher(self.crypto.ciphertext_hash_algo)
 
     def install_footers_callback(self, req):
         # the proxy controller will call back for footer metadata after
@@ -191,7 +180,6 @@ class EncInputWrapper(object):
         chunk = read_method(*args, **kwargs)
 
         if chunk:
-            self._init_encryption_context()
             self.plaintext_md5.update(chunk)
             # Encrypt one chunk at a time
             ciphertext = self.body_crypto_ctxt.update(chunk)
@@ -248,7 +236,15 @@ class EncrypterObjContext(CryptoWSGIContext):
         keys = self.get_keys(req.environ, required=['object', 'container'])
         self.encrypt_user_metadata(req, keys)
 
-        enc_input_proxy = EncInputWrapper(self.crypto, keys, req, self.logger)
+        # init encryption_context
+        body_crypto_meta = self.crypto.create_crypto_meta()
+        body_key = self.crypto.create_random_key()
+        # wrap the body key with object key
+        body_crypto_meta['body_key'] = self.crypto.wrap_key(keys['object'], body_key)
+        body_crypto_meta['key_id'] = keys['id']
+        body_crypto_ctxt = self.crypto.create_encryption_ctxt(body_key, body_crypto_meta.get('iv'))
+
+        enc_input_proxy = EncInputWrapper(self.crypto, keys, body_crypto_ctxt, req, self.logger)
         req.environ['wsgi.input'] = enc_input_proxy
         req.environ.setdefault('oio.query', {})['object_checksum_algo'] = \
             self.crypto.ciphertext_hash_algo
