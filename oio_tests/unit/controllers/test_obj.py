@@ -147,7 +147,8 @@ class TestObjectController(unittest.TestCase):
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, create_delete_marker=None,
             bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
-            properties=ANY, replication_destinations=None, dryrun=False)
+            properties=ANY, replication_destinations=None, dryrun=False,
+            replication_replicator_id=None)
         self.assertEqual(204, resp.status_int)
         # oio-sds always sets version ids, even when versioning is suspended
         self.assertIn('x-amz-version-id', resp.headers)
@@ -159,7 +160,8 @@ class TestObjectController(unittest.TestCase):
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, create_delete_marker=None,
             bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
-            properties=ANY, replication_destinations=None, dryrun=False)
+            properties=ANY, replication_destinations=None, dryrun=False,
+            replication_replicator_id=None)
         self.assertEqual(204, resp.status_int)
 
     def test_HEAD_simple(self):
@@ -227,7 +229,7 @@ class TestObjectController(unittest.TestCase):
             file_or_path=ANY,
             policy=None, headers=ANY, container_properties=ANY, cache=None,
             perfdata=ANY, properties_callback=ANY,
-            replication_destinations=None)
+            replication_destinations=None, replication_replicator_id=None)
         self.assertEqual(201, resp.status_int)
         self.assertIn('Last-Modified', resp.headers)
         self.assertIn('Etag', resp.headers)

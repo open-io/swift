@@ -135,18 +135,19 @@ class ReplicationMiddleware(object):
         :param ensure_replicated: indicated the object must have been
         replicated. (Used for metadata updates)
         :returns: List of destination buckets the object must be replicated to
+                  and role
         """
         if not configuration:
-            return []
+            return [], None
 
         # Ensure we are not dealing with a replica
         replication_status = metadata.get("s3api-replication-status", "")
         if replication_status == OBJECT_REPLICATION_REPLICA:
-            return []
+            return [], None
 
         # Ensure we are dealing with an already replicated object if required
         if ensure_replicated and not replication_status:
-            return []
+            return [], None
 
         configuration = json.loads(configuration)
         category = "deletions" if is_deletion else "replications"
@@ -174,7 +175,8 @@ class ReplicationMiddleware(object):
                     dest_buckets.append(destination)
                 if not r_continue:
                     break
-        return dest_buckets
+        role = configuration.get("role")
+        return dest_buckets, role
 
 
 def filter_factory(global_conf, **local_config):

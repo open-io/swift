@@ -300,7 +300,7 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
         if metadata is None:
             raise InternalError("Missing metadata in replication callback")
 
-        destination_buckets = replication_cb(
+        destination_buckets, role = replication_cb(
             configuration=configuration,
             key=req.key,
             metadata=metadata,
@@ -310,7 +310,7 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
         )
 
         # Remove 'arn:aws:s3:::' prefix from bucket name
-        if destination_buckets:
+        if destination_buckets and role:
             req.headers["X-Replication-Destinations"] = ";".join(
                 [
                     b[len(DEST_BUCKET_PREFIX):]
@@ -318,6 +318,9 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
                     for b in destination_buckets
                 ]
             )
+            match = replication_role_re.fullmatch(role)
+            replicator_id = match.group(2)
+            req.headers["X-Replication-Replicator-Id"] = replicator_id
             req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_PENDING
 
 
@@ -328,6 +331,7 @@ def replication_drop_rules(req):
     :param req: initial request
     """
     req.headers.pop("X-Replication-Destinations", None)
+    req.headers.pop("X-Replication-Replicator-Id", None)
     req.headers.pop(OBJECT_REPLICATION_STATUS, None)
 
 

@@ -402,10 +402,12 @@ class ObjectController(BaseObjectController):
 
         replication_destinations = req.headers.get(
             "x-replication-destinations")
+        replicator_id = req.headers.get("x-replication-replicator-id")
         headers = self._prepare_headers(req)
         return self._post_object(
             req, headers,
-            replication_destinations=replication_destinations)
+            replication_destinations=replication_destinations,
+            replication_replicator_id=replicator_id)
 
     def _post_object(self, req, headers, **kwargs):
         metadata = self.load_object_metadata(headers)
@@ -729,6 +731,7 @@ class ObjectController(BaseObjectController):
         bucket_name = req.environ.get('s3api.bucket')
         replication_destinations = \
             req.headers.get("x-replication-destinations")
+        replicator_id = req.headers.get("x-replication-replicator-id")
         if bucket_name:
             # In case a shard is being created, save the name of the S3 bucket
             # in a container property. This will be used when aggregating
@@ -746,6 +749,7 @@ class ObjectController(BaseObjectController):
                     lambda: self.load_object_metadata(self._get_footers(req))),
                 cache=oio_cache, perfdata=perfdata,
                 replication_destinations=replication_destinations,
+                replication_replicator_id=replicator_id,
                 **kwargs)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
@@ -862,6 +866,7 @@ class ObjectController(BaseObjectController):
         metadata = self.load_object_metadata(headers)
         replication_destinations = req.headers.get(
             "x-replication-destinations")
+        replicator_id = req.headers.get("x-replication-replicator-id")
         dryrun = req.params.get('dryrun', False)
 
         try:
@@ -873,6 +878,7 @@ class ObjectController(BaseObjectController):
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata,
                 properties=metadata,
                 replication_destinations=replication_destinations,
+                replication_replicator_id=replicator_id,
                 dryrun=dryrun)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)

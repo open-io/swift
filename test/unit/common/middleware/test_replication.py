@@ -74,7 +74,7 @@ class TestReplication(unittest.TestCase):
         self.expected_container_status_args = None
         self.return_value_get_bucket_status = None
 
-    # Ensure callcack is correctly installed
+    # Ensure callback is correctly installed
     def test_replication_callback(self):
         # No callback for GET/HEAD
         for method in ('GET', 'HEAD'):
@@ -104,7 +104,7 @@ class TestReplication(unittest.TestCase):
 
     def test_replication_callback_no_conf(self):
         dests = self.app.replication_callback({}, 'test_key', {})
-        self.assertCountEqual(dests, [])
+        self.assertCountEqual(dests, ([], None))
 
     def test_replication_callback_replications(self):
         rules = '''
@@ -184,22 +184,22 @@ class TestReplication(unittest.TestCase):
         '''
         # Match prefix "/test/"
         dests = self.app.replication_callback(rules, "/test/key")
-        self.assertEqual(dests, ["bucket1", "bucket2"])
+        self.assertEqual(dests, (["bucket1", "bucket2"], "role1"))
 
         # Match no rules
         dests = self.app.replication_callback(rules, "/tes/key")
-        self.assertEqual(dests, [])
+        self.assertEqual(dests, ([], "role1"))
 
         # Match no rule for deletion
         dests = self.app.replication_callback(rules, "/test/key",
                                               is_deletion=True)
-        self.assertEqual(dests, [])
+        self.assertEqual(dests, ([], "role1"))
 
         # Match rule with tags
         dests = self.app.replication_callback(
             rules, 'key',
             metadata={"s3api-tagging": self.TAGGING_BODY})
-        self.assertEqual(dests, ['bucket2'])
+        self.assertEqual(dests, (['bucket2'], "role1"))
 
         # Match rule with tags for deletion but higher priority rule has
         # deletion marker replication disabled
@@ -207,20 +207,20 @@ class TestReplication(unittest.TestCase):
             rules, '/test1/key',
             metadata={"s3api-tagging": self.TAGGING_BODY},
             is_deletion=True)
-        self.assertEqual(dests, [])
+        self.assertEqual(dests, ([], "role1"))
 
         # Match rule with tags for deletion
         dests = self.app.replication_callback(
             rules, '/test3/key',
             metadata={"s3api-tagging": self.TAGGING_BODY},
             is_deletion=True)
-        self.assertEqual(dests, ['bucket3'])
+        self.assertEqual(dests, (['bucket3'], "role1"))
 
         # Match prefix "/test/" but is a replica
         dests = self.app.replication_callback(
             rules, "/test/key",
             metadata={"s3api-replication-status": OBJECT_REPLICATION_REPLICA})
-        self.assertEqual(dests, [])
+        self.assertEqual(dests, ([], None))
 
     def test_replication_callback_deletemarker_one_tag_only(self):
         rules = '''
@@ -258,4 +258,4 @@ class TestReplication(unittest.TestCase):
             rules, '/test3/key',
             metadata={"s3api-tagging": self.TAGGING_BODY_ONE_TAG},
             is_deletion=True)
-        self.assertEqual(dests, [])
+        self.assertEqual(dests, ([], "role1"))
