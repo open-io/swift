@@ -191,7 +191,6 @@ class EncInputWrapper(object):
         chunk = read_method(*args, **kwargs)
 
         if chunk:
-            self._init_encryption_context()
             self.plaintext_md5.update(chunk)
             # Encrypt one chunk at a time
             ciphertext = self.body_crypto_ctxt.update(chunk)
@@ -249,6 +248,7 @@ class EncrypterObjContext(CryptoWSGIContext):
         self.encrypt_user_metadata(req, keys)
 
         enc_input_proxy = EncInputWrapper(self.crypto, keys, req, self.logger)
+        enc_input_proxy ._init_encryption_context()
         req.environ['wsgi.input'] = enc_input_proxy
         req.environ.setdefault('oio.query', {})['object_checksum_algo'] = \
             self.crypto.ciphertext_hash_algo
