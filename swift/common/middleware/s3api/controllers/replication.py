@@ -319,6 +319,8 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
                 ]
             )
             match = replication_role_re.fullmatch(role)
+            role_project_id = match.group(1)
+            req.headers["X-Replication-Role-Project-Id"] = role_project_id
             replicator_id = match.group(2)
             req.headers["X-Replication-Replicator-Id"] = replicator_id
             req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_PENDING
@@ -331,6 +333,7 @@ def replication_drop_rules(req):
     :param req: initial request
     """
     req.headers.pop("X-Replication-Destinations", None)
+    req.headers.pop("X-Replication-Role-Project-Id", None)
     req.headers.pop("X-Replication-Replicator-Id", None)
     req.headers.pop(OBJECT_REPLICATION_STATUS, None)
 

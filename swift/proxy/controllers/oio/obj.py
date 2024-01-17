@@ -403,11 +403,13 @@ class ObjectController(BaseObjectController):
         replication_destinations = req.headers.get(
             "x-replication-destinations")
         replicator_id = req.headers.get("x-replication-replicator-id")
+        role_project_id = req.headers.get("x-replication-role-project-id")
         headers = self._prepare_headers(req)
         return self._post_object(
             req, headers,
             replication_destinations=replication_destinations,
-            replication_replicator_id=replicator_id)
+            replication_replicator_id=replicator_id,
+            replication_role_project_id=role_project_id)
 
     def _post_object(self, req, headers, **kwargs):
         metadata = self.load_object_metadata(headers)
@@ -732,6 +734,7 @@ class ObjectController(BaseObjectController):
         replication_destinations = \
             req.headers.get("x-replication-destinations")
         replicator_id = req.headers.get("x-replication-replicator-id")
+        role_project_id = req.headers.get("x-replication-role-project-id")
         if bucket_name:
             # In case a shard is being created, save the name of the S3 bucket
             # in a container property. This will be used when aggregating
@@ -750,6 +753,7 @@ class ObjectController(BaseObjectController):
                 cache=oio_cache, perfdata=perfdata,
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
+                replication_role_project_id=role_project_id,
                 **kwargs)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
@@ -867,6 +871,7 @@ class ObjectController(BaseObjectController):
         replication_destinations = req.headers.get(
             "x-replication-destinations")
         replicator_id = req.headers.get("x-replication-replicator-id")
+        role_project_id = req.headers.get("x-replication-role-project-id")
         dryrun = req.params.get('dryrun', False)
 
         try:
@@ -879,6 +884,7 @@ class ObjectController(BaseObjectController):
                 properties=metadata,
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
+                replication_role_project_id=role_project_id,
                 dryrun=dryrun)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
