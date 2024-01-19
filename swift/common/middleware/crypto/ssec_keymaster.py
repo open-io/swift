@@ -231,8 +231,9 @@ class SsecKeyMasterContext(KeyMasterContext):
         account, bucket = self.req_account_and_bucket()
         if not bucket:
             return None
-        bucket_info = self.req.get_bucket_info(self.app)
-        region = bucket_info.get('region')
+        #bucket_info = self.req.get_bucket_info(self.app)
+        #region = bucket_info.get('region')
+        region=None
         b64_secret = self.kms.get_bucket_secret(
             bucket,
             account=account,
