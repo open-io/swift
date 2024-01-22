@@ -184,11 +184,27 @@ class TestS3BasicTest(unittest.TestCase):
         self.assertEqual(3, data['TagCount'])
 
         run_awscli_s3api(
+            'put-object-tagging',
+            '--tagging',
+            'TagSet=[]',
+            bucket=self.bucket, key=key)
+
+        data = run_awscli_s3api(
+            "head-object",
+            bucket=self.bucket, key=key)
+        self.assertNotIn('TagCount', data)
+
+        run_awscli_s3api(
             'delete-object-tagging',
             bucket=self.bucket, key=key)
 
         data = run_awscli_s3api(
             "get-object", '/dev/null',
+            bucket=self.bucket, key=key)
+        self.assertNotIn('TagCount', data)
+
+        data = run_awscli_s3api(
+            "head-object",
             bucket=self.bucket, key=key)
         self.assertNotIn('TagCount', data)
 

@@ -162,9 +162,10 @@ class ObjectController(Controller):
             xml_tags = resp.sysmeta_headers[OBJECT_TAGGING_HEADER]
             tags_json = xmltodict.parse(xml_tags)
             tagset = tags_json["Tagging"]["TagSet"]
-            if not isinstance(tagset["Tag"], list):
-                tagset["Tag"] = [tagset["Tag"]]
-            resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
+            if tagset:
+                if not isinstance(tagset["Tag"], list):
+                    tagset["Tag"] = [tagset["Tag"]]
+                resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
 
         if req.method == 'HEAD':
             resp.app_iter = None
