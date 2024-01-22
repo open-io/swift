@@ -5,31 +5,29 @@
     <element name="ObjectLockConfiguration">
       <interleave>
         <element name="ObjectLockEnabled">
-          <choice>
-            <value>Enabled</value>
-            <value>Disabled</value>
-            <data type="string"/>
-          </choice>
+          <value>Enabled</value>
         </element>
-        <element name="Rule">
-          <element name="DefaultRetention">
-            <interleave>
-              <element name="Mode">
-                <data type="string"/>
-              </element>
-              <zeroOrMore>
-                <element name="Days">
-                  <data type="integer"/>
+        <optional>
+          <element name="Rule">
+            <element name="DefaultRetention">
+              <interleave>
+                <element name="Mode">
+                  <data type="string"/>
                 </element>
-              </zeroOrMore>
-              <zeroOrMore>
-                <element name="Years">
-                  <data type="integer"/>
-                </element>
-              </zeroOrMore>
-            </interleave>
+                <zeroOrMore>
+                  <element name="Days">
+                    <data type="integer"/>
+                  </element>
+                </zeroOrMore>
+                <zeroOrMore>
+                  <element name="Years">
+                    <data type="integer"/>
+                  </element>
+                </zeroOrMore>
+              </interleave>
+            </element>
           </element>
-        </element>
+        </optional>
       </interleave>
     </element>
   </start>

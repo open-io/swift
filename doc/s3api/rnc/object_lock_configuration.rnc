@@ -2,12 +2,12 @@ include "common.rnc"
 
 start =
   element ObjectLockConfiguration {
-    element ObjectLockEnabled { "Enabled" | "Disabled" | xsd:string } &
+    element ObjectLockEnabled { "Enabled"} &
     element Rule {
       element DefaultRetention {
         element Mode { xsd:string }&
         (element Days { xsd:integer } )* &
         (element Years { xsd:integer })*
       }
-    }
+    }?
   }

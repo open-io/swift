@@ -28,6 +28,12 @@ OBJECTLOCK_ENABLED_XML = \
     b'<ObjectLockConfiguration>\n  <ObjectLockEnabled>' + \
     b'Enabled</ObjectLockEnabled>\n</ObjectLockConfiguration>'
 
+OBJECTLOCK_MINIMAL_CONFIG_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<ObjectLockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+    <ObjectLockEnabled>Enabled</ObjectLockEnabled>
+</ObjectLockConfiguration>"""
+
+
 OBJECTLOCK_CONFIG_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <ObjectLockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
     <ObjectLockEnabled>Enabled</ObjectLockEnabled>
@@ -66,6 +72,21 @@ class TestS3apiObjectLock(S3ApiTestCase):
              'X-Object-Sysmeta-S3Api-Lock-Bucket-Object-Lock':
              '{"ObjectLockEnabled": "Enabled", "Rule": {"DefaultRetention":\
                 {"Mode": "GOVERNANCE", "Days": "1"}}}'}, None)
+
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket-3-minimal', HTTPNoContent,
+            {'X-Object-Sysmeta-S3Api-Bucket-Object-Lock-Enabled': 'True',
+             'X-Object-Sysmeta-S3Api-Lock-Bucket-Object-Lock':
+             '{"ObjectLockEnabled": "Enabled"}'}, None)
+
+        self.swift.register(
+            'POST', '/v1/AUTH_test/bucket-3-minimal', HTTPNoContent,
+            {}, None)
+
+        self.swift.register(
+            'PUT', '/v1/AUTH_test/bucket-3-minimal', swob.HTTPCreated,
+            None, None)
+
         self.swift.register(
             'PUT', '/v1/AUTH_test/bucket-3', swob.HTTPCreated,
             None, None)
@@ -111,6 +132,38 @@ class TestS3apiObjectLock(S3ApiTestCase):
         status, _header, body = self.call_s3api(req)
         self.assertEqual('200 OK', status)
         self.assertEqual(body, OBJECTLOCK_ENABLED_XML)
+
+    def test_object_lock_enabled_minimal_config(self):
+        req = Request.blank(
+            '/bucket-3-minimal',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'X-Amz-Bucket-Object-Lock-Enabled': 'True',
+                     'Date': self.get_date_header()})
+        status, headers, body = self.call_s3api(req)
+
+        req = Request.blank('/bucket-3-minimal?object-lock',
+                            environ={'REQUEST_METHOD': 'PUT'},
+                            body=OBJECTLOCK_MINIMAL_CONFIG_XML,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _header, body = self.call_s3api(req)
+        self.assertEqual('200 OK', status)
+
+        req = Request.blank('/bucket-3-minimal?object-lock',
+                            environ={'REQUEST_METHOD': 'GET'},
+                            body=None,
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, _header, body = self.call_s3api(req)
+        self.assertEqual('200 OK', status)
+        body_output = BucketLockController._xml_conf_to_dict(body)
+        expected_output = BucketLockController._xml_conf_to_dict(
+            OBJECTLOCK_MINIMAL_CONFIG_XML)
+
+        self.assertEqual(body_output, expected_output)
 
     def test_object_lock_enabled_config(self):
         req = Request.blank(

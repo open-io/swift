@@ -125,19 +125,28 @@ def object_lock_populate_sysmeta_headers(
     Populate sysmeta headers with bucket retention or header provided values
     """
     lock_requested = False
+    # When retention is set to zero , we don't add metadata
+    # x-object-sysmeta-s3api-retention-mode
+    # x-object-sysmeta-s3api-retention-retainuntildate
+    # specific retention request is allowed via put-object-retention
+    retention = 0
     if timestamp is None:
         timestamp = S3Timestamp.now()
     if 's3api-lock-bucket-defaultretention' in sysmeta_info:
-        header = sysmeta_header('object',
-                                'retention-RetainUntilDate')
-        future_timestamp = timestamp.timestamp + \
-            86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
-        obj_date = datetime.fromtimestamp(future_timestamp)
-        format_date = obj_date.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
-        headers[header] = format_date
+        retention = int(sysmeta_info['s3api-lock-bucket-defaultretention'])
+
+        if retention > 0:
+            header = sysmeta_header('object',
+                                    'retention-RetainUntilDate')
+            future_timestamp = timestamp.timestamp + \
+                86400 * int(sysmeta_info['s3api-lock-bucket-defaultretention'])
+            obj_date = datetime.fromtimestamp(future_timestamp)
+            format_date = obj_date.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
+            headers[header] = format_date
     if 's3api-lock-bucket-defaultmode' in sysmeta_info:
-        header = sysmeta_header('object', 'retention-Mode')
-        headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
+        if retention:
+            header = sysmeta_header('object', 'retention-Mode')
+            headers[header] = sysmeta_info['s3api-lock-bucket-defaultmode']
     if 'x-amz-object-lock-mode' in headers:
         header = sysmeta_header('object', 'retention-Mode')
         headers[header] = headers['x-amz-object-lock-mode']
@@ -245,25 +254,28 @@ class BucketLockController(Controller):
     @staticmethod
     def _check_objectlock_config(conf_dict):
         enabled = conf_dict.get("ObjectLockEnabled", {})
-        days = conf_dict.get("Rule", {}).get("DefaultRetention",
-                                             {}).get("Days")
-        years = conf_dict.get("Rule", {}).get("DefaultRetention",
-                                              {}).get("Years")
-        mode = conf_dict.get("Rule", {}).get("DefaultRetention",
-                                             {}).get("Mode")
+        rule = conf_dict.get("Rule", {})
+        if rule:
+            days = rule.get("DefaultRetention",
+                            {}).get("Days")
+            years = rule.get("DefaultRetention",
+                             {}).get("Years")
+            mode = rule.get("DefaultRetention",
+                            {}).get("Mode")
 
         if enabled != 'Enabled':
             raise MalformedXML()
-        if days and years:
-            raise MalformedXML()
-        if days is None and years is None:
-            raise MalformedXML()
-        if mode not in ('GOVERNANCE', 'COMPLIANCE'):
-            raise MalformedXML()
-        if days and int(days) <= 0:
-            raise InvalidRetentionPeriod()
-        if years and int(years) <= 0:
-            raise InvalidRetentionPeriod()
+        if rule:
+            if days and years:
+                raise MalformedXML()
+            if days is None and years is None:
+                raise MalformedXML()
+            if mode not in ('GOVERNANCE', 'COMPLIANCE'):
+                raise MalformedXML()
+            if days and int(days) <= 0:
+                raise InvalidRetentionPeriod()
+            if years and int(years) <= 0:
+                raise InvalidRetentionPeriod()
 
     @staticmethod
     def _xml_conf_to_dict(lock_conf_xml):
@@ -276,12 +288,12 @@ class BucketLockController(Controller):
         lock_conf = fromstring(lock_conf_xml, 'ObjectLockConfiguration')
         out = {
             'ObjectLockEnabled': lock_conf.find('ObjectLockEnabled').text,
-            'Rule': {
-                'DefaultRetention': {}
-            }
+
         }
         for rule in lock_conf.iterchildren('Rule'):
+            out.setdefault("Rule", {})
             for retention in rule.iterchildren('DefaultRetention'):
+                out['Rule'].setdefault("DefaultRetention", {})
                 out['Rule']['DefaultRetention']['Mode'] = \
                     retention.find('Mode').text
                 days = retention.find('Days')
@@ -295,7 +307,7 @@ class BucketLockController(Controller):
     @staticmethod
     def _convert_to_days(conf_dict):
         days = conf_dict.get("Rule", {}).get("DefaultRetention",
-                                             {}).get("Days")
+                                             {}).get("Days", 0)
         years = conf_dict.get("Rule", {}).get("DefaultRetention",
                                               {}).get("Years")
         if days is not None:
