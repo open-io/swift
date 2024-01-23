@@ -17,7 +17,8 @@ from swift.common.http import is_success
 from swift.common.middleware import acl as swift_acl
 from swift.common.request_helpers import get_sys_meta_prefix
 from swift.common.swob import HTTPNotFound, HTTPForbidden, HTTPUnauthorized
-from swift.common.utils import config_read_reseller_options, list_from_csv
+from swift.common.utils import config_read_reseller_options, list_from_csv, \
+    is_from_replicator, REPLICATOR_EXPLICIT_ALLOW
 from swift.proxy.controllers.base import get_account_info
 import functools
 
@@ -218,6 +219,7 @@ class KeystoneAuth(object):
             user_roles = (r.lower() for r in env_identity.get('roles', []))
             if self.reseller_admin_role in user_roles:
                 environ['reseller_request'] = True
+                self._authorize_replicator(environ)
         else:
             self.logger.debug('Authorizing as anonymous')
             environ['swift.authorize'] = self.authorize_anonymous
@@ -236,6 +238,60 @@ class KeystoneAuth(object):
             return start_response(status, response_headers, exc_info)
 
         return self.app(environ, keystone_start_response)
+
+    def _authorize_replicator(self, environ):
+        """
+        If the request does not come from the replicator, nothing is done.
+        If the request comes from the replicator and:
+        - the tenant coming from the role (in the bucket replication
+        configuration) is the same as the bucket's
+        - is a request to create a delete marker
+        -> the request is explicitly allowed (user policies will be bypassed).
+        """
+        # reseller_request should always be true in this context, but it is a
+        # protection if this method is called somewhere else one day.
+        if not is_from_replicator(
+            environ.get('reseller_request'),
+            environ.get('HTTP_USER_AGENT')
+        ):
+            return
+
+        force_tenant = environ.get('HTTP_X_FORCE_TENANT')
+        delete_marker = environ.get(
+            'HTTP_X_AMZ_META_X_OIO_?DELETE_MARKER')
+
+        if not force_tenant and not delete_marker:
+            # not able to check anything
+            return
+
+        if delete_marker:
+            # As a delete marker has no owner, we are not able to
+            # impersonate it.
+            # However all checks about the replicator are checked
+            # (with is_from_replicator() method).
+            self.logger.debug(
+                'Allow delete marker request coming from replicator')
+            environ[REPLICATOR_EXPLICIT_ALLOW] = True
+            return
+
+        bucket_db = environ['s3api.bucket_db']
+        account = bucket_db.get_owner(
+            bucket=environ['s3api.info']['bucket'],
+            reqid=environ['swift.trans_id']
+        )
+        # If bucket is deleted, account is None.
+        # Unlikely to occurs in real life, but easily in tests.
+        if not account:
+            return
+
+        # Remove any account reseller prefix
+        account_prefix = self._get_account_prefix(account)
+        if account_prefix:
+            account = account.replace(account_prefix, "")
+
+        if force_tenant == account:
+            self.logger.debug('Allow request coming from replicator')
+            environ[REPLICATOR_EXPLICIT_ALLOW] = True
 
     def _keystone_identity(self, environ):
         """Extract the identity from the Keystone auth component."""

@@ -520,6 +520,7 @@ class S3Token(object):
         if force_tenant_name and force_user_name:
             self._logger.debug('Impersonating user %s:%s',
                                force_tenant_name, force_user_name)
+            environ['HTTP_X_FORCE_TENANT'] = force_tenant  # project_id
             environ['HTTP_X_TENANT_NAME'] = force_tenant_name
             environ['HTTP_X_USER_NAME'] = force_user_name
         if self._logger.isEnabledFor(logging.DEBUG):

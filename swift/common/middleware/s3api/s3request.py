@@ -27,7 +27,7 @@ import string
 from sys import version_info
 
 from swift.common.utils import split_path, json, close_if_possible, md5, \
-    reiterate, drain_and_close
+    reiterate, drain_and_close, is_from_replicator, REPLICATOR_EXPLICIT_ALLOW
 from swift.common.registry import get_swift_info
 from swift.common import constraints, swob
 from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
@@ -71,7 +71,7 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     KeyTooLongError
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    REPLICATOR_USER_AGENT, Config, S3Timestamp, utf8encode, mktime, \
+    Config, S3Timestamp, utf8encode, mktime, \
     sysmeta_header, validate_bucket_name, is_not_ascii
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
     decode_acl, encode_acl
@@ -2490,9 +2490,8 @@ class S3Request(swob.Request):
         """
         # With Boto3, we are able to check if
         # the user agent is the expected one
-        return (self.environ.get('reseller_request', False)
-                and self.user_agent
-                and self.user_agent.endswith(REPLICATOR_USER_AGENT))
+        return is_from_replicator(
+            self.environ.get('reseller_request', False), self.user_agent)
 
     def from_internal_tool(self):
         return self.from_log_deliverer() or self.from_replicator()
@@ -2570,6 +2569,9 @@ class S3AclRequest(S3Request):
             'reseller_request', False)
         if 'REMOTE_USER' in sw_req.environ:
             self.environ['REMOTE_USER'] = sw_req.environ['REMOTE_USER']
+        if REPLICATOR_EXPLICIT_ALLOW in sw_req.environ:
+            self.environ[REPLICATOR_EXPLICIT_ALLOW] = \
+                sw_req.environ[REPLICATOR_EXPLICIT_ALLOW]
 
         # Need to skip S3 authorization on subsequent requests to prevent
         # overwriting the account in PATH_INFO

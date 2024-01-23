@@ -32,9 +32,9 @@ from swift.common.middleware.s3api.intelligent_tiering_utils import \
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
-from swift.common.middleware.s3api.utils import REPLICATOR_USER_AGENT, \
-    sysmeta_header, S3Timestamp
-from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG
+from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp
+from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG, \
+    REPLICATOR_USER_AGENT
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 

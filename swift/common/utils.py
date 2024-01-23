@@ -224,6 +224,10 @@ DEFAULT_LOCK_TIMEOUT = 10
 # seconds by default.
 DEFAULT_YIELD_FREQUENCY = 10
 
+# Replicator default user agent
+REPLICATOR_USER_AGENT = 's3-replicator'
+REPLICATOR_EXPLICIT_ALLOW = 'swift.replicator.explicit_allow'
+
 
 class InvalidHashPathConfigError(ValueError):
 
@@ -6738,3 +6742,9 @@ class HeartbeatMixin(object):
                     drain_and_close(resp)
 
         return _resp_iter()
+
+
+def is_from_replicator(reseller, user_agent):
+    return (reseller
+            and user_agent
+            and user_agent.endswith(REPLICATOR_USER_AGENT))

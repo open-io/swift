@@ -19,7 +19,8 @@ from functools import wraps
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.exception import IAMException
 from swift.common.middleware.s3api.s3response import AccessDenied
-from swift.common.utils import config_auto_int_value, get_logger, tlru_cache
+from swift.common.utils import config_auto_int_value, get_logger, tlru_cache, \
+    REPLICATOR_EXPLICIT_ALLOW
 
 
 ARN_AWS_PREFIX = "arn:aws:"
@@ -92,6 +93,16 @@ SUPPORTED_ACTIONS = {
     "s3:PutObjectRetention": RT_OBJECT,
     "s3:PutObjectTagging": RT_OBJECT,
     "s3:PutReplicationConfiguration": RT_BUCKET,
+}
+
+REPLICATOR_ACTIONS = {
+    "s3:GetObject",
+    "s3:ListMultipartUploadParts",
+    "s3:PutObject",
+    "s3:PutObjectAcl",
+    "s3:PutObjectLegalHold",
+    "s3:PutObjectRetention",
+    "s3:PutObjectTagging",
 }
 
 IAM_ACTION = 'swift.iam.action'
@@ -383,6 +394,28 @@ def check_iam_access(object_action, bucket_action=None):
                 action = bucket_action
             else:
                 action = object_action
+
+            # Maybe the replicator is the initiator of the request and is
+            # already authorized.
+            replicator_allow = req.environ.get(
+                REPLICATOR_EXPLICIT_ALLOW, False)
+            if replicator_allow is True:
+                if action in REPLICATOR_ACTIONS:
+                    # Bypass all further checks.
+                    req.environ[IAM_EXPLICIT_ALLOW] = EXPLICIT_ALLOW
+                    return func(*args, **kwargs)
+
+                # We don't want to give more information to the user
+                # than the AccessDenied.
+                # We use the logger from acl_handlers as it is the only one
+                # available and this log is useful to track new actions
+                # made by the replicator without updating
+                # REPLICATOR_ACTIONS.
+                if req.acl_handler and req.acl_handler.logger:
+                    req.acl_handler.logger.error(
+                        "Replicator now allowed for action=%s", action
+                    )
+                raise AccessDenied()
 
             # Maybe ACLs authorized the request.
             acl_allow = req.environ.get(ACL_EXPLICIT_ALLOW)

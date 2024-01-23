@@ -28,8 +28,6 @@ VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # Content-Type by default at AWS, the official value being
 # "application/octet-stream"
 DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
-# Replicator default user agent
-REPLICATOR_USER_AGENT = "s3-replicator"
 
 
 MPU_PART_RE = re.compile('/[0-9]+$')
