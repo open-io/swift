@@ -83,6 +83,8 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
     check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.encryption import \
+    encryption_set_env_variable
 from swift.common.middleware.s3api.controllers.replication import \
     OBJECT_REPLICATION_REPLICA, OBJECT_REPLICATION_STATUS, \
     replication_drop_rules, replication_resolve_rules
@@ -657,6 +659,8 @@ class UploadsController(Controller):
         sysmeta_info = info.get('sysmeta', {})
         object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
         req.get_response(self.app, 'PUT', seg_container, obj, body='')
+
+        encryption_set_env_variable(req, self.conf, sysmeta_info)
 
         escape_xml_text, finalize_xml_texts = init_xml_texts()
 

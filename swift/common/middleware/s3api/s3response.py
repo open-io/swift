@@ -889,6 +889,11 @@ class SignatureDoesNotMatch(ErrorResponse):
            'signature you provided. Check your key and signing method.'
 
 
+class ServerSideEncryptionConfigurationNotFoundError(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'The server-side encryption configuration was not found.'
+
+
 class ServiceUnavailable(ErrorResponse):
     _status = '503 Service Unavailable'
     _msg = 'Service is unable to handle request.'

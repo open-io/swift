@@ -1,0 +1,10 @@
+start =
+  element ServerSideEncryptionConfiguration {
+    element Rule {
+      element ApplyServerSideEncryptionByDefault {
+        element SSEAlgorithm { "AES256" | "aws:kms" | "aws:kms:dsse" } &
+        element KMSMasterKeyID { xsd:string }?
+      }?,
+      element BucketKeyEnabled { xsd:boolean }?
+    }+
+  }

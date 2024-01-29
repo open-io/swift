@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <start>
+    <element>
+      <name ns="">ServerSideEncryptionConfiguration</name>
+      <oneOrMore>
+        <element>
+          <name ns="">Rule</name>
+          <optional>
+            <element>
+              <name ns="">ApplyServerSideEncryptionByDefault</name>
+              <interleave>
+                <element>
+                  <name ns="">SSEAlgorithm</name>
+                  <choice>
+                    <value>AES256</value>
+                    <value>aws:kms</value>
+                    <value>aws:kms:dsse</value>
+                  </choice>
+                </element>
+                <optional>
+                  <element>
+                    <name ns="">KMSMasterKeyID</name>
+                    <data type="string"/>
+                  </element>
+                </optional>
+              </interleave>
+            </element>
+          </optional>
+          <optional>
+            <element>
+              <name ns="">BucketKeyEnabled</name>
+              <data type="boolean"/>
+            </element>
+          </optional>
+        </element>
+      </oneOrMore>
+    </element>
+  </start>
+</grammar>

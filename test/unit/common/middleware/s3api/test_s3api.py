@@ -118,6 +118,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'check_ip_whitelist': False,
             'check_bucket_storage_domain': False,
             'cors_rules': [],
+            'default_sse_configuration': None,
             'landing_page': 'https://aws.amazon.com/s3/',
             'max_bucket_listing': 1000,
             'max_multi_delete_objects': 1000,
@@ -138,6 +139,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_beta_features': True,
             'enable_access_logging': True,
             'enable_bucket_replication': True,
+            'enable_encryption': True,
             'enable_object_lock': True,
             'enable_website': True,
             'enable_lifecycle': True,
@@ -166,6 +168,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'check_ip_whitelist': True,
             'check_bucket_storage_domain': True,
             'cors_allow_origin': 'somewhere.com,some.*.where.io',
+            'default_sse_configuration': None,
             'landing_page':
                 'https://docs.openstack.org/swift/latest/s3_compat.html',
             'max_bucket_listing': 500,
@@ -188,6 +191,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_object_lock': False,
             'enable_website': False,
             'enable_lifecycle': False,
+            'enable_encryption': True,
             'token_prefix': '',
         }
         s3api = S3ApiMiddleware(None, conf)

@@ -32,6 +32,8 @@ from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.encryption import \
+    encryption_set_env_variable
 from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
 from swift.common.middleware.s3api.controllers.tagging import \
@@ -255,6 +257,9 @@ class ObjectController(Controller):
             metadata={},
             tags=req.headers.get(OBJECT_TAGGING_HEADER),
         )
+
+        # Encryption
+        encryption_set_env_variable(req, self.conf, sysmeta_info)
 
         is_server_side_copy = False
         query = None

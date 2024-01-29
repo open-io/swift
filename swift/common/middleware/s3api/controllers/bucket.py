@@ -30,6 +30,8 @@ from swift.common.registry import get_swift_info
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
+from swift.common.middleware.s3api.controllers.encryption import \
+    encryption_set_env_variable
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, fromstring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -455,6 +457,8 @@ class BucketController(Controller):
                 req.storage_domain
 
         req.environ.setdefault('oio.query', {})['region'] = location
+
+        encryption_set_env_variable(req, self.conf)
 
         object_lock_enabled = req.environ.get(
             'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_ENABLED', 'False')

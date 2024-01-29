@@ -1,5 +1,5 @@
 # Copyright (c) 2021 OpenStack Foundation
-# Copyright (c) 2021-2023 OVH SAS
+# Copyright (c) 2021-2024 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,11 +79,12 @@ class KmsWrapper(object):
     """
 
     def __init__(self, kms, cache=None,
-                 cache_time=0, no_secret_cache_time=15 * 60):
+                 cache_time=0, no_secret_cache_time=15 * 60, logger=None):
         self.kms = kms
         self.cache = cache
         self.cache_time = cache_time
         self.no_secret_cache_time = no_secret_cache_time
+        self.logger = logger
 
     def create_bucket_secret(self, bucket, account, secret_id=None,
                              secret_bytes=32, reqid=None):
@@ -156,7 +157,8 @@ class SsecKeyMasterContext(KeyMasterContext):
             self.keymaster.kms,
             cache=request.environ.get('swift.cache'),
             cache_time=self.keymaster.secret_cache_time,
-            no_secret_cache_time=self.keymaster.no_secret_cache_time
+            no_secret_cache_time=self.keymaster.no_secret_cache_time,
+            logger=keymaster.logger,
         )
 
     @property
@@ -240,6 +242,22 @@ class SsecKeyMasterContext(KeyMasterContext):
             return crypto_utils.decode_secret(b64_secret)
         return None
 
+    def _create_bucket_secret(self):
+        account, bucket = self.req_account_and_bucket()
+        # Create secret if whitelist is empty OR account is whitelisted
+        if (not self.keymaster.account_whitelist
+                or account in self.keymaster.account_whitelist):
+            self.keymaster.logger.debug("Creating secret for %s/%s",
+                                        account, bucket)
+            return self.kms.create_bucket_secret(
+                bucket,
+                account=account,
+                secret_id=self.keymaster.active_secret_id,
+                secret_bytes=self.keymaster.sses3_secret_bytes,
+                reqid=self.trans_id
+            )
+        return None
+
     def fetch_crypto_keys(self, key_id=None, *args, **kwargs):
         """
         Setup container and object keys based on the request path and
@@ -304,24 +322,17 @@ class SsecKeyMasterContext(KeyMasterContext):
     def handle_request(self, req, start_response):
         secret_created = False
         operation = req.environ.get('s3api.info', {}).get('operation')
-        # REST.PUT.BUCKET does a HEAD on the account before the PUT, we need to
-        # check the method. Besides, we will only create a secret if the KMS is
-        # enabled.
-        if (operation == "REST.PUT.BUCKET" and req.method == 'PUT'
-                and self.keymaster.use_oio_kms):
-            account, bucket = self.req_account_and_bucket(req)
-            # Empty whitelist will be ignored
-            if (not self.keymaster.account_whitelist
-                    or account in self.keymaster.account_whitelist):
-                self.keymaster.logger.debug("Creating secret for %s/%s",
-                                            account, bucket)
-                secret_created = self.kms.create_bucket_secret(
-                    bucket,
-                    account=account,
-                    secret_id=self.keymaster.active_secret_id,
-                    secret_bytes=self.keymaster.sses3_secret_bytes,
-                    reqid=self.trans_id
-                )
+        encryption = req.environ.get('swift.encryption')
+        if self.keymaster.use_oio_kms:
+            # These operations do a HEAD on the account before the PUT,
+            # we need to check the method.
+            if (operation in ("REST.PUT.BUCKET", "REST.PUT.OBJECT")
+                    and req.method == 'PUT' and encryption == 'AES256'):
+                secret_created = self._create_bucket_secret()
+            # REST.PUT.ENCRYPTION does a HEAD on the account before the POST,
+            # we need to check the method.
+            elif operation == "REST.PUT.ENCRYPTION" and req.method == 'POST':
+                secret_created = self._create_bucket_secret()
         try:
             resp = super().handle_request(req, start_response)
         except Exception as exc:

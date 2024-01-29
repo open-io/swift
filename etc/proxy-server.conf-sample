@@ -854,6 +854,11 @@ use = egg:swift#s3api
 # Enable or disable Bucket Replication.
 #enable_bucket_replication = true
 
+# Enable or disable SSE
+#enable_encryption = true
+# Force SSE-S3 mode (AES256)
+#default_sse_configuration = AES256
+
 # Enable or disable Object Lock.
 # Object Lock depends on versioning so if versioning is not enabled
 # then Object Lock is disabled no matter this flag value
