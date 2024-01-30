@@ -835,6 +835,96 @@ class TestS3ApiReplication(S3ApiTestCase):
                       " configuration schema.",
                       str(body))
 
+    def test_PUT_deleteMarkeReplication_with_tag(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <Filter>
+                        <Tag>
+                            <Key>string</Key>
+                            <Value>string</Value>
+                        </Tag>
+                    </Filter>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn(
+            "Delete marker replication is not supported if any Tag filter "
+            "is specified.",
+            str(body))
+
+    def test_PUT_deleteMarkeReplication_with_tags(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::test:role/replicationRole</Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <Filter>
+                        <And>
+                            <Tag>
+                                <Key>string</Key>
+                                <Value>string</Value>
+                            </Tag>
+                            <Tag>
+                                <Key>string2</Key>
+                                <Value>string2</Value>
+                            </Tag>
+                        </And>
+                    </Filter>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("400 Bad Request", status)
+        self.assertIn(
+            "Delete marker replication is not supported if any Tag filter "
+            "is specified.",
+            str(body))
+
     def test_PUT_not_valid_bucket_prefix(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration

@@ -218,7 +218,7 @@ def _optimize_replication_conf(configuration):
     rules = {}
     replications = {}
     deletions = {}
-    use_tags = False
+    use_tags_all_rules = False
 
     dest_priorities = {}
 
@@ -238,7 +238,15 @@ def _optimize_replication_conf(configuration):
 
         rule_filter = rule.get("Filter", {})
         and_filter = rule_filter.get("And", {})
-        use_tags |= "Tag" in rule_filter or "Tags" in and_filter
+        use_tags = "Tag" in rule_filter or "Tags" in and_filter
+        use_tags_all_rules |= use_tags
+
+        if deletion_marker and use_tags:
+            raise InvalidRequest(
+                "Delete marker replication is not supported "
+                "if any Tag filter is specified. Please refer to S3 Developer "
+                "Guide for more information."
+            )
 
         # Ensure all priorities are unique
         priorities = dest_priorities.setdefault(bucket, set())
@@ -264,7 +272,7 @@ def _optimize_replication_conf(configuration):
         "rules": rules,
         "replications": replications,
         "deletions": deletions,
-        "use_tags": use_tags,
+        "use_tags": use_tags_all_rules,
     }
 
     return optimized
@@ -469,14 +477,14 @@ class ReplicationController(Controller):
             raise InvalidArgument(
                 "Prefix",
                 prefix.text,
-                "The maximum value is {MAX_LENGTH_RULE_ID} characters."
+                f"The maximum value is {MAX_LENGTH_RULE_ID} characters."
             )
 
         rule_filter = rule.find("./Filter")
-        # Filter must be defined
+        # Filter must be defined in V2 format
         if rule_filter is None:
             raise MalformedXML()
-        # If filter defined, Priority must also be defined
+        # As filter is defined, Priority must also be defined
         rule_priority = rule.find("./Priority")
         if rule_priority is None:
             raise InvalidRequest("Priority must be specified for "
@@ -487,7 +495,7 @@ class ReplicationController(Controller):
             raise InvalidRequest(
                 f"Priority must be between"
                 f" {MIN_PRIORITY_NUMBER} and {MAX_PRIORITY_NUMBER}.")
-        # If filter defined, DeletemarkerReplication must also be defined
+        # As filter is defined, DeletemarkerReplication must also be defined
         rule_deleteMarkerReplication = rule.find(
             "./DeleteMarkerReplication")
         if rule_deleteMarkerReplication is None:
