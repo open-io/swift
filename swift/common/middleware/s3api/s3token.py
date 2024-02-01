@@ -271,8 +271,12 @@ class S3Token(object):
             self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
 
         if response.status_code < 200 or response.status_code >= 300:
-            self._logger.debug('Keystone reply error: status=%s reason=%s',
-                               response.status_code, response.reason)
+            _log = (self._logger.error
+                    if response.status_code >= 500
+                    else self._logger.debug)
+
+            _log('Keystone error: POST %s return %s (%s)',
+                 self._request_uri, response.status_code, response.reason)
             raise self._deny_request('AccessDenied', reason=response.reason)
 
         return response
