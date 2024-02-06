@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2022 OpenStack Foundation
+# Copyright (c) 2022-2024 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -435,6 +435,53 @@ class TestS3Cors(unittest.TestCase):
                         {
                             "ID": "test",
                             "ExposeHeaders": ["Access-Control-Allow-Origin"],
+                            "AllowedHeaders": ["Authorization"],
+                            "AllowedOrigins": ["http://openio.io",
+                                              "http://example.io"],
+                            "AllowedMethods": ["GET"]
+                        }
+                    ]
+                }
+            """,
+            bucket=self.bucket_name
+        )
+
+        resp = run_awscli_s3api(
+            'get-bucket-cors',
+            bucket=self.bucket_name
+        )
+        self.assertEqual(resp["CORSRules"][0]["ID"], "test")
+        origins = resp["CORSRules"][0]["AllowedOrigins"]
+        self.assertIn("http://openio.io", origins)
+        self.assertIn("http://example.io", origins)
+
+        self._check_all_option_requests(
+            action="GET",
+            origin="http://openio.io",
+            expected_status_code=200,
+            expected_message=None,
+        )
+
+        self._check_all_option_requests(
+            action="GET",
+            origin="http://example.io",
+            expected_status_code=200,
+            expected_message=None,
+        )
+
+    def test_empty_expose_headers(self):
+        """
+        Test what happens when the ExposeHeaders field contains an empty string
+        """
+        run_awscli_s3('mb', bucket=self.bucket_name)
+        run_awscli_s3api(
+            'put-bucket-cors',
+            '--cors-configuration', """
+                {
+                    "CORSRules": [
+                        {
+                            "ID": "test",
+                            "ExposeHeaders": [""],
                             "AllowedHeaders": ["Authorization"],
                             "AllowedOrigins": ["http://openio.io",
                                               "http://example.io"],

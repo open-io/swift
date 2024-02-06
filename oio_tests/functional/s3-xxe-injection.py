@@ -195,12 +195,15 @@ class TestS3XxeInjection(unittest.TestCase):
     </CORSRule>
 </CORSConfiguration>
 """)  # noqa: E501
-        self.assertEqual(500, resp.status_code)  # FIXME(adu)
+        self.assertEqual(400, resp.status_code)
         self.assertNotIn(b'xxe', resp.content)
         self.assertNotIn(b'donotreadme', resp.content)
+        self.assertIn(b'MalformedXML', resp.content)
+
         self.assertRaisesRegex(
             botocore.exceptions.ClientError, 'NoSuchCORSConfiguration',
             self.client.get_bucket_cors, Bucket=self.bucket)
+
         headers = {
             'Origin': 'http://openio.io',
             'Access-Control-Request-Method': 'PUT'

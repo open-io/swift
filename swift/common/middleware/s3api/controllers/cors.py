@@ -119,6 +119,11 @@ class CorsController(Controller):
         xml = req.xml(MAX_CORS_BODY_SIZE)
         try:
             data = fromstring(xml, "CorsConfiguration")
+            # Since we do not resolve entities, the entity declarations get
+            # stripped out. Try a roundtrip here, so we don't save a document
+            # we won't be able to parse later.
+            filtered = tostring(data, xml_declaration=False)
+            data = fromstring(filtered, "CorsConfiguration")
         except (XMLSyntaxError, DocumentInvalid):
             raise MalformedXML()
         except Exception as exc:
@@ -128,7 +133,7 @@ class CorsController(Controller):
         # forbid wildcard for ExposeHeader
         check_cors_rule(data)
 
-        req.headers[BUCKET_CORS_HEADER] = tostring(data, xml_declaration=False)
+        req.headers[BUCKET_CORS_HEADER] = filtered
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 

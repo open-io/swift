@@ -122,11 +122,11 @@ def cors_fill_headers(req, resp, rule):
     """
     def set_header_if_item(hdr, tag):
         val = rule.find(tag)
-        if val is not None:
+        if val is not None and val.text is not None:
             resp.headers[hdr] = val.text
 
     def set_header_if_items(hdr, tag):
-        vals = [m.text for m in rule.findall(tag)]
+        vals = [m.text for m in rule.findall(tag) if m.text]
         if vals:
             resp.headers[hdr] = ','.join(vals)
 
@@ -163,7 +163,7 @@ def check_cors_rule(data):
                     "Found unsupported HTTP method in CORS config. "
                     "Unsupported method is %s" % method.text)
         for exposed in rule.findall('ExposeHeader'):
-            if '*' in exposed.text:
+            if exposed.text and '*' in exposed.text:
                 raise CORSInvalidRequest(
                     'ExposeHeader "%s" contains wildcard. We currently do '
                     'not support wildcard for ExposeHeader.' % exposed.text)
