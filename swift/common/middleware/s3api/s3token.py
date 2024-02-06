@@ -471,9 +471,8 @@ class S3Token(object):
                         self._logger.debug(
                             "Cached keystone credentials for %ds",
                             duration)
-                    except Exception:
-                        self._logger.warning("Unable to cache secret",
-                                             exc_info=True)
+                    except Exception as exc:
+                        self._logger.warning("Unable to cache secret: %s", exc)
 
                 # Populate the environment similar to auth_token,
                 # so we don't have to contact Keystone again.
