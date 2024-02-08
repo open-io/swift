@@ -106,4 +106,10 @@ def get_intelligent_tiering_info(app, req):
         intelligent_tiering_info["restoration_end_timestamp"] = \
             info.get('sysmeta').get('s3api-restoration-end-timestamp')
 
+    archive_lock_until_timestamp = \
+        info.get('sysmeta').get('s3api-archive-lock-until-timestamp')
+    if archive_lock_until_timestamp:
+        intelligent_tiering_info["archive_lock_until_timestamp"] = \
+            archive_lock_until_timestamp
+
     return intelligent_tiering_info

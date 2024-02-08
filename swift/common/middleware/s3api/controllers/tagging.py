@@ -60,6 +60,8 @@ ALLOWED_PREFIX = 'ovh:'
 INTELLIGENT_TIERING_STATUS_KEY = 'ovh:intelligent_tiering_status'
 INTELLIGENT_TIERING_RESTO_END_KEY = \
     'ovh:intelligent_tiering_restoration_end_date'
+INTELLIGENT_TIERING_ARCHIVE_LOCK_UNTIL_KEY = \
+    'ovh:intelligent_tiering_archive_lock_until'
 
 
 def _set_replication_status(req, status):
@@ -168,6 +170,14 @@ class TaggingController(Controller):
             _add_tag_to_tag_set(
                 tagset,
                 INTELLIGENT_TIERING_RESTO_END_KEY,
+                timestamp.s3xmlformat,
+                check_key_prefix=False,
+            )
+        if info.get("archive_lock_until_timestamp"):
+            timestamp = S3Timestamp(info["archive_lock_until_timestamp"])
+            _add_tag_to_tag_set(
+                tagset,
+                INTELLIGENT_TIERING_ARCHIVE_LOCK_UNTIL_KEY,
                 timestamp.s3xmlformat,
                 check_key_prefix=False,
             )

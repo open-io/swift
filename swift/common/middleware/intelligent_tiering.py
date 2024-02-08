@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+from datetime import datetime, timedelta
 from functools import partial
 import json
 import pika
@@ -30,7 +31,7 @@ from swift.common.middleware.s3api.intelligent_tiering_utils import \
 from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     BadRequest, InvalidBucketState, S3NotImplemented, \
     ServiceUnavailable
-from swift.common.middleware.s3api.utils import sysmeta_header
+from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp
 from swift.common.middleware.s3api.multi_upload_utils import \
     list_bucket_multipart_uploads
 from swift.common.swob import HTTPMethodNotAllowed
@@ -57,11 +58,15 @@ DEFAULT_IAM_GET_OBJECT_ACTIONS = BUCKET_STATE_RESTORED
 DEFAULT_IAM_DELETE_OBJECT_ACTIONS = BUCKET_STATE_NONE
 
 # AccessTier definitions
-TIERING_ACTION_TIER_ARCHIVE = 'OVH_ARCHIVE'
-TIERING_ACTION_TIER_RESTORE = 'OVH_RESTORE'
+TIER_ARCHIVE = 'OVH_ARCHIVE'
+TIER_ARCHIVE_LOCK = 'OVH_ARCHIVE_LOCK'
+TIER_RESTORE = 'OVH_RESTORE'
 
-TIERING_TIER_ACTIONS = [TIERING_ACTION_TIER_ARCHIVE,
-                        TIERING_ACTION_TIER_RESTORE]
+TIERING_TIER_ACTIONS = [
+    TIER_ARCHIVE,
+    TIER_ARCHIVE_LOCK,
+    TIER_RESTORE,
+]
 
 TIERING_IAM_SUPPORTED_ACTIONS = {
     's3:CreateBucket': RT_BUCKET,
@@ -256,11 +261,10 @@ class IntelligentTieringMiddleware(object):
 
         return self.app(env, msg)
 
-    def _set_container_property(
+    def _set_container_properties(
             self,
             req,
-            key,
-            value,
+            properties,
             container=None,
             ignore_container_not_found=False,
     ):
@@ -278,8 +282,8 @@ class IntelligentTieringMiddleware(object):
         sub_req = make_pre_authed_request(
             sw_req.environ, sw_req.method, path=sw_req.path)
 
-        # Add the property and its value in the headers
-        sub_req.headers[key] = value
+        # Add all properties and their values in the headers
+        sub_req.headers.update(properties)
 
         resp = sub_req.get_response(self.app)
         if resp.status_int != 204:
@@ -295,22 +299,24 @@ class IntelligentTieringMiddleware(object):
         if it exists).
         Status should be one of OIO_DB_FROZEN, OIO_DB_ENABLED.
         """
+        props = {sysmeta_header('container', 'status'): str(status)}
         # First on the main container
-        self._set_container_property(
-            req,
-            key=sysmeta_header('container', 'status'),
-            value=str(status),
-        )
+        self._set_container_properties(req, props)
         # Then on the segment associated
-        self._set_container_property(
+        self._set_container_properties(
             req,
-            key=sysmeta_header('container', 'status'),
-            value=str(status),
+            props,
             container=f"{req.container_name}+segments",
             ignore_container_not_found=True,
         )
 
-    def _set_archiving_status(self, req, old_status, new_status):
+    def _set_archiving_status(
+            self,
+            req,
+            old_status,
+            new_status,
+            lock_days=None,
+    ):
         if old_status not in BUCKET_ALLOWED_TRANSITIONS:
             raise UnexpectedContent('Old state is not valid: %s' % old_status)
         if new_status not in BUCKET_ALLOWED_TRANSITIONS:
@@ -319,11 +325,16 @@ class IntelligentTieringMiddleware(object):
             raise InvalidBucketState('Transition now allowed: from %s to %s' %
                                      (old_status, new_status))
 
-        self._set_container_property(
-            req,
-            key=sysmeta_header('container', 'archiving-status'),
-            value=new_status,
-        )
+        props = {sysmeta_header('container', 'archiving-status'): new_status}
+
+        if lock_days:
+            end_date = datetime.now() + timedelta(days=lock_days)
+            end_date = end_date.replace(microsecond=0)
+            end_timestamp = int(end_date.timestamp())
+            key = sysmeta_header('container', 'archive-lock-until-timestamp')
+            props[key] = end_timestamp
+
+        self._set_container_properties(req, props)
 
     def _are_all_mpu_complete(self, req, s3app):
         # Remove req params used for intelligent request
@@ -341,7 +352,7 @@ class IntelligentTieringMiddleware(object):
             return False
         return True
 
-    def _put_archive(self, req, s3app):
+    def _put_archive(self, req, s3app, lock_days=None):
         # Archive is not possible if there is an incomplete MPU
         if not self._are_all_mpu_complete(req, s3app):
             raise BadRequest('Archiving is not allowed when there are '
@@ -372,7 +383,9 @@ class IntelligentTieringMiddleware(object):
                 req.account, req.container_name, bucket_size, bucket_region
             )
             # Change status in container metadata
-            self._set_archiving_status(req, current_status, new_status)
+            self._set_archiving_status(
+                req, current_status, new_status, lock_days
+            )
         except (ServiceUnavailable, UnexpectedContent, InvalidBucketState):
             # Unfreeze the bucket: the archive is not possible,
             # the client should be able to manage its container again.
@@ -412,11 +425,19 @@ class IntelligentTieringMiddleware(object):
                              TIERING_TIER_ACTIONS)
 
         # ARCHIVE
-        if action == TIERING_ACTION_TIER_ARCHIVE:
+        if action == TIER_ARCHIVE:
             return self._put_archive(req, s3app)
 
+        # ARCHIVE with lock
+        if action == TIER_ARCHIVE_LOCK:
+            return self._put_archive(
+                req,
+                s3app,
+                lock_days=tiering_conf['Tierings'][0]['Days'],
+            )
+
         # RESTORE
-        if action == TIERING_ACTION_TIER_RESTORE:
+        if action == TIER_RESTORE:
             return self._put_restore(req)
 
         raise S3NotImplemented('Action %s is not implemented yet.' % action)
@@ -431,6 +452,15 @@ class IntelligentTieringMiddleware(object):
         if new_status not in BUCKET_ALLOWED_TRANSITIONS[current_status]:
             raise BadRequest('Deletion is not allowed in the state %s' %
                              current_status)
+
+        archive_lock_until_timestamp = info.get("archive_lock_until_timestamp")
+        if archive_lock_until_timestamp:
+            now_timestamp = datetime.now().timestamp()
+            if int(archive_lock_until_timestamp) > int(now_timestamp):
+                timestamp = S3Timestamp(archive_lock_until_timestamp)
+                raise BadRequest(
+                    f'Archive deletion is locked until {timestamp.s3xmlformat}'
+                )
 
         self.rabbitmq_client.start_archive_deletion(req.account,
                                                     req.container_name)

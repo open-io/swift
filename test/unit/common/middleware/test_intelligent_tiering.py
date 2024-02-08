@@ -13,10 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import datetime, timedelta
+from random import randint
+
 from test.debug_logger import debug_logger
 from test.unit.common.middleware.helpers import FakeSwift
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, ANY
 
 from oio.common.constants import OIO_DB_FROZEN
 
@@ -24,8 +27,7 @@ from swift.common.middleware.intelligent_tiering import \
     IntelligentTieringMiddleware
 from swift.common.middleware.s3api.intelligent_tiering_utils import \
     BUCKET_STATE_DELETING, BUCKET_STATE_LOCKED, BUCKET_STATE_NONE, \
-    BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_STATE_RESTORING, \
-    BUCKET_ALLOWED_TRANSITIONS
+    BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_ALLOWED_TRANSITIONS
 from swift.common.middleware.s3api.s3response import BadRequest, \
     S3NotImplemented
 from swift.common.swob import Request, HTTPNoContent
@@ -37,8 +39,8 @@ MOCK_RABBIT_SEND_MESSAGE = 'swift.common.middleware.intelligent_tiering.' \
     'RabbitMQClient._send_message'
 MOCK_SET_BUCKET_STATUS = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._set_bucket_status'
-MOCK_SET_ARCHIVING_STATUS = 'swift.common.middleware.intelligent_tiering.' \
-    'IntelligentTieringMiddleware._set_archiving_status'
+MOCK_SET_CONTAINER_PROPS = 'swift.common.middleware.intelligent_tiering.' \
+    'IntelligentTieringMiddleware._set_container_properties'
 MOCK_CHECK_MPU_COMPLETE = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._are_all_mpu_complete'
 
@@ -82,16 +84,17 @@ class TestIntelligentTiering(unittest.TestCase):
         self.fake_swift.register('POST', '/v1/AUTH_test/test-tiering',
                                  HTTPNoContent, None, None)
 
+        self.days = randint(1, 36500)
         self.tiering_conf = {
             'Id': 'myid',
             'Status': 'Enabled',
-            'Tierings': [{'AccessTier': 'ToSet', 'Days': 999}]
+            'Tierings': [{'AccessTier': 'ToSet', 'Days': self.days}]
         }
 
         self.req = FakeReq('PUT', account=self.ACCOUNT,
                            container_name=self.CONTAINER_NAME)
         self.expected_rabbit_args = None
-        self.expected_archiving_status_args = None
+        self.expected_container_props_args = None
         self.expected_container_status_args = None
         self.return_value_get_bucket_status = None
 
@@ -106,10 +109,15 @@ class TestIntelligentTiering(unittest.TestCase):
     def _test_callback_ok(
             self,
             m_b_status,
-            m_archiving_status,
+            m_set_container_props,
             m_rabbit,
             use_tiering_conf=True,
     ):
+        # reset values
+        m_rabbit.call_count = 0
+        m_set_container_props.call_count = 0
+        m_b_status.call_count = 0
+
         tiering_conf = None
         if use_tiering_conf:
             tiering_conf = self.tiering_conf
@@ -118,7 +126,7 @@ class TestIntelligentTiering(unittest.TestCase):
                    return_value=self.return_value_get_bucket_status):
             self.app.tiering_callback(self.req, tiering_conf, None)
         self.assertEqual(1, m_rabbit.call_count)
-        self.assertEqual(1, m_archiving_status.call_count)
+        self.assertEqual(1, m_set_container_props.call_count)
         if self.expected_container_status_args:
             self.assertEqual(1, m_b_status.call_count)
         else:
@@ -126,9 +134,9 @@ class TestIntelligentTiering(unittest.TestCase):
         m_rabbit.assert_called_with(
             *self.expected_rabbit_args[0],
             **self.expected_rabbit_args[1])
-        m_archiving_status.assert_called_with(
-            *self.expected_archiving_status_args[0],
-            **self.expected_archiving_status_args[1])
+        m_set_container_props.assert_called_with(
+            *self.expected_container_props_args[0],
+            **self.expected_container_props_args[1])
         if self.expected_container_status_args:
             m_b_status.assert_called_with(
                 *self.expected_container_status_args[0],
@@ -137,10 +145,15 @@ class TestIntelligentTiering(unittest.TestCase):
     def _test_callback_ko(
             self,
             m_b_status,
-            m_archiving_status,
+            m_set_container_props,
             m_rabbit,
             use_tiering_conf=True,
     ):
+        # reset values
+        m_rabbit.call_count = 0
+        m_set_container_props.call_count = 0
+        m_b_status.call_count = 0
+
         tiering_conf = None
         if use_tiering_conf:
             tiering_conf = self.tiering_conf
@@ -155,18 +168,18 @@ class TestIntelligentTiering(unittest.TestCase):
                 None,
             )
         self.assertEqual(0, m_rabbit.call_count)
-        self.assertEqual(0, m_archiving_status.call_count)
+        self.assertEqual(0, m_set_container_props.call_count)
         self.assertEqual(0, m_b_status.call_count)
 
     ###
     # PUT ARCHIVE
     ###
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_ok(
-        self, m_check_mpu, m_b_status, m_archiving_status, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
     ):
         self.expected_rabbit_args = [
             (self.ACCOUNT, self.CONTAINER_NAME, 'archive'),
@@ -179,8 +192,11 @@ class TestIntelligentTiering(unittest.TestCase):
             (self.req, OIO_DB_FROZEN),
             {}
         ]
-        self.expected_archiving_status_args = [
-            (self.req, BUCKET_STATE_NONE, BUCKET_STATE_LOCKED),
+        self.expected_container_props_args = [
+            (
+                self.req,
+                {'x-container-sysmeta-s3api-archiving-status': 'Locked'},
+            ),
             {}
         ]
         self.return_value_get_bucket_status = {
@@ -188,14 +204,60 @@ class TestIntelligentTiering(unittest.TestCase):
         }
         # Checking if mpu are completed will be tested in functional tests
         m_check_mpu.return_value = True
-        self._test_callback_ok(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_lock_ok(
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    ):
+        self.expected_rabbit_args = [
+            (self.ACCOUNT, self.CONTAINER_NAME, 'archive'),
+            {'bucket_size': 42, 'bucket_region': None},
+        ]
+        self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE_LOCK'
+
+        # Test with Status=None
+        self.expected_container_status_args = [
+            (self.req, OIO_DB_FROZEN),
+            {}
+        ]
+        lock_name = 'x-container-sysmeta-s3api-archive-lock-until-timestamp'
+        self.expected_container_props_args = [
+            (
+                self.req,
+                {
+                    'x-container-sysmeta-s3api-archiving-status': 'Locked',
+                    lock_name: ANY,
+                }
+            ),
+            {}
+        ]
+        self.return_value_get_bucket_status = {
+            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
+        }
+        # Checking if mpu are completed will be tested in functional tests
+        m_check_mpu.return_value = True
+        self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
+
+        # Check timestamp stored is correct
+        # 0: go into call object
+        # 1: props is second parameter of _set_container_properties()
+        # lock_name: key of the property
+        timestamp = m_set_container_props.call_args[0][1][lock_name]
+        expected_date = datetime.now() + timedelta(days=self.days)
+        expected_timestamp = int(expected_date.timestamp())
+        self.assertGreater(expected_timestamp + 5, timestamp)
+        self.assertLess(expected_timestamp - 5, timestamp)
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_bad_bucket_status(
-        self, m_check_mpu, m_b_status, m_archiving_status, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -207,79 +269,82 @@ class TestIntelligentTiering(unittest.TestCase):
                 'sysmeta': {'s3api-archiving-status': state}
             }
             m_check_mpu.return_value = True
-            self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+            self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_archive_bad_req_status(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         self.tiering_conf['Status'] = 'Disabled'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_archive_req_multiple_tierings(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         self.tiering_conf['Tierings'].append(
-            {'AccessTier': 'OVH_RESTORE', 'Days': 999})
+            {'AccessTier': 'OVH_RESTORE', 'Days': self.days})
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_archive_req_bad_action(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'DEEP_ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     ###
     # PUT RESTORE
     ###
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
-    def test_PUT_restore_ok(self, m_b_status, m_archiving_status, m_rabbit):
+    def test_PUT_restore_ok(self, m_b_status, m_set_container_props, m_rabbit):
         self.expected_rabbit_args = [
             (self.ACCOUNT, self.CONTAINER_NAME, 'restore'),
             {'bucket_region': None}
         ]
-        self.expected_archiving_status_args = [
-            (self.req, BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORING),
+        self.expected_container_props_args = [
+            (
+                self.req,
+                {'x-container-sysmeta-s3api-archiving-status': 'Restoring'},
+            ),
             {}
         ]
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ok(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_bad_bucket_status(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -290,98 +355,129 @@ class TestIntelligentTiering(unittest.TestCase):
             self.return_value_get_bucket_status = {
                 'sysmeta': {'s3api-archiving-status': state}
             }
-            self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+            self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_bad_req_status(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         self.tiering_conf['Status'] = 'Disabled'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_req_multiple_tierings(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         self.tiering_conf['Tierings'].append(
-            {'AccessTier': 'OVH_RESTORE', 'Days': 999})
+            {'AccessTier': 'OVH_RESTORE', 'Days': self.days})
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_req_bad_action(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = \
             'ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ko(m_b_status, m_archiving_status, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
 
     ###
     # DELETE
     ###
+    def _test_delete_ok(
+        self,
+        m_b_status,
+        m_set_container_props,
+        m_rabbit,
+        bucket_status,
+    ):
+        self.expected_container_props_args = [
+            (
+                self.req,
+                {'x-container-sysmeta-s3api-archiving-status': 'Deleting'},
+            ),
+            {}
+        ]
+        self.return_value_get_bucket_status = {
+            'sysmeta': bucket_status,
+        }
+        self._test_callback_ok(
+            m_b_status, m_set_container_props, m_rabbit, use_tiering_conf=False
+        )
+
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
-    def test_DELETE_ok(self, m_b_status, m_archiving_status, m_rabbit):
+    def test_DELETE_ok(self, m_b_status, m_set_container_props, m_rabbit):
         self.req.method = 'DELETE'
         self.expected_rabbit_args = [
             (self.ACCOUNT, self.CONTAINER_NAME, 'delete'),
             {}
         ]
-        self.expected_archiving_status_args = [
+        self.expected_container_props_args = [
             (self.req, BUCKET_STATE_DELETING),
             {}
         ]
 
         # Test with Status=Archived
-        self.expected_archiving_status_args = [
-            (self.req, BUCKET_STATE_ARCHIVED, BUCKET_STATE_DELETING),
-            {}
-        ]
-        self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
-        }
-        self._test_callback_ok(
-            m_b_status, m_archiving_status, m_rabbit, use_tiering_conf=False
+        self._test_delete_ok(
+            m_b_status,
+            m_set_container_props,
+            m_rabbit,
+            {'s3api-archiving-status': BUCKET_STATE_ARCHIVED},
+        )
+
+        # Test with Status=Archived and lock date expired
+        self._test_delete_ok(
+            m_b_status,
+            m_set_container_props,
+            m_rabbit,
+            {
+                's3api-archiving-status': BUCKET_STATE_ARCHIVED,
+                's3api-archive-lock-until-timestamp': 42,
+            },
         )
 
         # Test with Status=Restored
-        self.expected_archiving_status_args = [
-            (self.req, BUCKET_STATE_RESTORED, BUCKET_STATE_DELETING),
-            {}
-        ]
-        self.return_value_get_bucket_status = {
-            'sysmeta': {'s3api-archiving-status': BUCKET_STATE_RESTORED}
-        }
-        # reset values
-        m_rabbit.call_count = 0
-        m_archiving_status.call_count = 0
-        m_b_status.call_count = 0
-        self._test_callback_ok(
-            m_b_status, m_archiving_status, m_rabbit, use_tiering_conf=False
+        self._test_delete_ok(
+            m_b_status,
+            m_set_container_props,
+            m_rabbit,
+            {'s3api-archiving-status': BUCKET_STATE_RESTORED},
+        )
+
+        # Test with Status=Restored and lock date expired
+        self._test_delete_ok(
+            m_b_status,
+            m_set_container_props,
+            m_rabbit,
+            {
+                's3api-archiving-status': BUCKET_STATE_RESTORED,
+                's3api-archive-lock-until-timestamp': 42,
+            },
         )
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_ARCHIVING_STATUS)
+    @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_DELETE_bad_bucket_status(
-        self, m_b_status, m_archiving_status, m_rabbit
+        self, m_b_status, m_set_container_props, m_rabbit
     ):
         self.req.method = 'DELETE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -394,7 +490,34 @@ class TestIntelligentTiering(unittest.TestCase):
             }
             self._test_callback_ko(
                 m_b_status,
-                m_archiving_status,
+                m_set_container_props,
+                m_rabbit,
+                use_tiering_conf=False,
+            )
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    def test_DELETE_lock_still_active(
+        self, m_b_status, m_set_container_props, m_rabbit
+    ):
+        self.req.method = 'DELETE'
+        for state in BUCKET_ALLOWED_TRANSITIONS:
+            # Only test the lock on allowed status
+            if state not in (BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED):
+                continue
+
+            # Test working until year 2286
+            # (max value accepted by common.utils.Timestamp).
+            self.return_value_get_bucket_status = {
+                'sysmeta': {
+                    's3api-archiving-status': state,
+                    's3api-archive-lock-until-timestamp': 9999999999,
+                },
+            }
+            self._test_callback_ko(
+                m_b_status,
+                m_set_container_props,
                 m_rabbit,
                 use_tiering_conf=False,
             )
