@@ -19,10 +19,12 @@ from swift.common.middleware.s3api.etree import fromstring, tostring
 
 from test.unit.common.middleware.s3api import S3ApiTestCase
 from swift.common.swob import Request, HTTPNoContent, HTTPNotFound
+from swift.common.middleware.s3api.intelligent_tiering_utils import \
+    xml_conf_to_dict
 from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
 from swift.common.middleware.s3api.controllers.intelligent_tiering \
-    import TIERING_CALLBACK, header_name_from_id, xml_conf_to_dict
+    import TIERING_CALLBACK, header_name_from_id
 from swift.common.middleware.s3api.s3response import InvalidBucketState
 
 
@@ -76,12 +78,12 @@ MOCK_BUCKET_DB_SHOW = "swift.common.middleware.s3api.bucket_db." \
     "DummyBucketDb.show"
 
 
-def tiering_callback_ok(req, conf, s3app):
+def tiering_callback_ok(req, conf, s3app, **kwargs):
     """To be used as an always OK tiering callback."""
     return {"bucket_status": "Enabled"}
 
 
-def tiering_callback_invalid_state(req, conf, s3app):
+def tiering_callback_invalid_state(req, conf, s3app, **kwargs):
     """To be used as a never OK tiering callback."""
     raise InvalidBucketState
 

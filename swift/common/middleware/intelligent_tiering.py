@@ -27,7 +27,8 @@ from swift.common.middleware.s3api.iam import ARN_S3_PREFIX, \
 from swift.common.middleware.s3api.intelligent_tiering_utils import \
     BUCKET_STATE_NONE, BUCKET_STATE_LOCKED, BUCKET_STATE_RESTORING, \
     BUCKET_STATE_RESTORED, BUCKET_STATE_DELETING, BUCKET_STATE_FLUSHED, \
-    BUCKET_ALLOWED_TRANSITIONS, get_intelligent_tiering_info
+    BUCKET_ALLOWED_TRANSITIONS, get_intelligent_tiering_info, \
+    BUCKET_STATE_ARCHIVED, BUCKET_STATE_DRAINING, xml_conf_to_dict
 from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     BadRequest, InvalidBucketState, S3NotImplemented, \
     ServiceUnavailable
@@ -310,6 +311,11 @@ class IntelligentTieringMiddleware(object):
             ignore_container_not_found=True,
         )
 
+    def _compute_lock_timestamp(self, lock_days):
+        end_date = datetime.now() + timedelta(days=lock_days)
+        end_date = end_date.replace(microsecond=0)
+        return int(end_date.timestamp())
+
     def _set_archiving_status(
             self,
             req,
@@ -326,11 +332,8 @@ class IntelligentTieringMiddleware(object):
                                      (old_status, new_status))
 
         props = {sysmeta_header('container', 'archiving-status'): new_status}
-
         if lock_days:
-            end_date = datetime.now() + timedelta(days=lock_days)
-            end_date = end_date.replace(microsecond=0)
-            end_timestamp = int(end_date.timestamp())
+            end_timestamp = self._compute_lock_timestamp(lock_days)
             key = sysmeta_header('container', 'archive-lock-until-timestamp')
             props[key] = end_timestamp
 
@@ -393,6 +396,62 @@ class IntelligentTieringMiddleware(object):
             raise
         return new_status
 
+    def _put_update_lock_archive(self, req, new_dict, old_xml):
+        """
+        Used with the tiers "OVH_ARCHIVE_LOCK" when there is already a conf
+        and the bucket has already been archived.
+        The goal is to update the lock date (only by increasing it).
+        """
+        # Check the status as late as possible to get the most up-to-date
+        # information (and avoid another request changing the status before
+        # this one)
+        info = get_intelligent_tiering_info(self.app, req)
+        current_status = info['status']
+
+        # Special error message when the bucket is in restoring state.
+        # We want the tiering document to only be updated when no action is
+        # made on the bucket.
+        if current_status == BUCKET_STATE_RESTORING:
+            raise BadRequest(
+                'Please wait until the end of the restoration to update '
+                'the lock date'
+            )
+
+        expected_status = (BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED,
+                           BUCKET_STATE_DRAINING)
+        if current_status not in expected_status:
+            raise BadRequest(
+                'Updating tiering conf is not allowed in the state %s' %
+                current_status
+            )
+
+        # Convert the xml to json to simplify its processing
+        old_dict = xml_conf_to_dict(old_xml)
+
+        # Make some checks (some are already done, but better make sure
+        # everything is checked here)
+        if new_dict['Id'] != old_dict['Id']:
+            raise BadRequest("New Id doesn't match old Id")
+        if new_dict['Status'] != old_dict['Status']:
+            raise BadRequest("New Status doesn't match old Status")
+
+        # Check that the new timestamp is bigger than the old one
+        new_end_timestamp = self._compute_lock_timestamp(
+            new_dict['Tierings'][0]['Days'])
+        old_timestamp = info.get('archive_lock_until_timestamp')
+        if old_timestamp and new_end_timestamp < int(old_timestamp):
+            new_timestamp = S3Timestamp(info['archive_lock_until_timestamp'])
+            raise BadRequest(
+                f"New lock date must be after {new_timestamp.s3xmlformat}"
+            )
+
+        # Everything ok, add the lock property
+        props = {}
+        key = sysmeta_header('container', 'archive-lock-until-timestamp')
+        props[key] = new_end_timestamp
+
+        self._set_container_properties(req, props)
+
     def _put_restore(self, req):
         bucket_info = req.get_bucket_info(self.app)
         bucket_region = bucket_info.get('region')
@@ -413,7 +472,7 @@ class IntelligentTieringMiddleware(object):
         self._set_archiving_status(req, current_status, new_status)
         return new_status
 
-    def _process_PUT(self, req, tiering_conf, s3app):
+    def _process_PUT(self, req, tiering_conf, s3app, **kwargs):
         if tiering_conf['Status'] != 'Enabled':
             raise BadRequest('Status must be Enabled')
         if len(tiering_conf['Tierings']) != 1:
@@ -430,6 +489,11 @@ class IntelligentTieringMiddleware(object):
 
         # ARCHIVE with lock
         if action == TIER_ARCHIVE_LOCK:
+            old_xml = kwargs.get("old_document_xml")
+            if old_xml:
+                return self._put_update_lock_archive(
+                    req, tiering_conf, old_xml
+                )
             return self._put_archive(
                 req,
                 s3app,
@@ -474,7 +538,9 @@ class IntelligentTieringMiddleware(object):
         :rtype: dict
         """
         if req.method == 'PUT':
-            bucket_status = self._process_PUT(req, tiering_conf, s3app)
+            bucket_status = self._process_PUT(
+                req, tiering_conf, s3app, **kwargs
+            )
         elif req.method == 'DELETE':
             bucket_status = self._process_DELETE(req)
         elif req.method == 'GET':

@@ -27,7 +27,8 @@ from swift.common.middleware.intelligent_tiering import \
     IntelligentTieringMiddleware
 from swift.common.middleware.s3api.intelligent_tiering_utils import \
     BUCKET_STATE_DELETING, BUCKET_STATE_LOCKED, BUCKET_STATE_NONE, \
-    BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_ALLOWED_TRANSITIONS
+    BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_ALLOWED_TRANSITIONS, \
+    BUCKET_STATE_RESTORING, BUCKET_STATE_DRAINING
 from swift.common.middleware.s3api.s3response import BadRequest, \
     S3NotImplemented
 from swift.common.swob import Request, HTTPNoContent
@@ -97,6 +98,7 @@ class TestIntelligentTiering(unittest.TestCase):
         self.expected_container_props_args = None
         self.expected_container_status_args = None
         self.return_value_get_bucket_status = None
+        self.old_xml = None
 
     def test_tiering_callback(self):
         # Test the callback is correctly added
@@ -112,6 +114,7 @@ class TestIntelligentTiering(unittest.TestCase):
             m_set_container_props,
             m_rabbit,
             use_tiering_conf=True,
+            **kwargs,
     ):
         # reset values
         m_rabbit.call_count = 0
@@ -124,23 +127,29 @@ class TestIntelligentTiering(unittest.TestCase):
 
         with patch(MOCK_FAKE_REQ_CONT_INFO,
                    return_value=self.return_value_get_bucket_status):
-            self.app.tiering_callback(self.req, tiering_conf, None)
-        self.assertEqual(1, m_rabbit.call_count)
-        self.assertEqual(1, m_set_container_props.call_count)
+            self.app.tiering_callback(self.req, tiering_conf, None, **kwargs)
+
+        if self.expected_rabbit_args:
+            self.assertEqual(1, m_rabbit.call_count)
+            m_rabbit.assert_called_with(
+                *self.expected_rabbit_args[0],
+                **self.expected_rabbit_args[1],
+            )
+        else:
+            self.assertEqual(0, m_rabbit.call_count)
+
         if self.expected_container_status_args:
             self.assertEqual(1, m_b_status.call_count)
-        else:
-            self.assertEqual(0, m_b_status.call_count)
-        m_rabbit.assert_called_with(
-            *self.expected_rabbit_args[0],
-            **self.expected_rabbit_args[1])
-        m_set_container_props.assert_called_with(
-            *self.expected_container_props_args[0],
-            **self.expected_container_props_args[1])
-        if self.expected_container_status_args:
             m_b_status.assert_called_with(
                 *self.expected_container_status_args[0],
                 **self.expected_container_status_args[1])
+        else:
+            self.assertEqual(0, m_b_status.call_count)
+
+        self.assertEqual(1, m_set_container_props.call_count)
+        m_set_container_props.assert_called_with(
+            *self.expected_container_props_args[0],
+            **self.expected_container_props_args[1])
 
     def _test_callback_ko(
             self,
@@ -148,6 +157,7 @@ class TestIntelligentTiering(unittest.TestCase):
             m_set_container_props,
             m_rabbit,
             use_tiering_conf=True,
+            **kwargs,
     ):
         # reset values
         m_rabbit.call_count = 0
@@ -166,20 +176,29 @@ class TestIntelligentTiering(unittest.TestCase):
                 self.req,
                 tiering_conf,
                 None,
+                **kwargs,
             )
         self.assertEqual(0, m_rabbit.call_count)
         self.assertEqual(0, m_set_container_props.call_count)
         self.assertEqual(0, m_b_status.call_count)
 
+    def get_conf_xml(
+            self, id="myid", tier="OVH_ARCHIVE", status="Enabled", days=None
+    ):
+        if not days:
+            days = self.days
+        return (
+            '<IntelligentTieringConfiguration xmlns="http://s3.amazonaws.com/'
+            f'doc/2006-03-01/"><Id>{id}</Id><Status>{status}</Status><Tiering>'
+            f'<Days>{days}</Days><AccessTier>{tier}</AccessTier>'
+            '</Tiering></IntelligentTieringConfiguration>'
+        )
+
     ###
     # PUT ARCHIVE
     ###
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
-    @patch(MOCK_SET_CONTAINER_PROPS)
-    @patch(MOCK_SET_BUCKET_STATUS)
-    @patch(MOCK_CHECK_MPU_COMPLETE)
-    def test_PUT_archive_ok(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    def _put_archive_ok(
+            self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
     ):
         self.expected_rabbit_args = [
             (self.ACCOUNT, self.CONTAINER_NAME, 'archive'),
@@ -205,6 +224,17 @@ class TestIntelligentTiering(unittest.TestCase):
         # Checking if mpu are completed will be tested in functional tests
         m_check_mpu.return_value = True
         self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_ok(
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    ):
+        self._put_archive_ok(
+            m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        )
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
@@ -251,6 +281,192 @@ class TestIntelligentTiering(unittest.TestCase):
         expected_timestamp = int(expected_date.timestamp())
         self.assertGreater(expected_timestamp + 5, timestamp)
         self.assertLess(expected_timestamp - 5, timestamp)
+
+    def _put_archive_lock_update(
+        self,
+        m_check_mpu,
+        m_b_status,
+        m_set_container_props,
+        m_rabbit,
+        bucket_status=BUCKET_STATE_ARCHIVED,
+        expect_ok=True,
+        old_timestamp=None,
+    ):
+        self.expected_rabbit_args = None
+        self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE_LOCK'
+
+        self.expected_container_status_args = None  # already frozen
+        lock_name = 'x-container-sysmeta-s3api-archive-lock-until-timestamp'
+        self.expected_container_props_args = [
+            (self.req, {lock_name: ANY}), {}
+        ]
+        sysmeta = {'s3api-archiving-status': bucket_status}
+        if old_timestamp:
+            sysmeta['s3api-archive-lock-until-timestamp'] = old_timestamp
+
+        self.return_value_get_bucket_status = {'sysmeta': sysmeta}
+        # Checking if mpu are completed will be tested in functional tests
+        m_check_mpu.return_value = True
+
+        kwargs = {"old_document_xml": self.old_xml}
+        if expect_ok:
+            self._test_callback_ok(
+                m_b_status,
+                m_set_container_props,
+                m_rabbit,
+                **kwargs,
+            )
+
+            # Check timestamp stored is correct
+            # 0: go into call object
+            # 1: props is second parameter of _set_container_properties()
+            # lock_name: key of the property
+            timestamp = m_set_container_props.call_args[0][1][lock_name]
+            expected_date = datetime.now() + timedelta(days=self.days)
+            expected_timestamp = int(expected_date.timestamp())
+            self.assertGreater(expected_timestamp + 5, timestamp)
+            self.assertLess(expected_timestamp - 5, timestamp)
+        else:
+            self._test_callback_ko(
+                m_b_status,
+                m_set_container_props,
+                m_rabbit,
+                **kwargs,
+            )
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_lock_update_ok(
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    ):
+        # Simulate add a lock for first time
+        for tier in ("OVH_ARCHIVE", "OVH_ARCHIVE_LOCK", "OVH_RESTORE"):
+            self.old_xml = self.get_conf_xml(tier=tier)
+            for state in BUCKET_ALLOWED_TRANSITIONS:
+                # Only test the update on allowed status
+                if state not in (BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED,
+                                 BUCKET_STATE_DRAINING):
+                    continue
+                self._put_archive_lock_update(
+                    m_check_mpu,
+                    m_b_status,
+                    m_set_container_props,
+                    m_rabbit,
+                    bucket_status=state,
+                )
+
+        # Simulate updating a lock
+        for tier in ("OVH_ARCHIVE", "OVH_ARCHIVE_LOCK", "OVH_RESTORE"):
+            self.old_xml = self.get_conf_xml(tier=tier, days=self.days + 10)
+            for state in BUCKET_ALLOWED_TRANSITIONS:
+                # Only test the update on allowed status
+                if state not in (BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED,
+                                 BUCKET_STATE_DRAINING):
+                    continue
+                self._put_archive_lock_update(
+                    m_check_mpu,
+                    m_b_status,
+                    m_set_container_props,
+                    m_rabbit,
+                    bucket_status=state,
+                    old_timestamp=datetime.now().timestamp(),
+                )
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_lock_update_smaller_date(
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    ):
+        # Simulate updating a lock but with a smaller date than the existing
+        # one
+        for tier in ("OVH_ARCHIVE", "OVH_ARCHIVE_LOCK", "OVH_RESTORE"):
+            self.old_xml = self.get_conf_xml(tier=tier)
+            end_date = datetime.now() + timedelta(days=self.days + 10)
+            old_timestamp = end_date.timestamp()
+
+            for state in BUCKET_ALLOWED_TRANSITIONS:
+                # Only test the update on allowed status
+                if state not in (BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED,
+                                 BUCKET_STATE_DRAINING):
+                    continue
+                self._put_archive_lock_update(
+                    m_check_mpu,
+                    m_b_status,
+                    m_set_container_props,
+                    m_rabbit,
+                    bucket_status=state,
+                    old_timestamp=old_timestamp,
+                    expect_ok=False,
+                )
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_lock_update_bad_conf(
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    ):
+        """
+        Add a first conf without lock, then update it to add a lock but..
+        .. with a twist that make it impossible.
+        """
+        self._put_archive_ok(
+            m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        )
+
+        # Not the same ids
+        self.old_xml = self.get_conf_xml(id="your-id")
+        self._put_archive_lock_update(
+            m_check_mpu,
+            m_b_status,
+            m_set_container_props,
+            m_rabbit,
+            expect_ok=False,
+        )
+
+        # Not the same statuses
+        self.old_xml = self.get_conf_xml(status="other")
+        self._put_archive_lock_update(
+            m_check_mpu,
+            m_b_status,
+            m_set_container_props,
+            m_rabbit,
+            expect_ok=False,
+        )
+
+    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    @patch(MOCK_CHECK_MPU_COMPLETE)
+    def test_PUT_archive_lock_update_bucket_bad_status(
+        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+    ):
+        """
+        Add a first conf without lock, then update it to add a lock but..
+        .. the bucket has not the expected state.
+        """
+        self._put_archive_ok(
+            m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        )
+
+        self.old_xml = self.get_conf_xml()
+        for state in BUCKET_ALLOWED_TRANSITIONS:
+            # Only test the update on allowed status
+            if state in (BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORING,
+                         BUCKET_STATE_RESTORED, BUCKET_STATE_DRAINING):
+                continue
+            self._put_archive_lock_update(
+                m_check_mpu,
+                m_b_status,
+                m_set_container_props,
+                m_rabbit,
+                bucket_status=state,
+                expect_ok=False,
+            )
 
     @patch(MOCK_RABBIT_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)

@@ -22,7 +22,7 @@ from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.intelligent_tiering_utils import \
-    GET_BUCKET_STATE_OUTPUT
+    GET_BUCKET_STATE_OUTPUT, xml_conf_to_dict
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import BadRequest, \
     HTTPOk, MalformedXML, NoSuchConfiguration, S3NotImplemented
@@ -48,31 +48,6 @@ def header_name_from_id(tiering_id):
     return f"{TIERING_HEADER_PREFIX}{tiering_id.replace('_', '-')}"
 
 
-def xml_conf_to_dict(tiering_conf_xml):
-    """
-    Convert the XML tiering configuration into a more pythonic dictionary.
-
-    :param tiering_conf_xml: the tiering configuration XML document
-    :type tiering_conf_xml: bytes
-    :raises: DocumentInvalid, XMLSyntaxError
-    :rtype: dict
-    """
-    tiering_conf = fromstring(tiering_conf_xml,
-                              'IntelligentTieringConfiguration')
-    out = {
-        'Id': tiering_conf.find('Id').text,
-        'Status': tiering_conf.find('Status').text,
-        'Tierings': [],
-    }
-    for tiering in tiering_conf.findall('Tiering'):
-        out['Tierings'].append({
-            'AccessTier': tiering.find('AccessTier').text,
-            'Days': int(tiering.find('Days').text)
-        })
-    # TODO(FVE): parse optional Filter
-    return out
-
-
 class IntelligentTieringController(Controller):
     """
     Handles the following APIs:
@@ -83,7 +58,7 @@ class IntelligentTieringController(Controller):
      - ListBucketIntelligentTieringConfigurations
     """
 
-    def apply_tiering(self, req, tiering_dict):
+    def apply_tiering(self, req, tiering_dict, **kwargs):
         """
         Apply the specified tiering configuration, if any tiering middleware
         is configured. Will raise an exception if it is not possible.
@@ -93,7 +68,7 @@ class IntelligentTieringController(Controller):
             raise S3NotImplemented(
                 "Intelligent tiering is not enabled on this gateway.")
         # This can raise exceptions too
-        return tiering_callback(req, tiering_dict, self.app)
+        return tiering_callback(req, tiering_dict, self.app, **kwargs)
 
     def _build_base_listing(self):
         elem = Element('ListBucketIntelligentTieringConfigurationsOutput')
@@ -211,22 +186,27 @@ class IntelligentTieringController(Controller):
         elif tiering_id != tiering_dict['Id']:
             raise BadRequest("Invalid parameter: id doesn't match document Id")
 
-        # Only one configuration can exist at a time
+        # Only one configuration can exist at a time. So if a configuration
+        # already exists, check that its tiering_id is the same.
         tiering_header_prefix = TIERING_HEADER_PREFIX.lower()
         already_has_tiering = False
+        old_document_xml = None
         for key, _ in resp.sysmeta_headers.items():
             if key.lower().startswith(tiering_header_prefix):
                 already_has_tiering = True
                 break
-        if (already_has_tiering
-                and self._get_document_from_resp(resp, tiering_id) is None):
-            raise BadRequest(
-                "Invalid parameter: id doesn't match existing tiering "
-                "configuration"
-            )
+        if already_has_tiering:
+            old_document_xml = self._get_document_from_resp(resp, tiering_id)
+            if old_document_xml is None:
+                raise BadRequest(
+                    "Invalid parameter: id doesn't match existing tiering "
+                    "configuration"
+                )
 
         # May raise exceptions
-        self.apply_tiering(req, tiering_dict)
+        self.apply_tiering(
+            req, tiering_dict, old_document_xml=old_document_xml
+        )
 
         req.headers[header_name_from_id(tiering_id)] = body
 

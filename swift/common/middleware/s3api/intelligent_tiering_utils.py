@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from swift.common.middleware.s3api.etree import fromstring
 from swift.common.middleware.s3api.s3response import UnexpectedContent, \
     NoSuchBucket
 
@@ -113,3 +114,28 @@ def get_intelligent_tiering_info(app, req):
             archive_lock_until_timestamp
 
     return intelligent_tiering_info
+
+
+def xml_conf_to_dict(tiering_conf_xml):
+    """
+    Convert the XML tiering configuration into a more pythonic dictionary.
+
+    :param tiering_conf_xml: the tiering configuration XML document
+    :type tiering_conf_xml: bytes
+    :raises: DocumentInvalid, XMLSyntaxError
+    :rtype: dict
+    """
+    tiering_conf = fromstring(tiering_conf_xml,
+                              'IntelligentTieringConfiguration')
+    out = {
+        'Id': tiering_conf.find('Id').text,
+        'Status': tiering_conf.find('Status').text,
+        'Tierings': [],
+    }
+    for tiering in tiering_conf.findall('Tiering'):
+        out['Tierings'].append({
+            'AccessTier': tiering.find('AccessTier').text,
+            'Days': int(tiering.find('Days').text)
+        })
+    # TODO(FVE): parse optional Filter
+    return out
