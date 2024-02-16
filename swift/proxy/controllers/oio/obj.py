@@ -400,22 +400,14 @@ class ObjectController(BaseObjectController):
         if error_response:
             return error_response
 
-        policy_index = req.headers.get('X-Backend-Storage-Policy-Index',
-                                       container_info['storage_policy'])
-        stgpol = self._stgpol_from_policy_index(policy_index)
         replication_destinations = req.headers.get(
             "x-replication-destinations")
         headers = self._prepare_headers(req)
         return self._post_object(
-            req, headers, stgpol,
+            req, headers,
             replication_destinations=replication_destinations)
 
-    def _stgpol_from_policy_index(self, policy_index):
-        # TODO actually convert policy_index to oio stgpol
-        return 'SINGLE'
-
-    def _post_object(self, req, headers, stgpol, **kwargs):
-        # TODO do something with stgpol
+    def _post_object(self, req, headers, **kwargs):
         metadata = self.load_object_metadata(headers)
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
