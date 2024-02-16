@@ -161,12 +161,13 @@ def check_if_none_match(fnc):
     def _if_none_match_wrapper(self, req, *args, **kwargs):
         if req.if_none_match is None:
             return fnc(self, req, *args, **kwargs)
+        oio_cache = req.environ.get('oio.cache')
         oio_headers = {REQID_HEADER: self.trans_id}
         try:
             metadata = self.app.storage.object_get_properties(
                 self.account_name, self.container_name, self.object_name,
                 version=obj_version_from_env(req.environ),
-                headers=oio_headers)
+                cache=oio_cache, headers=oio_headers)
         except (NoSuchObject, NoSuchContainer):
             return fnc(self, req, *args, **kwargs)
         # req.if_none_match will check for '*'.
