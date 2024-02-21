@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2023 OVH SAS
+# Copyright (c) 2023-2024 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 import argparse
 import base64
+import time
 
 from oio.api.object_storage import ObjectStorageApi
 from oio.common.configuration import load_namespace_conf
@@ -55,6 +56,15 @@ class MpuChecker:
     @staticmethod
     def reqid():
         return request_id("mpu-check-")
+
+    @staticmethod
+    def micros_to_date(microseconds):
+        """Convert microseconds (str or int) to a human-readable date"""
+        micros = int(microseconds)
+        date = time.strftime(
+            "%Y-%m-%d %H:%M:%S", time.localtime(micros / 1000000.0)
+        ) + f".{micros % 1000000:06d}"
+        return date
 
     def check_upload_id(self, upload_id):
         if len(upload_id) != 48:
@@ -110,8 +120,10 @@ class MpuChecker:
             reqid=reqid,
         )
         mf_versions = [
-            mf["version"] for mf in resp["objects"] if mf["name"] == obj_name
+            mf["version"] for mf in resp["objects"]
+            if mf["name"] == obj_name and not mf["deleted"]
         ]
+        mf_versions.sort()
         self.mf_cache[obj_name] = mf_versions
         return mf_versions
 
@@ -226,10 +238,13 @@ class MpuChecker:
                 # Possibly a new MPU with the same name. To be sure we need
                 # to analyze all manifests and look for the upload ID.
                 self.logger.info(
-                    "MPU %s is complete but there is an upload marker: "
-                    "%s (reqid=%s)",
-                    obj_name,
+                    "Found an upload marker %s (%s) "
+                    "but there is at least one object with the same name: "
+                    "%s (%s) (reqid=%s)",
                     obj_part_name,
+                    self.micros_to_date(marker_meta.get("version")),
+                    obj_name,
+                    self.micros_to_date(mf_versions[-1]),
                     reqid,
                 )
             elif part_number and not marker_meta:
@@ -284,9 +299,12 @@ class MpuChecker:
                             )
                     else:
                         self.logger.info(
-                            "Part %s is in an incomplete MPU, but complete "
-                            "MPUs already exist with the same name (reqid=%s)",
+                            "Part %s is in an incomplete MPU (%s), "
+                            "but complete MPUs already exist with the same "
+                            "name (%s) (reqid=%s)",
                             obj_part_name,
+                            self.micros_to_date(marker_meta["version"]),
+                            self.micros_to_date(mf_version),
                             reqid,
                         )
 
