@@ -27,7 +27,7 @@ import string
 from sys import version_info
 
 from swift.common.utils import split_path, json, close_if_possible, md5, \
-    reiterate, drain_and_close, config_true_value
+    reiterate, drain_and_close
 from swift.common.registry import get_swift_info
 from swift.common import constraints, swob
 from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
@@ -2490,20 +2490,9 @@ class S3Request(swob.Request):
         """
         # With Boto3, we are able to check if
         # the user agent is the expected one
-        from_repli = (self.environ.get('reseller_request', False)
-                      and self.user_agent
-                      and self.user_agent.endswith(REPLICATOR_USER_AGENT))
-        # If the request is coming from the replicator, then the bucket must
-        # have versioning enabled.
-        # In principle, the source bucket will always have versioning enabled,
-        # but we check in both cases anyway (source + destination).
-        # Only writing is blocked
-        if from_repli and self.is_object_request and self.method in ("PUT",):
-            info = self.get_container_info(self.app)
-            versioning = info.get('sysmeta', {}).get('versions-enabled', False)
-            if not config_true_value(versioning):
-                raise InvalidRequest('Bucket must have versioning enabled.')
-        return from_repli
+        return (self.environ.get('reseller_request', False)
+                and self.user_agent
+                and self.user_agent.endswith(REPLICATOR_USER_AGENT))
 
     def from_internal_tool(self):
         return self.from_log_deliverer() or self.from_replicator()

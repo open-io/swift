@@ -28,7 +28,8 @@ from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     NoSuchVersion
 from swift.common.middleware.s3api.utils import camel_to_snake
 from swift.common.swob import str_to_wsgi
-from swift.common.utils import drain_and_close, get_remote_client, public
+from swift.common.utils import config_true_value, drain_and_close, \
+    get_remote_client, public
 
 
 def bucket_operation(func=None, err_resp=None, err_msg=None):
@@ -119,18 +120,35 @@ def check_bucket_access(func):
                 # And since in some configurations, some storage classes are
                 # only allowed from a specific storage domain,
                 # the internal tools must skip this check.
-                return func(self, req)
-
-            try:
-                info = req.get_container_info(self.app)
-                storage_domain = info.get('sysmeta', {}).get(
-                    's3api-storage-domain',
-                    self.conf.default_storage_domain)
-                if req.storage_domain != storage_domain:
-                    raise BadEndpoint
-            except NoSuchBucket:
-                # The bucket does not exist, the request is authorized
                 pass
+            else:
+                try:
+                    info = req.get_container_info(self.app)
+                    storage_domain = info.get('sysmeta', {}).get(
+                        's3api-storage-domain',
+                        self.conf.default_storage_domain)
+                    if req.storage_domain != storage_domain:
+                        raise BadEndpoint
+                except NoSuchBucket:
+                    # The bucket does not exist, the request is authorized
+                    pass
+
+        # If the request is coming from the replicator, then the destination
+        # bucket must have versioning enabled.
+        # Only writing is checked:
+        # - upload object
+        # - create MPU
+        # - complete MPU
+        if (
+            req.from_replicator() and req.is_object_request
+            and self.operation in ("REST.PUT.OBJECT",
+                                   "REST.POST.UPLOAD",
+                                   "REST.POST.UPLOADS")
+        ):
+            info = req.get_container_info(self.app)
+            versioning = info.get('sysmeta', {}).get('versions-enabled', False)
+            if not config_true_value(versioning):
+                raise InvalidRequest('Bucket must have versioning enabled.')
 
         return func(self, req)
 
