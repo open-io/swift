@@ -31,6 +31,7 @@ function install_deps() {
     return
   fi
   echo "travis_fold:start:install_deps"
+  # TODO: use the list from oio-sds repo (do not maintain 2 lists in 2 repos)
   sudo apt-get install -y \
     --allow-unauthenticated --allow-downgrades \
     --allow-remove-essential --allow-change-held-packages \
@@ -52,6 +53,7 @@ function install_deps() {
     libleveldb-dev \
     liblzo2-dev \
     librabbitmq-dev \
+    librdkafka-dev \
     libsqlite3-dev \
     libxml2-dev \
     libxslt1-dev \
@@ -86,6 +88,7 @@ function run_sds() {
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
     -f third_party/oio-sds/etc/bootstrap-option-cache.yml \
+    -f third_party/oio-sds/etc/bootstrap-option-kafka.yml \
     ${args}
   openio cluster wait || (openio cluster list --stats; openioctl.sh status2; sudo tail -n 100 /var/log/syslog; return 1)
 }

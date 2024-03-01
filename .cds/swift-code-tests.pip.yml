@@ -8,10 +8,11 @@ jobs:
         checkout: '{{ .cds.workspace }}'
 
       - name: Install dependencies
-        script:
-          - export DEBIAN_FRONTEND=noninteractive
-          - apt update
-          - apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt)
+        script: |+
+          export DEBIAN_FRONTEND=noninteractive
+          sed -i '/docker-compose-plugin/d' .cds/deps-ubuntu-focal.txt
+          apt update
+          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt)
 
       - name: Run coding style tests
         script:

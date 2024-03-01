@@ -1,6 +1,7 @@
 attr
 build-essential
 curl
+docker-compose-plugin
 golang-go
 jq
 lcov

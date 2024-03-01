@@ -16,6 +16,14 @@ jobs:
           sudo apt-get purge -y --allow-remove-essential shim-signed  # To be deleted as soon as the model is corrected
           echo "deb [trusted=yes] http://read:{{.cds.proj.private_ovh_objectstorage_openio_read_password}}@last-private-ovh-objectstorage-openio.snap-priv.mirrors.ovh.net/ubuntu focal/main main" >> /etc/apt/sources.list.d/obsto.list
           echo "deb [trusted=yes] http://last-public-ovh-pcs.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/obsto.list
+          # Docker repo for docker compose plugin should be removed after https://jira.ovhcloud.tools/browse/CORDEV-2545 completion
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          sudo chmod a+r /etc/apt/keyrings/docker.gpg
+          echo \
+            "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+            "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
           apt update
           # rabbitmq-server is not is the list as only necessary for oio-tests
           apt-get install -y rabbitmq-server $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${GO_PACKAGE} ${PYTHON_PACKAGE} ${ZOOKEEPER_PACKAGE}
@@ -48,6 +56,15 @@ jobs:
           . ./oio_tests/functional/common.sh
           install_foundationdb "${FDB_VERSION}"
           rabbitmq-plugins enable rabbitmq_management
+
+          docker login -u {{ .cds.proj.artifactory_user }} -p {{ .cds.proj.artifactory_token }} pu-objectstorage-default-docker.artifactory.ovhcloud.tools
+          # Start Redpanda (kafka)
+          docker-compose -f ./third_party/oio-sds/docker/redpanda.docker-compose.yml up -d
+          until [ "$(docker inspect -f "{{.State.Status}}" redpanda-0)" = "running" ]
+          do
+            sleep 1
+          done
+          sleep 1
 
           echo "RateLimitBurst=0" >> /etc/systemd/journald.conf
           echo '$SystemLogRateLimitInterval 0' >> /etc/rsyslog.conf
