@@ -47,6 +47,7 @@ RABBITMQ_AUTO_DELETE = False
 RABBITMQ_MSG_ARCHIVING = 'archive'
 RABBITMQ_MSG_RESTORING = 'restore'
 RABBITMQ_MSG_DELETION = 'delete'
+RABBITMQ_CONN_TIMEOUT = 10
 
 
 # Default authorized actions.
@@ -103,7 +104,10 @@ class RabbitMQClient(object):
         exchange and queue provided.
         It may raises exceptions.
         """
-        url_param = pika.URLParameters(self.url)
+        # pika.ConnectionParameters is better than pika.URLParameters to handle
+        # multiple arguments but I don't want to change the RabbitMQClient API.
+        url = self.url + f"?blocked_connection_timeout={RABBITMQ_CONN_TIMEOUT}"
+        url_param = pika.URLParameters(url)
         connection = pika.BlockingConnection(url_param)
         try:
             channel = connection.channel()
@@ -130,6 +134,7 @@ class RabbitMQClient(object):
                 channel.queue_bind(exchange=self.exchange, queue=self.queue)
                 channel.queue_bind(exchange=self.dl_exchange,
                                    queue=self.dl_queue)
+                channel.confirm_delivery()
             except Exception:
                 if channel.is_open:
                     channel.cancel()
@@ -155,9 +160,15 @@ class RabbitMQClient(object):
             if bucket_region:
                 data["region"] = bucket_region
 
+            properties = pika.BasicProperties(
+                content_type='application/json',
+                delivery_mode=pika.DeliveryMode.Persistent,
+            )
             channel.basic_publish(exchange=self.exchange,
                                   routing_key=self.queue,
-                                  body=json.dumps(data))
+                                  body=json.dumps(data),
+                                  properties=properties,
+                                  mandatory=True)
         except Exception as exc:
             self.logger.exception('Error with RabbitMQ server: %s' % str(exc))
             raise ServiceUnavailable() from exc
