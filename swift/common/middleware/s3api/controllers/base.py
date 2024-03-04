@@ -265,8 +265,14 @@ class Controller(object):
                 subreq, self.logger)
             subreq.set_acl_handler(acl_handler)
 
-            check_iam_access('s3:ListBucket')(
-                lambda x, req: None)(None, subreq)
+            # If the user does not have permission to list the bucket,
+            # he should not know that the object does not exist.
+            # However, if the request comes from the replicator, the real
+            # exception should be raised.
+            if not req.from_replicator():
+                check_iam_access('s3:ListBucket')(
+                    lambda x, req: None)(None, subreq)
+
             resp = subreq.get_response(self.app, query={'limit': 0})
             drain_and_close(resp)
             # The user can list the bucket, so the user can know
