@@ -75,7 +75,7 @@ allow_anonymous_path_requests = false
 s3_only = true
 landing_page = https://www.ovhcloud.com/fr/public-cloud/object-storage/
 enable_encryption = true
-default_sse_configuration = AES256
+default_sse_configuration = %DEFAULT_SSE_CONFIGURATION%
 
 [filter:tempauth]
 use = egg:swift#tempauth

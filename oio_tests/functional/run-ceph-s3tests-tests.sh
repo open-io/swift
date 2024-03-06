@@ -41,6 +41,7 @@ sed \
   -e "s/%OIO_KMS_ENABLED%/True/g" \
   -e "s/%FALLBACK_ON_KEYMASTER%/True/g" \
   -e "s/%ACCOUNT_WHITELIST%//g" \
+  -e "/%DEFAULT_SSE_CONFIGURATION%/d" \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-custom-encryption.cfg
 run_functional_test s3-custom-encryption.cfg ceph-s3tests.sh

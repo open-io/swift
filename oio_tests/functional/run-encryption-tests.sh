@@ -31,6 +31,7 @@ sed \
   -e "s/%OIO_KMS_ENABLED%/True/g" \
   -e "s/%FALLBACK_ON_KEYMASTER%/True/g" \
   -e "s/%ACCOUNT_WHITELIST%//g" \
+  -e "s/%DEFAULT_SSE_CONFIGURATION%/AES256/g" \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-sses3-encryption.cfg
 run_functional_test etc/s3-sses3-encryption.cfg \
@@ -46,6 +47,7 @@ sed \
   -e "s/%OIO_KMS_ENABLED%/True/g" \
   -e "s/%FALLBACK_ON_KEYMASTER%/True/g" \
   -e "s/%ACCOUNT_WHITELIST%/${ACCOUNT_WHITELIST}/g" \
+  -e "s/%DEFAULT_SSE_CONFIGURATION%/AES256/g" \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-sses3-encryption.cfg
 run_functional_test etc/s3-sses3-encryption.cfg \
@@ -63,6 +65,7 @@ sed \
   -e "s/%OIO_KMS_ENABLED%/True/g" \
   -e "s/%FALLBACK_ON_KEYMASTER%/False/g" \
   -e "s/%ACCOUNT_WHITELIST%/${ACCOUNT_WHITELIST}/g" \
+  -e "/%DEFAULT_SSE_CONFIGURATION%/d" \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-sses3-encryption.cfg
 run_functional_test etc/s3-sses3-encryption.cfg \
@@ -78,6 +81,7 @@ sed \
   -e "s/%OIO_KMS_ENABLED%/False/g" \
   -e "s/%FALLBACK_ON_KEYMASTER%/True/g" \
   -e "s/%ACCOUNT_WHITELIST%/${ACCOUNT_WHITELIST}/g" \
+  -e "/%DEFAULT_SSE_CONFIGURATION%/d" \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-custom-encryption.cfg
 run_functional_test s3-custom-encryption.cfg \
