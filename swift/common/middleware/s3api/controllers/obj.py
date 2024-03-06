@@ -24,7 +24,7 @@ from swift.common.utils import public, list_from_csv, config_true_value
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
-    SSEC_KEY_HEADER
+    SSEC_KEY_HEADER, SSEC_ALGO_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
@@ -42,7 +42,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, BadRequest
+    PreconditionFailed, BadRequest, InvalidRequest
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
@@ -181,6 +181,12 @@ class ObjectController(Controller):
 
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)
+
+        # SSE-C headers cannot be included on SSE-S3 encrypted objects
+        if ((SSEC_ALGO_HEADER in req.headers or SSEC_KEY_HEADER in req.headers)
+                and self.conf.default_sse_configuration == 'AES256'):
+            raise InvalidRequest('The encryption parameters are not '
+                                 'applicable to this object.')
 
         update_response_header_with_response_params(req, resp)
         return resp
