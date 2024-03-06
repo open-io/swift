@@ -123,14 +123,13 @@ class EncryptionController(Controller):
     def GET(self, req):
         """
         Handles Get Bucket Encryption
-        Check (in this order):
-        - swift.encryption environment variable
-        - BUCKET_ENCRYPTION_HEADER sysmeta
         """
-        resp = req.get_response(self.app, method="HEAD")
+        # For IAM checks
+        req.get_response(self.app, method="HEAD")
 
-        sse_algo = (req.environ.get('swift.encryption')
-                    or resp.sysmeta_headers.get(BUCKET_ENCRYPTION_HEADER))
+        sysmeta_info = req.get_container_info(self.app)
+        encryption_set_env_variable(req, self.conf, sysmeta_info=sysmeta_info)
+        sse_algo = req.environ.get('swift.encryption')
         if sse_algo:
             body = self._create_xml_payload_from_sse_algorithm(sse_algo)
             return HTTPOk(body=body, content_type="application/xml")
