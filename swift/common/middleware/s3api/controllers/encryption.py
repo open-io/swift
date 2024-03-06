@@ -182,8 +182,7 @@ class EncryptionController(Controller):
         """
         # FIXME: Remove this when default sse configuration is set to
         # match AWS current value (AES256) everywhere
-        sse_algo = req.environ.get('swift.encryption')
-        if sse_algo:
+        if self.conf.default_sse_configuration == 'AES256':
             raise AccessDenied()
         req.headers[BUCKET_ENCRYPTION_HEADER] = ""
         resp = req.get_response(self.app, method="POST")
