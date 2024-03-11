@@ -88,7 +88,7 @@ class KmsWrapper(object):
 
     def create_bucket_secret(self, bucket, account, secret_id=None,
                              secret_bytes=32, reqid=None):
-        secret_meta = self.kms.create_secret(
+        resp, secret_meta = self.kms.create_secret(
             account,
             bucket,
             secret_id=secret_id,
@@ -98,7 +98,7 @@ class KmsWrapper(object):
         ckey = f"sses3/{account}/{bucket}/{secret_id}"
         if self.cache is not None:
             self.cache.set(ckey, secret_meta["secret"], time=self.cache_time)
-        return secret_meta["secret"]
+        return resp.status == 201
 
     def delete_bucket_secret(self, bucket, account,
                              secret_id=None, reqid=None):
@@ -340,7 +340,7 @@ class SsecKeyMasterContext(KeyMasterContext):
                 self._delete_bucket_secret()
             raise exc
         success = is_success(self._get_status_int())
-        if ((secret_created and not success)
+        if ((secret_created and not success and operation == "REST.PUT.BUCKET")
                 or (operation == "REST.DELETE.BUCKET"
                     and req.method == 'DELETE' and success)):
             self._delete_bucket_secret()
