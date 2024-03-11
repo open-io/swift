@@ -17,11 +17,12 @@ import json
 import mimetypes
 import time
 import math
+from urllib.parse import unquote_plus
 
 from swift import gettext_ as _
 from swift.common.utils import (
     clean_content_type, config_true_value, Timestamp, public,
-    close_if_possible, closing_if_possible)
+    close_if_possible, closing_if_possible, flatten_dict)
 from swift.common.constraints import MAX_FILE_SIZE, check_metadata, \
     check_object_creation
 from swift.common.header_key_dict import HeaderKeyDict
@@ -734,6 +735,29 @@ class ObjectController(BaseObjectController):
             kwargs['version'] = swift_versionid_to_oio_versionid(
                 kwargs['version'])
 
+        extra_properties = {}
+        crypto_resiliency = None
+        crypto_body_meta_header = req.headers.get(
+            "x-object-sysmeta-crypto-body-meta"
+        )
+        if crypto_body_meta_header:
+            crypto_body_meta = json.loads(
+                unquote_plus(crypto_body_meta_header)
+            )
+            crypto_resiliency = {}
+            crypto_resiliency["body_key"] = crypto_body_meta["body_key"]
+            crypto_resiliency["iv"] = crypto_body_meta["iv"]
+            if crypto_body_meta["key_id"].get("ssec") is not None:
+                crypto_resiliency["ssec"] = True
+            elif crypto_body_meta["key_id"].get("sses3") is not None:
+                crypto_resiliency["sses3"] = True
+
+            crypto_resiliency = flatten_dict(crypto_resiliency)
+            crypto_resiliency = ",".join(
+                f"{k}={v}" for k, v in crypto_resiliency.items()
+            )
+            extra_properties["Cryptography-Resiliency"] = crypto_resiliency
+
         bucket_name = req.environ.get('s3api.bucket')
         replication_destinations = \
             req.headers.get("x-replication-destinations")
@@ -754,6 +778,7 @@ class ObjectController(BaseObjectController):
                 properties=metadata, container_properties=ct_props,
                 properties_callback=(
                     lambda: self.load_object_metadata(self._get_footers(req))),
+                extra_properties=extra_properties,
                 cache=oio_cache, perfdata=perfdata,
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
