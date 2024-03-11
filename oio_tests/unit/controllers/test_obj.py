@@ -225,7 +225,8 @@ class TestObjectController(unittest.TestCase):
 
         mock.assert_called_once_with(
             'a', 'c', obj_name='o', etag='',
-            properties={}, mime_type='application/octet-stream',
+            properties={}, extra_properties={},
+            mime_type='application/octet-stream',
             file_or_path=ANY,
             policy=None, headers=ANY, container_properties=ANY, cache=None,
             perfdata=ANY, properties_callback=ANY,
