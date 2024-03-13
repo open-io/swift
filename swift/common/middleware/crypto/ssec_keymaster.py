@@ -244,19 +244,20 @@ class SsecKeyMasterContext(KeyMasterContext):
 
     def _create_bucket_secret(self):
         account, bucket = self.req_account_and_bucket()
-        # Create secret if whitelist is empty OR account is whitelisted
-        if (not self.keymaster.account_whitelist
-                or account in self.keymaster.account_whitelist):
-            self.keymaster.logger.debug("Creating secret for %s/%s",
-                                        account, bucket)
-            return self.kms.create_bucket_secret(
-                bucket,
-                account=account,
-                secret_id=self.keymaster.active_secret_id,
-                secret_bytes=self.keymaster.sses3_secret_bytes,
-                reqid=self.trans_id
-            )
-        return None
+        # Bucket secret creation disabled if account is not whitelisted
+        if (self.keymaster.account_whitelist
+                and account not in self.keymaster.account_whitelist):
+            return None
+
+        self.keymaster.logger.debug("Creating secret for %s/%s",
+                                    account, bucket)
+        return self.kms.create_bucket_secret(
+            bucket,
+            account=account,
+            secret_id=self.keymaster.active_secret_id,
+            secret_bytes=self.keymaster.sses3_secret_bytes,
+            reqid=self.trans_id
+        )
 
     def fetch_crypto_keys(self, key_id=None, *args, **kwargs):
         """
