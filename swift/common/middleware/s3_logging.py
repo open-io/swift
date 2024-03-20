@@ -110,19 +110,21 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
         if stat_type == 'object':
             if method != 'PUT':
                 return None
+            source = req.headers.environ.get(
+                'HTTP_X_OVH_REPLICATION_SOURCE', 'client')
             repl_status = req.headers.environ.get(
                 'HTTP_X_OBJECT_SYSMETA_S3API_REPLICATION_STATUS')
             if repl_status == 'PENDING':
                 return '.'.join(
                     ('replication.customer',
-                     method, stat_type, str(status_int)))
+                     source, method, stat_type, str(status_int)))
 
             repl_status = req.headers.environ.get(
                 'HTTP_X_AMZ_META_X_OIO_?REPLICATION_STATUS')
             if repl_status == 'REPLICA':
                 return '.'.join(
                     ('replication.s3-replicator',
-                     method, stat_type, str(status_int)))
+                     source, method, stat_type, str(status_int)))
 
         return None
 
