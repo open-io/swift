@@ -776,6 +776,7 @@ class S3Request(swob.Request):
     aws_chunked = _req_s3api_info('aws_chunked')
     user_id = _req_s3api_info('requester')
     trans_id = swob._req_environ_property('swift.trans_id')
+    request_origin = _req_s3api_info("request_origin")
 
     bucket_acl = _header_acl_property('container')
     object_acl = _header_acl_property('object')
@@ -841,6 +842,7 @@ class S3Request(swob.Request):
                             f'SigV{self._signature_version}'
                     self.authentication_type = self._get_authentication_type()
                     self.aws_chunked = self._is_chunked_upload
+                    self.request_origin = self._get_request_origin
                 except Exception:
                     if parse_auth_info_success:
                         raise
@@ -953,6 +955,15 @@ class S3Request(swob.Request):
                 'X-Amz-Content-SHA256' in self.headers and
                 self.headers['X-Amz-Content-SHA256'] ==
                 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD')
+
+    @property
+    def _get_request_origin(self):
+        # By-pass reseller validation
+        if is_from_replicator(True, self.user_agent):
+            return 's3-replicator'
+        if self.from_log_deliverer():
+            return 'log-deliverer'
+        return 'client'
 
     def _parse_host(self, given_domain, storage_domains):
         if not given_domain:
