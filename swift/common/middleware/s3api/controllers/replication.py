@@ -54,7 +54,7 @@ DEST_BUCKET_PREFIX = ARN_AWS_PREFIX + "s3:::"
 
 
 replication_role_re = re.compile(
-    "arn:aws:iam::([a-zA-Z0-9]+):role/([a-zA-Z0-9]+)"
+    r"arn:aws:iam::([a-zA-Z0-9]+):role/([a-zA-Z0-9\_-]+)"
 )
 
 
@@ -317,21 +317,27 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
             ensure_replicated=ensure_replicated
         )
 
+        if not destination_buckets or not role:
+            return
+        match = replication_role_re.fullmatch(role)
+        if match is None:
+            return
+
         # Remove 'arn:aws:s3:::' prefix from bucket name
-        if destination_buckets and role:
-            req.headers["X-Replication-Destinations"] = ";".join(
-                [
-                    b[len(DEST_BUCKET_PREFIX):]
-                    if b.startswith(DEST_BUCKET_PREFIX) else b
-                    for b in destination_buckets
-                ]
-            )
-            match = replication_role_re.fullmatch(role)
-            role_project_id = match.group(1)
-            req.headers["X-Replication-Role-Project-Id"] = role_project_id
-            replicator_id = match.group(2)
-            req.headers["X-Replication-Replicator-Id"] = replicator_id
-            req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_PENDING
+        req.headers["X-Replication-Destinations"] = ";".join(
+            [
+                b[len(DEST_BUCKET_PREFIX):]
+                if b.startswith(DEST_BUCKET_PREFIX) else b
+                for b in destination_buckets
+            ]
+        )
+
+        role_project_id = match.group(1)
+        req.headers["X-Replication-Role-Project-Id"] = role_project_id
+        replicator_id = match.group(2)
+        req.headers["X-Replication-Replicator-Id"] = replicator_id
+        req.headers[OBJECT_REPLICATION_STATUS] = \
+            OBJECT_REPLICATION_PENDING
 
 
 def replication_drop_rules(req):
