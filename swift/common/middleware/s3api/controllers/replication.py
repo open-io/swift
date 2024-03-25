@@ -551,8 +551,9 @@ class ReplicationController(Controller):
         role_account_id = match.group(1)
         if role_account_id != req.account.split("_")[1]:
             raise AccessDenied()
-        # role_replicator_id = match.group(2)
-        # role_replicator_id is not used yet but needs to exist.
+        role_replicator_id = match.group(2)
+        if role_replicator_id not in self.conf.replicator_ids:
+            raise AccessDenied()
 
     @set_s3_operation_rest('REPLICATION')
     @ratelimit

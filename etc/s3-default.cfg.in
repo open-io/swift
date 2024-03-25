@@ -109,6 +109,7 @@ auto_storage_policies_STANDARD_IA = SINGLE
 enable_object_lock = true
 enable_website = true
 enable_lifecycle = true
+replicator_ids = s3-replication
 
 [filter:tempauth]
 use = egg:swift#tempauth

@@ -395,13 +395,14 @@ class S3ApiMiddleware(object):
             rule.append(allowed_header_elm)
             check_cors_rule(rule)
             self.conf.cors_rules.append(rule)
-
         self.conf.enable_beta_features = config_true_value(
             wsgi_conf.get('enable_beta_features', True))
         self.conf.enable_access_logging = config_true_value(
             wsgi_conf.get('enable_access_logging', True))
         self.conf.enable_bucket_replication = config_true_value(
             wsgi_conf.get('enable_bucket_replication', True))
+        self.conf.replicator_ids = set(list_from_csv(
+            wsgi_conf.get('replicator_ids', '')))
         self.conf.enable_encryption = config_true_value(
             wsgi_conf.get('enable_encryption', True))
         self.conf.default_sse_configuration = \

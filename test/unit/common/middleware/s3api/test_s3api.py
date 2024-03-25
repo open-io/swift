@@ -136,6 +136,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'default_storage_domain': None,
             'auto_storage_policies': {},
             'storage_class_by_policy': {},
+            'replicator_ids': set(),
             'enable_beta_features': True,
             'enable_access_logging': True,
             'enable_bucket_replication': True,
@@ -188,6 +189,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_beta_features': False,
             'enable_access_logging': False,
             'enable_bucket_replication': False,
+            'replicator_ids': 's3-replication,s3-replication-2',
             'enable_object_lock': False,
             'enable_website': False,
             'enable_lifecycle': False,
@@ -227,6 +229,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         for expected_cors_rule, cors_rule in zip(
                 expected_cors_rules, cors_rules):
             self.assertEqual(tostring(expected_cors_rule), tostring(cors_rule))
+        conf['replicator_ids'] = {'s3-replication', 's3-replication-2'}
         self.assertEqual(conf, s3api.conf)
 
         # test allow_origin list with a '*' fails.

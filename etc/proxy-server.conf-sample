@@ -853,6 +853,9 @@ use = egg:swift#s3api
 
 # Enable or disable Bucket Replication.
 #enable_bucket_replication = true
+#
+# Valid replicator IDs used to configure the replication role
+#replicator_ids = s3-replication,s3-replication-2
 
 # Enable or disable SSE
 #enable_encryption = true
