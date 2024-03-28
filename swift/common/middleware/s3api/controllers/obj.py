@@ -149,6 +149,10 @@ class ObjectController(Controller):
                 # Versioning has never been enabled
                 raise NoSuchVersion(object_name, version_id)
 
+        # Encryption
+        sysmeta = req.get_container_info(self.app).get('sysmeta', {})
+        encryption_set_env_variable(req, self.conf, sysmeta)
+
         resp = req.get_response(self.app, query=query)
         if HEADER_RETENION_MODE in resp.sysmeta_headers:
             resp.headers['ObjectLock-Mode'] = \
@@ -184,7 +188,7 @@ class ObjectController(Controller):
 
         # SSE-C headers cannot be included on SSE-S3 encrypted objects
         if ((SSEC_ALGO_HEADER in req.headers or SSEC_KEY_HEADER in req.headers)
-                and self.conf.default_sse_configuration == 'AES256'):
+                and req.environ.get('swift.encryption') == 'AES256'):
             raise InvalidRequest('The encryption parameters are not '
                                  'applicable to this object.')
 

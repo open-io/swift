@@ -1121,6 +1121,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             with self.assertRaises(ValueError):
                 self.s3api.check_pipeline(self.conf)
 
+    @patch('swift.common.middleware.s3api.s3request.get_container_info',
+           lambda env, app, swift_source, read_caches=None:
+           {'status': 204})
     def test_signature_v4(self):
         environ = {
             'REQUEST_METHOD': 'GET'}
@@ -1141,9 +1144,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.assertIn('swift.backend_path', req.environ)
         self.assertEqual('/v1/AUTH_test/bucket/object',
                          req.environ['swift.backend_path'])
-        for _, _, headers in self.swift.calls_with_headers:
-            self.assertEqual(authz_header, headers['Authorization'])
-            self.assertNotIn('X-Auth-Token', headers)
+        for _, _, calls_headers in self.swift.calls_with_headers:
+            self.assertEqual(authz_header, calls_headers['Authorization'])
+            self.assertNotIn('X-Auth-Token', calls_headers)
 
     def test_signature_v4_no_date(self):
         environ = {
