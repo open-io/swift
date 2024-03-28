@@ -287,9 +287,13 @@ class SsecKeyMasterContext(KeyMasterContext):
             path = os.path.join(account_path, self.container)
             self._keys['container'] = self.keymaster.create_key(
                 path, secret_id=secret_id)
-            # Can be None
-            self._keys['bucket'] = self._fetch_bucket_secret(
-                secret_id=secret_id)
+            # POST is required for CompleteMultipartUpload operations
+            if (self.req.environ.get('swift.encryption') == 'AES256'
+                    or self.req.method not in ['PUT', 'POST']):
+                self._keys['bucket'] = self._fetch_bucket_secret(
+                    secret_id=secret_id)
+            else:
+                self._keys['bucket'] = None
 
             self._keys['id'] = {'v': '1', 'path': path}
 
