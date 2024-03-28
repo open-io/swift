@@ -58,7 +58,7 @@ import base64
 import json
 import logging
 import time
-from random import randint
+from random import random
 
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session as keystone_session
@@ -208,6 +208,9 @@ class S3Token(object):
               or self._secret_cache_duration_min < 0):
             raise ValueError('secret_cache_duration_min must be lower or equal'
                              ' to secret_cache_duration and non-negative')
+        self._delta_cache_duration = \
+            self._secret_cache_duration - self._secret_cache_duration_min
+
         if self._secret_cache_duration:
             try:
                 auth_plugin = keystone_loading.get_plugin_loader(
@@ -363,7 +366,17 @@ class S3Token(object):
                 # The cached data may be invalid, but the server answered,
                 # so we log this with code 200.
                 metric_name = "GET.memcached.secret.200.timing"
-                if len(cached_auth_data) == 4:
+                # Without cache_invalidity_ts set current_ttl to
+                # secret_cache_duration
+                current_ttl = self._secret_cache_duration
+                if len(cached_auth_data) == 5:
+                    # Extract cache_invalidity_ts
+                    # Compatibility, until all cache entries are updated
+                    (headers, regions_per_type, tenant, secret,
+                     cache_invalidity_ts) = cached_auth_data
+                    current_ttl = max(
+                        cache_invalidity_ts - time.time(), 0)
+                elif len(cached_auth_data) == 4:
                     # OVH: store regions_per_type in cached_auth_data
                     # for endpoint_filter.
                     headers, regions_per_type, tenant, secret = \
@@ -373,6 +386,21 @@ class S3Token(object):
 
                 if s3_auth_details['check_signature'](secret):
                     self._logger.debug("Cached creds valid")
+
+                    # jitter configured in the cache invalidation
+                    #
+                    # If current_ttl is greater or near delta_cache_duration
+                    # the ratio will be greater or near 1.0
+                    #
+                    # The square root is here to flat degrowth of ratio and
+                    # reduce probability to invalidate the cache too early
+                    if self._delta_cache_duration:
+                        invalidation_proba = (
+                            current_ttl / self._delta_cache_duration) ** 0.5
+
+                        if invalidation_proba < random():
+                            # Ignore cache for this request, to force refresh.
+                            cached_auth_data = None
                 else:
                     self._logger.debug("Cached creds invalid")
                     cached_auth_data = None
@@ -434,9 +462,7 @@ class S3Token(object):
                         raise ValueError
                     start = time.monotonic()
                     try:
-                        # Introduce jitter in the cache duration
-                        duration = randint(self._secret_cache_duration_min,
-                                           self._secret_cache_duration)
+                        duration = self._secret_cache_duration
                         try:
                             cred_ref = self.keystoneclient.ec2.get(
                                 user_id=user_id,
@@ -455,12 +481,14 @@ class S3Token(object):
                                                 (ks_resp_end - start) * 1000)
                             environ['s3token.time']['fetch_secret'] = \
                                 ks_resp_end - start
-
+                        now = time.time()
                         memcache_client.set(
                             memcache_token_key,
                             # OVH: Add regions_per_type in memcached
+                            # OVH: Add timestamp of cache invalidity
                             (headers, regions_per_type,
-                             tenant, cred_ref.secret),
+                             tenant, cred_ref.secret,
+                             now + duration),
                             time=duration)
                         # XXX(FVE): the previous statement does not return
                         # anything nor raises exceptions, we don't know if
