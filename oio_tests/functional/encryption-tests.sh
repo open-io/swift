@@ -55,6 +55,64 @@ echo "Checking its hash"
 OBJ_1_HASH=$(openio object show -f value -c hash "$BUCKET" "obj_1")
 [ "${OBJ_1_HASH,,}" == "$(oio-blake3sum ./obj_1.openio | cut -d ' ' -f 1)" ]
 
+echo "Check if crypto resiliency infos are written on the rawx"
+check_crypto_resiliency() {
+    local OBJ="$1"
+
+    check_chunk_crypto_resiliency() {
+        local CONTAINER="$1"
+        local CHUNK="$2"
+        echo "Checking crypto resiliency infos of chunk ${CHUNK}"
+        local CHUNK_URLS=$(openio object locate "$CONTAINER" "$CHUNK" -f value | awk '{print $2}')
+        for CHUNK_URL in $(echo $CHUNK_URLS); do
+            echo "Check chunk url: $CHUNK_URL"
+            # HEAD request to the chunk
+            local CRYPTO_RESILIENCY=$(curl -s -I $CHUNK_URL | grep "X-Oio-Ext-Cryptography-Resiliency")
+            # Check the response has X-Oio-Ext-Cryptography-Resiliency header
+            [ -n "$CRYPTO_RESILIENCY" ]
+
+            # Take values of body_key.iv, body_key.key and iv form rawx
+            local RAWX_BODY_KEY_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F'body_key.iv=' '{split($2, a, ","); print a[1]}')
+            local RAWX_BODY_KEY_KEY=$(echo "$CRYPTO_RESILIENCY" | awk -F',body_key.key=' '{split($2, a, ","); print a[1]}')
+            local RAWX_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F',iv=' '{split($2, a, ","); print a[1]}')
+
+            # Take values of body_key.iv, body_key.key and iv form meta2
+            urldecode() {
+                echo -e "$(sed 's/+/ /g;s/%\(..\)/\\x\1/g;')"
+            }
+            local CRYPTO_BODY_META=$(openio object show "$CONTAINER" "$CHUNK" -f table | grep x-object-sysmeta-crypto-body-meta | awk '{print $4}')
+            local CRYPTO_BODY_META=$(echo $CRYPTO_BODY_META | urldecode)
+            local META2_BODY_KEY_IV=$(echo "$CRYPTO_BODY_META" | jq -r '.body_key.iv')
+            local META2_BODY_KEY_KEY=$(echo "$CRYPTO_BODY_META" | jq -r '.body_key.key')
+            local META2_IV=$(echo "$CRYPTO_BODY_META" | jq -r '.iv')
+
+            # Compare values form rawx with values form meta2
+            [ "$RAWX_BODY_KEY_IV" = "$META2_BODY_KEY_IV" ]
+            [ "$RAWX_BODY_KEY_KEY" = "$META2_BODY_KEY_KEY" ]
+            [ "$RAWX_IV" = "$META2_IV" ]
+        done
+    }
+
+    # Check if object is a MPU
+    local IS_MPU=$(openio object show "$BUCKET" "$OBJ" -f json | jq -r '."meta.x-static-large-object"')
+    if [ "$IS_MPU" = True ]; then
+        echo "${OBJ} is a MPU"
+        local MANIFEST="manifest"
+        openio object save "$BUCKET" "$OBJ" --file $MANIFEST
+        local CHUNKS_NAME=$(cat $MANIFEST | jq -r '.[].name')
+        for CHUNK_PATH in $(echo "$CHUNKS_NAME"); do
+            local BUCKET_PLUS_SEGMENTS=$(awk -F/ '{print $2}' <<< "$CHUNK_PATH")
+            local CHUNK_NAME=$(awk -F/ '{print substr($0, index($0,$3))}' <<< "$CHUNK_PATH")
+            check_chunk_crypto_resiliency $BUCKET_PLUS_SEGMENTS $CHUNK_NAME
+        done
+    else
+        check_chunk_crypto_resiliency $BUCKET $OBJ
+    fi
+}
+
+check_crypto_resiliency "obj_1"
+check_crypto_resiliency "obj_2"
+
 echo "Removing it"
 ${AWS} s3 rm "s3://$BUCKET/obj_1"
 
