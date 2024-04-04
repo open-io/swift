@@ -482,13 +482,17 @@ class S3Token(object):
                             environ['s3token.time']['fetch_secret'] = \
                                 ks_resp_end - start
                         now = time.time()
+                        # OVH: Add regions_per_type in memcached
+                        cache_value = (headers, regions_per_type,
+                                       tenant, cred_ref.secret)
+                        if self._delta_cache_duration:
+                            # Add timestamp of cache invalidity
+                            # to cache_value tuple
+                            cache_value += (now + duration,)
+
                         memcache_client.set(
                             memcache_token_key,
-                            # OVH: Add regions_per_type in memcached
-                            # OVH: Add timestamp of cache invalidity
-                            (headers, regions_per_type,
-                             tenant, cred_ref.secret,
-                             now + duration),
+                            cache_value,
                             time=duration)
                         # XXX(FVE): the previous statement does not return
                         # anything nor raises exceptions, we don't know if
