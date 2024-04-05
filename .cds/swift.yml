@@ -14,6 +14,7 @@ workflow:
       "git.repository": OPENIO/swift
       "git.tag": ""
       "build_only": "false"
+      "sds_branch": "master"
 
 
   test-code-quality:
