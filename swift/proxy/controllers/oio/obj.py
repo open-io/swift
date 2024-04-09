@@ -221,8 +221,13 @@ class ObjectController(BaseObjectController):
         storage = self.app.storage
         oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
+        oio_retry_master = req.environ.get('oio.retry.master')
         perfdata = req.environ.get('swift.perfdata')
         version = obj_version_from_env(req.environ)
+        allow_retry = (
+            oio_retry_master
+            or self.container_name.endswith(MULTIUPLOAD_SUFFIX)
+        )
         force_master = False
         while True:
             try:
@@ -240,8 +245,7 @@ class ObjectController(BaseObjectController):
                         cache=oio_cache, perfdata=perfdata)
                 break
             except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
-                if force_master or not \
-                        self.container_name.endswith(MULTIUPLOAD_SUFFIX):
+                if force_master or not allow_retry:
                     # Either the request failed with the master,
                     # or it is not an MPU
                     return HTTPNotFound(request=req)

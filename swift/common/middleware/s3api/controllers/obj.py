@@ -149,6 +149,8 @@ class ObjectController(Controller):
                 # Versioning has never been enabled
                 raise NoSuchVersion(object_name, version_id)
 
+        req.environ["oio.retry.master"] = req.from_replicator()
+
         resp = req.get_response(self.app, query=query)
         if HEADER_RETENION_MODE in resp.sysmeta_headers:
             resp.headers['ObjectLock-Mode'] = \
