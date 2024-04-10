@@ -87,7 +87,14 @@ class KmsWrapper(object):
         self.logger = logger
 
     def create_bucket_secret(self, bucket, account, secret_id=None,
-                             secret_bytes=32, reqid=None):
+                             secret_bytes=32, force=False, reqid=None):
+        ckey = f"sses3/{account}/{bucket}/{secret_id}"
+        if not force and self.cache is not None:
+            # If the cache already contains the information,
+            # the secret already exists and never changes.
+            secret = self.cache.get(ckey)
+            if secret and secret != NO_SECRET:
+                return False  # Secret already exists
         resp, secret_meta = self.kms.create_secret(
             account,
             bucket,
@@ -95,7 +102,6 @@ class KmsWrapper(object):
             secret_bytes=secret_bytes,
             reqid=reqid,
         )
-        ckey = f"sses3/{account}/{bucket}/{secret_id}"
         if self.cache is not None:
             self.cache.set(ckey, secret_meta["secret"], time=self.cache_time)
         return resp.status == 201
@@ -242,7 +248,7 @@ class SsecKeyMasterContext(KeyMasterContext):
             return crypto_utils.decode_secret(b64_secret)
         return None
 
-    def _create_bucket_secret(self):
+    def _create_bucket_secret(self, force=False):
         account, bucket = self.req_account_and_bucket()
         # Create secret if whitelist is empty OR account is whitelisted
         if (not self.keymaster.account_whitelist
@@ -254,6 +260,7 @@ class SsecKeyMasterContext(KeyMasterContext):
                 account=account,
                 secret_id=self.keymaster.active_secret_id,
                 secret_bytes=self.keymaster.sses3_secret_bytes,
+                force=force,
                 reqid=self.trans_id
             )
         return None
@@ -332,7 +339,7 @@ class SsecKeyMasterContext(KeyMasterContext):
             # REST.PUT.ENCRYPTION does a HEAD on the account before the POST,
             # we need to check the method.
             elif operation == "REST.PUT.ENCRYPTION" and req.method == 'POST':
-                secret_created = self._create_bucket_secret()
+                secret_created = self._create_bucket_secret(force=True)
         try:
             resp = super().handle_request(req, start_response)
         except Exception as exc:
