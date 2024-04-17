@@ -149,7 +149,7 @@ class TestConfig(unittest.TestCase):
         self._assert_defaults(conf)
         del conf.storage_classes
         del conf.storage_domains
-        del conf.ignore_storage_class_header
+        del conf.force_storage_domain_storage_class
         del conf.location
         del conf.force_swift_request_proxy_log
         del conf.dns_compliant_bucket_names

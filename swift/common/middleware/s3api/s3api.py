@@ -289,8 +289,8 @@ class S3ApiMiddleware(object):
             'storage_classes', 'STANDARD'))
         if not self.conf.storage_classes:
             raise ValueError('Missing storage classes list')
-        self.conf.ignore_storage_class_header = config_true_value(
-            wsgi_conf.get('ignore_storage_class_header', True))
+        self.conf.force_storage_domain_storage_class = config_true_value(
+            wsgi_conf.get('force_storage_domain_storage_class', True))
         self.conf.check_account_enabled = config_true_value(
             wsgi_conf.get('check_account_enabled', False))
         self.conf.check_bucket_storage_domain = config_true_value(

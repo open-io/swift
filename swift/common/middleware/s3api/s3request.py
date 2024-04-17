@@ -1126,9 +1126,9 @@ class S3Request(swob.Request):
 
     def _get_storage_class(self):
         """
-        Get the storage class requested by the client, or the default one of
-        the requested storage domain (endpoint) if the client did not
-        specify any (or ignore_storage_class_header is True).
+        Get the default storage class of the requested storage domain
+        (endpoint), or the storage class requested by the client
+        if there is no default value.
 
         This method should not be used outside
         of the '_get_storage_class_before_authentication'
@@ -1136,19 +1136,25 @@ class S3Request(swob.Request):
         """
         storage_class = None
         if self.object_name and self.method in ('PUT', 'POST'):
-            # Use the storage domain's storage class
-            storage_class = self.conf.storage_domains.get(self.storage_domain)
-            if not self.conf.ignore_storage_class_header:
-                storage_class_hdr = self.headers.get('x-amz-storage-class')
-                if storage_class:
-                    if storage_class_hdr and \
-                            storage_class != storage_class_hdr:
+            default_storage_class = self.conf.storage_domains.get(
+                self.storage_domain
+            )
+            storage_class_hdr = self.headers.get('x-amz-storage-class')
+            if default_storage_class:
+                # Use the storage domain's storage class
+                if not self.conf.force_storage_domain_storage_class:
+                    if (
+                        storage_class_hdr
+                        and default_storage_class != storage_class_hdr
+                    ):
                         raise InvalidStorageClass()
-                else:
-                    # Otherwise, use the storage class sent by the client
-                    storage_class = storage_class_hdr
-            # Otherwise, use STANDARD by default
-            if not storage_class:
+                storage_class = default_storage_class
+            elif storage_class_hdr:
+                # If there is no default value on the domain,
+                # use the storage class sent by the client
+                storage_class = storage_class_hdr
+            else:
+                # Otherwise, use STANDARD by default
                 storage_class = 'STANDARD'
             # Finally, verify that the storage class is supported
             if storage_class not in self.conf.storage_classes:
@@ -1157,9 +1163,9 @@ class S3Request(swob.Request):
 
     def _get_storage_class_before_authentication(self):
         """
-        Get the storage class requested by the client, or the default one of
-        the requested storage domain (endpoint) if the client did not
-        specify any (or ignore_storage_class_header is True).
+        Get the default storage class of the requested storage domain
+        (endpoint), or the storage class requested by the client
+        if there is no default value.
         """
         return self._get_storage_class()
 

@@ -154,7 +154,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'account_enabled_key': 'is-enabled',
             'storage_classes': 'STANDARD,GLACIER',
             'storage_domain': 'somewhere:STANDARD,some.other.where',
-            'ignore_storage_class_header': False,
+            'force_storage_domain_storage_class': False,
             'location': 'us-west-1',
             'force_swift_request_proxy_log': True,
             'dns_compliant_bucket_names': False,
@@ -808,10 +808,11 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
-    def test_ignore_storage_class_header(self):
+    def test_force_storage_domain_storage_class(self):
+        self.conf['storage_domain'] = 'localhost:STANDARD'
         # If the default value is set to False, uncomment these lines:
-        # self.conf['ignore_storage_class_header'] = False
-        # self.s3api = S3ApiMiddleware(None, self.conf)
+        # self.conf['force_storage_domain_storage_class'] = True
+        self.s3api = filter_factory({}, **self.conf)(self.app)
         self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
         self.swift.register('PUT', '/v1/AUTH_X/bucket/object',
@@ -825,7 +826,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.assertEqual(status, '200 OK')
 
     def test_invalid_storage_class(self):
-        self.conf['ignore_storage_class_header'] = False
+        self.conf['force_storage_domain_storage_class'] = False
         self.s3api = S3ApiMiddleware(None, self.conf)
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT',
