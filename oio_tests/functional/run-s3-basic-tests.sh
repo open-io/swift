@@ -2,7 +2,7 @@
 
 source oio_tests/functional/common.sh
 
-export OIO_NS="OPENIO" OIO_ACCOUNT="test_account" OIO_USER=USER-$RANDOM OIO_PATH=PATH-$RANDOM
+export OIO_NS="OPENIO" OIO_ACCOUNT="AUTH_demo" OIO_USER=USER-$RANDOM OIO_PATH=PATH-$RANDOM
 
 install_deps || exit 1
 compile_sds || exit 1

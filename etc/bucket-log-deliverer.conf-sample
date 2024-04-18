@@ -22,7 +22,7 @@ s3_log_prefix = s3access-
 # Namespace to use for SDS
 oio_namespace = OPENIO
 # S3 endpoint URL
-s3_endpoint_url = http://localhost:5000
+s3_endpoint_url = http://s3.regionone.io.lo.team-swift.ovh:5000
 # S3 region
 s3_region = RegionOne
 # S3 access key ID of the log delivery user

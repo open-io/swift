@@ -14,7 +14,7 @@ SETUP
 # Wait for the Swift gateway to settle
 sleep 3
 # Debug: try to connect, wait 5s, diconnect immediatly after connection is established
-nc -vzw 5 localhost 5000
+nc -vzw 5 s3.regionone.io.lo.team-swift.ovh 5000
 
 openio account set AUTH_demo --max-buckets 1000
 

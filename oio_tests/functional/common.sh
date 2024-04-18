@@ -1,6 +1,6 @@
 #!/bin/bash
 
-STORAGE_DOMAIN="localhost"
+STORAGE_DOMAIN="s3.regionone.io.lo.team-swift.ovh"
 ENDPOINT_URL="http://${STORAGE_DOMAIN}:5000"
 
 RED='\033[0;31m'
@@ -194,7 +194,8 @@ EOF
 
 function configure_hosts() {
   cat <<EOF >> "/etc/hosts"
-127.0.0.1	standard.ia
+127.0.0.1	s3.regionone.io.lo.team-swift.ovh
+127.0.0.1	s3.regionone.perf.lo.team-swift.ovh
 EOF
   cat "/etc/hosts"
 }

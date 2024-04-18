@@ -16,6 +16,7 @@
 # limitations under the License.
 
 import json
+import os
 import random
 import string
 import subprocess
@@ -27,9 +28,13 @@ from botocore.config import Config
 RANDOM_CHARS = string.ascii_lowercase + string.digits
 RANDOM_UTF8_CHARS = (RANDOM_CHARS + string.punctuation + 'âäçéèêëïîôöùûüÿæœ' +
                      'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ' + '🐛🐍💻💩👉🚪😂❤️🤣👍😭🙏😘🥰😍😊')
-STANDARD_IA_DOMAIN = 'standard.ia'
-STORAGE_DOMAIN = "localhost"
+STORAGE_DOMAIN = "s3.regionone.io.lo.team-swift.ovh"
+PERF_DOMAIN = "s3.regionone.perf.lo.team-swift.ovh"
 ENDPOINT_URL = f"http://{STORAGE_DOMAIN}:5000"
+PERF_ENDPOINT_URL = f"http://{PERF_DOMAIN}:5000"
+PERF_STORAGE_CLASS = "EXPRESS_ONEZONE"
+OIO_NS = os.getenv("OIO_NS", "OPENIO")
+OIO_ACCOUNT = os.getenv("OIO_ACCOUNT", "AUTH_demo")
 
 
 def get_boto3_client(endpoint_url=ENDPOINT_URL,

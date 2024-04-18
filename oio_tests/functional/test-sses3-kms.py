@@ -23,18 +23,16 @@ from urllib.parse import unquote_plus
 from oio import ObjectStorageApi
 
 from oio_tests.functional.common import (
+    OIO_ACCOUNT,
+    OIO_NS,
     CliError,
     get_boto3_client,
     random_str,
     run_awscli_s3,
-    run_awscli_s3api,
-    run_openiocli,
 )
 
 
 CRYPTO_META_KEY = "x-object-sysmeta-crypto-body-meta"
-OIO_NS = os.getenv("OIO_NS", "OPENIO")
-OIO_ACCOUNT = os.getenv("OIO_ACCOUNT", "AUTH_demo")
 BOTO_PROFILE = os.getenv("BOTO_PROFILE", "default")
 ACCOUNT_WHITELIST = os.getenv("ACCOUNT_WHITELIST")
 
