@@ -88,7 +88,6 @@ function run_sds() {
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
     -f third_party/oio-sds/etc/bootstrap-option-cache.yml \
-    -f third_party/oio-sds/etc/bootstrap-option-kafka.yml \
     ${args}
   openio cluster wait || (openio cluster list --stats; openioctl.sh status2; sudo tail -n 100 /var/log/syslog; return 1)
 }
