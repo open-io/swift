@@ -168,6 +168,13 @@ class ContainerController(SwiftContainerController):
                 deleted=opts.get('deleted', False),
                 force_master=opts.get('force_master', False),
                 headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+            if (
+                not result.get('objects') and not result.get('system')
+                and not result.get('properties')
+            ):
+                # To be removed when oioproxy will be fixed
+                raise HTTPServiceUnavailable(
+                    body='oioproxy not running', request=req)
             resp_headers = self.get_metadata_resp_headers(result)
         else:
             # As an empty list is necessarily expected, use the cache
