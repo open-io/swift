@@ -311,6 +311,11 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
                     # We set an invalid string for XML.
                     elem.text = '(invalid string)'
 
+    def _get_info(self):
+        if not self.info:
+            return None
+        return ';'.join((f"{k}={v}" for k, v in self.info.items()))
+
 
 class AccessDenied(ErrorResponse):
     _status = '403 Forbidden'

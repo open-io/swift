@@ -48,11 +48,11 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             default_log_msg_template=(
                 '{client_ip} {remote_addr} {requester} {end_time.datetime} '
                 '{method} {path} {protocol} {status_int} {operation} '
-                '{error_code} {referer} {user_agent} {auth_token} '
-                '{signature_version} {authentication_type} {aws_chunked} '
-                '{bytes_recvd} {bytes_sent} {client_etag} {transaction_id} '
-                '{headers} {request_time} {source} {log_info} {start_time} '
-                '{end_time} {request_origin}'))
+                '{error_code} {error_detail} {referer} {user_agent} '
+                '{auth_token} {signature_version} {authentication_type} '
+                '{aws_chunked} {bytes_recvd} {bytes_sent} {client_etag} '
+                '{transaction_id} {headers} {request_time} {source} '
+                '{log_info} {start_time} {end_time} {request_origin}'))
 
         # Parameters to log request from clients
         # that have S3 Server Access Logging enabled
@@ -170,7 +170,6 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             error_code = s3_info.get('error_code')
             if not error_code and status_int == 500:
                 error_code = 'InternalError'
-
         return {
             'account': StrAnonymizer(
                 s3_info.get('account'), self.anonymization_method,
@@ -190,6 +189,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 self.anonymization_salt),
             'operation': s3_info.get('operation'),
             'error_code': error_code,
+            'error_detail': s3_info.get('error_detail'),
             'signature_version': s3_info.get('signature_version'),
             'authentication_type': s3_info.get('authentication_type'),
             'aws_chunked': str(s3_info.get('aws_chunked', False)).lower(),

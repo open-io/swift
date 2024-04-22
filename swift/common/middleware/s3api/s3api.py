@@ -514,7 +514,9 @@ class S3ApiMiddleware(object):
         except ErrorResponse as err_resp:
             if isinstance(err_resp, InternalError):
                 self.logger.exception(err_resp)
-            env.setdefault('s3api.info', {})['error_code'] = err_resp._code
+            s3api_info = env.setdefault('s3api.info', {})
+            s3api_info['error_code'] = err_resp._code
+            s3api_info['error_detail'] = err_resp._get_info()
             resp = err_resp
         except WebsiteErrorResponse as err_resp:
             if isinstance(err_resp, InternalError):
