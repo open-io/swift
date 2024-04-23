@@ -890,6 +890,8 @@ class ObjectController(BaseObjectController):
                 replication_replicator_id=replicator_id,
                 replication_role_project_id=role_project_id,
                 dryrun=dryrun)
+        except exceptions.Conflict:
+            raise HTTPConflict(request=req)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)
         except exceptions.NoSuchObject:
