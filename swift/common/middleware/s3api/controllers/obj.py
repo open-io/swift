@@ -42,7 +42,8 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, BadRequest, InvalidRequest
+    PreconditionFailed, BadRequest, InvalidRequest, AccessDenied, \
+    MethodNotAllowed
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
@@ -148,10 +149,34 @@ class ObjectController(Controller):
                     'sysmeta', {}).get('versions-container', ''):
                 # Versioning has never been enabled
                 raise NoSuchVersion(object_name, version_id)
+        try:
+            req.environ["oio.retry.master"] = req.from_replicator()
+            resp = req.get_response(self.app, query=query)
+        except AccessDenied:
+            object_info = req.get_object_info(self.app)
+            obj_version_id = object_info.get('sysmeta', {}).get('version-id')
+            if not obj_version_id:
+                raise
+            if object_info.get('type') != DELETE_MARKER_CONTENT_TYPE:
+                raise
+            # Ensure the user can list the bucket
+            if self.has_bucket_or_object_read_permission(req) is False:
+                raise
+            raise NoSuchKey(object_name, headers={
+                'x-amz-version-id': obj_version_id,
+                'x-amz-delete-marker': 'true'
+            })
+        except MethodNotAllowed as exc:
+            # Ensure we are dealing with a delete marker
+            if not exc.headers.get('x-amz-delete-marker'):
+                raise
+            # Ensure the user can list the bucket
+            if self.has_bucket_or_object_read_permission(req) is False:
+                raise AccessDenied()
+            # Add Allow header
+            exc.headers['Allow'] = 'DELETE'
+            raise exc
 
-        req.environ["oio.retry.master"] = req.from_replicator()
-
-        resp = req.get_response(self.app, query=query)
         if HEADER_RETENION_MODE in resp.sysmeta_headers:
             resp.headers['ObjectLock-Mode'] = \
                 resp.sysmeta_headers[HEADER_RETENION_MODE]
@@ -365,7 +390,7 @@ class ObjectController(Controller):
             try:
                 query = req.gen_multipart_manifest_delete_query(
                     self.app, version=version_id)
-            except (NoSuchKey, NoSuchVersion):
+            except (NoSuchKey, NoSuchVersion, MethodNotAllowed):
                 query = {}
 
             req.headers['Content-Type'] = None  # Ignore client content-type

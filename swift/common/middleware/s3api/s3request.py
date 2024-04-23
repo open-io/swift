@@ -37,7 +37,7 @@ from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
     HTTP_REQUESTED_RANGE_NOT_SATISFIABLE, HTTP_LENGTH_REQUIRED, \
     HTTP_BAD_REQUEST, HTTP_REQUEST_TIMEOUT, HTTP_SERVICE_UNAVAILABLE, \
     HTTP_TOO_MANY_REQUESTS, HTTP_RATE_LIMITED, is_success, \
-    HTTP_CLIENT_CLOSED_REQUEST
+    HTTP_CLIENT_CLOSED_REQUEST, HTTP_METHOD_NOT_ALLOWED
 
 from swift.common.constraints import check_utf8, valid_api_version
 from swift.proxy.controllers.base import get_account_info, \
@@ -68,7 +68,7 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     NoSuchVersion, BadRequest, OperationAborted, XAmzContentSHA256Mismatch, \
     InvalidChunkSizeError, IncompleteBody, WebsiteErrorResponse, \
     PermanentRedirect, InvalidAccessKeyId, HTTPOk, ErrorResponse, \
-    KeyTooLongError
+    KeyTooLongError, MethodNotAllowed
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
     Config, S3Timestamp, utf8encode, mktime, \
@@ -77,6 +77,9 @@ from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
     decode_acl, encode_acl
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
 from swift.common.middleware.s3api.etree import XML_DECLARATION, tostring
+from swift.common.middleware.versioned_writes.object_versioning import \
+    DELETE_MARKER_CONTENT_TYPE
+
 
 # List of sub-resources that must be maintained as part of the HMAC
 # signature string.
@@ -2140,9 +2143,24 @@ class S3Request(swob.Request):
             raise SlowDown()
         if status == HTTP_PRECONDITION_FAILED:
             raise PreconditionFailed()
-        if resp.status_int == HTTP_CONFLICT:
+        if status == HTTP_CONFLICT:
             # TODO: validate that this actually came up out of SLO
             raise BrokenMPU()
+        if status == HTTP_METHOD_NOT_ALLOWED:
+            is_del_marker = resp.sw_headers.get('Content-Type') == \
+                DELETE_MARKER_CONTENT_TYPE
+            if is_del_marker:
+                raise MethodNotAllowed(
+                    method=self.method,
+                    resource_type=self.controller_name,
+                    last_modified=resp.last_modified,
+                    headers={
+                        'x-amz-delete-marker': 'true',
+                        'x-amz-version-id': resp.sw_headers.get(
+                            'X-Object-Version-Id')
+                    })
+            raise MethodNotAllowed(method=self.method,
+                                   resource_type=self.controller_name)
 
         raise InternalError('unexpected status code %d' % status)
 

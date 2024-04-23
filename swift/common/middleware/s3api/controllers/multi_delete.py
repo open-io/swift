@@ -35,7 +35,7 @@ from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, NoSuchKey, ErrorResponse, MalformedXML, \
     UserKeyMustBeSpecified, AccessDenied, MissingRequestBodyError, \
-    NoSuchVersion
+    NoSuchVersion, MethodNotAllowed
 from swift.common.middleware.s3api.utils import sysmeta_header
 
 
@@ -169,11 +169,18 @@ class MultiObjectDeleteController(Controller):
                         'object', 'retention-bypass-governance')
                     req_headers[header] = bypass_governance
 
+                query = {}
                 try:
                     query = req.gen_multipart_manifest_delete_query(
                         self.app, version=version)
                 except NoSuchKey:
-                    query = {}
+                    pass
+                except MethodNotAllowed as exc:
+                    if not exc.headers.get('x-amz-delete-marker'):
+                        raise
+                    # Ensure the user can list the bucket
+                    if self.has_bucket_or_object_read_permission(req) is False:
+                        raise AccessDenied()
                 if version:
                     query['version-id'] = version
                     query['symlink'] = 'get'

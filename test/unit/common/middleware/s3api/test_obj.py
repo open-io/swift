@@ -114,6 +114,109 @@ class TestS3ApiObj(S3ApiTestCase):
             self.assertEqual(body, self.object_body)
 
     @s3acl
+    def test_object_HEAD_delete_marker_no_version_id(self):
+        version_id = '1574360804.34906'
+        delete_marker_headers = {
+            'X-Object-Sysmeta-Version-Id': version_id,
+            'Content-Type': DELETE_MARKER_CONTENT_TYPE
+        }
+        # HEAD on an object pointing to a delete marker should return a 404
+        # with delete marker information in headers
+        req = Request.blank('/bucket/object',
+                            environ={'REQUEST_METHOD': 'HEAD'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        self.swift.register_responses(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            [(swob.HTTPForbidden, {}, None),
+             (swob.HTTPOk, delete_marker_headers, None)])
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '404')
+        self.assertEqual(body, b'')  # sanity
+        self.assertIn('X-Amz-Version-Id', headers)
+        self.assertIn('X-Amz-Delete-Marker', headers)
+        self.assertEqual(headers['X-Amz-Version-Id'], version_id)
+        self.assertEqual(headers['X-Amz-Delete-Marker'], 'true')
+
+        # HEAD on an object pointing to a delete marker should return a 403
+        # if not listing bucket permission
+        req = Request.blank('/bucket/object',
+                            environ={'REQUEST_METHOD': 'HEAD'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        self.swift.register_responses(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            [(swob.HTTPForbidden, {}, None),
+             (swob.HTTPOk, delete_marker_headers, None)])
+        self.swift.register('GET', '/v1/AUTH_test/bucket', swob.HTTPForbidden,
+                            {}, None)
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '403')
+        self.assertEqual(body, b'')  # sanity
+        self.assertNotIn('X-Amz-Version-Id', headers)
+        self.assertNotIn('X-Amz-Delete-Marker', headers)
+
+    @s3acl
+    def test_object_HEAD_delete_marker_version_id(self):
+        version_id = '1574360804.34906'
+        delete_marker_headers = {
+            'X-Object-Sysmeta-Version-Id': version_id,
+            'Content-Type': DELETE_MARKER_CONTENT_TYPE
+        }
+        # HEAD on a delete marker should return a 405  with delete marker
+        # informations in headers
+        req = Request.blank(f'/bucket/object?versionId={version_id}',
+                            environ={'REQUEST_METHOD': 'HEAD'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            swob.HTTPMethodNotAllowed, {
+                'X-Object-Version-Id': version_id,
+                'Content-Type': DELETE_MARKER_CONTENT_TYPE,
+            }, None)
+        fake_info = {
+            'status': 204,
+            'sysmeta': {
+                'versions-container': '\x00versions\x00bucket',
+            }
+        }
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'get_container_info', return_value=fake_info):
+            status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '405')
+        self.assertEqual(body, b'')  # sanity
+        self.assertIn('X-Amz-Version-Id', headers)
+        self.assertIn('X-Amz-Delete-Marker', headers)
+        self.assertIn('Allow', headers)
+        self.assertEqual(headers['X-Amz-Version-Id'], version_id)
+        self.assertEqual(headers['X-Amz-Delete-Marker'], 'true')
+        self.assertEqual(headers['Allow'], 'DELETE')
+
+        # Request not authorized
+        req = Request.blank(f'/bucket/object?versionId={version_id}',
+                            environ={'REQUEST_METHOD': 'HEAD'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        self.swift.register_responses(
+            'HEAD', '/object',
+            [(swob.HTTPMethodNotAllowed, {
+                'X-Object-Version-Id': version_id,
+                'Content-Type': DELETE_MARKER_CONTENT_TYPE,
+            }, None),
+                (swob.HTTPOk, delete_marker_headers, None)])
+        self.swift.register('GET', '/v1/AUTH_test/bucket',
+                            swob.HTTPForbidden, {}, None)
+        with patch('swift.common.middleware.s3api.s3request.'
+                   'get_container_info', return_value=fake_info):
+            status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '403')
+        self.assertNotIn('X-Amz-Version-Id', headers)
+        self.assertNotIn('X-Amz-Delete-Marker', headers)
+        self.assertNotIn('Allow', headers)
+
+    @s3acl
     def test_object_HEAD_error(self):
         # HEAD does not return the body even an error response in the
         # specifications of the REST API.
@@ -122,8 +225,9 @@ class TestS3ApiObj(S3ApiTestCase):
                             environ={'REQUEST_METHOD': 'HEAD'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
-                            swob.HTTPUnauthorized, {}, None)
+        self.swift.register_responses('HEAD', '/v1/AUTH_test/bucket/object',
+                                      [(swob.HTTPUnauthorized, {}, None),
+                                       (swob.HTTPOk, {}, None)])
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '403')
         self.assertEqual(body, b'')  # sanity
@@ -132,8 +236,11 @@ class TestS3ApiObj(S3ApiTestCase):
                             environ={'REQUEST_METHOD': 'HEAD'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
-        self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
-                            swob.HTTPForbidden, {}, None)
+        self.swift.register_responses(
+            'HEAD',
+            '/v1/AUTH_test/bucket/object',
+            [(swob.HTTPForbidden, {}, None),
+             (swob.HTTPOk, {}, None)])
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '403')
         self.assertEqual(body, b'')  # sanity
@@ -291,6 +398,8 @@ class TestS3ApiObj(S3ApiTestCase):
 
     @s3acl
     def test_object_GET_error(self):
+        self.swift.register('HEAD', '/v1/AUTH_test/bucket/object',
+                            swob.HTTPOk, {}, None)
         code = self._test_method_error('GET', '/bucket/object',
                                        swob.HTTPUnauthorized)
         self.assertEqual(code, 'SignatureDoesNotMatch')

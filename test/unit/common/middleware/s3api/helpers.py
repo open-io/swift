@@ -73,12 +73,14 @@ class FakeSwift(BaseFakeSwift):
         index = len(list(filter(None, split_path(path, 0, 4, True)[1:]))) - 1
         resource = resource_map[index]
         if (method, path) in self._responses:
-            old_headers = self._responses[(method, path)][1]
-            headers = headers.copy()
-            for key, value in old_headers.items():
-                if is_sys_meta(resource, key) and key not in headers:
-                    # keep old sysmeta for s3acl
-                    headers.update({key: value})
+            response = self._responses[(method, path)]
+            if len(response) == 3 and isinstance(response[1], dict):
+                old_headers = self._responses[(method, path)][1]
+                headers = headers.copy()
+                for key, value in old_headers.items():
+                    if is_sys_meta(resource, key) and key not in headers:
+                        # keep old sysmeta for s3acl
+                        headers.update({key: value})
 
         if body is not None and not isinstance(body, (bytes, list)):
             body = body.encode('utf8')

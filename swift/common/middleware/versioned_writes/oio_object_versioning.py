@@ -27,7 +27,7 @@ from swift.common.request_helpers import \
 from swift.common.swob import \
     HTTPBadRequest, str_to_wsgi, wsgi_quote, \
     wsgi_unquote, Request, HTTPNotFound, HTTPException, \
-    HTTPNotAcceptable
+    HTTPNotAcceptable, HTTPMethodNotAllowed
 from swift.common.utils import get_logger, Timestamp, drain_and_close, \
     config_true_value, close_if_possible, \
     split_path, RESERVED_STR, MD5_OF_EMPTY_STRING
@@ -167,9 +167,18 @@ class OioObjectContext(ObjectContext):
                 drain_and_close(resp)
 
             if is_del_marker:
-                hdrs = {'X-Object-Version-Id': version,
-                        'Content-Type': DELETE_MARKER_CONTENT_TYPE}
-                raise HTTPNotFound(request=req, headers=hdrs)
+                hdrs = {
+                    'X-Object-Version-Id': version,
+                    'Content-Type': DELETE_MARKER_CONTENT_TYPE,
+                }
+                if version != 'null':
+                    raise HTTPMethodNotAllowed(
+                        request=req,
+                        headers=hdrs,
+                        last_modified=resp.last_modified
+                    )
+                else:
+                    raise HTTPNotFound(request=req, headers=hdrs)
             return resp
 
     def handle_request(self, req, versions_cont, api_version, account,
