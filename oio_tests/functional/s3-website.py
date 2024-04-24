@@ -21,27 +21,17 @@ from tempfile import mkstemp
 import unittest
 
 from oio_tests.functional.common import (
+    STORAGE_DOMAIN,
     CliError,
     run_awscli_s3api,
     run_awscli_s3,
 )
 
 
-class TestS3Website(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        with open("/etc/hosts", "a") as file:
-            file.write("127.0.0.1       s3-website.sbg.perf.cloud.ovh.net\n")
-            file.write("127.0.0.1       test-bucket.s3-website.sbg.perf.cloud.ovh.net\n")
-            file.write("127.0.0.1       s3.sbg.perf.cloud.ovh.net\n")
+WEBSITE_DOMAIN = STORAGE_DOMAIN.replace("s3", "s3-website")
 
-    @classmethod
-    def teardownClass(cls):
-        with open("hosts", "r+") as file:
-            lines = file.readlines()
-            file.seek(0)
-            file.truncate()
-            file.writelines(lines[:-2])
+
+class TestS3Website(unittest.TestCase):
 
     def setUp(self):
         self.bucket = "test-bucket"
@@ -106,17 +96,17 @@ class TestS3Website(unittest.TestCase):
         self.refer_bad_resource, self.refer_bad_resource_path = mkstemp()
         with os.fdopen(self.refer_bad_resource, "w") as file:
             file.write(self.refer_bad_resource_body)
-        run_awscli_s3("mb", bucket=self.bucket, storage_domain="s3.sbg.perf.cloud.ovh.net")
+        run_awscli_s3("mb", bucket=self.bucket, storage_domain=STORAGE_DOMAIN)
 
     def tearDown(self):
         run_awscli_s3api("delete-bucket-website",
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
         try:
             run_awscli_s3("rb", "--force",
                 bucket=self.bucket,
-                storage_domain="s3.sbg.perf.cloud.ovh.net",
+                storage_domain=STORAGE_DOMAIN,
             )
         except CliError as exc:
             if "NoSuchBucket" not in str(exc):
@@ -142,7 +132,7 @@ class TestS3Website(unittest.TestCase):
             "text/html",
             bucket=self.bucket,
             key=key,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
     def _put_error(self, acl="public-read", key=""):
@@ -158,7 +148,7 @@ class TestS3Website(unittest.TestCase):
             "text/html",
             bucket=self.bucket,
             key=key,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
     def _put_other_object(self, key, body=None, acl="public-read"):
@@ -173,7 +163,7 @@ class TestS3Website(unittest.TestCase):
             "text/html",
             bucket=self.bucket,
             key=key,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
     def _find_value_in_element_list(self, tree, tag):
@@ -192,12 +182,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket + ".s3.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{STORAGE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -211,13 +201,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -232,13 +221,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -254,19 +242,18 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + prefix,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{prefix}",
             allow_redirects=False
         )
 
         # check website page
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(r.headers["Location"], "/" + prefix + "/")
+        self.assertEqual(r.headers["Location"], f"/{prefix}/")
         self.assertNotEqual(r.text, self.index_body)
 
         data = lxml.html.fromstring(r.text)
@@ -289,13 +276,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -305,8 +291,7 @@ class TestS3Website(unittest.TestCase):
 
         # request internal resource
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/202206/data%253Aimage/svg%2520xml%253Bbase64%252CPHN2ZyBpZD0ic291cmNlIiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iNiIgY3k9IjYiIHI9IjYiIGZpbGw9IiNFNjAwMjMiPjwvY2lyY2xlPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTAgNkMwIDguNTYxNSAxLjYwNTUgMTAuNzQ4NSAzLjg2NSAxMS42MDlDMy44MSAxMS4xNDA1IDMuNzUxNSAxMC4zNjggMy44Nzc1IDkuODI2QzMuOTg2IDkuMzYgNC41NzggNi44NTcgNC41NzggNi44NTdDNC41NzggNi44NTcgNC4zOTk1IDYuNDk5NSA0LjM5OTUgNS45N0M0LjM5OTUgNS4xNCA0Ljg4MDUgNC41MiA1LjQ4IDQuNTJDNS45OSA0LjUyIDYuMjM2IDQuOTAyNSA2LjIzNiA1LjM2MUM2LjIzNiA1Ljg3MzUgNS45MDk1IDYuNjM5NSA1Ljc0MSA3LjM1QzUuNjAwNSA3Ljk0NDUgNi4wMzk1IDguNDI5NSA2LjYyNTUgOC40Mjk1QzcuNjg3IDguNDI5NSA4LjUwMzUgNy4zMSA4LjUwMzUgNS42OTRDOC41MDM1IDQuMjYzNSA3LjQ3NTUgMy4yNjQgNi4wMDggMy4yNjRDNC4zMDkgMy4yNjQgMy4zMTE1IDQuNTM4NSAzLjMxMTUgNS44NTZDMy4zMTE1IDYuMzY5NSAzLjUwOSA2LjkxOTUgMy43NTYgNy4yMTlDMy44MDQ1IDcuMjc4NSAzLjgxMiA3LjMzIDMuNzk3NSA3LjM5MDVDMy43NTIgNy41Nzk1IDMuNjUxIDcuOTg1IDMuNjMxNSA4LjA2OEMzLjYwNSA4LjE3NyAzLjU0NSA4LjIwMDUgMy40MzE1IDguMTQ3NUMyLjY4NTUgNy44MDA1IDIuMjE5NSA2LjcxIDIuMjE5NSA1LjgzNEMyLjIxOTUgMy45NDk1IDMuNTg4IDIuMjE5NSA2LjE2NTUgMi4yMTk1QzguMjM3NSAyLjIxOTUgOS44NDggMy42OTYgOS44NDggNS42NjlDOS44NDggNy43Mjc1IDguNTUwNSA5LjM4NDUgNi43NDg1IDkuMzg0NUM2LjE0MyA5LjM4NDUgNS41NzQ1IDkuMDY5NSA1LjM3OTUgOC42OThDNS4zNzk1IDguNjk4IDUuMDggOS44MzkgNS4wMDc1IDEwLjExOEM0Ljg2NjUgMTAuNjYgNC40NzU1IDExLjM0NiA0LjIzMyAxMS43MzU1QzQuNzkyIDExLjkwNzUgNS4zODUgMTIgNiAxMkM5LjMxMzUgMTIgMTIgOS4zMTM1IDEyIDZDMTIgMi42ODY1IDkuMzEzNSAwIDYgMEMyLjY4NjUgMCAwIDIuNjg2NSAwIDZaIiBmaWxsPSJ3aGl0ZSI%2520PC9wYXRoPgo8L3N2Zz4%253D",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/202206/data%253Aimage/svg%2520xml%253Bbase64%252CPHN2ZyBpZD0ic291cmNlIiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iNiIgY3k9IjYiIHI9IjYiIGZpbGw9IiNFNjAwMjMiPjwvY2lyY2xlPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTAgNkMwIDguNTYxNSAxLjYwNTUgMTAuNzQ4NSAzLjg2NSAxMS42MDlDMy44MSAxMS4xNDA1IDMuNzUxNSAxMC4zNjggMy44Nzc1IDkuODI2QzMuOTg2IDkuMzYgNC41NzggNi44NTcgNC41NzggNi44NTdDNC41NzggNi44NTcgNC4zOTk1IDYuNDk5NSA0LjM5OTUgNS45N0M0LjM5OTUgNS4xNCA0Ljg4MDUgNC41MiA1LjQ4IDQuNTJDNS45OSA0LjUyIDYuMjM2IDQuOTAyNSA2LjIzNiA1LjM2MUM2LjIzNiA1Ljg3MzUgNS45MDk1IDYuNjM5NSA1Ljc0MSA3LjM1QzUuNjAwNSA3Ljk0NDUgNi4wMzk1IDguNDI5NSA2LjYyNTUgOC40Mjk1QzcuNjg3IDguNDI5NSA4LjUwMzUgNy4zMSA4LjUwMzUgNS42OTRDOC41MDM1IDQuMjYzNSA3LjQ3NTUgMy4yNjQgNi4wMDggMy4yNjRDNC4zMDkgMy4yNjQgMy4zMTE1IDQuNTM4NSAzLjMxMTUgNS44NTZDMy4zMTE1IDYuMzY5NSAzLjUwOSA2LjkxOTUgMy43NTYgNy4yMTlDMy44MDQ1IDcuMjc4NSAzLjgxMiA3LjMzIDMuNzk3NSA3LjM5MDVDMy43NTIgNy41Nzk1IDMuNjUxIDcuOTg1IDMuNjMxNSA4LjA2OEMzLjYwNSA4LjE3NyAzLjU0NSA4LjIwMDUgMy40MzE1IDguMTQ3NUMyLjY4NTUgNy44MDA1IDIuMjE5NSA2LjcxIDIuMjE5NSA1LjgzNEMyLjIxOTUgMy45NDk1IDMuNTg4IDIuMjE5NSA2LjE2NTUgMi4yMTk1QzguMjM3NSAyLjIxOTUgOS44NDggMy42OTYgOS44NDggNS42NjlDOS44NDggNy43Mjc1IDguNTUwNSA5LjM4NDUgNi43NDg1IDkuMzg0NUM2LjE0MyA5LjM4NDUgNS41NzQ1IDkuMDY5NSA1LjM3OTUgOC42OThDNS4zNzk1IDguNjk4IDUuMDggOS44MzkgNS4wMDc1IDEwLjExOEM0Ljg2NjUgMTAuNjYgNC40NzU1IDExLjM0NiA0LjIzMyAxMS43MzU1QzQuNzkyIDExLjkwNzUgNS4zODUgMTIgNiAxMkM5LjMxMzUgMTIgMTIgOS4zMTM1IDEyIDZDMTIgMi42ODY1IDkuMzEzNSAwIDYgMEMyLjY4NjUgMCAwIDIuNjg2NSAwIDZaIiBmaWxsPSJ3aGl0ZSI%2520PC9wYXRoPgo8L3N2Zz4%253D",
             allow_redirects=False,
         )
         # check internal resource
@@ -320,13 +305,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://s3-website.sbg.perf.cloud.ovh.net:5000/" + self.bucket
-            + "/" + prefix,
+            f"http://{WEBSITE_DOMAIN}:5000/{self.bucket}/{prefix}",
             allow_redirects=False,
         )
 
@@ -354,13 +338,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + prefix + "/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{prefix}/",
             allow_redirects=False,
         )
 
@@ -378,13 +361,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + prefix + "/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{prefix}/",
             allow_redirects=False,
         )
 
@@ -403,13 +385,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + prefix + "/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{prefix}/",
             allow_redirects=False,
         )
 
@@ -425,13 +406,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             index_key_with_special_character,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False
         )
 
@@ -448,13 +428,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False
         )
 
@@ -469,13 +448,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -506,13 +484,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -557,13 +534,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + prefix,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{prefix}",
             allow_redirects=False,
         )
 
@@ -584,7 +560,7 @@ class TestS3Website(unittest.TestCase):
         )
 
         object_name = self._find_value_in_element_list(data[1][1], "Key: ")
-        self.assertEqual(object_name, prefix + "/" + self.index_key)
+        self.assertEqual(object_name, prefix + f"/{self.index_key}")
 
         self.assertEqual(
             data[1][2].text,
@@ -608,13 +584,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -630,13 +605,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -664,13 +638,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -716,13 +689,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             self.error_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + prefix,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{prefix}",
             allow_redirects=False,
         )
 
@@ -762,8 +734,7 @@ class TestS3Website(unittest.TestCase):
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -792,13 +763,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -809,12 +779,11 @@ class TestS3Website(unittest.TestCase):
         run_awscli_s3api(
             "delete-bucket-website",
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -844,13 +813,12 @@ class TestS3Website(unittest.TestCase):
             "--error-document",
             error_key_with_special_character,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.get(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
 
@@ -865,13 +833,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.head(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 200)
@@ -883,13 +850,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.put(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
@@ -920,13 +886,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.post(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
@@ -957,13 +922,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.delete(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/",
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
@@ -994,13 +958,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.head(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + self.index_key,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{self.index_key}",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 200)
@@ -1012,13 +975,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.put(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + self.index_key,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{self.index_key}",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
@@ -1049,13 +1011,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.post(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + self.index_key,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{self.index_key}",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)
@@ -1086,13 +1047,12 @@ class TestS3Website(unittest.TestCase):
             "--index-document",
             self.index_key,
             bucket=self.bucket,
-            storage_domain="s3.sbg.perf.cloud.ovh.net",
+            storage_domain=STORAGE_DOMAIN,
         )
 
         # request website
         r = requests.delete(
-            "http://" + self.bucket +
-            ".s3-website.sbg.perf.cloud.ovh.net:5000/" + self.index_key,
+            f"http://{self.bucket}.{WEBSITE_DOMAIN}:5000/{self.index_key}",
             allow_redirects=False,
         )
         self.assertEqual(r.status_code, 405)

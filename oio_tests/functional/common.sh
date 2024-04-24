@@ -196,6 +196,8 @@ function configure_hosts() {
   cat <<EOF >> "/etc/hosts"
 127.0.0.1	s3.regionone.io.lo.team-swift.ovh
 127.0.0.1	s3.regionone.perf.lo.team-swift.ovh
+127.0.0.1	s3-website.regionone.io.lo.team-swift.ovh
+127.0.0.1	s3-website.regionone.perf.lo.team-swift.ovh
 EOF
   cat "/etc/hosts"
 }

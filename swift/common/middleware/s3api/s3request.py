@@ -804,6 +804,15 @@ class S3Request(swob.Request):
             self.bucket_in_host,
             self.is_website,
         ) = self._parse_host(given_domain, self.conf.storage_domains)
+        if self.is_website and not self.bucket_in_host:
+            # website only works with a virtual style
+            self.environ['swift.leave_relative_location'] = False
+            raise WebsiteErrorResponse(
+                PermanentRedirect,
+                headers={"Location": self.conf.landing_page},
+                code="WebsiteRedirect",
+                message="Request does not contain a bucket name.",
+            )
         self.access_key, self.signature = None, None
         parse_auth_info_success = False
         self.container_name, self.object_name = None, None
@@ -1532,14 +1541,6 @@ class S3Request(swob.Request):
     @property
     def controller(self):
         if self.is_website:
-            if self.bucket_in_host is None:
-                self.environ['swift.leave_relative_location'] = False
-                raise WebsiteErrorResponse(
-                    PermanentRedirect,
-                    headers={"Location": self.conf.landing_page},
-                    code="WebsiteRedirect",
-                    message="Request does not contain a bucket name.",
-                )
             return S3WebsiteController
 
         if self.is_service_request:
@@ -2528,14 +2529,6 @@ class S3AclRequest(S3Request):
     @property
     def controller(self):
         if self.is_website:
-            if self.bucket_in_host is None:
-                self.environ['swift.leave_relative_location'] = False
-                raise WebsiteErrorResponse(
-                    PermanentRedirect,
-                    headers={"Location": self.conf.landing_page},
-                    code="WebsiteRedirect",
-                    message="Request does not contain a bucket name.",
-                )
             return S3WebsiteController
 
         if 'acl' in self.params and not self.is_service_request:
