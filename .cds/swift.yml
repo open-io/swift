@@ -98,10 +98,10 @@ workflow:
       script: |+
         return clean_only ~= "true" and build_only ~= "true"
 
-  oio-tests-intelligent-tiering:
+  oio-tests-cold-archive:
     pipeline: swift-oio-tests
     application: swift
-    environment: swift-oio-tests-intelligent-tiering-env
+    environment: swift-oio-tests-cold-archive-env
     depends_on:
       - root
     conditions:
@@ -139,7 +139,7 @@ workflow:
       - oio-tests-s3
       - oio-tests-s3-basic
       - oio-tests-iam
-      - oio-tests-intelligent-tiering
+      - oio-tests-cold-archive
       - oio-tests-encryption
     conditions:
       script: |+

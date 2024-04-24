@@ -1,7 +1,8 @@
 [DEFAULT]
+use_stderr = False
 bind_ip = 127.0.0.1
 bind_port = 5000
-workers = 1
+workers = 5
 #use_realpath_on_usr1 = false
 max_clients = 8192
 backlog = 16384
@@ -36,7 +37,7 @@ oio_storage_policies = EC21,THREECOPIES,TWOCOPIES,SINGLE
 auto_storage_policies = EC21,THREECOPIES:0,EC21:100000
 
 [pipeline:main]
-pipeline = catch_errors gatekeeper healthcheck s3-logging cache listing_formats bulk iam replication_ratelimit bucket_ratelimit replication s3api tempauth proxy-logging copy slo dlo versioned_writes symlink keymaster encryption proxy-logging proxy-server
+pipeline = catch_errors gatekeeper healthcheck s3-logging cache listing_formats bulk iam replication_ratelimit bucket_ratelimit intelligent_tiering bucket_quotas replication s3api tempauth proxy-logging copy slo dlo symlink keymaster encryption proxy-logging proxy-server
 
 [filter:catch_errors]
 use = egg:swift#catch_errors
@@ -149,13 +150,12 @@ bucket_db_enabled = True
 bucket_db_connection = oio://
 force_swift_request_proxy_log = True
 location = RegionOne
-storage_classes = STANDARD,EXPRESS_ONEZONE
-auto_storage_policies_STANDARD = EC21,TWOCOPIES:0,EC21:102400
-auto_storage_policies_EXPRESS_ONEZONE = THREECOPIES:-2,SINGLE
-storage_domain = s3.regionone.perf.lo.team-swift.ovh:EXPRESS_ONEZONE,s3.regionone.io.lo.team-swift.ovh,s3.sbg.perf.cloud.ovh.net
+storage_classes = STANDARD
+auto_storage_policies_STANDARD = EC21
+storage_domain = s3.regionone.io.lo.team-swift.ovh:STANDARD
 force_storage_domain_storage_class = True
-check_bucket_storage_domain = true
-check_ip_whitelist = true
+check_bucket_storage_domain = false
+check_ip_whitelist = false
 max_multi_delete_objects = 1000
 allow_anonymous_path_requests = false
 # Max server-side copy size should be lower or equal to max_file_size
@@ -163,15 +163,17 @@ max_server_side_copy_size = 104857600
 max_server_side_copy_throughput = 1048576
 s3_only = true
 landing_page = https://www.ovhcloud.com/en/public-cloud/object-storage/
-enable_bucket_replication = true
+enable_bucket_replication = false
 replicator_ids = s3-replication
-enable_lifecycle = true
-enable_object_lock = true
-enable_website = true
-enable_access_logging = true
+enable_lifecycle = false
+enable_object_lock = false
+enable_website = false
+enable_access_logging = false
 retry_after = 1
 #enable_beta_features = true
 enable_encryption = true
+# Force SSE-S3 mode. Only one value is currently supported: AES256
+default_sse_configuration = AES256
 
 [filter:tempauth]
 use = egg:swift#tempauth
@@ -217,7 +219,7 @@ use = egg:swift#symlink
 [filter:keymaster]
 use = egg:swift#ssec_keymaster
 # Fall back on the standard keymaster if the user does not provide a key
-fallback_on_keymaster = false
+fallback_on_keymaster = true
 # When a new bucket is created, create an associated key in the KMS.
 # When this is disabled, buckets with keys will continue using them,
 # but new buckets won't get a key.
@@ -246,7 +248,7 @@ disable_encryption = False
 ciphertext_hash_algo = blake3
 # Enable SSE-C encryption mode: objects are cyphered only when the requester
 # provides an encryption key.
-ssec_mode = True
+ssec_mode = False
 
 [app:proxy-server]
 object_post_as_copy = False
@@ -255,6 +257,34 @@ allow_account_management = True
 sds_chunk_checksum_algo = blake3
 account_autocreate = True
 #require_proxy_protocol = True
+
+[filter:intelligent_tiering]
+use = egg:swift#intelligent_tiering
+rabbitmq_url = amqp://guest:guest@localhost:5672
+rabbitmq_exchange = pca
+rabbitmq_queue = pca
+# Use durable exchange and queue
+rabbitmq_durable = True
+# Use auto-delete exchange and queue
+rabbitmq_auto_delete = False
+# Authorized actions according to the bucket states.
+# Each action can have 0, 1, x possible bucket states and be comma separated.
+# Empty means no bucket states allowed.
+# Possible States are:
+#   None, Locked, Archiving, Draining, Archived, Restoring,
+#   Restored, Deleting, Flushed
+# Here, everything is authorized in "None" state, it means that everything is
+# allowed before any archive.
+it_iam_create_bucket_actions = None
+it_iam_delete_bucket_actions = None, Flushed
+it_iam_put_object_actions = None
+it_iam_get_object_actions = None, Restored
+it_iam_delete_object_actions = None
+
+[filter:bucket_quotas]
+use = egg:swift#bucket_quotas
+# Maximum size of the bucket in bytes.
+quota_bytes = 100000000000000
 
 [filter:replication]
 use = egg:swift#replication

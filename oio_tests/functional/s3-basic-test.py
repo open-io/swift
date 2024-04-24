@@ -93,7 +93,7 @@ class TestS3BasicTest(unittest.TestCase):
         resp = requests.get(ENDPOINT_URL, allow_redirects=False)
         self.assertEqual(307, resp.status_code)
         self.assertEqual(
-            'https://www.ovhcloud.com/fr/public-cloud/object-storage/',
+            'https://www.ovhcloud.com/en/public-cloud/object-storage/',
             resp.headers['location'])
 
         resp = requests.post(ENDPOINT_URL, allow_redirects=False)

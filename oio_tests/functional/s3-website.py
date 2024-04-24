@@ -318,7 +318,7 @@ class TestS3Website(unittest.TestCase):
         self.assertEqual(r.status_code, 301)
         self.assertEqual(
             r.headers["Location"],
-            "https://www.ovhcloud.com/fr/public-cloud/object-storage/"
+            "https://www.ovhcloud.com/en/public-cloud/object-storage/"
         )
         self.assertNotEqual(r.text, self.index_body)
 
