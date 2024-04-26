@@ -777,6 +777,7 @@ class S3Request(swob.Request):
     user_id = _req_s3api_info('requester')
     trans_id = swob._req_environ_property('swift.trans_id')
     request_origin = _req_s3api_info("request_origin")
+    is_website = _req_s3api_info("website")
 
     bucket_acl = _header_acl_property('container')
     object_acl = _header_acl_property('object')
@@ -972,7 +973,7 @@ class S3Request(swob.Request):
             return 's3-replicator'
         if self.from_log_deliverer():
             return 'log-deliverer'
-        return 'client'
+        return 'customer'
 
     def _parse_host(self, given_domain, storage_domains):
         if not given_domain:

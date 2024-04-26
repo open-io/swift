@@ -52,7 +52,8 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 '{auth_token} {signature_version} {authentication_type} '
                 '{aws_chunked} {bytes_recvd} {bytes_sent} {client_etag} '
                 '{transaction_id} {headers} {request_time} {source} '
-                '{log_info} {start_time} {end_time} {request_origin}'))
+                '{log_info} {start_time} {end_time} {request_origin} '
+                '{website}'))
 
         # Parameters to log request from clients
         # that have S3 Server Access Logging enabled
@@ -159,7 +160,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 'operation': 'REST.HEAD.BUCKET',
                 'signature_version': 's3v4',
                 'authentication_type': 'AuthHeader',
-                'request_origin': 'client',
+                'request_origin': 'customer',
             }
             error_code = ''
         else:
@@ -194,8 +195,8 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'authentication_type': s3_info.get('authentication_type'),
             'aws_chunked': str(s3_info.get('aws_chunked', False)).lower(),
             'ratelimit': str(s3_info.get('ratelimit', False)).lower(),
-            'request_origin': (
-                str(s3_info.get('request_origin', 'client')).lower())
+            'request_origin': str(s3_info.get('request_origin')).lower(),
+            'website': str(s3_info.get('website', False)).lower(),
         }
 
     def log_request(self, req, status_int, bytes_received, bytes_sent,

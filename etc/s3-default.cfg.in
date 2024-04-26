@@ -53,7 +53,7 @@ use = egg:swift#proxy_logging
 
 [filter:s3-logging]
 use = egg:swift#s3_logging
-log_msg_template = X-OVH-TOKEN:XXXX	log_type:access	client_ip:{client_ip}	remote_addr:{remote_addr}	remote_port:{remote_port}	requester:{requester}	domain:{domain}	path:{path}	client_etag:{client_etag}	account:{account}	bucket:{bucket}	object:{object}	version_id_float:{version_id}	storage_class:{storage_class}	method:{method}	operation:{operation}	status_int:{status_int}	error_code:{error_code}	error_detail:{error_detail}	bytes_recvd_int:{bytes_recvd}	bytes_sent_int:{bytes_sent}	request_id:{transaction_id}	request_time_float:{request_time}	start_time_float:{start_time}	ttfb_float:{ttfb}	user_agent:{user_agent:.256}	signature_version:{signature_version}	authentication_type:{authentication_type}	aws_chunked:{aws_chunked}	ratelimit:{ratelimit}	perfdata:{perfdata}	pid:{pid}
+log_msg_template = X-OVH-TOKEN:XXXX	log_type:access	client_ip:{client_ip}	remote_addr:{remote_addr}	remote_port:{remote_port}	request_origin:{request_origin}	requester:{requester}	domain:{domain}	path:{path}	client_etag:{client_etag}	website:{website}	account:{account}	bucket:{bucket}	object:{object}	version_id_float:{version_id}	storage_class:{storage_class}	method:{method}	operation:{operation}	status_int:{status_int}	error_code:{error_code}	error_detail:{error_detail}	bytes_recvd_int:{bytes_recvd}	bytes_sent_int:{bytes_sent}	request_id:{transaction_id}	request_time_float:{request_time}	start_time_float:{start_time}	ttfb_float:{ttfb}	user_agent:{user_agent:.256}	signature_version:{signature_version}	authentication_type:{authentication_type}	aws_chunked:{aws_chunked}	ratelimit:{ratelimit}	perfdata:{perfdata}	pid:{pid}
 access_log_headers = False
 access_log_headers_only = 
 perfdata = False
