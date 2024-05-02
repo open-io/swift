@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+
 import test.functional as tf
 from test.functional.s3api import S3ApiBaseBoto3
 
@@ -34,6 +36,7 @@ class TestEncryption(S3ApiBaseBoto3):
                 "ApplyServerSideEncryptionByDefault": {
                     "SSEAlgorithm": "AES256",
                 },
+                "BucketKeyEnabled": False,
             }
         ]
     }
@@ -100,8 +103,30 @@ class TestEncryption(S3ApiBaseBoto3):
         )
 
     def test_put_bucket_encryption_unsupported_algorithm(self):
-        conf = self.conf['Rules']['ApplyServerSideEncryptionByDefault']
-        conf['SSEAlgorithm'] = "aws:kms"
+        conf = copy.deepcopy(self.conf)
+        (conf['Rules'][0]['ApplyServerSideEncryptionByDefault']
+            ['SSEAlgorithm']) = "aws:kms"
+        resp = self.conn.put_bucket_encryption(
+            Bucket="bucket",
+            ServerSideEncryptionConfiguration=conf,
+        )
+        self.assertEqual(501, resp["ResponseMetadata"]["HTTPStatusCode"])
+        self.assertEqual('NotImplemented', resp["Error"]["Code"])
+
+    def test_put_bucket_encryption_unsupported_kms_master_key_id(self):
+        conf = copy.deepcopy(self.conf)
+        (conf['Rules'][0]['ApplyServerSideEncryptionByDefault']
+            ['KMSMasterKeyID']) = "string"
+        resp = self.conn.put_bucket_encryption(
+            Bucket="bucket",
+            ServerSideEncryptionConfiguration=conf,
+        )
+        self.assertEqual(501, resp["ResponseMetadata"]["HTTPStatusCode"])
+        self.assertEqual('NotImplemented', resp["Error"]["Code"])
+
+    def test_put_bucket_encryption_unsupported_bucket_key_enabled(self):
+        conf = copy.deepcopy(self.conf)
+        conf['Rules'][0]['BucketKeyEnabled'] = True
         resp = self.conn.put_bucket_encryption(
             Bucket="bucket",
             ServerSideEncryptionConfiguration=conf,

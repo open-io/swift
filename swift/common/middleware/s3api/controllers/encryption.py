@@ -82,13 +82,16 @@ class EncryptionController(Controller):
         """
         sse_dict = xmltodict.parse(payload)
         sse_rule = sse_dict['ServerSideEncryptionConfiguration']['Rule']
-        # Official API returns HTTP 200 with empty body in this case
-        if not sse_rule:
-            return None
-        if len(sse_rule) > 1:
+        if isinstance(sse_rule, list):
             raise S3NotImplemented(
                 'Multiple configuration rules are not supported'
             )
+        # Official API returns HTTP 200 with empty body in this case
+        if not sse_rule:
+            return None
+        if ("BucketKeyEnabled" in sse_rule
+                and sse_rule['BucketKeyEnabled'].lower() != 'false'):
+            raise S3NotImplemented()
         sse_default = sse_rule['ApplyServerSideEncryptionByDefault']
         if "KMSMasterKeyID" in sse_default:
             raise S3NotImplemented()
