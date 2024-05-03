@@ -14,6 +14,8 @@ workflow:
       "git.repository": OPENIO/swift
       "git.tag": ""
       "build_only": "false"
+      "clean_only": "false"
+      "send_webex_notif": "false"
 
 
   test-code-quality:
@@ -21,7 +23,7 @@ workflow:
     application: swift
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
     depends_on:
       - root
 
@@ -44,7 +46,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and (cds_manual == "true" or git_branch == "feature/oio-backend" or build_only == "true")
+        return clean_only ~= "true" and (cds_manual == "true" or git_branch == "feature/oio-backend" or build_only == "true")
 
   tests-unit:
     pipeline: swift-tests
@@ -54,7 +56,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   oio-tests-unit:
     pipeline: swift-oio-tests
@@ -64,7 +66,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   oio-tests-s3:
     pipeline: swift-oio-tests
@@ -74,7 +76,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   oio-tests-s3-basic:
     pipeline: swift-oio-tests
@@ -84,7 +86,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   oio-tests-iam:
     pipeline: swift-oio-tests
@@ -94,7 +96,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   oio-tests-intelligent-tiering:
     pipeline: swift-oio-tests
@@ -104,7 +106,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   oio-tests-encryption:
     pipeline: swift-oio-tests
@@ -114,7 +116,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   ceph-s3-tests:
     pipeline: swift-oio-tests
@@ -124,7 +126,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
     optional: true
 
   tests-reports:
@@ -141,7 +143,7 @@ workflow:
       - oio-tests-encryption
     conditions:
       script: |+
-        return cds_triggered_by_username ~= "cds.scheduler" and build_only ~= "true"
+        return clean_only ~= "true" and build_only ~= "true"
 
   clean-artifacts:
     pipeline: swift-clean-artifacts
@@ -149,15 +151,25 @@ workflow:
     depends_on:
       - root
     conditions:
-      check:
-        - variable: cds.triggered_by.username
-          operator: eq
-          value: "cds.scheduler"
+      script: |+
+        return clean_only == "true"
 
 metadata:
   default_tags: git.branch,git.author,git.tag
 
-retention_policy: "if(cds_triggered_by_username == 'cds.scheduler') then\n  return run_days_before < 1\nend\nif(has_git_branch == \"true\") then\n  if(git_branch_exist == \"true\") then    \n    return run_days_before < 365\n  else\n    return run_days_before < 2\n  end\nelse\n  return run_days_before < 365\nend"
+retention_policy: |+
+    if (cds_triggered_by_username == 'cds.scheduler') then
+      return run_days_before < 1
+    end
+    if (has_git_branch == "true") then
+      if(git_branch_exist == "true") then
+        return run_days_before < 365
+      else
+        return run_days_before < 2
+      end
+    else
+      return run_days_before < 365
+    end
 
 integrations:
   artifactory-pu-objectstorage-swift:
@@ -172,8 +184,39 @@ notifications:
 
 hooks:
   root:
-    - type: Scheduler
+    - name: Clean artifacts and mirror to GitHub
+      type: Scheduler
       config:
         # twice a day
         cron: "17 13,21 * * *"
         timezone: UTC
+        payload: |-
+          {
+            "git.author": "",
+            "git.branch": "feature/oio-backend",
+            "git.hash": "",
+            "git.hash.before": "",
+            "git.message": "",
+            "git.repository": "OPENIO/swift",
+            "git.tag": "",
+            "clean_only": "true",
+            "send_webex_notif": "false"
+          }
+
+    - name: Build everything (to check dependencies)
+      type: Scheduler
+      config:
+        # twice a week
+        cron: "42 5 * * 1,4"
+        timezone: UTC
+        payload: |-
+          {
+            "git.author": "",
+            "git.branch": "feature/oio-backend",
+            "git.hash": "",
+            "git.hash.before": "",
+            "git.message": "",
+            "git.repository": "OPENIO/swift",
+            "git.tag": "",
+            "send_webex_notif": "true"
+          }
