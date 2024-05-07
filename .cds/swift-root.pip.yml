@@ -1,3 +1,12 @@
 version: v1.0
 name: swift-root
 jobs:
+  - job: Set build tags
+    steps:
+      - name: Schedule Webex notification
+        script: |+
+          #!/bin/bash
+          if [ ${SEND_WEBEX_NOTIF:-false} == "true" ]
+          then
+            worker tag send_webex_notif=true
+          fi
