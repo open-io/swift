@@ -203,9 +203,8 @@ class CryptoWSGIContext(WSGIContext):
             self.logger.error('get_keys(): unknown key id: %s', err)
             raise
         except Exception as err:  # noqa
-            if (self.crypto.ssec_mode and isinstance(err, HTTPException)
-                    and err.status_int == 400):
-                raise
+            if isinstance(err, HTTPException) and err.status_int == 400:
+                raise  # user error (missing SSE-C key or bad algorithm)
             self.logger.exception('get_keys(): from callback: %s', err)
             raise HTTPInternalServerError(
                 "Unable to retrieve encryption keys.")
