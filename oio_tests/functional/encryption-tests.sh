@@ -64,10 +64,14 @@ check_crypto_resiliency() {
         local CHUNK="$2"
         echo "Checking crypto resiliency infos of chunk ${CHUNK}"
         local CHUNK_URLS=$(openio object locate "$CONTAINER" "$CHUNK" -f value | awk '{print $2}')
+        echo "List of chunk ulrs:"
+        echo $CHUNK_URLS
         for CHUNK_URL in $(echo $CHUNK_URLS); do
             echo "Check chunk url: $CHUNK_URL"
+            curl -s -I $CHUNK_URL
             # HEAD request to the chunk
             local CRYPTO_RESILIENCY=$(curl -s -I $CHUNK_URL | grep "X-Oio-Ext-Cryptography-Resiliency")
+            echo "CRYPTO_RESILIENCY from chunk_url: $CRYPTO_RESILIENCY"
             # Check the response has X-Oio-Ext-Cryptography-Resiliency header
             [ -n "$CRYPTO_RESILIENCY" ]
 
@@ -86,6 +90,9 @@ check_crypto_resiliency() {
             local META2_BODY_KEY_KEY=$(echo "$CRYPTO_BODY_META" | jq -r '.body_key.key')
             local META2_IV=$(echo "$CRYPTO_BODY_META" | jq -r '.iv')
 
+            echo "META2_BODY_KEY_IV = $META2_BODY_KEY_IV should be equal to RAWX_BODY_KEY_IV = $RAWX_BODY_KEY_IV"
+            echo "META2_BODY_KEY_KEY = $META2_BODY_KEY_KEY should be equal to RAWX_BODY_KEY_KEY = $RAWX_BODY_KEY_KEY"
+            echo "META2_IV = $META2_IV should be equal to RAWX_IV = $RAWX_IV"
             # Compare values form rawx with values form meta2
             [ "$RAWX_BODY_KEY_IV" = "$META2_BODY_KEY_IV" ]
             [ "$RAWX_BODY_KEY_KEY" = "$META2_BODY_KEY_KEY" ]
