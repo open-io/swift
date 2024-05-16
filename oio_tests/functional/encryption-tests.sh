@@ -92,11 +92,15 @@ check_crypto_resiliency() {
 
             echo "META2_BODY_KEY_IV = $META2_BODY_KEY_IV should be equal to RAWX_BODY_KEY_IV = $RAWX_BODY_KEY_IV"
             echo "META2_BODY_KEY_KEY = $META2_BODY_KEY_KEY should be equal to RAWX_BODY_KEY_KEY = $RAWX_BODY_KEY_KEY"
-            echo "META2_IV = $META2_IV should be equal to RAWX_IV = $RAWX_IV"
+            echo "META2_IV = '$META2_IV' should be equal to RAWX_IV = '$RAWX_IV'"
             # Compare values form rawx with values form meta2
             [ "$RAWX_BODY_KEY_IV" = "$META2_BODY_KEY_IV" ]
+            echo "$CHUNK_URL KEY_IV OK !"
             [ "$RAWX_BODY_KEY_KEY" = "$META2_BODY_KEY_KEY" ]
+            echo "$CHUNK_URL KEY_KEY OK !"
             [ "$RAWX_IV" = "$META2_IV" ]
+            echo "$CHUNK_URL IV OK !"
+            echo "$CHUNK_URL OK !"
         done
     }
 
