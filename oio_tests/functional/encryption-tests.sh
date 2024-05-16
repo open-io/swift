@@ -79,6 +79,7 @@ check_crypto_resiliency() {
             local RAWX_BODY_KEY_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F'body_key.iv=' '{split($2, a, ","); print a[1]}')
             local RAWX_BODY_KEY_KEY=$(echo "$CRYPTO_RESILIENCY" | awk -F',body_key.key=' '{split($2, a, ","); print a[1]}')
             local RAWX_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F',iv=' '{split($2, a, ","); print a[1]}')
+            local RAWX_IV="${RAWX_IV//[$'\t\r\n ']}"
 
             # Take values of body_key.iv, body_key.key and iv form meta2
             urldecode() {
@@ -90,9 +91,9 @@ check_crypto_resiliency() {
             local META2_BODY_KEY_KEY=$(echo "$CRYPTO_BODY_META" | jq -r '.body_key.key')
             local META2_IV=$(echo "$CRYPTO_BODY_META" | jq -r '.iv')
 
-            echo "META2_BODY_KEY_IV = $META2_BODY_KEY_IV should be equal to RAWX_BODY_KEY_IV = $RAWX_BODY_KEY_IV"
-            echo "META2_BODY_KEY_KEY = $META2_BODY_KEY_KEY should be equal to RAWX_BODY_KEY_KEY = $RAWX_BODY_KEY_KEY"
-            echo "META2_IV = '$META2_IV' should be equal to RAWX_IV = '$RAWX_IV'"
+            echo "META2_BODY_KEY_IV = '${META2_BODY_KEY_IV}' should be equal to RAWX_BODY_KEY_IV = '${RAWX_BODY_KEY_IV}'"
+            echo "META2_BODY_KEY_KEY = '${META2_BODY_KEY_KEY}' should be equal to RAWX_BODY_KEY_KEY = '${RAWX_BODY_KEY_KEY}'"
+            echo "META2_IV = '${META2_IV}' should be equal to RAWX_IV = '${RAWX_IV}'"
             # Compare values form rawx with values form meta2
             [ "$RAWX_BODY_KEY_IV" = "$META2_BODY_KEY_IV" ]
             echo "$CHUNK_URL KEY_IV OK !"
