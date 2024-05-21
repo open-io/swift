@@ -23,6 +23,18 @@ import uuid
 from hashlib import sha256
 from swift.common import utils
 
+S3_STORAGE_CLASSES = [
+    "EXPRESS_ONEZONE",
+    "STANDARD",
+    "STANDARD_IA",
+    "INTELLIGENT_TIERING",
+    "ONEZONE_IA",
+    "GLACIER_IR",
+    "GLACIER",
+    "DEEP_ARCHIVE",
+]
+STANDARD_STORAGE_CLASS = "STANDARD"
+
 MULTIUPLOAD_SUFFIX = '+segments'
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # Content-Type by default at AWS, the official value being
@@ -188,9 +200,39 @@ def mktime(timestamp_str, time_format='%Y-%m-%dT%H:%M:%S'):
 
 class Config(dict):
     DEFAULTS = {
-        'storage_classes': ['STANDARD'],
-        'storage_domains': {},
-        'force_storage_domain_storage_class': True,
+        'storage_classes_mappings_write': {
+            '': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'STANDARD',
+                'DEEP_ARCHIVE': 'STANDARD',
+            },
+            '#internal': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'STANDARD',
+                'DEEP_ARCHIVE': 'STANDARD',
+            },
+        },
+        'storage_classes_mappings_read': {
+            '': {
+                '': 'STANDARD',
+                'STANDARD': 'STANDARD',
+            },
+        },
+        'storage_domains': [],
+        'auto_storage_policies': {},
+        'storage_class_by_policy': {},
         'location': 'us-east-1',
         'force_swift_request_proxy_log': False,
         'dns_compliant_bucket_names': True,

@@ -166,7 +166,8 @@ from swift.common.middleware.s3api.s3response import ErrorResponse, \
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
-from swift.common.middleware.s3api.utils import Config
+from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
+    STANDARD_STORAGE_CLASS, Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.registry import register_swift_info, \
     register_sensitive_header, register_sensitive_param
@@ -285,38 +286,25 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('max_server_side_copy_throughput', 16777216))
         self.conf.s3_acl = config_true_value(
             wsgi_conf.get('s3_acl', False))
-        self.conf.storage_classes = list_from_csv(wsgi_conf.get(
-            'storage_classes', 'STANDARD'))
-        if not self.conf.storage_classes:
-            raise ValueError('Missing storage classes list')
-        self.conf.force_storage_domain_storage_class = config_true_value(
-            wsgi_conf.get('force_storage_domain_storage_class', True))
-        self.conf.check_account_enabled = config_true_value(
-            wsgi_conf.get('check_account_enabled', False))
+        (
+            self.conf.storage_classes_mappings_write,
+            self.conf.storage_classes_mappings_read,
+            self.conf.storage_domains
+        ) = self._get_storage_classes_mappings(wsgi_conf)
+        (
+            self.conf.auto_storage_policies,
+            self.conf.storage_class_by_policy,
+        ) = self._get_storage_policies_conf(wsgi_conf)
         self.conf.check_bucket_storage_domain = config_true_value(
             wsgi_conf.get('check_bucket_storage_domain', False))
         # Used only if "check_bucket_storage_domain" is enabled.
         # As some buckets were created without this information,
         # they will use the first storage domain defined in the conf file.
         self.conf.default_storage_domain = None
-        storage_domains = list_from_csv(
-            wsgi_conf.get('storage_domain', ''))
-        self.conf.storage_domains = {}
-        for storage_domain in storage_domains:
-            if ':' in storage_domain:
-                storage_domain, storage_class = storage_domain.split(':', 1)
-                storage_domain = storage_domain.strip()
-                if not storage_domain:
-                    continue
-                storage_class = storage_class.strip()
-                if storage_class not in self.conf.storage_classes:
-                    raise ValueError(
-                        'Unknown storage class: %s' % storage_class)
-            else:
-                storage_class = None
-            self.conf.storage_domains[storage_domain] = storage_class
-            if not self.conf.default_storage_domain:
-                self.conf.default_storage_domain = storage_domain
+        if self.conf.storage_domains:
+            self.conf.default_storage_domain = self.conf.storage_domains[0]
+        self.conf.check_account_enabled = config_true_value(
+            wsgi_conf.get('check_account_enabled', False))
         self.conf.check_ip_whitelist = config_true_value(
             wsgi_conf.get('check_ip_whitelist', False))
         self.conf.auth_pipeline_check = config_true_value(
@@ -349,25 +337,6 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('bucket_db_read_only', False))
         self.conf.landing_page = wsgi_conf.get(
             'landing_page', 'https://aws.amazon.com/s3/')
-        self.conf.auto_storage_policies = {}
-        self.conf.storage_class_by_policy = {}
-        for storage_class in self.conf.storage_classes:
-            auto_storage_policies = parse_auto_storage_policies(
-                wsgi_conf.get('auto_storage_policies_%s' % storage_class))
-            if auto_storage_policies:
-                self.conf.auto_storage_policies[storage_class] = \
-                    auto_storage_policies
-                for storage_policy, _ in auto_storage_policies:
-                    _storage_class = self.conf.storage_class_by_policy.get(
-                        storage_policy)
-                    if _storage_class is None:
-                        self.conf.storage_class_by_policy[storage_policy] = \
-                            storage_class
-                    elif _storage_class != storage_class:
-                        raise ValueError(
-                            'Storage policy (%s) used for multiple storage '
-                            'classes (%s, %s)' %
-                            (storage_policy, _storage_class, storage_class))
         self.conf.cors_rules = list()
         cors_allow_origin = list_from_csv(wsgi_conf.get(
             'cors_allow_origin', ''))
@@ -432,6 +401,218 @@ class S3ApiMiddleware(object):
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)
         self.bucket_db = get_bucket_db(wsgi_conf, logger=self.logger)
+        mappings_write_log = json.dumps(
+            self.conf.storage_classes_mappings_write, separators=(",", ":")
+        )
+        self.logger.info(
+            f"Storage classes mappings write: {mappings_write_log}"
+        )
+        mappings_read_log = json.dumps(
+            self.conf.storage_classes_mappings_read, separators=(",", ":")
+        )
+        self.logger.info(
+            f"Storage classes mappings read: {mappings_read_log}"
+        )
+
+    def _get_storage_classes(self, wsgi_conf):
+        storage_classes = set()
+        storage_classes_conf = list_from_csv(wsgi_conf.get(
+            'storage_classes', 'STANDARD'))
+        if not storage_classes_conf:
+            raise ValueError('Missing storage classes list')
+        for storage_class in storage_classes_conf:
+            storage_class = storage_class.upper()
+            if storage_class not in S3_STORAGE_CLASSES:
+                raise ValueError(
+                    f"'{storage_class}' is not an S3 storage class"
+                )
+            storage_classes.add(storage_class)
+        return sorted(
+            list(storage_classes), key=lambda sc: S3_STORAGE_CLASSES.index(sc)
+        )
+
+    def _get_storage_classes_mapping(
+        self, wsgi_conf, storage_domain_storage_class=None
+    ):
+        default = storage_domain_storage_class or STANDARD_STORAGE_CLASS
+        storage_classes = self._get_storage_classes(wsgi_conf)
+        force_storage_domain_storage_class = config_true_value(
+            wsgi_conf.get("force_storage_domain_storage_class", True)
+        ) and storage_domain_storage_class is not None
+        standardize_default_storage_class = config_true_value(
+            wsgi_conf.get("standardize_default_storage_class", False)
+        )
+
+        # Calculate the default storage class shift from STANDARD
+        shift = 0
+        if standardize_default_storage_class:
+            shift = (
+                S3_STORAGE_CLASSES.index(STANDARD_STORAGE_CLASS)
+                - S3_STORAGE_CLASSES.index(default)
+            )
+
+        # WRITE
+        mapping_write = {"": default}
+        mapping_write_internal = {"": default}
+        # When writing, certain shifts cannot manage all the storage classes
+        # offered
+        storage_class_index = 0
+        for storage_class in storage_classes:
+            index_shifted = S3_STORAGE_CLASSES.index(storage_class) + shift
+            if index_shifted > 0:
+                if storage_class_index > 0:
+                    storage_class_index -= 1
+                break
+            if index_shifted == 0:
+                break
+            storage_class_index += 1
+        next_storage_class_shifted = None
+        # Assign each S3 storage class to a storage class offered
+        for s3_storage_class in S3_STORAGE_CLASSES:
+            # Determine the next storage class offered change
+            if next_storage_class_shifted is None:
+                next_storage_class_index = storage_class_index + 1
+                if next_storage_class_index >= len(storage_classes):
+                    # The current storage class offered is the last
+                    pass
+                else:
+                    next_storage_class = storage_classes[
+                        next_storage_class_index
+                    ]
+                    next_storage_class_index_shifted = \
+                        S3_STORAGE_CLASSES.index(next_storage_class) + shift
+                    if (
+                        next_storage_class_index_shifted
+                        >= len(S3_STORAGE_CLASSES)
+                    ):
+                        # The next storage class offered cannot be managed in
+                        # this mapping
+                        pass
+                    else:
+                        next_storage_class_shifted = S3_STORAGE_CLASSES[
+                            next_storage_class_index_shifted
+                        ]
+                if next_storage_class_shifted is None:
+                    # Use the current storage class offered for the remaining
+                    # S3 storage classes
+                    next_storage_class_shifted = ""
+            # Change the storage class offered
+            if next_storage_class_shifted == s3_storage_class:
+                storage_class_index += 1
+                next_storage_class_shifted = None
+            # Assign the S3 storage class to the storage class offered
+            storage_class = storage_classes[storage_class_index]
+            if force_storage_domain_storage_class:
+                storage_class_customer = default
+            else:
+                storage_class_customer = storage_class
+            mapping_write[s3_storage_class] = storage_class_customer
+            # Internal tools are not affected by forcing the storage domain's
+            # storage class
+            mapping_write_internal[s3_storage_class] = storage_class
+
+        # READ
+        mapping_read = {}
+        if standardize_default_storage_class:
+            mapping_read[""] = STANDARD_STORAGE_CLASS
+        else:
+            mapping_read[""] = default
+        for storage_class in storage_classes:
+            # When reading, these unmanaged storage classes will be displayed
+            # as EXPRESS_ONEZONE or DEEP_ARCHIVE, even if other storage classes
+            # already use these values
+            storage_class_shifted = S3_STORAGE_CLASSES[
+                min(
+                    max(
+                        S3_STORAGE_CLASSES.index(storage_class) + shift,
+                        0,
+                    ),
+                    len(S3_STORAGE_CLASSES) - 1,
+                )
+            ]
+            mapping_read[storage_class] = storage_class_shifted
+
+        return mapping_write, mapping_write_internal, mapping_read
+
+    def _get_storage_classes_mappings(self, wsgi_conf):
+        mappings_write = {}
+        mappings_read = {}
+        storage_domains = []
+
+        used_storage_classes = self._get_storage_classes(wsgi_conf)
+        storage_domains_conf = [""] + list_from_csv(
+            wsgi_conf.get("storage_domain", "")
+        )
+        for storage_domain in storage_domains_conf:
+            if ":" in storage_domain:
+                # The storage domain uses a default storage class other
+                # than STANDARD
+                (
+                    storage_domain,
+                    storage_domain_storage_class,
+                ) = storage_domain.split(":", 1)
+                storage_domain = storage_domain.strip()
+                if not storage_domain:
+                    continue
+                storage_domain_storage_class = \
+                    storage_domain_storage_class.strip().upper()
+                if storage_domain_storage_class not in used_storage_classes:
+                    raise ValueError(
+                        "Unknown default storage class: "
+                        f"{storage_domain_storage_class}"
+                    )
+            else:
+                # The storage domain uses STANDARD as the default storage class
+                storage_domain_storage_class = None
+            # Create the mapping for this storage domain
+            # from its default storage class
+            (
+                mapping_write,
+                mapping_write_internal,
+                mapping_read,
+            ) = self._get_storage_classes_mapping(
+                wsgi_conf,
+                storage_domain_storage_class=storage_domain_storage_class,
+            )
+            mappings_write[storage_domain] = mapping_write
+            mappings_write[f"{storage_domain}#internal"] = \
+                mapping_write_internal
+            mappings_read[storage_domain] = mapping_read
+            if storage_domain and storage_domain not in storage_domains:
+                storage_domains.append(storage_domain)
+
+        return mappings_write, mappings_read, storage_domains
+
+    def _get_storage_policies_conf(self, wsgi_conf):
+        auto_storage_policies = {}
+        storage_class_by_policy = {}
+
+        storage_classes = self._get_storage_classes(wsgi_conf)
+        for storage_class in storage_classes:
+            auto_storage_policies_conf = parse_auto_storage_policies(
+                wsgi_conf.get('auto_storage_policies_%s' % storage_class))
+            if auto_storage_policies_conf:
+                auto_storage_policies[storage_class] = \
+                    auto_storage_policies_conf
+                for storage_policy, _ in auto_storage_policies_conf:
+                    _storage_class = storage_class_by_policy.get(
+                        storage_policy)
+                    if _storage_class is None:
+                        storage_class_by_policy[storage_policy] = \
+                            storage_class
+                    elif _storage_class != storage_class:
+                        raise ValueError(
+                            'Storage policy (%s) used for multiple storage '
+                            'classes (%s, %s)' %
+                            (storage_policy, _storage_class, storage_class))
+            elif len(storage_classes) > 1:
+                raise ValueError(
+                    "With multiple storage classes, it is impossible to tell "
+                    "them apart when reading unless they use different "
+                    "storage policies"
+                )
+
+        return auto_storage_policies, storage_class_by_policy
 
     def is_s3_cors_preflight(self, env):
         if env['REQUEST_METHOD'] != 'OPTIONS' or not env.get('HTTP_ORIGIN'):

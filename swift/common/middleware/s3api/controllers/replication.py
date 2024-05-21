@@ -29,8 +29,8 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
     MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
     S3NotImplemented, ServiceUnavailable, AccessDenied
-from swift.common.middleware.s3api.utils import convert_response, \
-    sysmeta_header, is_valid_token
+from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
+    convert_response, sysmeta_header, is_valid_token
 from swift.common.utils import config_true_value, public
 from swift.proxy.controllers.base import get_container_info
 
@@ -386,15 +386,16 @@ class ReplicationController(Controller):
             ReplicationController._ensure_feature_is_disabled(
                 destination, feature, children
             )
-
         storage_class = destination.find("./StorageClass")
         if (
             storage_class is not None
-            and storage_class.text not in self.conf.storage_classes
+            and storage_class not in S3_STORAGE_CLASSES
         ):
             raise S3NotImplemented(
-                f"Storage class '{storage_class.text}' is not yet supported"
+                "Storage class to use when replicating objects "
+                "is not supported"
             )
+
         bucket = destination.find("./Bucket")
         if bucket is None:
             raise InvalidRequest('Destination bucket must be specified.')

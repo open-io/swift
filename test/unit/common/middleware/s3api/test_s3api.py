@@ -152,9 +152,14 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         # check all non-defaults are loaded
         conf = {
             'account_enabled_key': 'is-enabled',
-            'storage_classes': 'STANDARD,GLACIER',
-            'storage_domain': 'somewhere:STANDARD,some.other.where',
+            'storage_classes': 'STANDARD,EXPRESS_ONEZONE,GLACIER',
+            'auto_storage_policies_STANDARD': 'EC',
+            'auto_storage_policies_EXPRESS_ONEZONE': 'SINGLE',
+            'auto_storage_policies_GLACIER': 'TWOCOPIES',
+            'storage_domain':
+                'somewhere:EXPRESS_ONEZONE,some.other.where:GLACIER',
             'force_storage_domain_storage_class': False,
+            'standardize_default_storage_class': True,
             'location': 'us-west-1',
             'force_swift_request_proxy_log': True,
             'dns_compliant_bucket_names': False,
@@ -185,7 +190,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'cors_preflight_allow_origin': 'foo.example.com,bar.example.com',
             'ratelimit_as_client_error': True,
             'retry_after': 1,
-            'auto_storage_policies_STANDARD': 'EC',
             'enable_beta_features': False,
             'enable_access_logging': False,
             'enable_bucket_replication': False,
@@ -200,16 +204,112 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         conf['cors_preflight_allow_origin'] = \
             conf['cors_preflight_allow_origin'].split(',')
         conf.pop('storage_classes')
-        conf['storage_classes'] = ['STANDARD', 'GLACIER']
-        conf.pop('storage_domain')
-        conf['storage_domains'] = {
-            'somewhere': 'STANDARD',
-            'some.other.where': None
+        conf['storage_classes_mappings_write'] = {
+            '': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
+                'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'GLACIER',
+                'DEEP_ARCHIVE': 'GLACIER',
+            },
+            '#internal': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
+                'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'GLACIER',
+                'DEEP_ARCHIVE': 'GLACIER',
+            },
+            'somewhere': {
+                '': 'EXPRESS_ONEZONE',
+                'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
+                'STANDARD': 'EXPRESS_ONEZONE',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'STANDARD',
+                'DEEP_ARCHIVE': 'GLACIER',
+            },
+            'somewhere#internal': {
+                '': 'EXPRESS_ONEZONE',
+                'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
+                'STANDARD': 'EXPRESS_ONEZONE',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'STANDARD',
+                'DEEP_ARCHIVE': 'GLACIER',
+            },
+            'some.other.where': {
+                '': 'GLACIER',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'GLACIER',
+                'STANDARD_IA': 'GLACIER',
+                'INTELLIGENT_TIERING': 'GLACIER',
+                'ONEZONE_IA': 'GLACIER',
+                'GLACIER_IR': 'GLACIER',
+                'GLACIER': 'GLACIER',
+                'DEEP_ARCHIVE': 'GLACIER',
+            },
+            'some.other.where#internal': {
+                '': 'GLACIER',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'GLACIER',
+                'STANDARD_IA': 'GLACIER',
+                'INTELLIGENT_TIERING': 'GLACIER',
+                'ONEZONE_IA': 'GLACIER',
+                'GLACIER_IR': 'GLACIER',
+                'GLACIER': 'GLACIER',
+                'DEEP_ARCHIVE': 'GLACIER',
+            },
         }
-        conf['default_storage_domain'] = 'somewhere'
+        conf['storage_classes_mappings_read'] = {
+            '': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
+                'STANDARD': 'STANDARD',
+                'GLACIER': 'GLACIER',
+            },
+            'somewhere': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'STANDARD_IA',
+                'GLACIER': 'DEEP_ARCHIVE',
+            },
+            'some.other.where': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
+                'STANDARD': 'EXPRESS_ONEZONE',
+                'GLACIER': 'STANDARD',
+            },
+        }
         conf.pop('auto_storage_policies_STANDARD')
-        conf['auto_storage_policies'] = {'STANDARD': [('EC', -1)]}
-        conf['storage_class_by_policy'] = {'EC': 'STANDARD'}
+        conf.pop('auto_storage_policies_EXPRESS_ONEZONE')
+        conf.pop('auto_storage_policies_GLACIER')
+        conf['auto_storage_policies'] = {
+            'STANDARD': [('EC', -1)],
+            'EXPRESS_ONEZONE': [('SINGLE', -1)],
+            'GLACIER': [('TWOCOPIES', -1)]
+        }
+        conf['storage_class_by_policy'] = {
+            'EC': 'STANDARD',
+            'SINGLE': 'EXPRESS_ONEZONE',
+            'TWOCOPIES': 'GLACIER',
+        }
+        conf.pop('storage_domain')
+        conf['storage_domains'] = ['somewhere', 'some.other.where']
+        conf.pop("force_storage_domain_storage_class")
+        conf.pop("standardize_default_storage_class")
+        conf['default_storage_domain'] = 'somewhere'
         expected_cors_rules = []
         for allow_origin in conf.pop('cors_allow_origin').split(','):
             rule = Element('CORSRule')
@@ -820,7 +920,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT',
                                      'HTTP_AUTHORIZATION': 'AWS X:Y:Z',
-                                     'HTTP_X_AMZ_STORAGE_CLASS': 'IGNORED'},
+                                     'HTTP_X_AMZ_STORAGE_CLASS': 'GLACIER'},
                             headers={'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status, '200 OK')

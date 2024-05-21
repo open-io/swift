@@ -745,6 +745,19 @@ use = egg:swift#s3api
 # default storage class instead.
 # force_storage_domain_storage_class = True
 #
+# Consider the default storage class as the STANDARD storage class
+# for each storage domain.
+# For example, with a storage domain where EXPRESS_ONEZONE is considered
+# the default (no storage class specified), from the client's perspective
+# on that storage domain:
+# - PUT an object with the STANDARD storage class amounts to using
+#   the EXPRESS_ONEZONE storage class.
+# - GET/HEAD an object with EXPRESS_ONEZONE storage class will be considered
+#   a STANDARD storage class.
+# Therefore, all other managed storage classes are shifted from
+# this new STANDARD storage class.
+# standardize_default_storage_class = False
+#
 # When this parameter is enabled, a bucket can only be used from within
 # a storage domain. For buckets created while the parameter was disabled,
 # they will only be usable on the first storage domain specified

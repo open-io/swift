@@ -133,7 +133,39 @@ class TestS3ApiUtils(unittest.TestCase):
 class TestConfig(unittest.TestCase):
 
     def _assert_defaults(self, conf):
-        self.assertEqual({}, conf.storage_domains)
+        self.assertEqual({
+            '': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'STANDARD',
+                'DEEP_ARCHIVE': 'STANDARD',
+            },
+            '#internal': {
+                '': 'STANDARD',
+                'EXPRESS_ONEZONE': 'STANDARD',
+                'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD',
+                'ONEZONE_IA': 'STANDARD',
+                'GLACIER_IR': 'STANDARD',
+                'GLACIER': 'STANDARD',
+                'DEEP_ARCHIVE': 'STANDARD',
+            },
+        }, conf.storage_classes_mappings_write)
+        self.assertEqual({
+            '': {
+                '': 'STANDARD',
+                'STANDARD': 'STANDARD',
+            },
+        }, conf.storage_classes_mappings_read)
+        self.assertEqual([], conf.storage_domains)
+        self.assertEqual({}, conf.auto_storage_policies)
+        self.assertEqual({}, conf.storage_class_by_policy)
         self.assertEqual('us-east-1', conf.location)
         self.assertFalse(conf.force_swift_request_proxy_log)
         self.assertTrue(conf.dns_compliant_bucket_names)
@@ -147,9 +179,11 @@ class TestConfig(unittest.TestCase):
         # deliberately brittle so new defaults will need to be added to test
         conf = utils.Config()
         self._assert_defaults(conf)
-        del conf.storage_classes
+        del conf.storage_classes_mappings_write
+        del conf.storage_classes_mappings_read
         del conf.storage_domains
-        del conf.force_storage_domain_storage_class
+        del conf.auto_storage_policies
+        del conf.storage_class_by_policy
         del conf.location
         del conf.force_swift_request_proxy_log
         del conf.dns_compliant_bucket_names

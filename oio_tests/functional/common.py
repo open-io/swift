@@ -30,9 +30,10 @@ RANDOM_UTF8_CHARS = (RANDOM_CHARS + string.punctuation + 'âäçéèêëïîôö
                      'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ' + '🐛🐍💻💩👉🚪😂❤️🤣👍😭🙏😘🥰😍😊')
 STORAGE_DOMAIN = "s3.regionone.io.lo.team-swift.ovh"
 PERF_DOMAIN = "s3.regionone.perf.lo.team-swift.ovh"
+IA_DOMAIN = "s3.regionone.ia.lo.team-swift.ovh"
 ENDPOINT_URL = f"http://{STORAGE_DOMAIN}:5000"
 PERF_ENDPOINT_URL = f"http://{PERF_DOMAIN}:5000"
-PERF_STORAGE_CLASS = "EXPRESS_ONEZONE"
+IA_ENDPOINT_URL = f"http://{IA_DOMAIN}:5000"
 OIO_NS = os.getenv("OIO_NS", "OPENIO")
 OIO_ACCOUNT = os.getenv("OIO_ACCOUNT", "AUTH_demo")
 

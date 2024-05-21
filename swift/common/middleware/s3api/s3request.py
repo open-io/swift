@@ -71,7 +71,7 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     KeyTooLongError, MethodNotAllowed
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    Config, S3Timestamp, utf8encode, mktime, \
+    STANDARD_STORAGE_CLASS, Config, S3Timestamp, utf8encode, mktime, \
     sysmeta_header, validate_bucket_name, is_not_ascii
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
     decode_acl, encode_acl
@@ -773,6 +773,7 @@ class S3Request(swob.Request):
     key = _req_s3api_info('key')
     version_id = _req_s3api_info('version_id')
     storage_class = _req_s3api_info('storage_class')
+    storage_class_domain = _req_s3api_info('storage_class_domain')
     style = _req_s3api_info('style')
     signature_version = _req_s3api_info('signature_version')
     authentication_type = _req_s3api_info('authentication_type')
@@ -847,8 +848,6 @@ class S3Request(swob.Request):
                     if self.object_name:
                         self.key = swob.wsgi_to_str(self.object_name)
                         self.version_id = self.params.get('versionId')
-                        self.environ['s3api.storage_policy_to_class'] = \
-                            self.storage_policy_to_class
                     self.style = 'virtual' if self.bucket_in_host else 'path'
                     if not self._is_anonymous:
                         self.signature_version = \
@@ -863,7 +862,10 @@ class S3Request(swob.Request):
                     #   Do not replace the main exception with another one
 
         # Check parameters and headers
-        self.storage_class = self._get_storage_class_before_authentication()
+        (
+            self.storage_class,
+            self.storage_class_domain,
+        ) = self._get_storage_class_before_authentication()
         self._validate_headers()
         if not self._is_anonymous:
             # Lock in string-to-sign now, before we start messing
@@ -1137,7 +1139,7 @@ class S3Request(swob.Request):
             raise InvalidAccessKeyId(access)
         return access, sig
 
-    def _get_storage_class(self):
+    def _get_storage_class(self, from_internal_tool=False):
         """
         Get the default storage class of the requested storage domain
         (endpoint), or the storage class requested by the client
@@ -1148,31 +1150,21 @@ class S3Request(swob.Request):
         and '_get_storage_class_after_authentication' methods.
         """
         storage_class = None
+        storage_class_header = None
         if self.object_name and self.method in ('PUT', 'POST'):
-            default_storage_class = self.conf.storage_domains.get(
-                self.storage_domain
-            )
-            storage_class_hdr = self.headers.get('x-amz-storage-class')
-            if default_storage_class:
-                # Use the storage domain's storage class
-                if not self.conf.force_storage_domain_storage_class:
-                    if (
-                        storage_class_hdr
-                        and default_storage_class != storage_class_hdr
-                    ):
-                        raise InvalidStorageClass()
-                storage_class = default_storage_class
-            elif storage_class_hdr:
-                # If there is no default value on the domain,
-                # use the storage class sent by the client
-                storage_class = storage_class_hdr
-            else:
-                # Otherwise, use STANDARD by default
-                storage_class = 'STANDARD'
-            # Finally, verify that the storage class is supported
-            if storage_class not in self.conf.storage_classes:
-                raise InvalidStorageClass()
-        return storage_class
+            storage_domain = self.storage_domain
+            if storage_domain not in self.conf.storage_classes_mappings_write:
+                storage_domain = ""
+            if from_internal_tool:
+                # Ignore the storage class imposed on the domain
+                storage_domain += "#internal"
+            storage_class_header = self.headers.get('x-amz-storage-class')
+            storage_class = self.conf.storage_classes_mappings_write[
+                storage_domain
+            ].get(storage_class_header or "")
+            if not storage_class:
+                raise InvalidStorageClass(storage_class_header)
+        return storage_class, storage_class_header
 
     def _get_storage_class_before_authentication(self):
         """
@@ -1825,14 +1817,25 @@ class S3Request(swob.Request):
             query=query, body=body, headers=headers,
             force_swift_request_proxy_log=force_swift_request_proxy_log)
 
-    def storage_policy_to_class(self, storage_policy, default='STANDARD'):
-        if not storage_policy:
-            storage_class = default
-        else:
+    def storage_policy_to_class(self, storage_policy):
+        """
+        Return the actual (billed) storage class
+        and the storage class visible from the storage domain.
+        """
+        storage_class = None
+        if storage_policy:
             storage_class = self.conf.storage_class_by_policy.get(
-                storage_policy, default)
+                storage_policy)
+        storage_domain = self.storage_domain
+        if storage_domain not in self.conf.storage_classes_mappings_read:
+            storage_domain = ""
+        storage_class_domain = self.conf.storage_classes_mappings_read[
+            storage_domain
+        ].get(storage_class or "", STANDARD_STORAGE_CLASS)
+        if self.object_name:
+            self.storage_class_domain = storage_class_domain
             self.storage_class = storage_class
-        return storage_class
+        return storage_class, storage_class_domain
 
     def _swift_success_codes(self, method, container, obj):
         """
@@ -2543,7 +2546,10 @@ class S3AclRequest(S3Request):
         if not self._is_anonymous:
             self.authenticate(app)
         self.acl_handler = None
-        self.storage_class = self._get_storage_class_after_authentication()
+        (
+            self.storage_class,
+            self.storage_class_domain,
+        ) = self._get_storage_class_after_authentication()
 
     @property
     def controller(self):
@@ -2658,7 +2664,7 @@ class S3AclRequest(S3Request):
         To have a different behavior for internal tools, authentication must
         have already taken place to know the name and rights of the user.
         """
-        return None
+        return None, None
 
     def _get_storage_class_after_authentication(self):
         """
@@ -2666,15 +2672,9 @@ class S3AclRequest(S3Request):
         by the client if it is supported, otherwise use 'STANDARD' by default.
         For other requests, keep the same behavior as before authentication.
         """
-        storage_class = None
-        if self.from_internal_tool():
-            if self.object_name and self.method in ('PUT', 'POST'):
-                storage_class = self.headers.get('x-amz-storage-class')
-                if storage_class not in self.conf.storage_classes:
-                    storage_class = 'STANDARD'
-        else:
-            storage_class = self._get_storage_class()
-        return storage_class
+        return self._get_storage_class(
+            from_internal_tool=self.from_internal_tool()
+        )
 
 
 class SigV4Request(SigV4Mixin, S3Request):

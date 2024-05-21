@@ -26,8 +26,8 @@ from swift.common import swob
 from swift.common.utils import config_true_value
 from swift.common.request_helpers import is_sys_meta
 
-from swift.common.middleware.s3api.utils import snake_to_camel, \
-    sysmeta_prefix, sysmeta_header
+from swift.common.middleware.s3api.utils import STANDARD_STORAGE_CLASS, \
+    snake_to_camel, sysmeta_prefix, sysmeta_header
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, init_xml_texts
 from swift.common.middleware.versioned_writes.object_versioning import \
@@ -81,9 +81,14 @@ def translate_swift_to_s3(key, val, storage_policy_to_class=None):
     elif _key == 'x-copied-from-version-id':
         return 'x-amz-copy-source-version-id', val
     elif _key == 'x-object-sysmeta-storage-policy':
-        storage_class = 'STANDARD'
-        if storage_policy_to_class:
-            storage_class = storage_policy_to_class(val)
+        if not storage_policy_to_class:
+            return None
+        _, storage_class = storage_policy_to_class(val)
+        if storage_class == STANDARD_STORAGE_CLASS:
+            # When the storage class is STANDARD, the S3 API does not return
+            # the header to indicate this.
+            # S3 clients know that this is the default.
+            return None
         return 'x-amz-storage-class', storage_class
     elif _key == 'x-backend-content-type' and \
             val == DELETE_MARKER_CONTENT_TYPE:
@@ -625,7 +630,15 @@ class InvalidSOAPRequest(ErrorResponse):
 
 class InvalidStorageClass(ErrorResponse):
     _status = '400 Bad Request'
-    _msg = 'The storage class you specified is not valid.'
+    _msg = 'The storage class you specified is not valid'
+
+    def __init__(self, storage_class_requested, *args, **kwargs):
+        ErrorResponse.__init__(
+            self,
+            storage_class_requested=storage_class_requested,
+            *args,
+            **kwargs,
+        )
 
 
 class InvalidTag(ErrorResponse):

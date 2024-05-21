@@ -156,6 +156,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 'key': '',
                 'version_id': '123456789',
                 'storage_class': 'STANDARD',
+                'storage_class_domain': 'STANDARD',
                 'requester': 'r',
                 'operation': 'REST.HEAD.BUCKET',
                 'signature_version': 's3v4',
@@ -185,6 +186,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 s3_info.get('version_id'), self.anonymization_method,
                 self.anonymization_salt),
             'storage_class': s3_info.get('storage_class'),
+            'storage_class_domain': s3_info.get('storage_class_domain'),
             'requester': StrAnonymizer(
                 s3_info.get('requester'), self.anonymization_method,
                 self.anonymization_salt),

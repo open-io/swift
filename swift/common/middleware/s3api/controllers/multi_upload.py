@@ -266,7 +266,6 @@ class PartController(Controller):
         # Use the same storage class for the parts
         storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
         req.headers['X-Amz-Storage-Class'] = storage_class
-        req.storage_class = storage_class
         auto_storage_policies = self.conf.auto_storage_policies.get(
             req.storage_class)
         if auto_storage_policies:
@@ -579,8 +578,10 @@ class UploadsController(Controller):
             owner_elem = SubElement(upload_elem, 'Owner')
             SubElement(owner_elem, 'ID').text = req.user_id
             SubElement(owner_elem, 'DisplayName').text = req.user_id
-            SubElement(upload_elem, 'StorageClass').text = \
-                req.storage_policy_to_class(u['storage_policy'])
+            _, storage_class = req.storage_policy_to_class(
+                u['storage_policy']
+            )
+            SubElement(upload_elem, 'StorageClass').text = storage_class
             SubElement(upload_elem, 'Initiated').text = \
                 u['last_modified'][:-3] + 'Z'
 
@@ -883,7 +884,6 @@ class UploadController(Controller):
         # Use the same storage class for the manifest
         storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
         req.headers['X-Amz-Storage-Class'] = storage_class
-        req.storage_class = storage_class
         auto_storage_policies = self.conf.auto_storage_policies.get(
             req.storage_class)
         if auto_storage_policies:

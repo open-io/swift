@@ -729,7 +729,9 @@ class TestRequest(S3ApiTestCase):
         req = Request.blank('/', environ=environ, headers=headers)
         sigv2_req = S3Request(
             req.environ, conf=Config({
-                'storage_domains': {'s3.test.com': None}}))
+                'storage_domains': ['s3.test.com']
+            })
+        )
         uri = sigv2_req._canonical_uri()
         self.assertEqual(uri, '/bucket1/')
         self.assertEqual(req.environ['PATH_INFO'], '/')
@@ -737,7 +739,9 @@ class TestRequest(S3ApiTestCase):
         req = Request.blank('/obj1', environ=environ, headers=headers)
         sigv2_req = S3Request(
             req.environ, conf=Config({
-                'storage_domains': {'s3.test.com': None}}))
+                'storage_domains': ['s3.test.com']
+            })
+        )
         uri = sigv2_req._canonical_uri()
         self.assertEqual(uri, '/bucket1/obj1')
         self.assertEqual(req.environ['PATH_INFO'], '/obj1')
@@ -745,8 +749,9 @@ class TestRequest(S3ApiTestCase):
         req = Request.blank('/obj2', environ=environ, headers=headers)
         sigv2_req = S3Request(
             req.environ, conf=Config({
-                'storage_domains': {'alternate.domain': None,
-                                    's3.test.com': None}}))
+                'storage_domains': ['alternate.domain', 's3.test.com']
+            })
+        )
         uri = sigv2_req._canonical_uri()
         self.assertEqual(uri, '/bucket1/obj2')
         self.assertEqual(req.environ['PATH_INFO'], '/obj2')
@@ -758,8 +763,9 @@ class TestRequest(S3ApiTestCase):
         req = Request.blank('/obj2', environ=environ, headers=headers)
         sigv2_req = S3Request(
             req.environ, conf=Config({
-                'storage_domains': {'alternate.domain': None,
-                                    's3.test.com': None}}))
+                'storage_domains': ['alternate.domain', 's3.test.com']
+            })
+        )
         uri = sigv2_req._canonical_uri()
         self.assertEqual(uri, '/bucket1/obj2')
         self.assertEqual(req.environ['PATH_INFO'], '/obj2')
@@ -771,8 +777,9 @@ class TestRequest(S3ApiTestCase):
         req = Request.blank('/obj2', environ=environ, headers=headers)
         sigv2_req = S3Request(
             req.environ, conf=Config({
-                'storage_domains': {'alternate.domain': None,
-                                    's3.test.com': None}}))
+                'storage_domains': ['alternate.domain', 's3.test.com']
+            })
+        )
         uri = sigv2_req._canonical_uri()
         # uo oh, no bucket
         self.assertEqual(uri, '/obj2')
@@ -816,7 +823,7 @@ class TestRequest(S3ApiTestCase):
             'X-Amz-Date': x_amz_date}
 
         # Virtual hosted-style
-        self.s3api.conf.storage_domains = {'s3.test.com': None}
+        self.s3api.conf.storage_domains = ['s3.test.com']
         req = Request.blank('/', environ=environ, headers=headers)
         sigv4_req = SigV4Request(req.environ)
         uri = sigv4_req._canonical_uri()
@@ -836,7 +843,7 @@ class TestRequest(S3ApiTestCase):
             'REQUEST_METHOD': 'GET'}
 
         # Path-style
-        self.s3api.conf.storage_domains = {}
+        self.s3api.conf.storage_domains = []
         req = Request.blank('/', environ=environ, headers=headers)
         sigv4_req = SigV4Request(req.environ)
         uri = sigv4_req._canonical_uri()
@@ -863,8 +870,11 @@ class TestRequest(S3ApiTestCase):
             'Authorization': ('AWS AKIAIOSFODNN7EXAMPLE:'
                               'bWq2s1WEIj+Ydj0vQ697zp+IXMU='),
         })
-        sigv2_req = S3Request(req.environ, conf=Config({
-            'storage_domains': {'s3.amazonaws.com': None}}))
+        sigv2_req = S3Request(
+            req.environ, conf=Config({
+                'storage_domains': ['s3.amazonaws.com']
+            })
+        )
         expected_sts = b'\n'.join([
             b'GET',
             b'',
@@ -883,8 +893,11 @@ class TestRequest(S3ApiTestCase):
             'Authorization': ('AWS AKIAIOSFODNN7EXAMPLE:'
                               'MyyxeRY7whkBe+bq8fHCL/2kKUg='),
         })
-        sigv2_req = S3Request(req.environ, conf=Config({
-            'storage_domains': {'s3.amazonaws.com': None}}))
+        sigv2_req = S3Request(
+            req.environ, conf=Config({
+                'storage_domains': ['s3.amazonaws.com']
+            })
+        )
         expected_sts = b'\n'.join([
             b'PUT',
             b'',
@@ -904,8 +917,11 @@ class TestRequest(S3ApiTestCase):
                 'Authorization': ('AWS AKIAIOSFODNN7EXAMPLE:'
                                   'htDYFYduRNen8P9ZfE/s9SuKy0U='),
             })
-        sigv2_req = S3Request(req.environ, conf=Config({
-            'storage_domains': {'s3.amazonaws.com': None}}))
+        sigv2_req = S3Request(
+            req.environ, conf=Config({
+                'storage_domains': ['s3.amazonaws.com']
+            })
+        )
         expected_sts = b'\n'.join([
             b'GET',
             b'',
@@ -933,8 +949,11 @@ class TestRequest(S3ApiTestCase):
             'Authorization': ('AWS AKIAIOSFODNN7EXAMPLE:'
                               'bWq2s1WEIj+Ydj0vQ697zp+IXMU='),
         })
-        sigv2_req = S3Request(req.environ, Config({
-            'storage_domains': {'s3.amazonaws.com': None}}))
+        sigv2_req = S3Request(
+            req.environ, conf=Config({
+                'storage_domains': ['s3.amazonaws.com']
+            })
+        )
         # This is a failure case with utf-8 non-ascii multi-bytes charactor
         # but we expect to return just False instead of exceptions
         self.assertFalse(sigv2_req.check_signature(
@@ -952,8 +971,10 @@ class TestRequest(S3ApiTestCase):
             'X-Amz-Date': amz_date_header
         })
         sigv4_req = SigV4Request(
-            req.environ, Config({
-                'storage_domains': {'s3.amazonaws.com': None}}))
+            req.environ, conf=Config({
+                'storage_domains': ['s3.amazonaws.com']
+            })
+        )
         self.assertFalse(sigv4_req.check_signature(
             u'\u30c9\u30e9\u30b4\u30f3'))
 
@@ -974,7 +995,7 @@ class TestRequest(S3ApiTestCase):
             'X-Amz-Date': '20210104T102623Z'}
 
         # Virtual hosted-style
-        self.s3api.conf.storage_domains = {'s3.test.com': None}
+        self.s3api.conf.storage_domains = ['s3.test.com']
         req = Request.blank('/', environ=environ, headers=headers)
         sigv4_req = SigV4Request(req.environ)
         self.assertTrue(
@@ -984,7 +1005,7 @@ class TestRequest(S3ApiTestCase):
     @patch.object(S3Request, '_validate_dates', lambda *a: None)
     def test_check_sigv4_req_zero_content_length_sha256(self):
         # Virtual hosted-style
-        self.s3api.conf.storage_domains = {'s3.test.com': None}
+        self.s3api.conf.storage_domains = ['s3.test.com']
 
         # bad sha256
         environ = {
@@ -1273,6 +1294,14 @@ class TestRequest(S3ApiTestCase):
             'HTTP_HOST': 's3.sbg.perf.cloud.ovh.net',
             'REQUEST_METHOD': 'GET'}
         req = Request.blank('/', environ=environ, headers=headers)
+        s3_req = S3Request(
+            req.environ, conf=Config({
+                'storage_domains': [
+                    'alternate.domain',
+                    's3.sbg.perf.cloud.ovh.net',
+                ]
+            })
+        )
         s3_req = S3Request(
             req.environ, conf=Config({
                 'storage_domains': {'alternate.domain': None,
