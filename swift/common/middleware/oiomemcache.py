@@ -22,6 +22,7 @@ import json
 from swift.common.middleware.memcache import MemcacheMiddleware
 from swift.common.utils import config_true_value, config_auto_int_value, \
     parse_connection_string
+from swift.proxy.controllers.base import get_cache_key as get_swift_cache_key
 
 from swift.common.memcached import MemcacheRing
 from oio.cli import ShowOne, Command
@@ -97,6 +98,12 @@ class OioMemcacheCommandMixin(object):
                             help=("The bucket."))
         parser.add_argument('object', nargs='?',
                             help=("The object path."))
+        parser.add_argument(
+            '--swift-cache',
+            action='store_true',
+            default=False,
+            help=("Use swift-cache instead of oio-cache."),
+        )
 
     def pretty_print(self, cache_entry):
         """
@@ -115,6 +122,29 @@ class OioMemcacheCommandMixin(object):
                              self.default_connection)
         _, netloc, _ = parse_connection_string(parsed_args.connection)
         return MemcacheRing(netloc.split(','))
+
+    def get_cache_key(self, parsed_args):
+        if parsed_args.swift_cache:
+            kwargs = {
+                "account": parsed_args.account,
+                "container": parsed_args.bucket,
+            }
+            if parsed_args.object:
+                kwargs["obj"] = parsed_args.object
+            key = get_swift_cache_key(**kwargs)
+        else:
+            kwargs = {
+                "account": parsed_args.account,
+                "reference": parsed_args.bucket,
+            }
+            if parsed_args.object:
+                # Oio cache has 2 functions to build the cache key
+                fn = _get_object_metadata_cache_key
+                kwargs["path"] = parsed_args.object
+            else:
+                fn = _get_container_metadata_cache_key
+            key = fn(**kwargs)
+        return key
 
     @property
     def logger(self):
@@ -135,15 +165,7 @@ class OioMemcacheGet(OioMemcacheCommandMixin, ShowOne):
 
     def take_action(self, parsed_args):
         cache = self.get_cache(parsed_args)
-        if parsed_args.object:
-            key = _get_object_metadata_cache_key(account=parsed_args.account,
-                                                 reference=parsed_args.bucket,
-                                                 path=parsed_args.object)
-        else:
-            key = _get_container_metadata_cache_key(
-                account=parsed_args.account,
-                reference=parsed_args.bucket)
-        values = cache.get(key)
+        values = cache.get(self.get_cache_key(parsed_args))
         return self.columns, [parsed_args.account,
                               parsed_args.bucket,
                               parsed_args.object,
@@ -164,15 +186,7 @@ class OioMemcacheDelete(OioMemcacheCommandMixin, Command):
 
     def take_action(self, parsed_args):
         cache = self.get_cache(parsed_args)
-        if parsed_args.object:
-            key = _get_object_metadata_cache_key(account=parsed_args.account,
-                                                 reference=parsed_args.bucket,
-                                                 path=parsed_args.object)
-        else:
-            key = _get_container_metadata_cache_key(
-                account=parsed_args.account,
-                reference=parsed_args.bucket)
-        cache.delete(key)
+        cache.delete(self.get_cache_key(parsed_args))
 
 
 class OioMemcacheMiddleware(MemcacheMiddleware):
