@@ -140,6 +140,28 @@ class TestS3BasicTest(unittest.TestCase):
         self.assertIn("InvalidArgument", str(ctx.exception))
         self.assertIn("continuation token", str(ctx.exception))
 
+    def test_list_too_large_param(self):
+        keys = ('a', 'b')
+        client = get_boto3_client()
+
+        for key in keys:
+            client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+
+        prefix = "a"*2048
+        data = client.list_objects(Bucket=self.bucket, Prefix=prefix)
+        self.assertEqual(prefix, data.get("Prefix"))
+        self.assertNotIn('Contents', data)
+
+        delimiter = "a"*2048
+        data = client.list_objects(Bucket=self.bucket, Delimiter=delimiter)
+        self.assertEqual(delimiter, data.get("Delimiter"))
+        self.assertEqual(2, len(data['Contents']))
+
+        marker = "a"*2048
+        data = client.list_objects(Bucket=self.bucket, Marker=marker)
+        self.assertEqual(marker, data.get("Marker"))
+        self.assertEqual(1, len(data['Contents']))
+
     def test_list_no_url_encoding(self):
         # Using invalid XML characters prevents us from using regular clients
         key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'

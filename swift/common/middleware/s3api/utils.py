@@ -303,3 +303,22 @@ def update_response_header_with_response_params(req, resp):
                 'content-disposition', 'content-encoding'):
         if 'response-' + key in req.params:
             resp.headers[key] = req.params['response-' + key]
+
+
+def truncate_excess_characters(value, max_size):
+    """
+    Remove UTF-8 characters that exceed the size.
+    The returned value may slightly exceed the size to avoid splitting
+    a character in 2.
+    """
+    if not value:
+        return value
+    value_bytes = value.encode("utf-8")
+    # A UTF-8 character is 6 bytes maximum
+    for i in range(max_size, max_size + 6):
+        try:
+            return (value_bytes[:i]).decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+    # Instead of returning an error immediately, try directly the orignal value
+    return value

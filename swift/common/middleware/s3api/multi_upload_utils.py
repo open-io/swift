@@ -16,13 +16,14 @@
 
 import base64
 
+from swift.common import constraints
 from swift.common.http import HTTP_OK, HTTP_NOT_FOUND, HTTP_SERVICE_UNAVAILABLE
-from swift.common.utils import json
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, InternalError, ServiceUnavailable
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    MPU_PART_RE
+    MPU_PART_RE, truncate_excess_characters
 from swift.common.request_helpers import get_param
+from swift.common.utils import json
 from swift.common.wsgi import make_pre_authed_request
 
 DEFAULT_MAX_PARTS_LISTING = 1000
@@ -79,7 +80,11 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
         err_msg = 'Invalid Encoding Method specified in Request'
         raise InvalidArgument('encoding-type', encoding_type, err_msg)
 
-    keymarker = get_param(req, 'key-marker', '')
+    # An object name cannot exceed 1024 bytes, so there is no need to send
+    # additional bytes for the marker
+    keymarker = truncate_excess_characters(
+        get_param(req, 'key-marker', ''), constraints.MAX_OBJECT_NAME_LENGTH
+    )
     uploadid = get_param(req, 'upload-id-marker', '')
     try:
         base64.b64decode(uploadid)

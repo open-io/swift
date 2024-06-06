@@ -20,7 +20,7 @@ import functools
 
 import six
 
-from swift.common import swob
+from swift.common import constraints, swob
 from swift.common.http import HTTP_OK
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
@@ -42,7 +42,7 @@ from swift.common.middleware.s3api.s3response import \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     BadEndpoint, VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    sysmeta_header, OBJECT_LOCK_ENABLED_HEADER
+    sysmeta_header, OBJECT_LOCK_ENABLED_HEADER, truncate_excess_characters
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
@@ -217,6 +217,24 @@ class BucketController(Controller):
             listing_type = 'version-1'
             if 'marker' in req.params:
                 query['marker'] = swob.wsgi_to_str(req.params['marker'])
+
+        # An object name cannot exceed 1024 bytes, so there is no need to send
+        # additional bytes for subsequent parameters
+        prefix = query.get("prefix")
+        if prefix:
+            query["prefix"] = truncate_excess_characters(
+                prefix, constraints.MAX_OBJECT_NAME_LENGTH
+            )
+        delimiter = query.get("delimiter")
+        if delimiter:
+            query["delimiter"] = truncate_excess_characters(
+                delimiter, constraints.MAX_OBJECT_NAME_LENGTH
+            )
+        marker = query.get("marker")
+        if marker:
+            query["marker"] = truncate_excess_characters(
+                marker, constraints.MAX_OBJECT_NAME_LENGTH
+            )
 
         return url_encoding, query, listing_type, fetch_owner
 
