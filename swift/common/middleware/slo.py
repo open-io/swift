@@ -1436,12 +1436,12 @@ class StaticLargeObject(object):
 
         return resp_iter()
 
-    def _check_manifest_deletion(self, req):
+    def _delete_manifest(self, req, etag, min_id, max_id):
         """
         Try to delete the manifest.
-        In case of 204, nothing blocks the deletion, parts can be deleted.
+        In case of 204, nothing blocks the deletion.
         Otherwise, something (lock, etc..) may block the object deletion,
-        parts should not be deleted.
+        parts are deleted later if manifest delete succeeded
 
         :param req: a :class:`~swift.common.swob.Request` with an SLO manifest
             in path
@@ -1452,8 +1452,10 @@ class StaticLargeObject(object):
                 request=req, body='Invalid UTF8 or contains NULL')
 
         new_env = req.environ.copy()
-        new_query_string = 'dryrun=True'
+        new_query_string = ''
         old_query_string = new_env.get('QUERY_STRING')
+        if etag:
+            new_query_string = f'etag={etag}&min_id={min_id}&max_id={max_id}'
         if old_query_string:
             new_query_string = f'{old_query_string}&{new_query_string}'
         new_env['QUERY_STRING'] = new_query_string
@@ -1577,6 +1579,39 @@ class StaticLargeObject(object):
         else:
             raise HTTPServerError('Unable to load SLO manifest or segment.')
 
+    def _prepare_segments(self, req):
+        if not check_utf8(wsgi_to_str(req.path_info)):
+            raise HTTPPreconditionFailed(
+                request=req, body='Invalid UTF8 or contains NULL')
+        vrs, account, container, obj = req.split_path(4, 4, True)
+        if six.PY2:
+            obj_path = ('/%s/%s' % (container, obj)).decode('utf-8')
+        else:
+            obj_path = '/%s/%s' % (wsgi_to_str(container), wsgi_to_str(obj))
+        segments = [seg for seg in self.get_slo_segments(obj_path, req)
+                    if 'data' not in seg]
+        return segments
+
+    def _parse_segments(self, segments):
+        if not segments:
+            # Degenerate case: just delete the manifest
+            return self.app
+        segment_containers, segment_objects = zip(*(
+            split_path(seg['name'], 2, 2, True) for seg in segments))
+        segment_containers = set(segment_containers)
+        if len(segment_containers) > 1:
+            container_csv = ', '.join(
+                '"%s"' % quote(c) for c in segment_containers)
+            raise HTTPBadRequest('All segments must be in one container. '
+                                 'Found segments in %s' % container_csv)
+
+        # Get min_id, max_id
+        obj_name, etag, min_id = (segment_objects[0]).rsplit('/', 2)
+        nb_parts = len(segment_objects)
+        _, _, max_id = (segment_objects[nb_parts - 1]).rsplit('/', 2)
+
+        return segment_containers, obj_name, etag, nb_parts, min_id, max_id
+
     def handle_async_delete(self, req):
         if not check_utf8(wsgi_to_str(req.path_info)):
             raise HTTPPreconditionFailed(
@@ -1677,13 +1712,15 @@ class StaticLargeObject(object):
         if out_content_type:
             resp.content_type = out_content_type
 
-        # If manifest deletion is not allowed, do not delete any parts
-        self._check_manifest_deletion(req)
+        segments = self._prepare_segments(req)
+        segment_containers, obj_name_base, etag, nb_parts, \
+            min_id, max_id = self._parse_segments(segments)
 
-        resp.app_iter = self.bulk_deleter.handle_delete_iter(
-            req, objs_to_delete=self.get_segments_to_delete_iter(req),
-            user_agent='MultipartDELETE', swift_source='SLO',
-            out_content_type=out_content_type)
+        if any(seg.get('sub_slo') for seg in segments):
+            raise HTTPBadRequest('No segments may be large objects.')
+        # Delete manifest only, parts are deleted later by dedicated event
+        # agent
+        self._delete_manifest(req, etag, min_id, max_id)
 
         return resp
 

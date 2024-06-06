@@ -887,6 +887,16 @@ class ObjectController(BaseObjectController):
 
         return self._delete_object(req)
 
+    def _compute_upper_id(self, mpu_max_id):
+        """Compute max id in term of lexicographical order"""
+        if mpu_max_id in range(0, 9) or mpu_max_id in range(90, 100) or \
+           mpu_max_id in range(990, 1000) or \
+           mpu_max_id in range(9990, 10000):
+            return mpu_max_id
+        else:
+            nb_digits = len(str(mpu_max_id))
+            return int((nb_digits - 1) * '9')
+
     def _delete_object(self, req):
         storage = self.app.storage
         headers = self._prepare_headers(req)
@@ -905,9 +915,14 @@ class ObjectController(BaseObjectController):
             "x-replication-destinations")
         replicator_id = req.headers.get("x-replication-replicator-id")
         role_project_id = req.headers.get("x-replication-role-project-id")
-        dryrun = req.params.get('dryrun', False)
 
         try:
+            etag = req.params.get('etag', None)
+            min_id = req.params.get('min_id', None)
+            max_id = req.params.get('max_id', None)
+            upper_id = None
+            if etag and max_id:
+                upper_id = self._compute_upper_id(int(max_id))
             del_marker, oio_version = storage.object_delete(
                 self.account_name, self.container_name, self.object_name,
                 version=oio_version,
@@ -918,7 +933,10 @@ class ObjectController(BaseObjectController):
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
                 replication_role_project_id=role_project_id,
-                end_user_request=True, dryrun=dryrun)
+                end_user_request=True,
+                etag=etag,
+                lower_id=min_id,
+                upper_id=upper_id)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
         except exceptions.NoSuchContainer:
