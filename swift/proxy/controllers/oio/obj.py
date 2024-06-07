@@ -237,7 +237,8 @@ class ObjectController(BaseObjectController):
                         self.account_name, self.container_name,
                         self.object_name, version=version,
                         headers=oio_headers, force_master=force_master,
-                        cache=oio_cache, perfdata=perfdata)
+                        end_user_request=True, cache=oio_cache,
+                        perfdata=perfdata)
                 else:
                     metadata = storage.object_get_properties(
                         self.account_name, self.container_name,
@@ -269,7 +270,10 @@ class ObjectController(BaseObjectController):
                 for entry in entries[1]:
                     try:
                         storage.blob_client.chunk_head(
-                            entry['url'], headers=oio_headers)
+                            entry['url'],
+                            headers=oio_headers,
+                            end_user_request=True,
+                        )
                         nb_chunks_ok += 1
                     except exceptions.OioException:
                         pass
@@ -307,7 +311,7 @@ class ObjectController(BaseObjectController):
                     ranges=ranges, headers=oio_headers,
                     version=obj_version_from_env(req.environ),
                     force_master=force_master, cache=oio_cache,
-                    perfdata=perfdata)
+                    end_user_request=True, perfdata=perfdata)
                 break
             except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
                 if force_master or not \
@@ -644,7 +648,7 @@ class ObjectController(BaseObjectController):
                 self.account_name, self.container_name, self.object_name,
                 headers=oio_headers, properties=metadata,
                 properties_directive='REPLACE', target_version=version,
-                cache=oio_cache, perfdata=perfdata)
+                end_user_request=True, cache=oio_cache, perfdata=perfdata)
         # TODO(FVE): this exception catching block has to be refactored
         # TODO check which ones are ok or make non sense
         except exceptions.Conflict:
@@ -783,7 +787,7 @@ class ObjectController(BaseObjectController):
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
                 replication_role_project_id=role_project_id,
-                **kwargs)
+                end_user_request=True, **kwargs)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
         except exceptions.PreconditionFailed:
@@ -914,7 +918,7 @@ class ObjectController(BaseObjectController):
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
                 replication_role_project_id=role_project_id,
-                dryrun=dryrun)
+                end_user_request=True, dryrun=dryrun)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
         except exceptions.NoSuchContainer:
