@@ -6750,22 +6750,30 @@ def is_from_replicator(reseller, user_agent):
             and user_agent.endswith(REPLICATOR_USER_AGENT))
 
 
-def flatten_dict(dictionary, parent_key="", separator="."):
+def flat_dict_from_dict(dict_):
     """
-    Recursively flattens a nested dictionary into a single-level dictionary.
+    Create a dictionary without depth.
+    {
+        'depth0': {
+            'depth1': {
+                'depth2': 'test1',
+                'depth2': 'test2'
+            }
+        }
+    }
+    =>
+    {
+        'depth0.depth1.depth2': 'test1',
+        'depth0.depth1.depth2': 'test2'
+    }
+    """
+    flat_dict = dict()
+    for key, value in dict_.items():
+        if not isinstance(value, dict):
+            flat_dict[key] = value
+            continue
 
-    :param dictionary: nested dictionary
-    :param parent_key: key of the parent dictionary, it will be added at the
-        beginning of the dictionary keys
-    :param separator: separator that is placed between every level of the
-        nested dictionary, default is "."
-    :return: single-level dictionary
-    """
-    items = []
-    for key, value in dictionary.items():
-        new_key = f"{parent_key}{separator}{key}" if parent_key else key
-        if isinstance(value, dict):
-            items.extend(flatten_dict(value, new_key, separator).items())
-        else:
-            items.append((new_key, value))
-    return dict(items)
+        flat_dict_ = flat_dict_from_dict(value)
+        for key_, value_ in flat_dict_.items():
+            flat_dict[key + '.' + key_] = value_
+    return flat_dict

@@ -22,7 +22,7 @@ from urllib.parse import unquote_plus
 from swift import gettext_ as _
 from swift.common.utils import (
     clean_content_type, config_true_value, Timestamp, public,
-    close_if_possible, closing_if_possible, flatten_dict)
+    close_if_possible, closing_if_possible, flat_dict_from_dict)
 from swift.common.constraints import MAX_FILE_SIZE, check_metadata, \
     check_object_creation
 from swift.common.header_key_dict import HeaderKeyDict
@@ -752,7 +752,7 @@ class ObjectController(BaseObjectController):
             elif crypto_body_meta["key_id"].get("sses3") is not None:
                 crypto_resiliency["sses3"] = True
 
-            crypto_resiliency = flatten_dict(crypto_resiliency)
+            crypto_resiliency = flat_dict_from_dict(crypto_resiliency)
             crypto_resiliency = ",".join(
                 f"{k}={v}" for k, v in crypto_resiliency.items()
             )

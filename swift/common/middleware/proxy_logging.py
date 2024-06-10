@@ -81,7 +81,8 @@ from collections import defaultdict
 
 from swift.common.middleware.catch_errors import enforce_byte_count
 from swift.common.swob import Request
-from swift.common.utils import (get_logger, get_remote_client,
+from swift.common.utils import (flat_dict_from_dict,
+                                get_logger, get_remote_client,
                                 config_true_value, reiterate,
                                 close_if_possible,
                                 InputProxy, list_from_csv, get_policy_index,
@@ -91,35 +92,6 @@ from swift.common.utils import (get_logger, get_remote_client,
 from swift.common.storage_policy import POLICIES
 from swift.common.registry import get_sensitive_headers, \
     get_sensitive_params, register_sensitive_header
-
-
-def flat_dict_from_dict(dict_):
-    """
-    Create a dictionary without depth.
-    {
-        'depth0': {
-            'depth1': {
-                'depth2': 'test1',
-                'depth2': 'test2'
-            }
-        }
-    }
-    =>
-    {
-        'depth0.depth1.depth2': 'test1',
-        'depth0.depth1.depth2': 'test2'
-    }
-    """
-    flat_dict = dict()
-    for key, value in dict_.items():
-        if not isinstance(value, dict):
-            flat_dict[key] = value
-            continue
-
-        flat_dict_ = flat_dict_from_dict(value)
-        for key_, value_ in flat_dict_.items():
-            flat_dict[key + '.' + key_] = value_
-    return flat_dict
 
 
 def perfdata_to_str(perfdata):
