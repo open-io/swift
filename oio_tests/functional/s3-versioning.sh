@@ -414,18 +414,20 @@ echo "Counting segments with openio CLI (should be the same, the object is still
 SEGS2=$(openio object list ${BUCKET}+segments -f value)
 [ -n "$SEGS2" ]
 SEG_COUNT2=$(echo -n "${SEGS2}" | wc -l)
+echo " nbparts SEGS2: ${SEGS2} SEG_COUNT: ${SEG_COUNT} SEG_COUNT2: ${SEG_COUNT2} "
 [ "$SEG_COUNT" -eq "$SEG_COUNT2" ]
 [ "$SEGS" == "$SEGS2" ]
 
 echo "Explicitly deleting the old version of the object"
 ${AWS} s3api delete-object --bucket ${BUCKET} --key obj --version-id "$OBJ_VER"
 
-echo "Counting segments with openio CLI (segment are deleted in async mode, manifest has been deleted)"
+echo "Counting segments with openio CLI (segments are deleted in async mode, manifest has been deleted)"
 # Segments are still here and will be deleted asynchronously by an event
 SEGS4=$(openio object list ${BUCKET}+segments -f value)
-[ -z "$SEGS4" ]
+echo " nbparts SEGS4: ${SEGS4} SEG_COUNT2 :${SEG_COUNT2}"
+
 SEG_COUNT4=$(echo -n "${SEGS4}" | wc -l)
-[ "$SEG_COUNT4" -eq  "$SEG_COUNT2" ]
+[ "$SEG_COUNT4" -eq  ${SEG_COUNT2} ]
 
 echo "Creating a second delete marker"
 DATA=$(${AWS} s3api list-object-versions --bucket "$BUCKET" --prefix "obj")

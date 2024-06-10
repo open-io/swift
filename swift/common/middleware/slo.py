@@ -1588,8 +1588,10 @@ class StaticLargeObject(object):
             obj_path = ('/%s/%s' % (container, obj)).decode('utf-8')
         else:
             obj_path = '/%s/%s' % (wsgi_to_str(container), wsgi_to_str(obj))
+
         segments = [seg for seg in self.get_slo_segments(obj_path, req)
                     if 'data' not in seg]
+
         return segments
 
     def _parse_segments(self, segments):
@@ -1713,11 +1715,15 @@ class StaticLargeObject(object):
             resp.content_type = out_content_type
 
         segments = self._prepare_segments(req)
+        if not segments:
+            return self.app
+        if len(segments) > self.max_manifest_segments * 10:
+            raise HTTPBadRequest(
+                'Too many buffered slo segments to delete.')
+
         segment_containers, obj_name_base, etag, nb_parts, \
             min_id, max_id = self._parse_segments(segments)
 
-        if any(seg.get('sub_slo') for seg in segments):
-            raise HTTPBadRequest('No segments may be large objects.')
         # Delete manifest only, parts are deleted later by dedicated event
         # agent
         self._delete_manifest(req, etag, min_id, max_id)
