@@ -259,8 +259,11 @@ class ProfileLog(object):
         else:
             pid = str(os.getpid()) if id_or_name in [None, '', 'current']\
                 else id_or_name
-            log_files = [l for l in glob.glob(self.log_filename_prefix +
-                         pid + '*') if not l.endswith('.tmp')]
+            pattern = self.log_filename_prefix + pid
+            if self.dump_timestamp:
+                pattern += '-*'
+            log_files = [l for l in glob.glob(pattern)
+                         if not l.endswith('.tmp')]
             if len(log_files) > 0:
                 log_files = sorted(log_files, reverse=True)[0:1]
         return log_files
