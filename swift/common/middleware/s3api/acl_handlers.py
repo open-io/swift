@@ -152,7 +152,7 @@ class BaseAclHandler(object):
         except AccessDenied as exc:
             # If IAM is disabled and ACLs say no -> deny.
             # If IAM is enabled, already checked and False -> deny.
-            # If IAM is enabled, but explicit_allow is None -> let the
+            # If IAM is enabled, but explicit_allow is None or True -> let the
             # request handling continue, it will be checked later.
             if not iam_is_enabled(self.req.environ) or \
                     iam_explicit_allow(self.req.environ) is False:
@@ -232,7 +232,7 @@ class BucketAclHandler(BaseAclHandler):
         except AccessDenied:
             # If IAM is disabled and ACLs say no -> deny.
             # If IAM is enabled, already checked and False -> deny.
-            # If IAM is enabled, but explicit_allow is None -> let the
+            # If IAM is enabled, but explicit_allow is None or True -> let the
             # request handling continue, it will be checked later.
             if not iam_is_enabled(self.req.environ) or \
                     iam_explicit_allow(self.req.environ) is False:
@@ -300,8 +300,8 @@ class S3AclHandler(BaseAclHandler):
             except AccessDenied:
                 # If IAM is disabled and ACLs say no -> deny.
                 # If IAM is enabled, already checked and False -> deny.
-                # If IAM is enabled, but explicit_allow is None -> let the
-                # request handling continue, it will be checked later.
+                # If IAM is enabled, but explicit_allow is None or True -> let
+                # the request handling continue, it will be checked later.
                 if not iam_is_enabled(self.req.environ) or \
                         iam_explicit_allow(self.req.environ) is False:
                     raise
@@ -331,8 +331,8 @@ class S3AclHandler(BaseAclHandler):
             except AccessDenied:
                 # If IAM is disabled and ACLs say no -> deny.
                 # If IAM is enabled, already checked and False -> deny.
-                # If IAM is enabled, but explicit_allow is None -> let the
-                # request handling continue, it will be checked later.
+                # If IAM is enabled, but explicit_allow is None or True -> let
+                # the request handling continue, it will be checked later.
                 if not iam_is_enabled(self.req.environ) or \
                         iam_explicit_allow(self.req.environ) is False:
                     raise

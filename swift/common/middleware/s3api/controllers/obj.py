@@ -142,6 +142,26 @@ class ObjectController(Controller):
         object_name = req.object_name
         version_id = version_id_param(req)
 
+        def raise_for_delete_marker(exc=AccessDenied()):
+            """
+            Backend indicates that the object is a delete marker.
+            Make some checking to find out if a 404 Not Found can be returned
+            to the customer.
+            """
+            object_info = req.get_object_info(self.app)
+            obj_version_id = object_info.get('sysmeta', {}).get('version-id')
+            if not obj_version_id:
+                raise exc
+            if object_info.get('type') != DELETE_MARKER_CONTENT_TYPE:
+                raise exc
+            # Ensure the user can list the bucket
+            if self.has_bucket_or_object_read_permission(req) is False:
+                raise exc
+            raise NoSuchKey(object_name, headers={
+                'x-amz-version-id': obj_version_id,
+                'x-amz-delete-marker': 'true'
+            })
+
         query = {} if version_id is None else {'version-id': version_id}
         if version_id not in ('null', None):
             container_info = req.get_container_info(self.app)
@@ -152,20 +172,8 @@ class ObjectController(Controller):
         try:
             req.environ["oio.retry.master"] = req.from_replicator()
             resp = req.get_response(self.app, query=query)
-        except AccessDenied:
-            object_info = req.get_object_info(self.app)
-            obj_version_id = object_info.get('sysmeta', {}).get('version-id')
-            if not obj_version_id:
-                raise
-            if object_info.get('type') != DELETE_MARKER_CONTENT_TYPE:
-                raise
-            # Ensure the user can list the bucket
-            if self.has_bucket_or_object_read_permission(req) is False:
-                raise
-            raise NoSuchKey(object_name, headers={
-                'x-amz-version-id': obj_version_id,
-                'x-amz-delete-marker': 'true'
-            })
+        except AccessDenied as exc:
+            raise_for_delete_marker(exc)
         except MethodNotAllowed as exc:
             # Ensure we are dealing with a delete marker
             if not exc.headers.get('x-amz-delete-marker'):
@@ -208,6 +216,12 @@ class ObjectController(Controller):
 
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)
+
+        # In case of full access on the bucket, the access denied is not
+        # immediately returned on the internal request.
+        content_type = resp.headers.get("Content-Type")
+        if content_type and content_type == DELETE_MARKER_CONTENT_TYPE:
+            raise_for_delete_marker()
 
         # SSE-C headers cannot be included on SSE-S3 encrypted objects
         if ((SSEC_ALGO_HEADER in req.headers or SSEC_KEY_HEADER in req.headers)
