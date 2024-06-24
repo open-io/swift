@@ -488,6 +488,9 @@ class ProxyLoggingMiddleware(object):
             return start_status
 
         def iter_response(iterable):
+            req = Request(env)
+            method = self.method_from_req(req)
+
             iterator = reiterate(iterable)
             content_length = None
             for h, v in start_response_args[0][1]:
@@ -499,11 +502,10 @@ class ProxyLoggingMiddleware(object):
             else:
                 if isinstance(iterator, list):
                     content_length = sum(len(i) for i in iterator)
-                    start_response_args[0][1].append(
-                        ('Content-Length', str(content_length)))
+                    if method != 'HEAD':
+                        start_response_args[0][1].append(
+                            ('Content-Length', str(content_length)))
 
-            req = Request(env)
-            method = self.method_from_req(req)
             if method == 'HEAD':
                 content_length = 0
             if content_length is not None:

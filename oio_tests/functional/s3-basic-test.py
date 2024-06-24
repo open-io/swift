@@ -289,6 +289,26 @@ class TestS3BasicTest(unittest.TestCase):
             response.text)
         self.assertIn("\xc3\x83", response.text)
 
+    def test_head_object_and_content_length(self):
+        key = "head_no_such_key-" + random_str(6)
+        client = get_boto3_client()
+
+        with self.assertRaises(ClientError) as ctx:
+            client.head_object(Bucket=self.bucket, Key=key)
+        self.assertNotIn(
+            'content-length',
+            ctx.exception.response['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn('ContentLength', ctx.exception.response)
+
+        client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
+
+        meta = client.head_object(Bucket=self.bucket, Key=key)
+        self.assertEquals(
+            '4', meta['ResponseMetadata']['HTTPHeaders']['content-length']
+        )
+        self.assertEquals(4, meta['ContentLength'])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
