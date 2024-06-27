@@ -50,12 +50,12 @@ class TestCatchErrors(unittest.TestCase):
         self.logger.txn_id = None
 
     def start_response(self, status, headers, *args):
+        # Openstack specific requests id are not returned anymore
         request_ids = ('X-Trans-Id', 'X-Openstack-Request-Id')
-        hdict = dict(headers)
-        for key in request_ids:
-            self.assertIn(key, hdict)
-        for key1, key2 in zip(request_ids, request_ids[1:]):
-            self.assertEqual(hdict[key1], hdict[key2])
+        if headers:
+            hdict = dict(headers)
+            for key in request_ids:
+                self.assertNotIn(key, hdict)
 
     def test_catcherrors_passthrough(self):
         app = catch_errors.CatchErrorMiddleware(FakeApp(), {})
