@@ -241,17 +241,20 @@ class TestS3BasicTest(unittest.TestCase):
             "get-object", '--range', 'bytes=0-10', '/dev/null',
             bucket=self.bucket, key=key)
         self.assertEqual(11, data['ContentLength'])
+        self.assertEqual("bytes", data['AcceptRanges'])
         # When the Range header is malformed, it is ignored
         data = run_awscli_s3api(
             "get-object", '--range', 'bytes: 1-10', '/dev/null',
             bucket=self.bucket, key=key)
         self.assertEqual(111, data['ContentLength'])
+        self.assertEqual("bytes", data['AcceptRanges'])
         # When there are multiple ranges, they are ignored
         # S3 compliance: multiple range not supported by AWS
         data = run_awscli_s3api(
             "get-object", '--range', 'bytes=0-5, 7-10', '/dev/null',
             bucket=self.bucket, key=key)
         self.assertEqual(111, data['ContentLength'])
+        self.assertEqual("bytes", data['AcceptRanges'])
 
     def test_get_object_with_bad_range(self):
         key = "badrange-" + random_str(6)

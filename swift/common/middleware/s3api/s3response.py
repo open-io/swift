@@ -34,6 +34,15 @@ from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 
 
+HEADERS_TO_TRANSLATE_AS_IS = (
+    'content-length', 'content-type', 'content-range', 'content-encoding',
+    'content-disposition', 'content-language', 'etag', 'last-modified',
+    'x-robots-tag', 'cache-control', 'expires', 'retry-after',
+    'x-amz-delete-marker', 'x-amz-version-id', 'x-amz-server-side-encryption',
+    'accept-ranges'
+)
+
+
 class HeaderKeyDict(header_key_dict.HeaderKeyDict):
     """
     Similar to the Swift's normal HeaderKeyDict class, but its key name is
@@ -66,13 +75,7 @@ def translate_swift_to_s3(key, val, storage_policy_to_class=None):
 
     if _key.startswith('x-object-meta-'):
         return translate_meta_key(_key), val
-    elif _key in ('content-length', 'content-type',
-                  'content-range', 'content-encoding',
-                  'content-disposition', 'content-language',
-                  'etag', 'last-modified', 'x-robots-tag',
-                  'cache-control', 'expires', 'retry-after',
-                  'x-amz-delete-marker', 'x-amz-version-id',
-                  'x-amz-server-side-encryption'):
+    elif _key in HEADERS_TO_TRANSLATE_AS_IS:
         return key, val
     elif _key == 'x-object-version-id':
         return 'x-amz-version-id', val

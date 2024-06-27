@@ -79,7 +79,10 @@ class TestPresignedUrls(unittest.TestCase):
 
         # Check if object is present
         head_res = self.client.head_object(Bucket=self.bucket, Key=key)
+        # Not that these checks relies on the values adapted from the
+        # headers by Botocore.
         self.assertEqual(len(data), head_res['ContentLength'])
+        self.assertEqual("bytes", head_res['AcceptRanges'])
         # Check if object really exists with its real name (make sure an
         # eventual leading "/" is not stripped).
         # Openio command will raise if object does not exist.
@@ -94,6 +97,7 @@ class TestPresignedUrls(unittest.TestCase):
         get_res = requests.get(get_url)
         self.assertEqual(200, get_res.status_code)
         self.assertEqual(len(data), int(get_res.headers['Content-Length']))
+        self.assertEqual("bytes", get_res.headers['Accept-Ranges'])
 
         # Delete the object
         delete_url = client.generate_presigned_url(
