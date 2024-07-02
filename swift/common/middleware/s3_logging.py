@@ -310,7 +310,9 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             self.method_from_req(req), req.path_qs,
             req.environ.get('SERVER_PROTOCOL', 'HTTP/unknown'))
         total_time = str(int(((end_time - start_time) * 1000)))
-        turn_around_time = str(int(ttfb * 1000))
+        turn_around_time = (
+            str(int(ttfb * 1000)) if isinstance(ttfb, float) else ttfb
+        )
         current_time = datetime.now(timezone.utc).strftime(
             '%d/%b/%Y:%H:%M:%S %z')
         bucket_acl = container_info['sysmeta'].get('s3api-acl')
