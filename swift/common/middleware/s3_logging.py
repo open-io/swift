@@ -172,6 +172,18 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             error_code = s3_info.get('error_code')
             if not error_code and status_int == 500:
                 error_code = 'InternalError'
+        aws_chunked = s3_info.get('aws_chunked', False)
+        if aws_chunked is not None:
+            aws_chunked = str(aws_chunked).lower()
+        ratelimit = s3_info.get('ratelimit', False)
+        if ratelimit is not None:
+            ratelimit = str(ratelimit).lower()
+        request_origin = s3_info.get('request_origin', False)
+        if request_origin is not None:
+            request_origin = str(request_origin).lower()
+        website = s3_info.get('website', False)
+        if website is not None:
+            website = str(website).lower()
         return {
             'account': StrAnonymizer(
                 s3_info.get('account'), self.anonymization_method,
@@ -195,10 +207,10 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'error_detail': s3_info.get('error_detail'),
             'signature_version': s3_info.get('signature_version'),
             'authentication_type': s3_info.get('authentication_type'),
-            'aws_chunked': str(s3_info.get('aws_chunked', False)).lower(),
-            'ratelimit': str(s3_info.get('ratelimit', False)).lower(),
-            'request_origin': str(s3_info.get('request_origin')).lower(),
-            'website': str(s3_info.get('website', False)).lower(),
+            'aws_chunked': aws_chunked,
+            'ratelimit': ratelimit,
+            'request_origin': request_origin,
+            'website': website,
         }
 
     def log_request(self, req, status_int, bytes_received, bytes_sent,
