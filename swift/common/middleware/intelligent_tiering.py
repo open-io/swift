@@ -182,8 +182,7 @@ class RabbitMQClient(object):
                 except Exception as exc:
                     self.logger.exception('Failed to disconnect: %s', str(exc))
 
-    def start_archiving(self, account, bucket, bucket_size=None,
-                        bucket_region=None):
+    def start_archiving(self, account, bucket, bucket_size, bucket_region):
         self._send_message(
             account,
             bucket,
@@ -191,11 +190,12 @@ class RabbitMQClient(object):
             bucket_size=bucket_size,
             bucket_region=bucket_region)
 
-    def start_restoring(self, account, bucket, bucket_region):
+    def start_restoring(self, account, bucket, bucket_size, bucket_region):
         self._send_message(
             account,
             bucket,
             RABBITMQ_MSG_RESTORING,
+            bucket_size=bucket_size,
             bucket_region=bucket_region
         )
 
@@ -465,6 +465,7 @@ class IntelligentTieringMiddleware(object):
 
     def _put_restore(self, req):
         bucket_info = req.get_bucket_info(self.app)
+        bucket_size = bucket_info.get('bytes')
         bucket_region = bucket_info.get('region')
 
         # Check the status as late as possible to get the most up-to-date
@@ -478,7 +479,7 @@ class IntelligentTieringMiddleware(object):
                              current_status)
 
         self.rabbitmq_client.start_restoring(
-            req.account, req.container_name, bucket_region
+            req.account, req.container_name, bucket_size, bucket_region
         )
         self._set_archiving_status(req, current_status, new_status)
         return new_status

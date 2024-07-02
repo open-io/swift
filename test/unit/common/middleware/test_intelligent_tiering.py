@@ -541,7 +541,7 @@ class TestIntelligentTiering(unittest.TestCase):
     def test_PUT_restore_ok(self, m_b_status, m_set_container_props, m_rabbit):
         self.expected_rabbit_args = [
             (self.ACCOUNT, self.CONTAINER_NAME, 'restore'),
-            {'bucket_region': None}
+            {'bucket_size': 42, 'bucket_region': None}
         ]
         self.expected_container_props_args = [
             (
