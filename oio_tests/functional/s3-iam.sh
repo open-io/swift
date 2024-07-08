@@ -186,10 +186,13 @@ test_delete_objects() {
   ${AWSA1U1} s3 rm s3://${A1U1_BUCKET}/magic
   ${AWSA1U1} s3 rm s3://${A1U1_BUCKET}/bigfiles/bigfile
 
-  # user1 (demo) cannot delete objects from the shared bucket...
+  # user1 (demo) cannot delete objects from the shared bucket (and receives 
+  # AccessDenied if the object does exist or not)...
   OUT=$(${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/magic 2>&1 | tail -n 1)
   echo "$OUT" | grep "AccessDenied"
-  # except objects prefixed by its user name.
+  OUT=$(${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/magic123 2>&1 | tail -n 1)
+  echo "$OUT" | grep "AccessDenied"
+  # ...except objects prefixed by its user name.
   ${AWSA1U1} s3 rm s3://${SHARED_BUCKET}/user1_magic
 
   # user1 (demo) can delete objects from its folder in his company's bucket

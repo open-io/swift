@@ -282,7 +282,7 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
                               delete=False, tags=None,
                               ensure_replicated=False):
     """
-    Get a list of destination for an object
+    Update headers of the request if replication needs to be applied.
     :param req: initial request
     :param sysmeta_info: sysmeta container info
     :param metadata: object metadata

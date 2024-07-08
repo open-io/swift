@@ -416,17 +416,23 @@ class ObjectController(Controller):
             elif self._versioning_enabled(req):
                 query.pop('multipart-manifest', None)
 
-            sysmeta_info = container_info.get("sysmeta", {})
-            replication_resolve_rules(
-                self.app,
-                req,
-                sysmeta_info=sysmeta_info,
-                delete=True
-            )
+            try:
+                sysmeta_info = container_info.get("sysmeta", {})
+                replication_resolve_rules(
+                    self.app,
+                    req,
+                    sysmeta_info=sysmeta_info,
+                    delete=True
+                )
+            except (NoSuchKey, NoSuchVersion):
+                # The object does not exist, therefore will not be deleted.
+                # Do not raise now to check ACLs later.
+                pass
 
+            # Do the request AND check ACLs.
             resp = req.get_response(self.app, query=query)
             if query.get('multipart-manifest') and resp.status_int == HTTP_OK:
-                for chunk in resp.app_iter:
+                for _chunk in resp.app_iter:
                     pass  # drain the bulk-deleter response
                 resp.status = HTTP_NO_CONTENT
                 resp.body = b''
