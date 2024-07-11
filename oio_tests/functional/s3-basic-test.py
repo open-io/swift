@@ -35,6 +35,11 @@ def parse_rfc822(val):
 
 class TestS3BasicTest(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        super(TestS3BasicTest, cls).setUpClass()
+        cls.boto_client = get_boto3_client()
+
     def setUp(self):
         super(TestS3BasicTest, self).setUp()
 
@@ -116,9 +121,8 @@ class TestS3BasicTest(unittest.TestCase):
     def test_list_url_encoding(self):
         # Using invalid XML characters prevents us from using regular clients
         key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
-        client = get_boto3_client()
-        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
-        client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+        self.boto_client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
         resp = requests.get(f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m&encoding-type=url')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
@@ -130,44 +134,43 @@ class TestS3BasicTest(unittest.TestCase):
 
     def test_list_continuation_token(self):
         keys = ('obj1', 'obj2')
-        client = get_boto3_client()
 
         for key in keys:
-            client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+            self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
 
         with self.assertRaises(ClientError) as ctx:
-            client.list_objects_v2(Bucket=self.bucket, Prefix="obj", ContinuationToken="aaa")
+            self.boto_client.list_objects_v2(Bucket=self.bucket, Prefix="obj", ContinuationToken="aaa")
         self.assertIn("InvalidArgument", str(ctx.exception))
         self.assertIn("continuation token", str(ctx.exception))
 
     def test_list_too_large_param(self):
         keys = ('a', 'b')
-        client = get_boto3_client()
 
         for key in keys:
-            client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+            self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
 
         prefix = "a"*2048
-        data = client.list_objects(Bucket=self.bucket, Prefix=prefix)
+        data = self.boto_client.list_objects(Bucket=self.bucket, Prefix=prefix)
         self.assertEqual(prefix, data.get("Prefix"))
         self.assertNotIn('Contents', data)
 
         delimiter = "a"*2048
-        data = client.list_objects(Bucket=self.bucket, Delimiter=delimiter)
+        data = self.boto_client.list_objects(
+            Bucket=self.bucket, Delimiter=delimiter
+        )
         self.assertEqual(delimiter, data.get("Delimiter"))
         self.assertEqual(2, len(data['Contents']))
 
         marker = "a"*2048
-        data = client.list_objects(Bucket=self.bucket, Marker=marker)
+        data = self.boto_client.list_objects(Bucket=self.bucket, Marker=marker)
         self.assertEqual(marker, data.get("Marker"))
         self.assertEqual(1, len(data['Contents']))
 
     def test_list_no_url_encoding(self):
         # Using invalid XML characters prevents us from using regular clients
         key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
-        client = get_boto3_client()
-        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
-        client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+        self.boto_client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
         resp = requests.get(f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?marker=object%1E%1E%3CTest%3E%C2%A0name%20with%02-%0D-%0F%20%25-sign%F0%9F%99%82%0A%2F.m')
         self.assertEqual(200, resp.status_code)
         self.assertIn(
@@ -258,11 +261,11 @@ class TestS3BasicTest(unittest.TestCase):
 
     def test_get_object_with_bad_range(self):
         key = "badrange-" + random_str(6)
-        client = get_boto3_client()
-        client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
         with self.assertRaises(ClientError) as ctx:
-            client.get_object(Bucket=self.bucket, Key=key,
-                              Range='bytes=200-300')
+            self.boto_client.get_object(
+                Bucket=self.bucket, Key=key, Range='bytes=200-300'
+            )
         self.assertEqual('InvalidRange',
                          ctx.exception.response['Error']['Code'])
         self.assertEqual('4',
@@ -291,23 +294,34 @@ class TestS3BasicTest(unittest.TestCase):
 
     def test_head_object_and_content_length(self):
         key = "head_no_such_key-" + random_str(6)
-        client = get_boto3_client()
 
         with self.assertRaises(ClientError) as ctx:
-            client.head_object(Bucket=self.bucket, Key=key)
+            self.boto_client.head_object(Bucket=self.bucket, Key=key)
         self.assertNotIn(
             'content-length',
             ctx.exception.response['ResponseMetadata']['HTTPHeaders'],
         )
         self.assertNotIn('ContentLength', ctx.exception.response)
 
-        client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
 
-        meta = client.head_object(Bucket=self.bucket, Key=key)
+        meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
         self.assertEquals(
             '4', meta['ResponseMetadata']['HTTPHeaders']['content-length']
         )
         self.assertEquals(4, meta['ContentLength'])
+
+    def test_head_bucket(self):
+        resp = self.boto_client.head_bucket(Bucket=self.bucket)
+        mandatory_headers = [
+            "content-type",
+            "x-ovh-bucket-object-count",
+            "x-ovh-bucket-size",
+            "x-amz-id-2",
+            "x-amz-request-id",
+        ]
+        for header in mandatory_headers:
+            self.assertIn(header, resp["ResponseMetadata"]["HTTPHeaders"])
 
 
 if __name__ == "__main__":

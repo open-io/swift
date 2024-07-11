@@ -147,6 +147,11 @@ class BucketController(Controller):
         Handle HEAD Bucket (Get Metadata) request
         """
         resp = req.get_response(self.app)
+        bucket_info = req.get_bucket_info(self.app)
+        if not resp.headers:
+            resp.headers = {}
+        resp.headers["x-ovh-bucket-object-count"] = bucket_info["objects"]
+        resp.headers["x-ovh-bucket-size"] = bucket_info["bytes"]
         return HTTPOk(headers=resp.headers)
 
     def _parse_request_options(self, req, max_keys):

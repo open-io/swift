@@ -111,7 +111,7 @@ def translate_swift_to_s3(key, val, storage_policy_to_class=None):
         except ValueError:
             pass  # not there? don't worry about it
         return key, ', '.join(methods)
-    elif _key.startswith('access-control-'):
+    elif _key.startswith('access-control-') or _key.startswith('x-ovh-'):
         return key, val
     # else, drop the header
     return None
