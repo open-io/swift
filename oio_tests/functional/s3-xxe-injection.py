@@ -234,17 +234,12 @@ class TestS3XxeInjection(unittest.TestCase):
   </Rule>
 </LifecycleConfiguration>
 """)  # noqa: E501
-        self.assertEqual(200, resp.status_code)
-        self.assertNotIn(b'xxe', resp.content)
+        self.assertEqual(400, resp.status_code)
         self.assertNotIn(b'donotreadme', resp.content)
 
-        try:
-            self.client.get_bucket_lifecycle_configuration(
-                Bucket=self.bucket)
-            self.fail('Now it is fixed')
-        except botocore.parsers.ResponseParserError:  # FIXME(adu)
-            # self.assertNotIn(b'xxe', resp.content)
-            self.assertNotIn(b'donotreadme', resp.content)
+        self.assertRaisesRegex(
+            botocore.exceptions.ClientError, 'NoSuchLifecycleConfiguration',
+            self.client.get_bucket_lifecycle_configuration, Bucket=self.bucket)
 
     def test_delete_objects(self):
         self._create_bucket()
