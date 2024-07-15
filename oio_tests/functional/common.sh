@@ -84,10 +84,11 @@ function run_sds() {
   if [ -n "${REMOTE_ACCOUNT}" ]; then
     args="${args} -f third_party/oio-sds/etc/bootstrap-option-remote-account.yml"
   fi
-  oio-reset.sh -v -v -N "$OIO_NS" -r "RegionOne" \
+  oio-reset.sh -v -v -N "$OIO_NS" -r "RegionOne" -U \
     -f third_party/oio-sds/etc/bootstrap-preset-SINGLE.yml \
     -f third_party/oio-sds/etc/bootstrap-meta1-1digits.yml \
     -f third_party/oio-sds/etc/bootstrap-option-cache.yml \
+    -f third_party/oio-sds/etc/bootstrap-option-chunksize-512MiB.yml \
     ${args}
   openio cluster wait || (openio cluster list --stats; openioctl.sh status2; sudo tail -n 100 /var/log/syslog; return 1)
 }

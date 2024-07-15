@@ -63,7 +63,7 @@ check_crypto_resiliency() {
         local CONTAINER="$1"
         local CHUNK="$2"
         echo "Checking crypto resiliency infos of chunk ${CHUNK}"
-        local CHUNK_URLS=$(openio object locate "$CONTAINER" "$CHUNK" -f value | awk '{print $2}')
+        local CHUNK_URLS=$(openio object locate "$CONTAINER" "$CHUNK" -f value --resolve -c "Real-Url")
         for CHUNK_URL in $(echo $CHUNK_URLS); do
             echo "Check chunk url: $CHUNK_URL"
             # HEAD request to the chunk
@@ -82,7 +82,7 @@ check_crypto_resiliency() {
             urldecode() {
                 echo -e "$(sed 's/+/ /g;s/%\(..\)/\\x\1/g;')"
             }
-            local CRYPTO_BODY_META=$(openio object show "$CONTAINER" "$CHUNK" -f table | grep x-object-sysmeta-crypto-body-meta | awk '{print $4}')
+            local CRYPTO_BODY_META=$(openio object show "$CONTAINER" "$CHUNK" -f value -c "meta.x-object-sysmeta-crypto-body-meta")
             local CRYPTO_BODY_META=$(echo $CRYPTO_BODY_META | urldecode)
             local META2_BODY_KEY_IV=$(echo "$CRYPTO_BODY_META" | jq -r '.body_key.iv')
             local META2_BODY_KEY_KEY=$(echo "$CRYPTO_BODY_META" | jq -r '.body_key.key')
