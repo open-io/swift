@@ -4,27 +4,48 @@ start =
   element LifecycleConfiguration {
     element Rule {
       element ID { xsd:string }? &
-      element Filter { Filter } &
+      element Filter {
+          element And {
+            element Prefix { xsd:string }? &
+            element Tag {
+              element Key { xsd:string } &
+              element Value { xsd:string }
+            }* &
+            element ObjectSizeGreaterThan {xsd:nonNegativeInteger}? &
+            element ObjectSizeLessThan {xsd:nonNegativeInteger}?
+          } |
+          element Prefix { xsd:string } |
+          element Tag {
+              element Key { xsd:string } &
+              element Value { xsd:string }
+          } |
+          element ObjectSizeGreaterThan {xsd:nonNegativeInteger} |
+          element ObjectSizeLessThan {xsd:nonNegativeInteger}
+
+      }? &
+      element Prefix { xsd:string }? &
       element Status { "Enabled" | "Disabled" } &
       element AbortIncompleteMultipartUpload {
           element DaysAfterInitiation { xsd:positiveInteger }
       }? &
       element Expiration { Expiration }? &
       element NoncurrentVersionExpiration {
-        element NoncurrentDays { xsd:positiveInteger }
+        element NoncurrentDays { xsd:positiveInteger } &
+        element NewerNoncurrentVersions { xsd:positiveInteger } ?
       }? &
       element NoncurrentVersionTransition { NoncurrentVersionTransition }? &
-      element Transition { Transition }?
+      element Transition { Transition }*
     }+
   }
 
 Expiration =
-  element Days { xsd:nonNegativeInteger } |
+  element Days { xsd:positiveInteger } |
   element Date { xsd:dateTime } |
   element ExpiredObjectDeleteMarker { xsd:boolean }
 
 NoncurrentVersionTransition =
-  element NoncurrentDays { xsd:nonNegativeInteger } &
+  element NoncurrentDays { xsd:positiveInteger } &
+  element NewerNoncurrentVersions { xsd:positiveInteger }? &
   element StorageClass { StorageClass }
 
 Transition =
