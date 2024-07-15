@@ -11,9 +11,67 @@
                 <data type="string"/>
               </element>
             </optional>
-            <element name="Filter">
-              <ref name="Filter"/>
-            </element>
+            <optional>
+              <element name="Filter">
+                <choice>
+                  <element name="And">
+                    <interleave>
+                      <optional>
+                        <element name="Prefix">
+                          <data type="string"/>
+                        </element>
+                      </optional>
+                      <zeroOrMore>
+                        <element name="Tag">
+                          <interleave>
+                            <element name="Key">
+                              <data type="string"/>
+                            </element>
+                            <element name="Value">
+                              <data type="string"/>
+                            </element>
+                          </interleave>
+                        </element>
+                      </zeroOrMore>
+                      <optional>
+                        <element name="ObjectSizeGreaterThan">
+                          <data type="nonNegativeInteger"/>
+                        </element>
+                      </optional>
+                      <optional>
+                        <element name="ObjectSizeLessThan">
+                          <data type="nonNegativeInteger"/>
+                        </element>
+                      </optional>
+                    </interleave>
+                  </element>
+                  <element name="Prefix">
+                    <data type="string"/>
+                  </element>
+                  <element name="Tag">
+                    <interleave>
+                      <element name="Key">
+                        <data type="string"/>
+                      </element>
+                      <element name="Value">
+                        <data type="string"/>
+                      </element>
+                    </interleave>
+                  </element>
+                  <element name="ObjectSizeGreaterThan">
+                    <data type="nonNegativeInteger"/>
+                  </element>
+                  <element name="ObjectSizeLessThan">
+                    <data type="nonNegativeInteger"/>
+                  </element>
+                </choice>
+              </element>
+            </optional>
+            <optional>
+              <element name="Prefix">
+                <data type="string"/>
+              </element>
+            </optional>
             <element name="Status">
               <choice>
                 <value>Enabled</value>
@@ -34,9 +92,16 @@
             </optional>
             <optional>
               <element name="NoncurrentVersionExpiration">
-                <element name="NoncurrentDays">
-                  <data type="positiveInteger"/>
-                </element>
+                <interleave>
+                  <element name="NoncurrentDays">
+                    <data type="positiveInteger"/>
+                  </element>
+                  <optional>
+                    <element name="NewerNoncurrentVersions">
+                      <data type="positiveInteger"/>
+                    </element>
+                  </optional>
+                </interleave>
               </element>
             </optional>
             <optional>
@@ -44,11 +109,11 @@
                 <ref name="NoncurrentVersionTransition"/>
               </element>
             </optional>
-            <optional>
+            <zeroOrMore>
               <element name="Transition">
                 <ref name="Transition"/>
               </element>
-            </optional>
+            </zeroOrMore>
           </interleave>
         </element>
       </oneOrMore>
@@ -57,7 +122,7 @@
   <define name="Expiration">
     <choice>
       <element name="Days">
-        <data type="nonNegativeInteger"/>
+        <data type="positiveInteger"/>
       </element>
       <element name="Date">
         <data type="dateTime"/>
@@ -70,19 +135,29 @@
   <define name="NoncurrentVersionTransition">
     <interleave>
       <element name="NoncurrentDays">
-        <data type="nonNegativeInteger"/>
+        <data type="positiveInteger"/>
       </element>
+      <optional>
+        <element name="NewerNoncurrentVersions">
+          <data type="positiveInteger"/>
+        </element>
+      </optional>
       <element name="StorageClass">
         <ref name="StorageClass"/>
       </element>
     </interleave>
   </define>
   <define name="Transition">
-    <interleave>
-      <ref name="Expiration"/>
+    <choice>
+      <element name="Days">
+        <data type="positiveInteger"/>
+      </element>
+      <element name="Date">
+        <data type="dateTime"/>
+      </element>
       <element name="StorageClass">
         <ref name="StorageClass"/>
       </element>
-    </interleave>
+    </choice>
   </define>
 </grammar>
