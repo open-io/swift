@@ -188,7 +188,8 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
     IDs = set()
     for rule in replication_conf.findall("Rule"):
         id_marker = rule.find("ID")
-        id_text = id_marker.text if id_marker is not None else uuid.uuid4().hex
+        id_text = id_marker.text if id_marker is not None and \
+            id_marker.text else uuid.uuid4().hex
         if id_text in IDs:
             raise InvalidArgument("ID", id_text, "Rule Id must be unique.")
 
@@ -465,7 +466,7 @@ class ReplicationController(Controller):
             )
 
         rule_id = rule.find("./ID")
-        if rule_id is not None:
+        if rule_id is not None and rule_id.text:
             if len(rule_id.text) > MAX_LENGTH_RULE_ID:
                 raise InvalidArgument(
                     "ID",
