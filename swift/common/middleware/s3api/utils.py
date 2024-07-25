@@ -313,7 +313,14 @@ def truncate_excess_characters(value, max_size):
     """
     if not value:
         return value
-    value_bytes = value.encode("utf-8")
+    try:
+        value_bytes = value.encode("utf-8")
+    except UnicodeEncodeError:
+        # Non UTF-8 characters are previously encoded in latin1 and decoded
+        # in UTF-8 which results in surrogates characters, not supported
+        # when encoding to UTF-8
+        value_bytes = value.encode(
+            'utf-8', errors='surrogateescape').decode("latin1").encode("utf-8")
     # A UTF-8 character is 6 bytes maximum
     for i in range(max_size, max_size + 6):
         try:

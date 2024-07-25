@@ -180,6 +180,26 @@ class TestS3BasicTest(unittest.TestCase):
             b'<Key>object&#x1e;&#x1e;&lt;Test&gt;\xc2\xa0name with&#x2;-\r-&#xf; %-sign\xf0\x9f\x99\x82\n/.md</Key>',
             resp.content)
 
+    def test_list_with_surrogates_query_strings(self):
+        self.boto_client.put_bucket_acl(Bucket=self.bucket, ACL='public-read')
+        for key in (
+            'Test/2020-2/1786285£aobject/1',
+            'Test/2020-2/1786285£aobject/2',
+        ):
+            self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b"")
+        resp = requests.get(
+            f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/?delimiter=%2F&prefix=Test%2F2020-2%2F1786285%A3aobject%2F'
+        )
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(
+            b'<Key>Test/2020-2/1786285\xc2\xa3aobject/2</Key>',
+            resp.content,
+        )
+        self.assertIn(
+            b'<Key>Test/2020-2/1786285\xc2\xa3aobject/1</Key>',
+            resp.content,
+        )
+
     def test_object_tag_count(self):
         key = "obj-tagged"
         with tempfile.NamedTemporaryFile() as file:
