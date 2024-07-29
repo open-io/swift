@@ -9,15 +9,32 @@ jobs:
 
       - name: Install dependencies
         script: |+
+          #!/bin/bash
+          set -x
+          . .cds/versions
           export DEBIAN_FRONTEND=noninteractive
+          echo "deb [trusted=yes] http://read:{{.cds.proj.private_ovh_objectstorage_openio_read_password}}@last-private-ovh-objectstorage-openio.snap-priv.mirrors.ovh.net/ubuntu focal/main main" >> /etc/apt/sources.list.d/obsto.list
+          echo "deb [trusted=yes] http://last-public-ovh-pcs.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/obsto.list
+          # Docker repo for docker compose plugin should be removed after https://jira.ovhcloud.tools/browse/CORDEV-2545 completion
           sed -i '/docker-compose-plugin/d' .cds/deps-ubuntu-focal.txt
+          # Tox will be installed later with pip (to be able to control its version)
+          sed -i '/tox/d' .cds/deps-ubuntu-focal.txt
           apt update
-          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt)
 
+          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE}
+          echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:$PATH" > $HOME/swift-env.sh
+          source $HOME/swift-env.sh
+          /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
+          . $HOME/swiftenv/bin/activate
+          pip install --upgrade pip setuptools virtualenv "tox<4.0.0"
       - name: Run coding style tests
-        script:
-          - tox -e pep8
+        script: |+
+          #!/bin/bash
+          set -x
+          source $HOME/swift-env.sh
+          . $HOME/swiftenv/bin/activate
+          # No reason to no enable verbose mode (it helps to debug in case of failure)
+          tox -e pep8 -v
 
     requirements:
-        #- model: Ubuntu-20.04-VM-b2-07
-        - model: ubuntu-focal
+        - model: Ubuntu-20.04-VM-b2-07
