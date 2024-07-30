@@ -744,12 +744,6 @@ class ObjectController(BaseObjectController):
         crypto_body_meta_header = req.headers.get(
             "x-object-sysmeta-crypto-body-meta"
         )
-        etag_iv = req.headers.get(
-            "x-object-sysmeta-crypto-etag-iv"
-        )
-        override_etag_iv = req.headers.get(
-            "x-object-sysmeta-crypto-override-etag-iv"
-        )
         if crypto_body_meta_header:
             crypto_body_meta = json.loads(
                 unquote_plus(crypto_body_meta_header)
@@ -762,8 +756,10 @@ class ObjectController(BaseObjectController):
             elif crypto_body_meta["key_id"].get("sses3") is not None:
                 crypto_resiliency["sses3"] = True
 
-            crypto_resiliency["etag_iv"] = etag_iv
-            crypto_resiliency["override_etag_iv"] = override_etag_iv
+            crypto_resiliency["etag_iv"] = crypto_body_meta["etag_iv"]
+            crypto_resiliency["override_etag_iv"] = crypto_body_meta[
+                "override_etag_iv"
+            ]
 
             crypto_resiliency = flat_dict_from_dict(crypto_resiliency)
             crypto_resiliency = ",".join(

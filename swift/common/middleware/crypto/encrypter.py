@@ -266,15 +266,17 @@ class EncrypterObjContext(CryptoWSGIContext):
         self.encrypt_user_metadata(req, keys)
 
         enc_input_proxy = EncInputWrapper(self.crypto, keys, req, self.logger)
-        req.headers['X-Object-Sysmeta-Crypto-Body-Meta'] = dump_crypto_meta(
-            enc_input_proxy.body_crypto_meta
-        )
-        req.headers['X-Object-Sysmeta-Crypto-Etag-Iv'] = base64.b64encode(
-            enc_input_proxy.etag_iv
-        ).decode()
-        req.headers['X-Object-Sysmeta-Crypto-Override-Etag-Iv'] = base64.b64encode(
-            enc_input_proxy.override_etag_iv
-        ).decode()
+
+        etag_iv = base64.b64encode(enc_input_proxy.etag_iv).decode()
+        override_etag_iv = base64.b64encode(
+            enc_input_proxy.override_etag_iv).decode()
+        enc_input_proxy.body_crypto_meta["etag_iv"] = etag_iv
+        enc_input_proxy.body_crypto_meta["override_etag_iv"] = override_etag_iv
+
+        crypto_body_meta = dump_crypto_meta(enc_input_proxy.body_crypto_meta)
+        req.headers['X-Object-Sysmeta-Crypto-Body-Meta'] = crypto_body_meta
+        del enc_input_proxy.body_crypto_meta["etag_iv"]
+        del enc_input_proxy.body_crypto_meta["override_etag_iv"]
         req.environ['wsgi.input'] = enc_input_proxy
         req.environ.setdefault('oio.query', {})['object_checksum_algo'] = \
             self.crypto.ciphertext_hash_algo

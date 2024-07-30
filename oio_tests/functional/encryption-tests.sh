@@ -77,6 +77,8 @@ check_crypto_resiliency() {
             local RAWX_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F',iv=' '{split($2, a, ","); print a[1]}')
             # Remove newlines and carriage returns
             local RAWX_IV="${RAWX_IV//[$'\t\r\n ']}"
+            local ETAG_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F',etag_iv=' '{split($2, a, ","); print a[1]}')
+            local OVERRIDE_ETAG_IV=$(echo "$CRYPTO_RESILIENCY" | awk -F',override_etag_iv=' '{split($2, a, ","); print a[1]}')
 
             # Take values of body_key.iv, body_key.key and iv form meta2
             urldecode() {
@@ -92,6 +94,9 @@ check_crypto_resiliency() {
             [ "$RAWX_BODY_KEY_IV" = "$META2_BODY_KEY_IV" ]
             [ "$RAWX_BODY_KEY_KEY" = "$META2_BODY_KEY_KEY" ]
             [ "$RAWX_IV" = "$META2_IV" ]
+            # Check if etag_iv and override_etag_iv are not empty
+            [ -n "${ETAG_IV}" ]
+            [ -n "${OVERRIDE_ETAG_IV}" ]
         done
     }
 
