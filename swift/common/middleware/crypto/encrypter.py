@@ -31,13 +31,14 @@ from swift.common.utils import get_logger, config_true_value, \
     MD5_OF_EMPTY_STRING, md5
 
 
-def encrypt_header_val(crypto, value, key):
+def encrypt_header_val(crypto, value, key, iv=None):
     """
     Encrypt a header value using the supplied key.
 
     :param crypto: a Crypto instance
     :param value: value to encrypt
     :param key: crypto key to use
+    :param iv: if iv must exist before
     :returns: a tuple of (encrypted value, crypto_meta) where crypto_meta is a
         dict of form returned by
         :py:func:`~swift.common.middleware.crypto.Crypto.get_crypto_meta`
@@ -46,7 +47,10 @@ def encrypt_header_val(crypto, value, key):
     if not value:
         raise ValueError('empty value is not acceptable')
 
-    crypto_meta = crypto.create_crypto_meta()
+    if iv is None:
+        crypto_meta = crypto.create_crypto_meta()
+    else:
+        crypto_meta = {'iv': iv, 'cipher': crypto.cipher}
     crypto_ctxt = crypto.create_encryption_ctxt(key, crypto_meta['iv'])
     enc_val = bytes_to_wsgi(base64.b64encode(
         crypto_ctxt.update(wsgi_to_bytes(value))))
@@ -88,6 +92,8 @@ class EncInputWrapper(object):
             self.keys['object'], body_key
         )
         self.body_crypto_meta['key_id'] = self.keys['id']
+        self.etag_iv = self.crypto.create_iv()
+        self.override_etag_iv = self.crypto.create_iv()
 
     def _init_encryption_context(self):
         # do this once when body is first read
@@ -135,7 +141,11 @@ class EncInputWrapper(object):
                 # Encrypt the plaintext etag using the object key and persist
                 # as sysmeta along with the crypto parameters that were used.
                 encrypted_etag, etag_crypto_meta = encrypt_header_val(
-                    self.crypto, plaintext_etag, self.keys['object'])
+                    self.crypto,
+                    plaintext_etag,
+                    self.keys["object"],
+                    iv=self.etag_iv,
+                )
                 footers['X-Object-Sysmeta-Crypto-Etag'] = \
                     append_crypto_meta(encrypted_etag, etag_crypto_meta)
                 footers['X-Object-Sysmeta-Crypto-Body-Meta'] = \
@@ -180,7 +190,7 @@ class EncInputWrapper(object):
                 # non-obvious information.
                 val, crypto_meta = encrypt_header_val(
                     self.crypto, container_listing_etag,
-                    self.keys['container'])
+                    self.keys['container'], iv=self.override_etag_iv)
                 crypto_meta['key_id'] = self.keys['id']
                 footers[override_header] = \
                     append_crypto_meta(val, crypto_meta)
@@ -259,6 +269,12 @@ class EncrypterObjContext(CryptoWSGIContext):
         req.headers['X-Object-Sysmeta-Crypto-Body-Meta'] = dump_crypto_meta(
             enc_input_proxy.body_crypto_meta
         )
+        req.headers['X-Object-Sysmeta-Crypto-Etag-Iv'] = base64.b64encode(
+            enc_input_proxy.etag_iv
+        ).decode()
+        req.headers['X-Object-Sysmeta-Crypto-Override-Etag-Iv'] = base64.b64encode(
+            enc_input_proxy.override_etag_iv
+        ).decode()
         req.environ['wsgi.input'] = enc_input_proxy
         req.environ.setdefault('oio.query', {})['object_checksum_algo'] = \
             self.crypto.ciphertext_hash_algo
