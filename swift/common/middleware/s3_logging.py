@@ -269,7 +269,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             return
 
         if req.environ.get(IGNORE_CUSTOMER_ACCESS_LOG, False):
-            # Explicit ignore access logging for this request
+            # Explicit ignore S3 Server Access Logging for this request
             return
 
         if not s3_info:
@@ -299,11 +299,12 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
         if not is_success(container_status):
             if container_status != 404:
                 self.logger.warning(
-                    'Impossible to know if the Logging is enabled (%s)',
-                    container_status)
+                    'Impossible to know if the S3 Server Access Logging is '
+                    'enabled (%s)', container_status
+                )
             return
         if not container_info['sysmeta'].get('s3api-logging'):
-            # Logging disabled
+            # S3 Server Access Logging disabled
             return
 
         request_uri = '%s %s %s' % (
