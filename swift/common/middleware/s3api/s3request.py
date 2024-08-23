@@ -2135,9 +2135,14 @@ class S3Request(swob.Request):
                     raise upload_error
             raise AccessDenied()
         if status == HTTP_SERVICE_UNAVAILABLE:
-            raise ServiceUnavailable(headers={
-                'Retry-After': str(resp.headers.get('Retry-After',
-                                                    self.conf.retry_after))})
+            raise ServiceUnavailable(
+                headers={
+                    'Retry-After': str(
+                        resp.headers.get('Retry-After', self.conf.retry_after)
+                    )
+                },
+                backend_error=err_msg
+            )
         if status == HTTP_CLIENT_CLOSED_REQUEST:
             raise RequestTimeout(reason='Client Closed Request')
         if status in (HTTP_RATE_LIMITED, HTTP_TOO_MANY_REQUESTS):
@@ -2165,7 +2170,8 @@ class S3Request(swob.Request):
             raise MethodNotAllowed(method=self.method,
                                    resource_type=self.controller_name)
 
-        raise InternalError('unexpected status code %d' % status)
+        raise InternalError('unexpected status code %d' %
+                            status, backend_error=err_msg)
 
     def get_response(self, app, method=None, container=None, obj=None,
                      headers=None, body=None, query=None):
