@@ -257,11 +257,14 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
     _code = ''
     xml_declaration = True
 
-    def __init__(self, msg=None, *args, **kwargs):
+    def __init__(self, msg=None, backend_error=None, *args, **kwargs):
         if msg:
             self._msg = msg
         if not self._code:
             self._code = self.__class__.__name__
+
+        # Error details from oio backend
+        self.backend_error = backend_error
 
         self.info = kwargs.copy()
         for reserved_key in ('headers', 'body'):
@@ -320,6 +323,9 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
                     elem.text = '(invalid string)'
 
     def _get_info(self):
+        """
+        Return S3 error details.
+        """
         if not self.info:
             return None
         return ';'.join((f"{k}={v}" for k, v in self.info.items()))

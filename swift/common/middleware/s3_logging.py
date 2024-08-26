@@ -48,12 +48,12 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             default_log_msg_template=(
                 '{client_ip} {remote_addr} {requester} {end_time.datetime} '
                 '{method} {path} {protocol} {status_int} {operation} '
-                '{error_code} {error_detail} {referer} {user_agent} '
-                '{auth_token} {signature_version} {authentication_type} '
-                '{aws_chunked} {bytes_recvd} {bytes_sent} {client_etag} '
-                '{transaction_id} {headers} {request_time} {source} '
-                '{log_info} {start_time} {end_time} {request_origin} '
-                '{website}'))
+                '{error_code} {error_detail} {backend_error} {referer} '
+                '{user_agent} {auth_token} {signature_version} '
+                '{authentication_type} {aws_chunked} {bytes_recvd} '
+                '{bytes_sent} {client_etag} {transaction_id} {headers} '
+                '{request_time} {source} {log_info} {start_time} {end_time} '
+                '{request_origin} {website}'))
 
         # Parameters to log request from clients
         # that have S3 Server Access Logging enabled
@@ -205,6 +205,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'operation': s3_info.get('operation'),
             'error_code': error_code,
             'error_detail': s3_info.get('error_detail'),
+            'backend_error': s3_info.get('backend_error'),
             'signature_version': s3_info.get('signature_version'),
             'authentication_type': s3_info.get('authentication_type'),
             'aws_chunked': aws_chunked,
