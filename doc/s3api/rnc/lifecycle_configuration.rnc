@@ -13,14 +13,14 @@ start =
             }* &
             element ObjectSizeGreaterThan {xsd:nonNegativeInteger}? &
             element ObjectSizeLessThan {xsd:nonNegativeInteger}?
-          } |
-          element Prefix { xsd:string } |
+          }? |
+          element Prefix { xsd:string }? |
           element Tag {
               element Key { xsd:string } &
               element Value { xsd:string }
-          } |
-          element ObjectSizeGreaterThan {xsd:nonNegativeInteger} |
-          element ObjectSizeLessThan {xsd:nonNegativeInteger}
+          }? |
+          element ObjectSizeGreaterThan {xsd:nonNegativeInteger}? |
+          element ObjectSizeLessThan {xsd:nonNegativeInteger}?
 
       }? &
       element Prefix { xsd:string }? &
@@ -39,7 +39,9 @@ start =
   }
 
 Expiration =
-  element Days { xsd:positiveInteger } |
+# Days cannot be 0, but we want InvalidArgument, not MalformedXML,
+# thus we must let the parser accept 0, and check the value afterwards.
+  element Days { xsd:nonNegativeInteger } |
   element Date { xsd:dateTime } |
   element ExpiredObjectDeleteMarker { xsd:boolean }
 
@@ -49,6 +51,6 @@ NoncurrentVersionTransition =
   element StorageClass { StorageClass }
 
 Transition =
-  element Days { xsd:positiveInteger } |
-  element Date { xsd:dateTime } |
-  element StorageClass { StorageClass }
+  element Days { xsd:positiveInteger }? &
+  element Date { xsd:dateTime }? &
+  element StorageClass { StorageClass }?

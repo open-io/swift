@@ -23,8 +23,7 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_access, set_s3_operation_rest
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
-    XMLSyntaxError, fromstring, tostring, parser as parser_xml, Element,\
-    SubElement
+    XMLSyntaxError, fromstring, tostring, Element, SubElement
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
@@ -35,11 +34,6 @@ from swift.common.swob import HTTPNoContent
 from swift.common.utils import public
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidRequest
-
-try:
-    from lxml import etree
-except ImportError:
-    from xml.etree import cElementTree as etree
 
 LIFECYCLE_HEADER = sysmeta_header('container', 'lifecycle')
 MAX_LIFECYCLE_BODY_SIZE = 64 * 1024  # Arbitrary
@@ -117,8 +111,7 @@ def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
     return body
 
 
-def lifecycle_xml_conf_to_dict(conf, root="LifecycleConfiguration"):
-
+def lifecycle_xml_conf_to_dict(lifecycle_conf):
     """
     Convert the XML lifecycle configuration into a more pythonic
     dictionary.
@@ -128,9 +121,6 @@ def lifecycle_xml_conf_to_dict(conf, root="LifecycleConfiguration"):
     :return: dict representing lifecycle configuration
     :rtype: dict
     """
-    data = etree.fromstring(conf, parser_xml)
-    filtered = tostring(data, xml_declaration=True)
-    lifecycle_conf = fromstring(filtered)
     out = {
         "Rules": {},
         "_expiration_rules": [],
@@ -524,12 +514,17 @@ class LifecycleController(Controller):
                 "NoncurrentVersionTranstion")
 
     def _validate_configuration(self, conf):
+        """
+        Validate the LifecycleConfiguration.
+
+        :returns: the parsed version of the configuration
+        """
         conf = conf if conf is not None else ""
         try:
-            # Validate xxe injection
-            data = etree.fromstring(conf, parser_xml)
-            filtered = tostring(data, xml_declaration=True)
-            conf_xml = fromstring(filtered)
+            # See CorsController.PUT for an explanation
+            data = fromstring(conf, "LifecycleConfiguration")
+            filtered = tostring(data, xml_declaration=False)
+            conf_xml = fromstring(filtered, "LifecycleConfiguration")
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
@@ -543,6 +538,8 @@ class LifecycleController(Controller):
 
         for rule in rules:
             self._validate_rule(rule)
+
+        return conf_xml
 
     # Validate comparing between transitions
     def _compare_transitions(self, stg, type_act, type_d, filter_str):
@@ -834,9 +831,9 @@ class LifecycleController(Controller):
 
         config = req.xml(MAX_LIFECYCLE_BODY_SIZE)
         # Validation
-        self._validate_configuration(config)
+        validated = self._validate_configuration(config)
 
-        dict_conf = lifecycle_xml_conf_to_dict(config)
+        dict_conf = lifecycle_xml_conf_to_dict(validated)
         self._post_validate_rules(dict_conf)
         json_conf = json.dumps(dict_conf, separators=(',', ':'))
         req.headers[LIFECYCLE_HEADER] = json_conf

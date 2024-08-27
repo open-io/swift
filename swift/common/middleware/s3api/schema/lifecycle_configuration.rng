@@ -14,56 +14,66 @@
             <optional>
               <element name="Filter">
                 <choice>
-                  <element name="And">
-                    <interleave>
-                      <optional>
-                        <element name="Prefix">
+                  <optional>
+                    <element name="And">
+                      <interleave>
+                        <optional>
+                          <element name="Prefix">
+                            <data type="string"/>
+                          </element>
+                        </optional>
+                        <zeroOrMore>
+                          <element name="Tag">
+                            <interleave>
+                              <element name="Key">
+                                <data type="string"/>
+                              </element>
+                              <element name="Value">
+                                <data type="string"/>
+                              </element>
+                            </interleave>
+                          </element>
+                        </zeroOrMore>
+                        <optional>
+                          <element name="ObjectSizeGreaterThan">
+                            <data type="nonNegativeInteger"/>
+                          </element>
+                        </optional>
+                        <optional>
+                          <element name="ObjectSizeLessThan">
+                            <data type="nonNegativeInteger"/>
+                          </element>
+                        </optional>
+                      </interleave>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="Prefix">
+                      <data type="string"/>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="Tag">
+                      <interleave>
+                        <element name="Key">
                           <data type="string"/>
                         </element>
-                      </optional>
-                      <zeroOrMore>
-                        <element name="Tag">
-                          <interleave>
-                            <element name="Key">
-                              <data type="string"/>
-                            </element>
-                            <element name="Value">
-                              <data type="string"/>
-                            </element>
-                          </interleave>
+                        <element name="Value">
+                          <data type="string"/>
                         </element>
-                      </zeroOrMore>
-                      <optional>
-                        <element name="ObjectSizeGreaterThan">
-                          <data type="nonNegativeInteger"/>
-                        </element>
-                      </optional>
-                      <optional>
-                        <element name="ObjectSizeLessThan">
-                          <data type="nonNegativeInteger"/>
-                        </element>
-                      </optional>
-                    </interleave>
-                  </element>
-                  <element name="Prefix">
-                    <data type="string"/>
-                  </element>
-                  <element name="Tag">
-                    <interleave>
-                      <element name="Key">
-                        <data type="string"/>
-                      </element>
-                      <element name="Value">
-                        <data type="string"/>
-                      </element>
-                    </interleave>
-                  </element>
-                  <element name="ObjectSizeGreaterThan">
-                    <data type="nonNegativeInteger"/>
-                  </element>
-                  <element name="ObjectSizeLessThan">
-                    <data type="nonNegativeInteger"/>
-                  </element>
+                      </interleave>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="ObjectSizeGreaterThan">
+                      <data type="nonNegativeInteger"/>
+                    </element>
+                  </optional>
+                  <optional>
+                    <element name="ObjectSizeLessThan">
+                      <data type="nonNegativeInteger"/>
+                    </element>
+                  </optional>
                 </choice>
               </element>
             </optional>
@@ -121,8 +131,12 @@
   </start>
   <define name="Expiration">
     <choice>
+      <!--
+        Days cannot be 0, but we want InvalidArgument, not MalformedXML,
+        thus we must let the parser accept 0, and check the value afterwards.
+      -->
       <element name="Days">
-        <data type="positiveInteger"/>
+        <data type="nonNegativeInteger"/>
       </element>
       <element name="Date">
         <data type="dateTime"/>
@@ -148,16 +162,22 @@
     </interleave>
   </define>
   <define name="Transition">
-    <choice>
-      <element name="Days">
-        <data type="positiveInteger"/>
-      </element>
-      <element name="Date">
-        <data type="dateTime"/>
-      </element>
-      <element name="StorageClass">
-        <ref name="StorageClass"/>
-      </element>
-    </choice>
+    <interleave>
+      <optional>
+        <element name="Days">
+          <data type="positiveInteger"/>
+        </element>
+      </optional>
+      <optional>
+        <element name="Date">
+          <data type="dateTime"/>
+        </element>
+      </optional>
+      <optional>
+        <element name="StorageClass">
+          <ref name="StorageClass"/>
+        </element>
+      </optional>
+    </interleave>
   </define>
 </grammar>

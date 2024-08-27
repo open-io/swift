@@ -224,7 +224,7 @@ class TestS3XxeInjection(unittest.TestCase):
   <Rule>
     <ID>id1</ID>
     <Filter>
-       <Prefix>&xxe;</Prefix>
+       <Prefix>prefix/&xxe;</Prefix>
     </Filter>
     <Status>Enabled</Status>
     <Transition>
@@ -235,6 +235,7 @@ class TestS3XxeInjection(unittest.TestCase):
 </LifecycleConfiguration>
 """)  # noqa: E501
         self.assertEqual(400, resp.status_code)
+        self.assertRegex(resp.content, rb"Entity.+not defined")
         self.assertNotIn(b'donotreadme', resp.content)
 
         self.assertRaisesRegex(
