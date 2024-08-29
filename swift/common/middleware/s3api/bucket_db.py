@@ -358,6 +358,7 @@ def get_bucket_db(conf, logger=None):
                 logger.warning(
                     "bucket_db: deprecated scheme 'fdb', please use 'oio'")
             klass = OioBucketDb
+            db_kwargs['location'] = conf.get('sds_location')
             db_kwargs['namespace'] = conf.get('sds_namespace')
             db_kwargs['proxy_url'] = conf.get('sds_proxy_url')
             db_kwargs['refresh_delay'] = config_auto_int_value(

@@ -367,6 +367,10 @@ use = egg:swift#proxy
 # (maybe other middlewares in the future).
 #sds_endpoint_refresh_delay=60
 #
+# Define the location of this gateway. This is used by oio-sds APIs locate
+# services close to this gateway (potentially with a smaller network latency).
+#sds_location=
+#
 # When a static large object manifest is overwritten, swift's default behavior
 # is to keep the parts, in case another manifest references them. It is the
 # container owner's responsability to delete them.

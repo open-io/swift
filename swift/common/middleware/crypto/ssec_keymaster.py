@@ -26,7 +26,7 @@ from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
 from swift.common.utils import config_positive_int_value, config_true_value, \
-    non_negative_int, list_from_csv
+    non_negative_int, list_from_csv, config_auto_int_value
 from swift.common import wsgi
 
 from oio.account.kms_client import KmsClient
@@ -377,8 +377,12 @@ class SsecKeyMaster(KeyMaster):
         self.use_oio_kms = config_true_value(
             conf.get('use_oio_kms', False))
         self.account_whitelist = list_from_csv(conf.get('account_whitelist'))
+        refresh_delay = config_auto_int_value(
+            conf.get("sds_endpoint_refresh_delay"), 60)
         self.kms = KmsClient({"namespace": conf["sds_namespace"]},
-                             logger=self.logger)
+                             location=conf.get("sds_location"),
+                             logger=self.logger,
+                             refresh_delay=refresh_delay)
         self.secret_cache_time = non_negative_int(
             conf.get('secret_cache_time', 24 * 60 * 60))
         self.no_secret_cache_time = non_negative_int(

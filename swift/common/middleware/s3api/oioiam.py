@@ -1,6 +1,6 @@
 # Copyright (c) 2020 OpenStack Foundation.
 # Copyright (C) 2020 OpenIO SAS
-# Copyright (C) 2021-2023 OVHcloud
+# Copyright (C) 2021-2024 OVHcloud
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ class OioIamMiddleware(IamMiddleware):
             conf.get("read_timeout", 5), 0.001, 60.0)
         self.iam_client = IamClient(
             iam_conf, proxy_endpoint=conf.get('sds_proxy_url'),
+            location=conf.get("sds_location"),
             logger=self.logger,
             refresh_delay=refresh_delay,
             connection_timeout=connection_timeout,
