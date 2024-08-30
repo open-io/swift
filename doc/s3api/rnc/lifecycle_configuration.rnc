@@ -11,29 +11,29 @@ start =
               element Key { xsd:string } &
               element Value { xsd:string }
             }* &
-            element ObjectSizeGreaterThan {xsd:nonNegativeInteger}? &
-            element ObjectSizeLessThan {xsd:nonNegativeInteger}?
+            element ObjectSizeGreaterThan {xsd:int}? &
+            element ObjectSizeLessThan {xsd:int}?
           }? |
           element Prefix { xsd:string }? |
           element Tag {
               element Key { xsd:string } &
               element Value { xsd:string }
           }? |
-          element ObjectSizeGreaterThan {xsd:nonNegativeInteger}? |
-          element ObjectSizeLessThan {xsd:nonNegativeInteger}?
+          element ObjectSizeGreaterThan {xsd:int}? |
+          element ObjectSizeLessThan {xsd:int}?
 
       }? &
       element Prefix { xsd:string }? &
       element Status { "Enabled" | "Disabled" } &
       element AbortIncompleteMultipartUpload {
-          element DaysAfterInitiation { xsd:positiveInteger }
+          element DaysAfterInitiation { xsd:int }
       }? &
       element Expiration { Expiration }? &
       element NoncurrentVersionExpiration {
-        element NoncurrentDays { xsd:positiveInteger } &
-        element NewerNoncurrentVersions { xsd:positiveInteger } ?
+        element NoncurrentDays { xsd:int } &
+        element NewerNoncurrentVersions { xsd:nonNegativeInteger } ?
       }? &
-      element NoncurrentVersionTransition { NoncurrentVersionTransition }? &
+      element NoncurrentVersionTransition { NoncurrentVersionTransition }* &
       element Transition { Transition }*
     }+
   }
@@ -41,16 +41,16 @@ start =
 Expiration =
 # Days cannot be 0, but we want InvalidArgument, not MalformedXML,
 # thus we must let the parser accept 0, and check the value afterwards.
-  element Days { xsd:nonNegativeInteger } |
+  element Days { xsd:int } |
   element Date { xsd:dateTime } |
   element ExpiredObjectDeleteMarker { xsd:boolean }
 
 NoncurrentVersionTransition =
-  element NoncurrentDays { xsd:positiveInteger } &
-  element NewerNoncurrentVersions { xsd:positiveInteger }? &
-  element StorageClass { StorageClass }
+  element NoncurrentDays { xsd:int }? &
+  element NewerNoncurrentVersions { xsd:nonNegativeInteger }? &
+  element StorageClass { xsd:string }
 
 Transition =
-  element Days { xsd:positiveInteger }? &
+  element Days { xsd:int }? &
   element Date { xsd:dateTime }? &
-  element StorageClass { StorageClass }?
+  element StorageClass { xsd:string }

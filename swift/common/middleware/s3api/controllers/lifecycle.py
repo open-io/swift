@@ -38,7 +38,6 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
 LIFECYCLE_HEADER = sysmeta_header('container', 'lifecycle')
 MAX_LIFECYCLE_BODY_SIZE = 64 * 1024  # Arbitrary
 XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
-ALLOWED_STATUSES = ['Enabled', 'Disabled']
 
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
@@ -79,6 +78,9 @@ def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
         elif isinstance(data, list):
             for i in data:
                 # p = "Tags"  -> p = "Tag"
+                # p = "Transitions"-> p = "Transition"
+                # p = "NoncurrentVersionTransitions" -> \
+                # p = "NoncurrentVersionTransition"
                 subelement = SubElement(element, p[:-1])
                 _to_xml(i, element=subelement)
 
@@ -138,10 +140,6 @@ def lifecycle_xml_conf_to_dict(lifecycle_conf):
 
         IDs.add(id_text)
         status = rule.find("Status")
-        if status is None:
-            raise MalformedXML()
-        if status.text not in ALLOWED_STATUSES:
-            raise MalformedXML()
         json_rule = {
             "Status": status.text,
             **get_actions(rule),
@@ -220,7 +218,7 @@ def get_actions(rule):
                 expire_delete_marker
 
     if len(transitions) > 0:
-        actions["Transition"] = []
+        actions["Transitions"] = []
         for act in transitions:
             current = {}
             days = _get_field(act, "Days")
@@ -232,16 +230,14 @@ def get_actions(rule):
             if date:
                 current["Date"] = date
             current["StorageClass"] = storage_class
-            actions["Transition"].append(current)
+            actions["Transitions"].append(current)
 
     if abort_incomplete_multipart_upload is not None:
         days = _get_field(
             abort_incomplete_multipart_upload, "DaysAfterInitiation")
-        if days:
-            actions["AbortIncompleteMultipartUpload"] = {
-                "DaysAfterInitiation": int(days)}
-        else:
-            raise MalformedXML()
+
+        actions["AbortIncompleteMultipartUpload"] = {
+            "DaysAfterInitiation": int(days)}
 
     if noncurrent_version_expiration is not None:
         days = _get_field(noncurrent_version_expiration, "NoncurrentDays")
@@ -255,18 +251,20 @@ def get_actions(rule):
                 = int(newer_noncurrent_versions)
 
     if len(noncurrent_version_transitions) > 0:
-        actions["NoncurrentVersionTransition"] = []
+        actions["NoncurrentVersionTransitions"] = []
         for act in noncurrent_version_transitions:
             noncurrent_days = _get_field(act, "NoncurrentDays")
             newer_noncurrent_versions = _get_field(
                 act, "NewerNoncurrentVersions")
             storage_class = _get_field(act, "StorageClass")
-            actions["NoncurrentVersionTransition"].append({
+            current_act = {
                 "NoncurrentDays": noncurrent_days,
-                "StorageClass": storage_class})
-        if newer_noncurrent_versions:
-            actions["NoncurrentVersionTransition"]["NewerNoncurrentVersions"] \
-                = int(newer_noncurrent_versions)
+                "StorageClass": storage_class}
+            if newer_noncurrent_versions:
+                current_act["NewerNoncurrentVersions"] = \
+                    int(newer_noncurrent_versions)
+            actions["NoncurrentVersionTransitions"].append(current_act)
+
     return actions
 
 
@@ -405,17 +403,14 @@ class LifecycleController(Controller):
             if and_item is not None:
                 if len(list(and_item)) <= 1:
                     raise MalformedXML()
-            else:
-                if len(list(filter_xml_item)) >= 2:
-                    raise MalformedXML()
 
-    def _validate_days(self, days_field):
+    def _validate_days(self, days_field, action, field='Days'):
         if days_field is not None:
             if int(days_field) <= 0:
                 raise InvalidArgument(
                     None, None,
-                    "'Days' for Expiration action must be a positive " +
-                    "integer")
+                    (f"'{field}' for {action} action must be a positive "
+                     "integer"))
 
     def _validate_date(self, date_field):
         if date_field is not None:
@@ -456,7 +451,7 @@ class LifecycleController(Controller):
             date = _get_field(expiration, "Date")
             expire_delete_marker = _get_field(
                 expiration, "ExpiredObjectDeleteMarker")
-            self._validate_days(days)
+            self._validate_days(days, "Expiration")
             self._validate_date(date)
 
             elements = (days, date, expire_delete_marker)
@@ -470,7 +465,7 @@ class LifecycleController(Controller):
             if storage_class not in S3_STORAGE_CLASSES:
                 raise MalformedXML()
             elements = (days, date)
-            self._validate_days(days)
+            self._validate_days(days, "Transition")
             self._validate_date(date)
             if sum(x is not None for x in elements) != 1:
                 raise MalformedXML()
@@ -478,7 +473,10 @@ class LifecycleController(Controller):
         if abort_incomplete_mpu is not None:
             days = _get_field(
                 abort_incomplete_mpu, "DaysAfterInitiation")
-            self._validate_days(days)
+            self._validate_days(
+                days,
+                "AbortIncompleteMultipartUpload",
+                field="DaysAfterInitiation")
 
         if noncurrent_version_expiration is not None:
             noncurrent_days = _get_field(
@@ -487,7 +485,7 @@ class LifecycleController(Controller):
                 noncurrent_version_expiration, "NewerNoncurrentVersions")
             if noncurrent_days is None:
                 raise MalformedXML()
-            self._validate_days(noncurrent_days)
+            self._validate_days(noncurrent_days, "NoncurrentVersionExpiration")
             self._validate_noncurrent_versions(
                 newer_noncurrent_versions, "NoncurrentVersionExpiration")
 
@@ -508,7 +506,7 @@ class LifecycleController(Controller):
             stg_classes.add(storage_class)
             if noncurrent_days is None:
                 raise MalformedXML()
-            self._validate_days(noncurrent_days)
+            self._validate_days(noncurrent_days, "NoncurrentVersionTransition")
             self._validate_noncurrent_versions(
                 newer_noncurrent_versions,
                 "NoncurrentVersionTranstion")
@@ -525,7 +523,9 @@ class LifecycleController(Controller):
             data = fromstring(conf, "LifecycleConfiguration")
             filtered = tostring(data, xml_declaration=False)
             conf_xml = fromstring(filtered, "LifecycleConfiguration")
-        except (DocumentInvalid, XMLSyntaxError) as exc:
+        except DocumentInvalid:
+            raise MalformedXML()
+        except XMLSyntaxError as exc:
             raise MalformedXML(str(exc))
 
         # Ensure configuration does not exceed allowed rules count
@@ -660,10 +660,10 @@ class LifecycleController(Controller):
         # Validate days, dates, mixed configs
         for rule_id, rule in conf_dict["Rules"].items():
             expiration = rule.get("Expiration")
-            transitions = rule.get("Transition", ())
+            transitions = rule.get("Transitions", ())
             noncurrent_expiration = rule.get("NoncurrentVersionExpiration")
             noncurrent_transitions = rule.get(
-                "NoncurrentVersionTransition", ())
+                "NoncurrentVersionTransitions", ())
 
             abort_incomplete_mpu = rule.get(
                 "AbortIncompleteMultipartUpload")

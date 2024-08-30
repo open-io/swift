@@ -328,6 +328,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
     def test_put_bucket_lifecycle_conditions(self):
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+        # MalformedXML : two filters conditions outside And
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*MalformedXML.*',
@@ -369,7 +370,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                     }]
             }
         )
-
+        # InvalidRequest compare ObjectSize values
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidRequest.*has to be a value greater than*',
@@ -461,6 +462,8 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
     def test_put_bucket_lifecycle_mix_days_dates(self):
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+
+        # InvalidRequest mixing days and dates
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidRequest.*',
@@ -513,7 +516,8 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
     def test_put_bucket_lifecycle_mix_transition_expiration(self):
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
-
+        # InvalidArgument compare days between expiration
+        # and transitions
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidArgument.*',
@@ -537,7 +541,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                     }]
             }
         )
-
+        # InvalidArgument: short period for transitions
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidArgument.*STANDARD_IA*',
@@ -986,13 +990,71 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.assertIn('ID', el.keys())
 
     def test_transition_period(self):
-        """Short transition period:
-
-        Days or NoncurrentDays must be >= 30
-        """
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
-        # Date must be midnight GMT
+
+        # Test 2 valid transitions
+        rule = {
+            "Rules": [
+                {
+                    "ID": "lifecycle-s3",
+                    "Filter": {
+                        "Prefix": "a"
+                    },
+                    "Status": "Enabled",
+                    "Transitions": [{
+                        "Days": 30,
+                        "StorageClass": "STANDARD_IA"
+                    }, {
+                        "Days": 90,
+                        "StorageClass": "GLACIER"
+                    }
+                    ]
+                }
+            ]
+        }
+        resp = self.conn.put_bucket_lifecycle_configuration(
+            Bucket='bucket',
+            LifecycleConfiguration=rule
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        resp = self.conn.get_bucket_lifecycle_configuration(
+            Bucket='bucket')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(rule["Rules"], resp['Rules'])
+
+        # Test 2 valid noncurrentTransitions
+        rule = {
+            "Rules": [
+                {
+                    "ID": "lifecycle-s3",
+                    "Filter": {
+                        "Prefix": "a"
+                    },
+                    "Status": "Enabled",
+                    "NoncurrentVersionTransitions": [{
+                        "NoncurrentDays": 30,
+                        "StorageClass": "STANDARD_IA"
+                    }, {
+                        "NoncurrentDays": 90,
+                        "StorageClass": "GLACIER"
+                    }
+                    ]
+                }
+            ]
+        }
+        resp = self.conn.put_bucket_lifecycle_configuration(
+            Bucket='bucket',
+            LifecycleConfiguration=rule
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        resp = self.conn.get_bucket_lifecycle_configuration(
+            Bucket='bucket')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(rule["Rules"], resp['Rules'])
+
+        # InvalidArgument Short transition period:
+        # Days or NoncurrentDays must be >= 30
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidArgument*',
@@ -1191,6 +1253,69 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
     def test_abort_incomplete_mpu(self):
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+
+        # Nominal test
+        resp = self.conn.put_bucket_lifecycle_configuration(
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "AbortIncompleteMultipartUpload": {
+                            "DaysAfterInitiation": 1
+                        },
+                        "ID": "lifecycle-s3",
+                        "Filter": {
+                            "Prefix": "a"
+                        },
+                        "Status": "Enabled"
+                    }
+                ]
+            }
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+
+        # MalformedXML when field DaysAfterInitiation is missing
+        self.assertRaisesRegex(
+            botoexc.ClientError,
+            r'.*MalformedXML.*',
+            self.conn.put_bucket_lifecycle_configuration,
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "AbortIncompleteMultipartUpload": {
+                        },
+                        "ID": "lifecycle-s3",
+                        "Filter": {
+                            "Prefix": "a"
+                        },
+                        "Status": "Enabled"
+                    }
+                ]
+            })
+
+        # InvalidArgument for negative values for fields days
+        self.assertRaisesRegex(
+            botoexc.ClientError,
+            r'.*InvalidArgument.* action must be a positive *',
+            self.conn.put_bucket_lifecycle_configuration,
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "AbortIncompleteMultipartUpload": {
+                            "DaysAfterInitiation": -1
+                        },
+                        "ID": "lifecycle-s3",
+                        "Filter": {
+                            "Prefix": "a"
+                        },
+                        "Status": "Enabled"
+                    }
+                ]
+            })
+
+        # tags with AbortIncompleteMultipartUpload not supported
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidRequest.* AbortIncompleteMultipartUpload cannot be *',
@@ -1222,6 +1347,8 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                 ]
             })
 
+        # ObjectSizeGreaterThan not supported with
+        # AbortIncompleteMultipartUpload
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidRequest.*AbortIncompleteMultipartUpload cannot be *',
@@ -1242,6 +1369,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                 ]
             })
 
+        # ObjectSizeLessThan not supported with AbortIncompleteMultipartUpload
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*InvalidRequest.*AbortIncompleteMultipartUpload cannot be *',

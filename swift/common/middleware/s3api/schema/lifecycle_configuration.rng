@@ -36,12 +36,12 @@
                         </zeroOrMore>
                         <optional>
                           <element name="ObjectSizeGreaterThan">
-                            <data type="nonNegativeInteger"/>
+                            <data type="int"/>
                           </element>
                         </optional>
                         <optional>
                           <element name="ObjectSizeLessThan">
-                            <data type="nonNegativeInteger"/>
+                            <data type="int"/>
                           </element>
                         </optional>
                       </interleave>
@@ -66,12 +66,12 @@
                   </optional>
                   <optional>
                     <element name="ObjectSizeGreaterThan">
-                      <data type="nonNegativeInteger"/>
+                      <data type="int"/>
                     </element>
                   </optional>
                   <optional>
                     <element name="ObjectSizeLessThan">
-                      <data type="nonNegativeInteger"/>
+                      <data type="int"/>
                     </element>
                   </optional>
                 </choice>
@@ -91,7 +91,7 @@
             <optional>
               <element name="AbortIncompleteMultipartUpload">
                 <element name="DaysAfterInitiation">
-                  <data type="positiveInteger"/>
+                  <data type="int"/>
                 </element>
               </element>
             </optional>
@@ -104,21 +104,21 @@
               <element name="NoncurrentVersionExpiration">
                 <interleave>
                   <element name="NoncurrentDays">
-                    <data type="positiveInteger"/>
+                    <data type="int"/>
                   </element>
                   <optional>
                     <element name="NewerNoncurrentVersions">
-                      <data type="positiveInteger"/>
+                      <data type="nonNegativeInteger"/>
                     </element>
                   </optional>
                 </interleave>
               </element>
             </optional>
-            <optional>
+            <zeroOrMore>
               <element name="NoncurrentVersionTransition">
                 <ref name="NoncurrentVersionTransition"/>
               </element>
-            </optional>
+            </zeroOrMore>
             <zeroOrMore>
               <element name="Transition">
                 <ref name="Transition"/>
@@ -136,7 +136,7 @@
         thus we must let the parser accept 0, and check the value afterwards.
       -->
       <element name="Days">
-        <data type="nonNegativeInteger"/>
+        <data type="int"/>
       </element>
       <element name="Date">
         <data type="dateTime"/>
@@ -148,16 +148,18 @@
   </define>
   <define name="NoncurrentVersionTransition">
     <interleave>
-      <element name="NoncurrentDays">
-        <data type="positiveInteger"/>
-      </element>
+      <optional>
+        <element name="NoncurrentDays">
+          <data type="int"/>
+        </element>
+      </optional>
       <optional>
         <element name="NewerNoncurrentVersions">
-          <data type="positiveInteger"/>
+          <data type="nonNegativeInteger"/>
         </element>
       </optional>
       <element name="StorageClass">
-        <ref name="StorageClass"/>
+        <data type="string"/>
       </element>
     </interleave>
   </define>
@@ -165,7 +167,7 @@
     <interleave>
       <optional>
         <element name="Days">
-          <data type="positiveInteger"/>
+          <data type="int"/>
         </element>
       </optional>
       <optional>
@@ -173,11 +175,9 @@
           <data type="dateTime"/>
         </element>
       </optional>
-      <optional>
-        <element name="StorageClass">
-          <ref name="StorageClass"/>
-        </element>
-      </optional>
+      <element name="StorageClass">
+        <data type="string"/>
+      </element>
     </interleave>
   </define>
 </grammar>
