@@ -120,7 +120,7 @@ def get_tags(tag_xml_items, tag_keys):
         return None
     for tag in tag_xml_items:
         key = tag.find("Key").text
-        value = tag.find("Value").text
+        value = tag.find("Value").text or ""
         tags.append({"Key": key,
                      "Value": value})
         if key in tag_keys:
