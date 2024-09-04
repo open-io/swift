@@ -275,9 +275,13 @@ class MemcacheRing(object):
         if len(self._errors[server]) > self._error_limit_count:
             self._errors[server] = [err for err in self._errors[server]
                                     if err > now - self._error_limit_time]
-            if len(self._errors[server]) > self._error_limit_count:
+            err_count = len(self._errors[server])
+            if err_count > self._error_limit_count:
                 self._error_limited[server] = now + self._error_limit_duration
-                self.logger.error('Error limiting server %s', server)
+                self.logger.error(
+                    'Error limiting server %s (%d errors in %.3fs)',
+                    server, err_count, self._error_limit_time
+                )
 
     def _get_conns(self, key):
         """

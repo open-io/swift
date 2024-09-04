@@ -570,7 +570,7 @@ class TestMemcached(unittest.TestCase):
             'Error talking to memcached: 1.2.3.5:11211: '
             '[Errno 32] Broken pipe',
         ] * 11 + [
-            'Error limiting server 1.2.3.5:11211'
+            'Error limiting server 1.2.3.5:11211 (11 errors in 60.000s)'
         ])
         self.logger.clear()
 
@@ -582,7 +582,7 @@ class TestMemcached(unittest.TestCase):
             'Error talking to memcached: 1.2.3.4:11211: '
             '[Errno 32] Broken pipe',
         ] * 11 + [
-            'Error limiting server 1.2.3.4:11211'
+            'Error limiting server 1.2.3.4:11211 (11 errors in 60.000s)'
         ])
         self.logger.clear()
 
@@ -633,7 +633,7 @@ class TestMemcached(unittest.TestCase):
             'Error talking to memcached: 1.2.3.5:11211: '
             '[Errno 32] Broken pipe',
         ] * 11 + [
-            'Error limiting server 1.2.3.5:11211'
+            'Error limiting server 1.2.3.5:11211 (11 errors in 60.000s)'
         ])
 
         # with default error_limit_time of 60, one call per 6 secs, error limit
@@ -651,7 +651,7 @@ class TestMemcached(unittest.TestCase):
             'Error talking to memcached: 1.2.3.5:11211: '
             '[Errno 32] Broken pipe',
         ] * 11 + [
-            'Error limiting server 1.2.3.5:11211'
+            'Error limiting server 1.2.3.5:11211 (11 errors in 66.000s)'
         ])
 
         # with error_limit_time of 70, one call per 6 secs, error_limit_count
@@ -661,7 +661,7 @@ class TestMemcached(unittest.TestCase):
             'Error talking to memcached: 1.2.3.5:11211: '
             '[Errno 32] Broken pipe',
         ] * 12 + [
-            'Error limiting server 1.2.3.5:11211'
+            'Error limiting server 1.2.3.5:11211 (12 errors in 70.000s)'
         ])
 
     def test_delete(self):
