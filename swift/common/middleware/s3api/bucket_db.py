@@ -350,7 +350,9 @@ def get_bucket_db(conf, logger=None):
     conn_str = conf.get('bucket_db_connection')
     if conn_str:
         # New style configuration
-        scheme, netloc, db_kwargs = parse_connection_string(conn_str)
+        scheme, netloc, db_kwargs = parse_connection_string(
+            conn_str, default_scheme="oio",
+        )
         if scheme == 'dummy':
             klass = DummyBucketDb
         elif scheme in ('oio', 'fdb'):

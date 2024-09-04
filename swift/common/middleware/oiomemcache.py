@@ -120,7 +120,9 @@ class OioMemcacheCommandMixin(object):
             self.logger.warn('Using the default connection (%s) is probably '
                              'not what you want to do.',
                              self.default_connection)
-        _, netloc, _ = parse_connection_string(parsed_args.connection)
+        _, netloc, _ = parse_connection_string(
+            parsed_args.connection, default_scheme="memcached",
+        )
         return MemcacheRing(netloc.split(','))
 
     def get_cache_key(self, parsed_args):

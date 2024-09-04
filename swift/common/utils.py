@@ -6617,7 +6617,7 @@ class WatchdogTimeout(object):
         self.watchdog.stop(self.key)
 
 
-def parse_connection_string(conn_str):
+def parse_connection_string(conn_str, default_scheme="http"):
     """
     Get the connection scheme, network host (or hosts)
     and a dictionary of extra arguments from a connection string.
@@ -6626,6 +6626,8 @@ def parse_connection_string(conn_str):
     >>> parse_conn_str('redis://10.0.1.27:666,10.0.1.25:667?opt1=val1&opt2=5')
     ('redis', '10.0.1.27:666,10.0.1.25:667', {'opt1': 'val1', 'opt2': '5'})
     """
+    if "://" not in conn_str:
+        conn_str = f"{default_scheme}://{conn_str}"
     scheme, netloc, _, _, query, _ = urlparse(conn_str)
     kwargs = {k: ','.join(v) for k, v in parse_qs(query).items()}
     return scheme, netloc, kwargs
