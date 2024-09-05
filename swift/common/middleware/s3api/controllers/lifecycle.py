@@ -16,7 +16,7 @@
 import itertools
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -42,6 +42,85 @@ XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
 MAX_RULES_ALLOWED = 1000
+
+
+def _match_prefix(prefix, key, _size, _tags):
+    return key.startswith(prefix)
+
+
+def _match_object_size_less(threshold, _key, size, _tags):
+    return size < threshold
+
+
+def _match_object_size_greater(threshold, _key, size, _tags):
+    return size > threshold
+
+
+def _match_tags(filter_tags, _key, _size, tags):
+    if tags is None:
+        return False
+    tags = tags.get('Tagging', {}).get('TagSet', {}).get('Tag', [])
+    tags = {t['Key']: t['Value'] for t in tags}
+    for filter_tag in filter_tags:
+        key = filter_tag['Key']
+        value = filter_tag['Value']
+        if key not in tags or value != tags[key]:
+            return False
+    return True
+
+
+def _match_rule(filter_fields, key, size, tags):
+    validators = {
+        "Prefix": _match_prefix,
+        "ObjectSizeGreaterThan": _match_object_size_greater,
+        "ObjectSizeLessThan": _match_object_size_less,
+        "Tags": _match_tags,
+    }
+    for field_name, field_value in filter_fields.items():
+        validator = validators[field_name]
+        if not validator(field_value, key, size, tags):
+            return False
+    return True
+
+
+def get_expiration(conf, key, size, last_modified, tags=None):
+    """
+    Resolve the lifecycle configuration to get the rule applying to object
+    """
+    if conf is None:
+        return None, None
+    conf = json.loads(conf)
+    expiration_date = None
+    expiration_rule = None
+    last_modified = datetime(
+        last_modified.year, last_modified.month, last_modified.day)
+    for rule_id in conf.get("_expiration_rules", []):
+        rule = conf["Rules"][rule_id]
+        filters = rule.get("Filter", {})
+        if "Days" in rule["Expiration"]:
+            # Add one extra day because lifecycle pass is triggered at
+            # midnight the next day
+            days = rule["Expiration"]["Days"] + 1
+            expiration_candidate = (
+                last_modified + timedelta(days=days))
+        elif "Date" in rule["Expiration"]:
+            expiration_candidate = datetime.fromtimestamp(
+                iso8601_to_int(rule["Expiration"]["Date"]))
+        else:
+            # Dealing with ExpiredObjectDeleteMarker
+            continue
+        # Only match rule if the expiration delay can be reduced or is the
+        # first
+        if (expiration_date is not None
+                and expiration_candidate >= expiration_date):
+            continue
+        # Propagate V1 Prefix declaration to Filter
+        if "Prefix" in rule:
+            filters["Prefix"] = rule["Prefix"]
+        if _match_rule(filters, key, size, tags):
+            expiration_date = expiration_candidate
+            expiration_rule = rule_id
+    return expiration_date, expiration_rule
 
 
 def iso8601_to_int(when):
@@ -332,7 +411,7 @@ def get_filters(filter_xml_item):
             if prefix is not None:
                 d_filters["Prefix"] = prefix.text or ""
             if tags:
-                d_filters["Tag"] = tags[0]
+                d_filters["Tags"] = tags
             if greater is not None:
                 if greater < 0:
                     raise InvalidRequest(

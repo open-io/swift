@@ -15,6 +15,7 @@
 
 import functools
 import json
+from six.moves.urllib.parse import quote
 import xmltodict
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
@@ -49,6 +50,7 @@ from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
     object_lock_validate_headers
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
+from swift.common.middleware.s3api.controllers.lifecycle import get_expiration
 
 
 def version_id_param(req):
@@ -162,9 +164,10 @@ class ObjectController(Controller):
                 'x-amz-delete-marker': 'true'
             })
 
+        # Retrieve container info for versioning and lifecycle
+        container_info = req.get_container_info(self.app)
         query = {} if version_id is None else {'version-id': version_id}
         if version_id not in ('null', None):
-            container_info = req.get_container_info(self.app)
             if not container_info.get(
                     'sysmeta', {}).get('versions-container', ''):
                 # Versioning has never been enabled
@@ -195,6 +198,7 @@ class ObjectController(Controller):
             resp.headers['ObjectLock-LegalHoldStatus'] = \
                 resp.sysmeta_headers[HEADER_LEGAL_HOLD_STATUS]
 
+        tags_json = None
         if OBJECT_TAGGING_HEADER in resp.sysmeta_headers:
             xml_tags = resp.sysmeta_headers[OBJECT_TAGGING_HEADER]
             tags_json = xmltodict.parse(xml_tags)
@@ -203,6 +207,20 @@ class ObjectController(Controller):
                 if not isinstance(tagset["Tag"], list):
                     tagset["Tag"] = [tagset["Tag"]]
                 resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
+
+        if version_id in ('null', None):
+            expiration, rule_id = get_expiration(
+                container_info.get("sysmeta", {}).get("s3api-lifecycle"),
+                object_name,
+                resp.content_length,
+                resp.last_modified,
+                tags_json,
+            )
+            if expiration is not None:
+                expiration = expiration.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                rule_id = quote(rule_id, safe="$?/- ")
+                resp.headers['x-amz-expiration'] = \
+                    f'expiry-date="{expiration}", rule-id="{rule_id}"'
 
         if req.method == 'HEAD':
             resp.app_iter = None
@@ -318,6 +336,20 @@ class ObjectController(Controller):
             # can't setdefault because it can be None for some reason
             req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
         resp = req.get_response(self.app, query=query)
+
+        # Add expiration header if lifecycle configuration is present
+        expiration, rule_id = get_expiration(
+            sysmeta_info.get("s3api-lifecycle"),
+            req.object_name,
+            req.content_length,
+            resp.last_modified,
+            None,
+        )
+        if expiration is not None:
+            expiration = expiration.strftime("%a, %d %b %Y %H:%M:%S GMT")
+            rule_id = quote(rule_id, safe="$?/- ")
+            resp.headers['x-amz-expiration'] = \
+                f'expiry-date="{expiration}", rule-id="{rule_id}"'
 
         _on_success = None
         if is_server_side_copy:

@@ -1242,9 +1242,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.assertIn('swift.backend_path', req.environ)
         self.assertEqual('/v1/AUTH_test/bucket/object',
                          req.environ['swift.backend_path'])
-        for _, _, headers in self.swift.calls_with_headers:
-            self.assertEqual(authz_header, headers['Authorization'])
-            self.assertNotIn('X-Auth-Token', headers)
+        _, _, headers = self.swift.calls_with_headers[-1]
+        self.assertEqual(authz_header, headers['Authorization'])
+        self.assertNotIn('X-Auth-Token', headers)
 
     def test_signature_v4_no_date(self):
         environ = {

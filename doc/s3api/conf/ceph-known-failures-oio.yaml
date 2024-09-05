@@ -131,12 +131,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_ignore_public_acls:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_lifecycle_expiration_header_head:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_lifecycle_expiration_header_put:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_lifecycle_expiration_header_tags_head:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_list_multipart_upload_owner:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_multipart_copy_invalid_range:
