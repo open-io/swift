@@ -284,11 +284,12 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
                               ensure_replicated=False):
     """
     Update headers of the request if replication needs to be applied.
+
     :param req: initial request
     :param sysmeta_info: sysmeta container info
     :param metadata: object metadata
     :param tags: tagging to use for rule resolution
-    :param is_deletion: indicate if the object is being deleted
+    :param delete: indicate if the object is being deleted
     :param ensure_replicated: verify if we are dealing with a replicated object
     """
     replication_cb = req.environ.get(REPLICATION_CALLBACK)

@@ -27,7 +27,7 @@ from oio_tests.functional.common import random_str, run_awscli_s3api, \
 class TestS3Versioning(unittest.TestCase):
 
     def setUp(self):
-        self.bucket = random_str(10)
+        self.bucket = "tests3vers-" + random_str(4)
         run_awscli_s3api("create-bucket", bucket=self.bucket)
         run_awscli_s3api(
             "put-bucket-versioning",
@@ -47,12 +47,12 @@ class TestS3Versioning(unittest.TestCase):
         return data['VersionId']
 
     def test_simple_object(self):
-        key = random_str(20)
+        key = f"appel_à_projets_{random_str(4)}.doc"
         version = self._create_simple_object(key)
         self._run_versioning_test(key, versions=[version])
 
     def test_two_simple_object(self):
-        key = random_str(20)
+        key = f"appel_à_projets_{random_str(4)}.doc"
         version1 = self._create_simple_object(key)
         version2 = self._create_simple_object(key)
         self._run_versioning_test(key, versions=[version2, version1])
@@ -164,12 +164,12 @@ class TestS3Versioning(unittest.TestCase):
         return data['VersionId']
 
     def test_mpu_object(self):
-        key = random_str(20)
+        key = f"appel_à_projets_{random_str(4)}.doc"
         version = self._create_mpu_object(key)
         self._run_versioning_test(key, versions=[version])
 
     def test_two_mpu_objects(self):
-        key = random_str(20)
+        key = f"appel_à_projets_{random_str(4)}.doc"
         version1 = self._create_mpu_object(key)
         version2 = self._create_mpu_object(key)
         self._run_versioning_test(key, versions=[version2, version1])

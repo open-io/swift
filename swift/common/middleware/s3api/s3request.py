@@ -2401,12 +2401,15 @@ class S3Request(swob.Request):
             query['version-id'] = self.version_id
 
         sw_req = self.to_swift_req(
-            app, self.container_name, self.object_name, query=query,)
+            'HEAD', self.container_name, self.object_name, query=query,)
         info = get_object_info(sw_req.environ, app, swift_source='S3')
         if is_success(info['status']):
             return info
         elif info['status'] == 404:
             raise NoSuchKey(self.object_name)
+        elif (info['status'] == 405
+                and info['type'] == DELETE_MARKER_CONTENT_TYPE):
+            return info
         elif info['status'] == HTTP_SERVICE_UNAVAILABLE:
             raise ServiceUnavailable(headers={
                 'Retry-After': str(info.get('Retry-After',
