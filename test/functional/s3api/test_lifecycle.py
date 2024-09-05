@@ -1077,7 +1077,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         )
 
     def test_same_prefix(self):
-        """Two rules shoudln't have same prefix """
+        """Two rules shoudln't have same prefix (only in V1)"""
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
         self.assertRaisesRegex(
@@ -1089,23 +1089,45 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                 'Rules': [
                     {
                         "ID": "rule1",
-                        "Filter": {
-                            "Prefix": "doc"
-                        },
+                        "Prefix": "doc",
                         "Status": "Enabled",
-                        "Transitions": [{
-                            "Days": 30,
-                            "StorageClass": "STANDARD_IA"
-                        }]
+                        "Expiration": {
+                            "Days": 60,
+
+                        }
                     },
                     {
                         "ID": "rule2",
-                        "Filter": {
-                            "Prefix": "doc"
-                        },
+                        "Prefix": "doc",
                         "Status": "Enabled",
                         "Expiration": {
                             "Days": 50
+                        }
+                    }]
+            }
+        )
+        # Overlapping prefix
+        self.assertRaisesRegex(
+            botoexc.ClientError,
+            r'.*InvalidRequest.*overlapping*',
+            self.conn.put_bucket_lifecycle_configuration,
+            Bucket='bucket',
+            LifecycleConfiguration={
+                'Rules': [
+                    {
+                        "ID": "id1",
+                        "Status": "Enabled",
+                        "Prefix": "doc",
+                        "Expiration": {
+                            "Days": 30
+                        }
+                    },
+                    {
+                        "ID": "id2",
+                        "Status": "Enabled",
+                        "Prefix": "doc/test",
+                        "Expiration": {
+                            "Days": 180
                         }
                     }]
             }

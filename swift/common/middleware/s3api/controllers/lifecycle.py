@@ -370,15 +370,6 @@ class LifecycleController(Controller):
                     rule_id.text,
                     f"The maximum value is {MAX_LENGTH_RULE_ID} characters."
                 )
-            try:
-                if rule_id.text is not None:
-                    rule_id.text.encode('ascii')
-            except Exception as exc:
-                raise InvalidArgument(
-                    "ID",
-                    rule_id.text,
-                    "Rule ID must not contain non-ASCII characters."
-                ) from exc
 
         prefix = rule.find("./Prefix")
         if prefix is not None and prefix.text is not None and \
@@ -617,7 +608,6 @@ class LifecycleController(Controller):
 
     def _post_validate_rules(self, conf_dict):
         prefixes = set()
-        filters_prefixes = set()
         has_filter = False
 
         def _filter_forbiden_field(current_filter):
@@ -629,28 +619,46 @@ class LifecycleController(Controller):
                 return "ObjectSizeLessThan"
             return None
 
+        prefix_expirations = []
+        prefix_noncurrent_expirations = []
         for rule_id, rule in conf_dict["Rules"].items():
             prefix_ = rule.get("Prefix", None)
             filter_ = rule.get("Filter", None)
             filter_forbiden_field = None
             if prefix_ is not None:
+                expiration = rule.get("Expiration")
+                noncurrent_expiration = rule.get("NoncurrentVersionExpiration")
+
                 if prefix_ in prefixes:
                     raise InvalidArgument(
                         None, None,
                         "Found two rules with same prefix '" + prefix_ + "'")
                 prefixes.add(prefix_)
 
+                if expiration:
+                    for el in prefix_expirations:
+                        if el.startswith(prefix_) or prefix_.startswith(el):
+                            min_ = min(el, prefix_)
+                            max_ = max(el, prefix_)
+                            raise InvalidRequest(
+                                msg=f"Found overlapping prefixes '{min_}' " +
+                                f"and '{max_}' for same action type " +
+                                " 'Expiration'")
+                    prefix_expirations.append(prefix_)
+                if noncurrent_expiration:
+                    for el in prefix_noncurrent_expirations:
+                        if el.startswith(prefix_) or prefix_.startswith(el):
+                            min_ = min(el, prefix_)
+                            max_ = max(el, prefix_)
+                            raise InvalidRequest(
+                                msg=f"Found overlapping prefixes '{min_}' " +
+                                f"and'{max_}' for same action type " +
+                                "'NoncurrentVersionExpiration'")
+                    prefix_noncurrent_expirations.append(prefix_)
+
             if filter_ is not None:
                 filter_forbiden_field = _filter_forbiden_field(filter_)
                 has_filter = True
-                prefix = filter_.get("Prefix", None)
-                if prefix is not None:
-                    if prefix in filters_prefixes:
-                        raise InvalidArgument(
-                            None, None,
-                            "Found two rules with same prefix '" +
-                            prefix + "'")
-                    filters_prefixes.add(prefix)
 
         if prefixes and has_filter:
             raise InvalidRequest(
