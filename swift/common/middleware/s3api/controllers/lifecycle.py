@@ -916,6 +916,15 @@ class LifecycleController(Controller):
             if not self.bypass_feature_disabled(req, "lifecycle"):
                 raise S3NotImplemented()
 
+        info = req.get_container_info(self.app)
+        versioning = info.get('sysmeta', {}).get('versions-enabled')
+        if versioning and versioning.lower() == 'false':
+            raise S3NotImplemented(
+                'The versioning is suspended on this bucket, so you cannot '
+                'upload a lifecycle configuration. To upload a lifecycle '
+                'configuration, first enable the versioning.'
+            )
+
         config = req.xml(MAX_LIFECYCLE_BODY_SIZE)
         # Validation
         validated = self._validate_configuration(config)

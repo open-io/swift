@@ -80,6 +80,10 @@ class VersioningController(Controller):
         replication_conf = info.get('sysmeta', {}).get(
             's3api-replication', {})
 
+        lifecycle_conf = info.get('sysmeta', {}).get(
+            's3api-lifecycle', {}
+        )
+
         if 'object_versioning' not in get_swift_info():
             raise S3NotImplemented()
 
@@ -99,6 +103,13 @@ class VersioningController(Controller):
                         'on this bucket, so you cannot change the '
                         'versioning state. To change the versioning '
                         'state, first delete the replication configuration.')
+                if lifecycle_conf:
+                    raise S3NotImplemented(
+                        'A lifecycle configuration is present '
+                        'on this bucket, so you cannot change the '
+                        'versioning state. To change the versioning '
+                        'state, first delete the lifecycle configuration.'
+                    )
         except (XMLSyntaxError, DocumentInvalid):
             raise MalformedXML()
         except Exception as e:
