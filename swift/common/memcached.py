@@ -238,18 +238,24 @@ class MemcacheRing(object):
             self.logger = logger
         self.item_size_warning_threshold = item_size_warning_threshold
 
-    def _exception_occurred(self, server, e, action='talking',
+    def _exception_occurred(self, server, e, action='talking', operation=None,
                             sock=None, fp=None, got_connection=True):
+        op_msg = ""
+        if operation is not None:
+            op_msg = f" during a '{operation}' operation"
         if isinstance(e, Timeout):
-            self.logger.error("Timeout %(action)s to memcached: %(server)s",
-                              {'action': action, 'server': server})
+            self.logger.error(
+                "Timeout %(action)s to memcached%(op_msg)s: %(server)s",
+                {'action': action, 'op_msg': op_msg, 'server': server})
         elif isinstance(e, (socket.error, MemcacheConnectionError)):
             self.logger.error(
-                "Error %(action)s to memcached: %(server)s: %(err)s",
-                {'action': action, 'server': server, 'err': e})
+                "Error %(action)s to memcached%(op_msg)s: %(server)s: %(err)s",
+                {'action': action, 'op_msg': op_msg, 'server': server,
+                 'err': e})
         else:
-            self.logger.exception("Error %(action)s to memcached: %(server)s",
-                                  {'action': action, 'server': server})
+            self.logger.exception(
+                "Error %(action)s to memcached%(op_msg)s: %(server)s",
+                {'action': action, 'op_msg': op_msg, 'server': server})
         try:
             if fp:
                 fp.close()
@@ -374,7 +380,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="set", sock=sock, fp=fp
+                )
 
     def get(self, key, server_key=None):
         """
@@ -413,7 +421,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return value
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="get", sock=sock, fp=fp
+                )
 
     def add(self, key, value=0, time=0, server_key=None):
         """
@@ -443,7 +453,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return line[0].upper() != b'NOT_STORED'
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="add", sock=sock, fp=fp
+                )
         raise MemcacheConnectionError("No Memcached connections succeeded.")
 
     def incr(self, key, delta=1, time=0, server_key=None):
@@ -499,7 +511,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return ret
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="incr", sock=sock, fp=fp
+                )
         raise MemcacheConnectionError("No Memcached connections succeeded.")
 
     def decr(self, key, delta=1, time=0, server_key=None):
@@ -536,7 +550,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="delete", sock=sock, fp=fp
+                )
 
     def set_multi(self, mapping, server_key, serialize=True, time=0,
                   min_compress_len=0):
@@ -580,7 +596,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="set_multi", sock=sock, fp=fp
+                )
 
     def get_multi(self, keys, server_key):
         """
@@ -626,7 +644,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return values
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="get_multi", sock=sock, fp=fp
+                )
 
     def add_multi(self, mapping, server_key, time=0):
         """
@@ -664,7 +684,9 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return added
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="add_multi", sock=sock, fp=fp
+                )
         raise MemcacheConnectionError("No Memcached connections succeeded.")
 
     def incr_multi(self, mapping, server_key, time=0):
@@ -728,5 +750,7 @@ class MemcacheRing(object):
                     self._return_conn(server, fp, sock)
                     return incremented
             except (Exception, Timeout) as e:
-                self._exception_occurred(server, e, sock=sock, fp=fp)
+                self._exception_occurred(
+                    server, e, operation="incr_multi", sock=sock, fp=fp
+                )
         raise MemcacheConnectionError("No Memcached connections succeeded.")

@@ -420,7 +420,10 @@ class TestMemcached(unittest.TestCase):
             mock.read_return_empty_str = True
             self.assertIsNone(memcache_client.get('some_key'))
         log_lines = self.logger.get_lines_for_level('error')
-        self.assertIn('Error talking to memcached', log_lines[0])
+        self.assertIn(
+            "Error talking to memcached during a 'get' operation",
+            log_lines[0]
+        )
         self.assertFalse(log_lines[1:])
         self.assertNotIn("Traceback", fake_stdout.getvalue())
 
@@ -467,7 +470,10 @@ class TestMemcached(unittest.TestCase):
             self.assertRaises(memcached.MemcacheConnectionError,
                               memcache_client.incr, 'some_key', delta=1)
         log_lines = self.logger.get_lines_for_level('error')
-        self.assertIn('Error talking to memcached', log_lines[0])
+        self.assertIn(
+            "Error talking to memcached during a 'incr' operation",
+            log_lines[0]
+        )
         self.assertFalse(log_lines[1:])
         self.assertNotIn('Traceback', fake_stdout.getvalue())
 
@@ -535,8 +541,8 @@ class TestMemcached(unittest.TestCase):
         memcache_client.set('some_key', [1, 2, 3])
         self.assertEqual(mock1.exploded, True)
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ])
 
         self.logger.clear()
@@ -544,8 +550,8 @@ class TestMemcached(unittest.TestCase):
         self.assertEqual(memcache_client.get('some_key'), [1, 2, 3])
         self.assertEqual(mock1.exploded, True)
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'get' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ])
         # Check that we really did call create() twice
         self.assertEqual(memcache_client._client_cache['1.2.3.5:11211'].mocks,
@@ -567,8 +573,8 @@ class TestMemcached(unittest.TestCase):
         # twelfth one skips .5 because of error limiting and goes straight
         # to .4
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ] * 11 + [
             'Error limiting server 1.2.3.5:11211 (11 errors in 60.000s)'
         ])
@@ -579,8 +585,8 @@ class TestMemcached(unittest.TestCase):
             memcache_client.set('some_key', [1, 2, 3])
         # as we keep going, eventually .4 gets error limited, too
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.4:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.4:11211: [Errno 32] Broken pipe",
         ] * 11 + [
             'Error limiting server 1.2.3.4:11211 (11 errors in 60.000s)'
         ])
@@ -607,8 +613,8 @@ class TestMemcached(unittest.TestCase):
         # twelfth one skips .5 because of error limiting and goes straight
         # to .4
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.4:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.4:11211: [Errno 32] Broken pipe",
         ] * 20)
 
     def test_error_limiting_custom_config(self):
@@ -630,8 +636,8 @@ class TestMemcached(unittest.TestCase):
         # triggers error limit
         do_calls(5, 12)
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ] * 11 + [
             'Error limiting server 1.2.3.5:11211 (11 errors in 60.000s)'
         ])
@@ -640,16 +646,16 @@ class TestMemcached(unittest.TestCase):
         # is not triggered
         do_calls(6, 20)
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ] * 20)
 
         # with error_limit_time of 66, one call per 6 secs, twelfth one
         # triggers error limit
         do_calls(6, 12, error_limit_time=66)
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ] * 11 + [
             'Error limiting server 1.2.3.5:11211 (11 errors in 66.000s)'
         ])
@@ -658,8 +664,8 @@ class TestMemcached(unittest.TestCase):
         # of 11, 13th call triggers error limit
         do_calls(6, 13, error_limit_time=70, error_limit_count=11)
         self.assertEqual(self.logger.get_lines_for_level('error'), [
-            'Error talking to memcached: 1.2.3.5:11211: '
-            '[Errno 32] Broken pipe',
+            "Error talking to memcached during a 'set' operation: "
+            "1.2.3.5:11211: [Errno 32] Broken pipe",
         ] * 12 + [
             'Error limiting server 1.2.3.5:11211 (12 errors in 70.000s)'
         ])
