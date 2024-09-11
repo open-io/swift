@@ -243,8 +243,10 @@ class BucketController(Controller):
 
         return url_encoding, query, listing_type, fetch_owner
 
-    def _build_versions_result(self, req, objects, url_encoding,
-                               escape_xml_text, tag_max_keys, is_truncated):
+    def _build_versions_result(
+            self, req, objects, url_encoding, escape_xml_text,
+            tag_max_keys, is_truncated,
+            next_marker=None, next_version_marker=None, **kwargs):
         elem = Element('ListVersionsResult')
         SubElement(elem, 'Name').text = req.container_name
         prefix = swob.wsgi_to_str(req.params.get('prefix'))
@@ -254,15 +256,21 @@ class BucketController(Controller):
         SubElement(elem, 'VersionIdMarker').text = swob.wsgi_to_str(
             req.params.get('version-id-marker'))
         if is_truncated:
-            if 'name' in objects[-1]:
+            if objects:
+                if 'name' in objects[-1]:
+                    SubElement(elem, 'NextKeyMarker').text = escape_xml_text(
+                        objects[-1]['name'])
+                    SubElement(elem, 'NextVersionIdMarker').text = \
+                        objects[-1].get('version') or 'null'
+                elif 'subdir' in objects[-1]:
+                    SubElement(elem, 'NextKeyMarker').text = escape_xml_text(
+                        objects[-1]['subdir'])
+                    SubElement(elem, 'NextVersionIdMarker').text = 'null'
+            elif next_marker:
                 SubElement(elem, 'NextKeyMarker').text = escape_xml_text(
-                    objects[-1]['name'])
+                    next_marker)
                 SubElement(elem, 'NextVersionIdMarker').text = \
-                    objects[-1].get('version') or 'null'
-            elif 'subdir' in objects[-1]:
-                SubElement(elem, 'NextKeyMarker').text = escape_xml_text(
-                    objects[-1]['subdir'])
-                SubElement(elem, 'NextVersionIdMarker').text = 'null'
+                    next_version_marker or 'null'
         SubElement(elem, 'MaxKeys').text = str(tag_max_keys)
         delimiter = swob.wsgi_to_str(req.params.get('delimiter'))
         if delimiter is not None:
@@ -282,15 +290,18 @@ class BucketController(Controller):
 
     def _build_list_bucket_result_type_one(
             self, req, objects, url_encoding, escape_xml_text,
-            tag_max_keys, is_truncated):
+            tag_max_keys, is_truncated, next_marker=None, **kwargs):
         elem = self._build_base_listing_element(req, escape_xml_text)
         marker = swob.wsgi_to_str(req.params.get('marker'))
         SubElement(elem, 'Marker').text = escape_xml_text(marker)
         if is_truncated and 'delimiter' in req.params:
-            if 'name' in objects[-1]:
-                name = objects[-1]['name']
-            else:
-                name = objects[-1]['subdir']
+            if objects:
+                if 'name' in objects[-1]:
+                    name = objects[-1]['name']
+                else:
+                    name = objects[-1]['subdir']
+            elif next_marker:
+                name = next_marker
             SubElement(elem, 'NextMarker').text = escape_xml_text(name)
         # XXX: really? no NextMarker when no delimiter??
         SubElement(elem, 'MaxKeys').text = str(tag_max_keys)
@@ -305,15 +316,19 @@ class BucketController(Controller):
 
     def _build_list_bucket_result_type_two(
             self, req, objects, url_encoding, escape_xml_text,
-            tag_max_keys, is_truncated):
+            tag_max_keys, is_truncated, next_marker=None, **kwargs):
         elem = self._build_base_listing_element(req, escape_xml_text)
         if is_truncated:
-            if 'name' in objects[-1]:
+            if objects:
+                if 'name' in objects[-1]:
+                    SubElement(elem, 'NextContinuationToken').text = \
+                        b64encode(objects[-1]['name'].encode('utf8'))
+                elif 'subdir' in objects[-1]:
+                    SubElement(elem, 'NextContinuationToken').text = \
+                        b64encode(objects[-1]['subdir'].encode('utf8'))
+            elif next_marker:
                 SubElement(elem, 'NextContinuationToken').text = \
-                    b64encode(objects[-1]['name'].encode('utf8'))
-            if 'subdir' in objects[-1]:
-                SubElement(elem, 'NextContinuationToken').text = \
-                    b64encode(objects[-1]['subdir'].encode('utf8'))
+                    b64encode(next_marker.encode('utf8'))
         if 'continuation-token' in req.params:
             SubElement(elem, 'ContinuationToken').text = \
                 swob.wsgi_to_str(req.params['continuation-token'])
@@ -423,10 +438,16 @@ class BucketController(Controller):
             self._parse_request_options(req, max_keys)
 
         resp = req.get_response(self.app, query=query)
+        backend_next_marker = resp.sw_headers.get("x-listing-next-marker")
+        backend_version_marker = \
+            resp.sw_headers.get("x-listing-next-version-marker")
+        backend_truncated = config_true_value(
+            resp.sw_headers.get("x-listing-truncated"))
 
         objects = json.loads(resp.body)
 
-        is_truncated = max_keys > 0 and len(objects) > max_keys
+        is_truncated = max_keys > 0 and (len(objects) > max_keys
+                                         or backend_truncated)
         objects = objects[:max_keys]
 
         escape_xml_text, finalize_xml_texts = init_xml_texts(url_encoding)
@@ -437,8 +458,10 @@ class BucketController(Controller):
             func = self._build_list_bucket_result_type_two
         else:
             func = self._build_list_bucket_result_type_one
-        elem = func(req, objects, url_encoding, escape_xml_text, tag_max_keys,
-                    is_truncated)
+        elem = func(req, objects, url_encoding, escape_xml_text,
+                    tag_max_keys, is_truncated,
+                    next_marker=backend_next_marker,
+                    next_version_marker=backend_version_marker)
         self._add_objects_to_result(
             req, elem, objects, escape_xml_text, listing_type, fetch_owner)
 

@@ -48,9 +48,13 @@ from oio.common import exceptions
 
 class ContainerController(SwiftContainerController):
 
-    pass_through_headers = ['x-container-read', 'x-container-write',
-                            'x-container-sync-key', 'x-container-sync-to',
-                            'x-versions-enabled', 'x-versions-location']
+    pass_through_headers = [
+        'x-container-read', 'x-container-write',
+        'x-container-sync-key', 'x-container-sync-to',
+        'x-versions-enabled', 'x-versions-location',
+        'x-listing-next-marker', 'x-listing-next-version-marker',
+        'x-listing-truncated',
+    ]
 
     @handle_oio_no_such_container
     @handle_oio_timeout
@@ -202,6 +206,10 @@ class ContainerController(SwiftContainerController):
                       'subdir': True}
             container_list.append(record)
         container_list.sort(key=lambda x: x['name'])
+        for key in ("next_marker", "next_version_marker", "truncated"):
+            if key not in result:
+                continue
+            resp_headers["x-listing-" + key.replace('_', '-')] = result[key]
         ret = Response(request=req, headers=resp_headers,
                        content_type='application/json', charset='utf-8')
         versions = kwargs.get('versions', False)
