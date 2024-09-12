@@ -104,6 +104,8 @@ def handle_service_busy(fnc):
                 return HTTPForbidden(request=req)
             headers = {}
             headers['Retry-After'] = str(self.app.retry_after)
+            for k, v in err.info.items():
+                req.environ.setdefault("oio.error_info", {})[k] = v
             return HTTPServiceUnavailable(request=req, headers=headers,
                                           body=str(err))
     return _service_busy_wrapper

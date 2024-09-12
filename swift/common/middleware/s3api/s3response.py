@@ -257,7 +257,9 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
     _code = ''
     xml_declaration = True
 
-    def __init__(self, msg=None, backend_error=None, *args, **kwargs):
+    def __init__(
+        self, msg=None, backend_error=None, service_id=None, *args, **kwargs
+    ):
         if msg:
             self._msg = msg
         if not self._code:
@@ -265,6 +267,7 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
 
         # Error details from oio backend
         self.backend_error = backend_error
+        self.service_id = service_id
 
         self.info = kwargs.copy()
         for reserved_key in ('headers', 'body'):

@@ -699,6 +699,7 @@ class S3ApiMiddleware(object):
             s3api_info['error_code'] = err_resp._code
             s3api_info['error_detail'] = err_resp._get_info()
             s3api_info['backend_error'] = err_resp.backend_error
+            s3api_info['backend_service_id'] = err_resp.service_id
             resp = err_resp
         except WebsiteErrorResponse as err_resp:
             if isinstance(err_resp, InternalError):
