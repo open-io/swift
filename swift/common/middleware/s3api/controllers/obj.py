@@ -209,18 +209,22 @@ class ObjectController(Controller):
                 resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
 
         if version_id in ('null', None):
-            expiration, rule_id = get_expiration(
-                container_info.get("sysmeta", {}).get("s3api-lifecycle"),
-                object_name,
-                resp.content_length,
-                resp.last_modified,
-                tags_json,
-            )
-            if expiration is not None:
-                expiration = expiration.strftime("%a, %d %b %Y %H:%M:%S GMT")
-                rule_id = quote(rule_id, safe="$?/- ")
-                resp.headers['x-amz-expiration'] = \
-                    f'expiry-date="{expiration}", rule-id="{rule_id}"'
+            if (self.conf.enable_lifecycle or
+                    self.bypass_feature_disabled(req, "lifecycle")):
+
+                expiration, rule_id = get_expiration(
+                    container_info.get("sysmeta", {}).get("s3api-lifecycle"),
+                    object_name,
+                    resp.content_length,
+                    resp.last_modified,
+                    tags_json,
+                )
+                if expiration is not None:
+                    expiration = expiration.strftime(
+                        "%a, %d %b %Y %H:%M:%S GMT")
+                    rule_id = quote(rule_id, safe="$?/- ")
+                    resp.headers['x-amz-expiration'] = \
+                        f'expiry-date="{expiration}", rule-id="{rule_id}"'
 
         if req.method == 'HEAD':
             resp.app_iter = None
@@ -338,18 +342,20 @@ class ObjectController(Controller):
         resp = req.get_response(self.app, query=query)
 
         # Add expiration header if lifecycle configuration is present
-        expiration, rule_id = get_expiration(
-            sysmeta_info.get("s3api-lifecycle"),
-            req.object_name,
-            req.content_length,
-            resp.last_modified,
-            None,
-        )
-        if expiration is not None:
-            expiration = expiration.strftime("%a, %d %b %Y %H:%M:%S GMT")
-            rule_id = quote(rule_id, safe="$?/- ")
-            resp.headers['x-amz-expiration'] = \
-                f'expiry-date="{expiration}", rule-id="{rule_id}"'
+        if (self.conf.enable_lifecycle or
+                self.bypass_feature_disabled(req, "lifecycle")):
+            expiration, rule_id = get_expiration(
+                sysmeta_info.get("s3api-lifecycle"),
+                req.object_name,
+                req.content_length,
+                resp.last_modified,
+                None,
+            )
+            if expiration is not None:
+                expiration = expiration.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                rule_id = quote(rule_id, safe="$?/- ")
+                resp.headers['x-amz-expiration'] = \
+                    f'expiry-date="{expiration}", rule-id="{rule_id}"'
 
         _on_success = None
         if is_server_side_copy:
