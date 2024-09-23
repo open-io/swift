@@ -569,7 +569,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_prefix(self):
-        query = 'prefix=VXBsb2FkIElE'
+        query = 'prefix=object'
         multiparts = \
             (('object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
               'HASH', 1),
@@ -595,7 +595,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             key, arg = q.split('=')
             query[key] = arg
         self.assertEqual(query['format'], 'json')
-        self.assertEqual(query['prefix'], 'VXBsb2FkIElE')
+        self.assertEqual(query['prefix'], 'object')
 
     @s3acl
     def test_bucket_multipart_uploads_GET_with_delimiter(self):
@@ -730,7 +730,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     def test_bucket_multipart_uploads_GET_with_prefix_and_delimiter(self):
         query = 'prefix=dir/&delimiter=/'
         multiparts = \
-            (('dir/subdir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+            (('dir/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
+              'HASH', 4),
+             ('dir/subdir/object/VXBsb2FkIElE', '2014-05-07T19:47:50.592270',
               'HASH', 4),
              ('dir/subdir/object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
               'HASH', 41),
@@ -755,6 +757,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             name = u.find('Key').text + '/' + u.find('UploadId').text
             initiated = u.find('Initiated').text
             self.assertTrue((name, initiated) in objects)
+            # Assert first element is not listed as it is outside of prefix
+            self.assertNotEqual(name, "dir/VXBsb2FkIElE")
         for p in elem.findall('CommonPrefixes'):
             prefix = p.find('Prefix').text
             self.assertTrue(prefix in prefixes)

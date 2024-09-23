@@ -104,9 +104,9 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
         query.update({'marker': '%s/%s' % (keymarker, uploadid)})
     elif keymarker:
         query.update({'marker': '%s/~' % (keymarker)})
-    if 'prefix' in req.params:
-        query.update({'prefix': get_param(req, 'prefix')})
-
+    mpu_prefix = get_param(req, 'prefix', '')
+    if mpu_prefix:
+        query['prefix'] = mpu_prefix
     container = req.container_name + MULTIUPLOAD_SUFFIX
     uploads = []
     prefixes = []
@@ -145,12 +145,16 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
 
         new_uploads = [object_to_upload(obj) for obj in objects if
                        MPU_PART_RE.search(obj.get('name', '')) is None]
+        if mpu_prefix:
+            # The backend compares names including the upload ID,
+            # we need to filter again with the actual object key.
+            new_uploads = [obj for obj in new_uploads
+                           if obj['key'].startswith(mpu_prefix)]
         new_prefixes = []
         if 'delimiter' in req.params:
-            prefix = get_param(req, 'prefix', '')
             delimiter = get_param(req, 'delimiter')
             new_uploads, new_prefixes = separate_uploads(
-                new_uploads, prefix, delimiter)
+                new_uploads, mpu_prefix, delimiter)
         uploads.extend(new_uploads)
         prefixes.extend(new_prefixes)
         query['marker'] = objects[-1]['name']
