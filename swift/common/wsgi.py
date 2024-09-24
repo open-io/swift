@@ -1345,6 +1345,13 @@ class WSGIContext(object):
             if h.lower() != 'content-length']
         self._response_headers.append(('Content-Length', str(new_total_len)))
 
+    def update_etag(self, etag):
+        self._response_headers = [
+            (h, v) for h, v in self._response_headers
+            if h.lower() != 'etag']
+        if etag is not None:
+            self._response_headers.append(('ETag', etag))
+
 
 def make_env(env, method=None, path=None, agent='Swift', query_string=None,
              swift_source=None):

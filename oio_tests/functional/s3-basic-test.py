@@ -21,6 +21,7 @@ import time
 import unittest
 
 from botocore.exceptions import ClientError
+from swift.common.utils import MD5_OF_EMPTY_STRING
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
     run_awscli_s3api, get_boto3_client, ENDPOINT_URL, STORAGE_DOMAIN
 
@@ -142,6 +143,17 @@ class TestS3BasicTest(unittest.TestCase):
             self.boto_client.list_objects_v2(Bucket=self.bucket, Prefix="obj", ContinuationToken="aaa")
         self.assertIn("InvalidArgument", str(ctx.exception))
         self.assertIn("continuation token", str(ctx.exception))
+
+    def test_list_empty_object(self):
+        key = "list_zero_bytes-" + random_str(6)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+
+        data = self.boto_client.list_objects_v2(Bucket=self.bucket)
+        self.assertEqual(1, len(data['Contents']))
+        first = data['Contents'][0]
+        self.assertEqual(key, first["Key"])
+        self.assertEqual(0, first["Size"])
+        self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', first["ETag"])
 
     def test_list_too_large_param(self):
         keys = ('a', 'b')
@@ -330,6 +342,13 @@ class TestS3BasicTest(unittest.TestCase):
             '4', meta['ResponseMetadata']['HTTPHeaders']['content-length']
         )
         self.assertEquals(4, meta['ContentLength'])
+
+    def test_head_object_zero_bytes(self):
+        key = "head_zero_bytes-" + random_str(6)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+        meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
+        self.assertEquals(0, meta['ContentLength'])
+        self.assertEquals(f'"{MD5_OF_EMPTY_STRING}"', meta['ETag'])
 
     def test_head_bucket(self):
         resp = self.boto_client.head_bucket(Bucket=self.bucket)
