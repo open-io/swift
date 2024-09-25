@@ -665,6 +665,11 @@ class InvalidTagKey(InvalidTag):
     _code = 'InvalidTag'
 
 
+class InvalidTagValue(InvalidTag):
+    _msg = 'The TagValue you have provided is invalid'
+    _code = 'InvalidTag'
+
+
 class InvalidTargetBucketForLogging(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'The owner for the bucket to be logged and ' \
