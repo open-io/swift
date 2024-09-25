@@ -28,9 +28,11 @@ from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
     MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
-    S3NotImplemented, ServiceUnavailable, AccessDenied
+    S3NotImplemented, ServiceUnavailable, AccessDenied, InvalidTagKey, \
+    InvalidTagValue
 from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
-    convert_response, sysmeta_header, is_valid_token
+    convert_response, sysmeta_header, is_valid_token, validate_tag_key, \
+    validate_tag_value
 from swift.common.utils import config_true_value, public
 from swift.proxy.controllers.base import get_container_info
 
@@ -121,6 +123,10 @@ def get_tags(tag_xml_items, tag_keys):
     for tag in tag_xml_items:
         key = tag.find("Key").text
         value = tag.find("Value").text or ""
+        if not validate_tag_key(key):
+            raise InvalidTagKey()
+        if not validate_tag_value(value):
+            raise InvalidTagValue()
         tags.append({"Key": key,
                      "Value": value})
         if key in tag_keys:

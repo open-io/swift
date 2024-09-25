@@ -27,9 +27,10 @@ from swift.common.middleware.s3api.etree import DocumentInvalid, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
-    MalformedXML, NoSuchLifecycleConfiguration, S3NotImplemented
+    MalformedXML, NoSuchLifecycleConfiguration, S3NotImplemented, \
+    InvalidTagKey, InvalidTagValue
 from swift.common.middleware.s3api.utils import convert_response, \
-    sysmeta_header, S3_STORAGE_CLASSES
+    sysmeta_header, S3_STORAGE_CLASSES, validate_tag_key, validate_tag_value
 from swift.common.swob import HTTPNoContent
 from swift.common.utils import public
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
@@ -256,6 +257,10 @@ def get_tags(tag_xml_items, tag_keys):
     for tag in tag_xml_items:
         key = tag.find("Key").text
         value = tag.find("Value").text or ""
+        if not validate_tag_key(key):
+            raise InvalidTagKey()
+        if not validate_tag_value(value):
+            raise InvalidTagValue()
         tags.append({"Key": key,
                      "Value": value})
         if key in tag_keys:

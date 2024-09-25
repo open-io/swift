@@ -16,8 +16,6 @@
 
 from six.moves.urllib.parse import parse_qs
 
-from swift.common.utils import close_if_possible, public
-
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_access, \
     set_s3_operation_rest, handle_no_such_key
@@ -31,10 +29,12 @@ from swift.common.middleware.s3api.intelligent_tiering_utils import \
     get_intelligent_tiering_info, GET_BUCKET_STATE_OUTPUT
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
-    MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey
-from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp
+    MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey, \
+    InvalidTagValue
+from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp, \
+    validate_tag_key, validate_tag_value
 from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG, \
-    REPLICATOR_USER_AGENT
+    REPLICATOR_USER_AGENT, close_if_possible, public
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 
@@ -110,16 +110,13 @@ def _create_tagging_xml_document():
     return root, tagset
 
 
-def _check_key_prefix(key):
-    if not key:
+def _add_tag_to_tag_set(tagset, key, value, check_key_prefix=True):
+
+    if not validate_tag_key(key, check_prefix=check_key_prefix):
         raise InvalidTagKey()
-    if key.startswith(RESERVED_PREFIXES):
+    if not validate_tag_value(value):
         raise InvalidTag()
 
-
-def _add_tag_to_tag_set(tagset, key, value, check_key_prefix=True):
-    if check_key_prefix:
-        _check_key_prefix(key)
     tag = SubElement(tagset, 'Tag')
     SubElement(tag, 'Key').text = key
     SubElement(tag, 'Value').text = value
@@ -133,7 +130,7 @@ def tagging_header_to_xml(header_val):
     for key, val in items.items():
         if len(val) != 1:
             raise InvalidArgument(HTTP_HEADER_TAGGING_KEY,
-                                  value=val,
+                                  value=header_val,
                                   msg=INVALID_TAGGING)
         _add_tag_to_tag_set(tagset, key, val[0])
     return tostring(root)
@@ -260,7 +257,10 @@ class TaggingController(Controller):
                 for tag in tags:
                     key = tag.find('Key').text
                     value = tag.find('Value').text
-                    _check_key_prefix(key)
+                    if not validate_tag_key(key):
+                        raise InvalidTagKey()
+                    if not validate_tag_value(value):
+                        raise InvalidTagValue()
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 

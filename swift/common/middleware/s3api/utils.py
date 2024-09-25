@@ -17,6 +17,7 @@ import base64
 import calendar
 import email.utils
 import re
+import regex
 import six
 import time
 import uuid
@@ -43,6 +44,8 @@ DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
 
 
 MPU_PART_RE = re.compile('/[0-9]+$')
+TAG_KEY_VALUE_RE = regex.compile(r"^([\p{L}\p{Z}\p{N}_.:/=+\-@]*)$")
+RESERVED_PREFIXES = ('ovh:', 'aws:')
 
 
 def sysmeta_prefix(resource):
@@ -94,6 +97,37 @@ def utf8decode(s):
 
 def is_not_ascii(s):
     return not isinstance(s, str) or any(ord(c) > 127 for c in s)
+
+
+def validate_tag_key(key, check_prefix=True):
+    """
+    Validate the Key of tag against S3 criteria,
+    https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_Tag.html
+    True if valid, False is invalid.
+    """
+    # Key should be between 1 and 128 characters long
+    if not key or len(key) > 128:
+        return False
+    # Key should not start with a reserved prefix (aws: or ovh:)
+    if check_prefix and key.startswith(RESERVED_PREFIXES):
+        return False
+    if not TAG_KEY_VALUE_RE.match(key):
+        return False
+    return True
+
+
+def validate_tag_value(value):
+    """
+    Validate the Value of tag against S3 criteria,
+    https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_Tag.html
+    True if valid, False is invalid.
+    """
+    # Value should be between 0 and 256 character long
+    if value and len(value) > 256:
+        return False
+    if value and not TAG_KEY_VALUE_RE.match(value):
+        return False
+    return True
 
 
 def validate_bucket_name(name, dns_compliant_bucket_names):
