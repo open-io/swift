@@ -227,8 +227,6 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_put_bucket_encryption_kms:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_put_excess_tags:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_put_obj_enc_conflict_c_kms:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_put_obj_enc_conflict_c_s3:

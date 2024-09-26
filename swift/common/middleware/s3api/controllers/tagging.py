@@ -30,7 +30,7 @@ from swift.common.middleware.s3api.intelligent_tiering_utils import \
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey, \
-    InvalidTagValue
+    InvalidTagValue, BadRequest
 from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp, \
     validate_tag_key, validate_tag_value
 from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG, \
@@ -48,6 +48,7 @@ VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # FIXME(FVE): compute better size estimation according to key/value limits
 # 10 tags with 128b key and 256b value should be 3840 + envelope
 MAX_TAGGING_BODY_SIZE = 8 * 1024
+MAX_TAGGING_TAGS_ALLOWED = 10
 
 INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'the PutObject operation: The header \'x-amz-tagging\' ' \
@@ -254,6 +255,7 @@ class TaggingController(Controller):
             # If an action was found, tags won't be updated, no need to check
             # prefixes.
             if not action:
+                tags_keys = []
                 for tag in tags:
                     key = tag.find('Key').text
                     value = tag.find('Value').text
@@ -261,6 +263,15 @@ class TaggingController(Controller):
                         raise InvalidTagKey()
                     if not validate_tag_value(value):
                         raise InvalidTagValue()
+                    if key in tags_keys:
+                        raise InvalidTag(
+                            'Cannot provide multiple Tags with the same key')
+                    tags_keys.append(key)
+                if len(tags) > MAX_TAGGING_TAGS_ALLOWED:
+                    raise BadRequest(
+                        'Object tags cannot be greater than '
+                        f'{MAX_TAGGING_TAGS_ALLOWED}'
+                    )
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
