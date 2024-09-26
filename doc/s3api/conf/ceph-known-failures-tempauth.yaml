@@ -213,7 +213,6 @@ ceph_s3:
   s3tests_boto3.functional.test_s3.test_post_object_upload_size_limit_exceeded: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_post_object_user_specified_header: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_delete_tags: {status: KNOWN}
-  s3tests_boto3.functional.test_s3.test_put_excess_tags: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_max_kvsize_tags: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_max_tags: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_modify_tags: {status: KNOWN}
