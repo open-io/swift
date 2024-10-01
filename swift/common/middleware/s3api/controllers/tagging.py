@@ -48,7 +48,8 @@ VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # FIXME(FVE): compute better size estimation according to key/value limits
 # 10 tags with 128b key and 256b value should be 3840 + envelope
 MAX_TAGGING_BODY_SIZE = 8 * 1024
-MAX_TAGGING_TAGS_ALLOWED = 10
+MAX_OBJECT_TAGGING_TAGS_ALLOWED = 10
+MAX_BUCKET_TAGGING_TAGS_ALLOWED = 50
 
 INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'the PutObject operation: The header \'x-amz-tagging\' ' \
@@ -123,6 +124,23 @@ def _add_tag_to_tag_set(tagset, key, value, check_key_prefix=True):
     SubElement(tag, 'Value').text = value
 
 
+def _validate_tags_count(tags, object_tagging=True):
+    if object_tagging:
+        # Object tagging
+        if len(tags) > MAX_OBJECT_TAGGING_TAGS_ALLOWED:
+            raise BadRequest(
+                'Object tags cannot be greater than '
+                f'{MAX_OBJECT_TAGGING_TAGS_ALLOWED}'
+            )
+    else:
+        # Bucket tagging
+        if len(tags) > MAX_BUCKET_TAGGING_TAGS_ALLOWED:
+            raise BadRequest(
+                'Bucket tag count cannot be greater than '
+                f'{MAX_BUCKET_TAGGING_TAGS_ALLOWED}'
+            )
+
+
 def tagging_header_to_xml(header_val):
     """Convert x-amz-tagging header value to a Tagging XML document."""
     root, tagset = _create_tagging_xml_document()
@@ -134,6 +152,7 @@ def tagging_header_to_xml(header_val):
                                   value=header_val,
                                   msg=INVALID_TAGGING)
         _add_tag_to_tag_set(tagset, key, val[0])
+    _validate_tags_count(items)
     return tostring(root)
 
 
@@ -267,11 +286,8 @@ class TaggingController(Controller):
                         raise InvalidTag(
                             'Cannot provide multiple Tags with the same key')
                     tags_keys.append(key)
-                if len(tags) > MAX_TAGGING_TAGS_ALLOWED:
-                    raise BadRequest(
-                        'Object tags cannot be greater than '
-                        f'{MAX_TAGGING_TAGS_ALLOWED}'
-                    )
+                _validate_tags_count(
+                    tags, object_tagging=req.object_name is not None)
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
