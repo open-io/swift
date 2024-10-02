@@ -3967,6 +3967,10 @@ cluster_dfw1 = http://dfw1.host/v1/
         self.assertEqual(lf.format('{a} {b}', a='Swift is', b='great'),
                          'Swift%20is great')
 
+        lf = utils.LogStringFormatter(ltsv=True)
+        self.assertEqual(lf.format('{a} {b}', a='Swift is', b='great'),
+                         'Swift is great')
+
         # Unicode & co
         lf = utils.LogStringFormatter()
         self.assertEqual(lf.format('{a} {b}', a='Swift est',
@@ -3977,6 +3981,21 @@ cluster_dfw1 = http://dfw1.host/v1/
         self.assertEqual(lf.format('{a} {b}', a='Swift est',
                                    b=u'g\u00e9nial ^^'),
                          'Swift%20est g%C3%A9nial%20%5E%5E')
+
+        lf = utils.LogStringFormatter(ltsv=True)
+        self.assertEqual(lf.format('{a} {b}', a='Swift est',
+                                   b=u'g\u00e9nial ^^'),
+                         'Swift est génial ^^')
+
+        # ltsv value field cannot contain Tab carriage return and newline
+        lf = utils.LogStringFormatter(ltsv=True)
+        self.assertEqual(
+            lf.format(
+                "Tab {a}, carriage return {b}, newline {c}",
+                a='\t', b='\r', c='\n'
+            ),
+            'Tab #011, carriage return #015, newline #012'
+        )
 
     def test_str_anonymizer(self):
         anon = utils.StrAnonymizer('Swift is great!', 'md5', '')
