@@ -128,7 +128,10 @@ class ProxyLoggingMiddleware(object):
         self.pid = os.getpid()
         self.logger = get_logger(
             conf, log_route=conf.get('log_name', default_log_route))
-        self.log_formatter = LogStringFormatter(default='-', quote=True)
+        is_log_format_ltsv = conf.get('log_format_ltsv', False)
+        self.log_formatter = LogStringFormatter(
+            default='-', quote=True, ltsv=is_log_format_ltsv
+        )
         self.log_msg_template = conf.get(
             'log_msg_template', default_log_msg_template)
         # The salt is only used in StrAnonymizer. This class requires bytes,

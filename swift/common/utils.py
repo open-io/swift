@@ -646,18 +646,25 @@ UTC = _UTC()
 
 
 class LogStringFormatter(string.Formatter):
-    def __init__(self, default='', quote=False):
+    def __init__(self, default='', quote=False, ltsv=False):
         super(LogStringFormatter, self).__init__()
         self.default = default
         self.quote = quote
+        self.ltsv = ltsv
 
     def format_field(self, value, spec):
         if not value:
             return self.default
         else:
             log = super(LogStringFormatter, self).format_field(value, spec)
-            if self.quote:
-                return quote(log, ':/{}')
+            if self.ltsv:
+                return (
+                    log.replace('\t', "#011")
+                    .replace("\n", "#012")
+                    .replace("\r", "#015")
+                )
+            elif self.quote:
+                return quote(log, ":/{}")
             else:
                 return log
 
