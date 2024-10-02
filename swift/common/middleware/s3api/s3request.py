@@ -2141,7 +2141,7 @@ class S3Request(swob.Request):
                         resp.headers.get('Retry-After', self.conf.retry_after)
                     )
                 },
-                backend_error=err_msg,
+                backend_error=err_msg.decode('utf8'),
                 service_id=resp.environ.get(
                     'oio.error_info', {}).get('service_id')
             )
