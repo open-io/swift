@@ -3,9 +3,8 @@ name: swift-oio-tests
 jobs:
   - job: Run oio tests
     steps:
-
       - name: Checkout application
-        checkout: '{{ .cds.workspace }}'
+        checkout: "{{ .cds.workspace }}"
 
       - name: Install dependencies
         script: |+
@@ -83,9 +82,10 @@ jobs:
 
       - name: Analyze Ceph S3 tests results
         script:
-            - '[ "{{.cds.env.TEST_SUITE}}" = "ceph-s3tests" ] || exit 0'
-            - . $HOME/swiftenv/bin/activate
-            - ./third_party/ceph-s3tests-reports/bin/report.py --detailed ceph-s3tests-attributes.yaml --known-failures doc/s3api/conf/ceph-known-failures-oio.yaml tests_report.xml
+          - '[ "{{.cds.env.TEST_SUITE}}" = "ceph-s3tests" ] || exit 0'
+          - . $HOME/swiftenv/bin/activate
+          - ./third_party/ceph-s3tests-reports/bin/report.py --detailed ceph-s3tests-attributes.yaml --known-failures doc/s3api/conf/ceph-known-failures-oio.yaml tests_report.xml
+          - ./third_party/ceph-s3tests-reports/bin/report.py --known-failures doc/s3api/conf/ceph-known-failures-oio.yaml --format xunit tests_report.xml > tests_report.ceph.s3tests.xml
 
       - name: Save coverage information
         always_executed: true
@@ -103,13 +103,12 @@ jobs:
         always_executed: true
         name: Save tests report
         script:
-          - '[ "{{.cds.env.TEST_SUITE}}" = "ceph-s3tests" -a -f tests_report.xml ] && mv tests_report.xml "tests_report.ceph.s3tests.xml"'
           - '[ ! -f tests_report.xml ] || mv tests_report.xml "tests_report.oio.{{.cds.env.TEST_SUITE}}.xml"'
           - '[ ! -f tests_report.*.xml ] || worker upload --tag="{{.cds.version}}" tests_report.*.xml'
 
       - optional: true
         always_executed: true
-        jUnitReport: '{{.cds.workspace}}/tests_report.*.xml'
+        jUnitReport: "{{.cds.workspace}}/tests_report.*.xml"
 
     requirements:
       - model: Ubuntu-20.04-VM-b2-15

@@ -10,4 +10,4 @@
 
 [submodule "ceph-s3tests-reports"]
 	path = third_party/ceph-s3tests-reports
-	url = https://github.com/tipabu/s3compat.git
+	url = https://github.com/thibault-p/s3compat.git
