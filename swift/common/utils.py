@@ -657,7 +657,7 @@ class LogStringFormatter(string.Formatter):
         else:
             log = super(LogStringFormatter, self).format_field(value, spec)
             if self.quote:
-                return quote(log, ':/{}')
+                return quote(log, " :/?#[]@!$&'()*+,;={}\"")
             else:
                 return log
 
