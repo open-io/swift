@@ -636,7 +636,7 @@ class TestInternalClient(unittest.TestCase):
 
         # Since we didn't provide an X-Timestamp, retrying gives us a chance to
         # succeed (assuming the failure was due to clock skew between servers)
-        expected = (' HTTP/1.0 409 ',)
+        expected = ('\tHTTP/1.0\t409\t',)
         logger = client.app._pipeline_final_app.logger
         loglines = logger.get_lines_for_level('info')
         for expected, logline in zip_longest(expected, loglines):
@@ -693,7 +693,7 @@ class TestInternalClient(unittest.TestCase):
         self.assertEqual(fully_read_paths, ['/cont/obj'])
         self.assertEqual(closed_paths, ['/cont/obj'])
 
-        expected = (' HTTP/1.0 200 ', )
+        expected = ('	HTTP/1.0	200	', )
         for expected, logline in zip_longest(expected, loglines):
             if not expected:
                 self.fail('Unexpected extra log line: %r' % logline)
@@ -706,7 +706,7 @@ class TestInternalClient(unittest.TestCase):
         self.assertEqual(fully_read_paths, ['/cont/obj'] * 3)
         self.assertEqual(closed_paths, ['/cont/obj'] * 3)
 
-        expected = (' HTTP/1.0 503 ', ' HTTP/1.0 503 ', ' HTTP/1.0 503 ', )
+        expected = ('	HTTP/1.0	503	', '	HTTP/1.0	503	', '	HTTP/1.0	503	', )
         for expected, logline in zip_longest(expected, loglines):
             if not expected:
                 self.fail('Unexpected extra log line: %r' % logline)

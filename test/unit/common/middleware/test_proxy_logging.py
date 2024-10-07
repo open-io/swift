@@ -120,7 +120,7 @@ class TestProxyLogging(unittest.TestCase):
             self.assertEqual([], info_calls)
         else:
             self.assertEqual(1, len(info_calls))
-            return info_calls[0][0][0].split(' ')
+            return info_calls[0][0][0].split('\t')
 
     def assertTiming(self, exp_metric, app, exp_timing=None):
         timing_calls = app.access_logger.log_dict['timing']
@@ -420,10 +420,10 @@ class TestProxyLogging(unittest.TestCase):
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {
             'log_anonymization_salt': 'secret_salt',
             'log_msg_template': (
-                'template which can be edited in config: '
-                '{protocol} {path} {method} '
-                '{path.anonymized} {container.anonymized} '
-                '{request_time} {start_time.datetime} {end_time} {ttfb}')})
+                'template which can be edited in config:	'
+                '{protocol}	{path}	{method}	'
+                '{path.anonymized}	{container.anonymized}	'
+                '{request_time}	{start_time.datetime}	{end_time}	{ttfb}')})
         app.access_logger = debug_logger()
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'})
         with mock.patch('time.time',
@@ -433,24 +433,26 @@ class TestProxyLogging(unittest.TestCase):
             # exhaust generator
             resp_body = b''.join(resp)
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[0], 'template')
-        self.assertEqual(log_parts[7], 'HTTP/1.0')
-        self.assertEqual(log_parts[8], '/')
-        self.assertEqual(log_parts[9], 'GET')
-        self.assertEqual(log_parts[10],
+        print(log_parts)
+        self.assertEqual(
+            log_parts[0], 'template which can be edited in config:')
+        self.assertEqual(log_parts[1], 'HTTP/1.0')
+        self.assertEqual(log_parts[2], '/')
+        self.assertEqual(log_parts[3], 'GET')
+        self.assertEqual(log_parts[4],
                          '{SMD5}c65475e457fea0951fbb9ec9596b2177')
-        self.assertEqual(log_parts[11], '-')
-        self.assertEqual(log_parts[13], '26/Apr/1970/17/46/40')
-        self.assertEqual(log_parts[14], '10000001.000000000')
-        self.assertEqual(log_parts[15], '0.5000')
+        self.assertEqual(log_parts[5], '-')
+        self.assertEqual(log_parts[7], '26/Apr/1970/17/46/40')
+        self.assertEqual(log_parts[8], '10000001.000000000')
+        self.assertEqual(log_parts[9], '0.5000')
         self.assertEqual(resp_body, b'FAKE APP')
 
     def test_log_msg_template_s3api(self):
         # Access logs configuration should override the default one
         app = proxy_logging.ProxyLoggingMiddleware(FakeApp(), {
             'log_msg_template': (
-                '{protocol} {path} {method} '
-                '{account} {container} {object}')})
+                '{protocol}	{path}	{method}	'
+                '{account}	{container}	{object}')})
         app.access_logger = debug_logger()
         req = Request.blank('/bucket/path/to/key', environ={
             'REQUEST_METHOD': 'GET',
@@ -750,8 +752,8 @@ class TestProxyLogging(unittest.TestCase):
 
         app = proxy_logging.ProxyLoggingMiddleware(
             FakeApp(exploding_body()), {
-                'log_msg_template': '{method} {path} '
-                '{status_int} {wire_status_int}',
+                'log_msg_template': '{method}	{path}	'
+                '{status_int}	{wire_status_int}',
             })
         app.access_logger = debug_logger()
         req = Request.blank('/', environ={'REQUEST_METHOD': 'GET'})
@@ -935,7 +937,7 @@ class TestProxyLogging(unittest.TestCase):
         req.environ['swift.log_info'] = ['one', 'and two']
         list(app(req.environ, start_response))
         log_parts = self._log_parts(app)
-        self.assertEqual(log_parts[18], 'one%2Cand%20two')
+        self.assertEqual(log_parts[18], 'one,and two')
 
     def test_log_auth_token(self):
         auth_token = 'b05bf940-0464-4c0e-8c70-87717d2d73e8'

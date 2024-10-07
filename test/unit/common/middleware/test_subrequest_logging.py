@@ -98,11 +98,12 @@ class TestSubRequestLogging(unittest.TestCase):
 
         req.get_response(app)
         info_log_lines = app.fake_logger.get_lines_for_level('info')
+        print(info_log_lines)
         self.assertEqual(len(info_log_lines), 4)
-        subreq_get = '%s %s' % (subrequest_type, SUB_GET_PATH)
-        subreq_put = '%s %s' % (subrequest_type, SUB_PUT_POST_PATH)
-        origput = 'PUT %s' % self.path
-        copyget = 'GET %s' % '/v1/a/test/obj'
+        subreq_get = '%s	%s' % (subrequest_type, SUB_GET_PATH)
+        subreq_put = '%s	%s' % (subrequest_type, SUB_PUT_POST_PATH)
+        origput = 'PUT	%s' % self.path
+        copyget = 'GET	%s' % '/v1/a/test/obj'
         # expect GET subreq, copy GET, PUT subreq, orig PUT
         self.assertTrue(subreq_get in info_log_lines[0])
         self.assertTrue(copyget in info_log_lines[1])
@@ -130,8 +131,8 @@ class TestSubRequestLogging(unittest.TestCase):
         self.assertEqual(len(info_log_lines), expect_lines)
         self.assertTrue('Copying object' not in info_log_lines[0])
 
-        subreq_put_post = '%s %s' % (subrequest_type, SUB_PUT_POST_PATH)
-        origpost = 'POST %s' % self.path
+        subreq_put_post = '%s	%s' % (subrequest_type, SUB_PUT_POST_PATH)
+        origpost = 'POST	%s' % self.path
 
         # fast post expect POST subreq, original POST
         self.assertTrue(subreq_put_post in info_log_lines[0])

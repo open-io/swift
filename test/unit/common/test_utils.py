@@ -3965,7 +3965,7 @@ cluster_dfw1 = http://dfw1.host/v1/
 
         lf = utils.LogStringFormatter(quote=True)
         self.assertEqual(lf.format('{a} {b}', a='Swift is', b='great'),
-                         'Swift%20is great')
+                         'Swift is great')
 
         # Unicode & co
         lf = utils.LogStringFormatter()
@@ -3976,7 +3976,7 @@ cluster_dfw1 = http://dfw1.host/v1/
         lf = utils.LogStringFormatter(quote=True)
         self.assertEqual(lf.format('{a} {b}', a='Swift est',
                                    b=u'g\u00e9nial ^^'),
-                         'Swift%20est g%C3%A9nial%20%5E%5E')
+                         'Swift est g%C3%A9nial ^^')
 
     def test_str_anonymizer(self):
         anon = utils.StrAnonymizer('Swift is great!', 'md5', '')

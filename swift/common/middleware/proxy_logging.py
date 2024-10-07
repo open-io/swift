@@ -117,11 +117,12 @@ class ProxyLoggingMiddleware(object):
         self, app, conf, logger=None, default_log_route='proxy-logging',
         default_access_log_route='proxy-access',
         default_log_msg_template=(
-            '{client_ip} {remote_addr} {remote_port} {end_time.datetime} '
-            '{method} {path} {protocol} {status_int} {referer} {user_agent} '
-            '{auth_token} {bytes_recvd} {bytes_sent} {client_etag} '
-            '{transaction_id} {headers} {request_time} {source} {log_info} '
-            '{start_time} {end_time} {policy_index}'
+            '{client_ip}	{remote_addr}	{remote_port}	'
+            '{end_time.datetime}	{method}	{path}	{protocol}	'
+            '{status_int}	{referer}	{user_agent}	{auth_token}	'
+            '{bytes_recvd}	{bytes_sent}	{client_etag}	'
+            '{transaction_id}	{headers}	{request_time}	{source}	'
+            '{log_info}	{start_time}	{end_time}	{policy_index}'
         )
     ):
         self.app = app
