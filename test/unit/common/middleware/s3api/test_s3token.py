@@ -1013,6 +1013,20 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
                                 tenant_name='FORCED_TENANT',
                                 user_name='FORCED_USER')
 
+    def test_impersonate_user_missing(self):
+        req = Request.blank('/v1/AUTH_swiftint/c/o')
+        req.environ['s3api.auth_details'] = {
+            'access_key': u'access:FORCED_ID:FORCED_TENANT',
+            'signature': u'signature',
+            'string_to_sign': u'token',
+        }
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, 200)
+        # Account is forced, tenant and user are not
+        self._assert_authorized(req, account_path='/v1/AUTH_FORCED_ID',
+                                tenant_name='PROJECT_NAME',
+                                user_name='S3_USER')
+
     def _test_bad_reply_missing_parts(self, *parts):
         resp = copy.deepcopy(GOOD_RESPONSE_V3)
         part_dict = resp

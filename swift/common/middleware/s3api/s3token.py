@@ -287,6 +287,7 @@ class S3Token(object):
     def __call__(self, environ, start_response):
         """Handle incoming request. authenticate and send downstream."""
         req = Request(environ)
+        trans_id = environ.get('swift.trans_id', 'UNKNOWN')
         self._logger.debug('Calling S3Token middleware.')
 
         # Always drop auth headers if we're first in the pipeline
@@ -342,8 +343,14 @@ class S3Token(object):
         if ':' in access:
             access, force_tenant = access.split(':', 1)
             if ':' in force_tenant:
-                force_tenant, force_tenant_name, force_user_name = \
-                    force_tenant.split(':', 2)
+                try:
+                    force_tenant, force_tenant_name, force_user_name = \
+                        force_tenant.split(':', 2)
+                except ValueError as err:
+                    self._logger.warning(
+                        "Failed to parse forced tenant '%s': %s (reqid=%s)",
+                        force_tenant, err, trans_id
+                    )
 
         # Authenticate request.
         creds = {'credentials': {'access': access,
@@ -411,7 +418,6 @@ class S3Token(object):
             self._logger.timing(metric_name, duration * 1000)
 
         if not cached_auth_data:
-            trans_id = environ.get('swift.trans_id', 'UNKNOWN')
             creds_json = json.dumps(creds)
             self._logger.debug('Connecting to Keystone sending this JSON: %s',
                                creds_json)
