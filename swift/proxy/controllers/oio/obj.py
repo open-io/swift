@@ -139,7 +139,10 @@ class SizeCheckerReader(object):
     def _add_size(self, size):
         if size == 0:
             if self.expected is not None and self.consumed != self.expected:
-                raise exceptions.SourceReadError("Truncated input")
+                raise exceptions.SourceReadError(
+                    f"Truncated input: expected {self.expected} bytes, "
+                    f"received {self.consumed} bytes"
+                )
         else:
             self.consumed = self.consumed + size
             if self.expected is None:
