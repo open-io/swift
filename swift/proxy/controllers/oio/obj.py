@@ -31,7 +31,7 @@ from swift.common.middleware.versioned_writes.legacy \
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
-    header_mapping, REQID_HEADER, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
+    header_mapping, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
     obj_version_from_env, oio_versionid_to_swift_versionid, \
     swift_versionid_to_oio_versionid, extract_oio_headers
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
@@ -223,7 +223,6 @@ class ObjectController(BaseObjectController):
 
     def get_object_head_resp(self, req):
         storage = self.app.storage
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         oio_retry_master = req.environ.get('oio.retry.master')
         perfdata = req.environ.get('swift.perfdata')
@@ -239,14 +238,14 @@ class ObjectController(BaseObjectController):
                     metadata, chunks = storage.object_locate(
                         self.account_name, self.container_name,
                         self.object_name, version=version,
-                        headers=oio_headers, force_master=force_master,
+                        reqid=self.trans_id, force_master=force_master,
                         end_user_request=True, cache=oio_cache,
                         perfdata=perfdata)
                 else:
                     metadata = storage.object_get_properties(
                         self.account_name, self.container_name,
                         self.object_name, version=version,
-                        headers=oio_headers, force_master=force_master,
+                        reqid=self.trans_id, force_master=force_master,
                         cache=oio_cache, perfdata=perfdata)
                 break
             except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
@@ -274,7 +273,7 @@ class ObjectController(BaseObjectController):
                     try:
                         storage.blob_client.chunk_head(
                             entry['url'],
-                            headers=oio_headers,
+                            reqid=self.trans_id,
                             end_user_request=True,
                         )
                         nb_chunks_ok += 1
@@ -303,7 +302,6 @@ class ObjectController(BaseObjectController):
                 # When the Range header is malformed, it is ignored
                 self.logger.warning('Malformed Range header (%s): %s',
                                     self.trans_id, exc)
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         force_master = False
@@ -311,7 +309,7 @@ class ObjectController(BaseObjectController):
             try:
                 metadata, stream = storage.object_fetch(
                     self.account_name, self.container_name, self.object_name,
-                    ranges=ranges, headers=oio_headers,
+                    ranges=ranges, reqid=self.trans_id,
                     version=obj_version_from_env(req.environ),
                     force_master=force_master, cache=oio_cache,
                     end_user_request=True, perfdata=perfdata)
@@ -425,7 +423,6 @@ class ObjectController(BaseObjectController):
 
     def _post_object(self, req, headers, **kwargs):
         metadata = self.load_object_metadata(headers)
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         try:
@@ -435,7 +432,7 @@ class ObjectController(BaseObjectController):
             clear = req.environ.get('swift.source') != 'S3'
             self.app.storage.object_set_properties(
                 self.account_name, self.container_name, self.object_name,
-                metadata, clear=clear, headers=oio_headers,
+                metadata, clear=clear, reqid=self.trans_id,
                 version=obj_version_from_env(req.environ),
                 cache=oio_cache, perfdata=perfdata, **kwargs)
         except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
@@ -627,13 +624,12 @@ class ObjectController(BaseObjectController):
 
         headers = self._prepare_headers(req)
         metadata = self.load_object_metadata(headers)
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         # FIXME(FVE): use object_show, cache in req.environ
         version = obj_version_from_env(req.environ)
         props = storage.object_get_properties(from_account, container, obj,
-                                              headers=oio_headers,
+                                              reqid=self.trans_id,
                                               version=version,
                                               cache=oio_cache,
                                               perfdata=perfdata)
@@ -649,7 +645,7 @@ class ObjectController(BaseObjectController):
             link_meta = storage.object_link(
                 from_account, container, obj,
                 self.account_name, self.container_name, self.object_name,
-                headers=oio_headers, properties=metadata,
+                reqid=self.trans_id, properties=metadata,
                 properties_directive='REPLACE', target_version=version,
                 end_user_request=True, cache=oio_cache, perfdata=perfdata)
         # TODO(FVE): this exception catching block has to be refactored
@@ -728,7 +724,6 @@ class ObjectController(BaseObjectController):
 
         ct_props = {'properties': {}, 'system': {}}
         metadata = self.load_object_metadata(headers)
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         if 'new_version' in kwargs:
@@ -785,7 +780,7 @@ class ObjectController(BaseObjectController):
             _chunks, size, checksum, meta = self.app.storage.object_create_ext(
                 self.account_name, self.container_name,
                 obj_name=self.object_name, file_or_path=data_source,
-                mime_type=content_type, policy=policy, headers=oio_headers,
+                mime_type=content_type, policy=policy, reqid=self.trans_id,
                 etag=req.headers.get('etag', '').strip('"'),
                 properties=metadata, container_properties=ct_props,
                 properties_callback=(
@@ -898,7 +893,6 @@ class ObjectController(BaseObjectController):
     def _delete_object(self, req):
         storage = self.app.storage
         headers = self._prepare_headers(req)
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         bypass_governance = req.headers.get(
@@ -921,7 +915,7 @@ class ObjectController(BaseObjectController):
                 version=oio_version,
                 create_delete_marker=create_delete_marker,
                 bypass_governance=bypass_governance,
-                headers=oio_headers, cache=oio_cache, perfdata=perfdata,
+                reqid=self.trans_id, cache=oio_cache, perfdata=perfdata,
                 properties=metadata,
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,

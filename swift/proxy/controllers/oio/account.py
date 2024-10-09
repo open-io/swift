@@ -15,8 +15,7 @@
 
 import time
 
-from swift.common.oio_utils import handle_oio_timeout, handle_service_busy, \
-    REQID_HEADER
+from swift.common.oio_utils import handle_oio_timeout, handle_service_busy
 from swift.common.utils import public, Timestamp, json
 from swift.common.constraints import check_metadata
 from swift.common import constraints
@@ -171,21 +170,20 @@ class AccountController(SwiftAccountController):
                          constraints.ACCOUNT_LISTING_LIMIT)
         marker = get_param(req, 'marker')
         end_marker = get_param(req, 'end_marker')
-        oio_headers = {REQID_HEADER: self.trans_id}
         info = None
 
         if req.environ.get('swift.source') == 'S3':
             info = self.app.storage.account.bucket_list(
                 self.account_name, limit=limit, marker=marker,
                 end_marker=end_marker, prefix=prefix,
-                delimiter=delimiter, headers=oio_headers)
+                delimiter=delimiter, reqid=self.trans_id)
             listing = info.pop('listing')
             return account_listing_bucket_response(req, listing=listing)
 
         info = self.app.storage.account.container_list(
             self.account_name, limit=limit, marker=marker,
             end_marker=end_marker, prefix=prefix,
-            delimiter=delimiter, headers=oio_headers)
+            delimiter=delimiter, reqid=self.trans_id)
         listing = info.pop('listing')
         return account_listing_response(req, info=info, listing=listing)
 
@@ -214,9 +212,8 @@ class AccountController(SwiftAccountController):
         return resp
 
     def get_account_head_resp(self, req):
-        oio_headers = {REQID_HEADER: self.trans_id}
         info = self.app.storage.account_show(
-            self.account_name, headers=oio_headers,
+            self.account_name, reqid=self.trans_id,
             use_cache=True)
         return account_listing_response(req, info=info)
 
@@ -250,15 +247,14 @@ class AccountController(SwiftAccountController):
         return resp
 
     def get_account_put_resp(self, req, headers):
-        oio_headers = {REQID_HEADER: self.trans_id}
         created = self.app.storage.account_create(
-            self.account_name, headers=oio_headers)
+            self.account_name, reqid=self.trans_id)
         to_set, to_del = split_set_and_del_metadata(
             get_metadata_from_headers(headers))
         if to_set or to_del:
             self.app.storage.account.account_update(
                 self.account_name, metadata=to_set, to_delete=to_del,
-                headers=oio_headers)
+                reqid=self.trans_id)
 
         if created:
             resp = HTTPCreated(request=req)
@@ -294,11 +290,10 @@ class AccountController(SwiftAccountController):
     def get_account_post_resp(self, req, headers):
         to_set, to_del = split_set_and_del_metadata(
             get_metadata_from_headers(headers))
-        oio_headers = {REQID_HEADER: self.trans_id}
         try:
             self.app.storage.account.account_update(
                 self.account_name, metadata=to_set, to_delete=to_del,
-                headers=oio_headers)
+                reqid=self.trans_id)
             resp = HTTPNoContent(request=req)
         except (exceptions.NotFound, exceptions.NoSuchAccount):
             if self.app.account_autocreate:
@@ -306,7 +301,7 @@ class AccountController(SwiftAccountController):
                 if to_set or to_del:
                     self.app.storage.account.account_update(
                         self.account_name, metadata=to_set, to_delete=to_del,
-                        headers=oio_headers)
+                        reqid=self.trans_id)
                 resp = HTTPNoContent(request=req)
             else:
                 resp = HTTPNotFound(request=req)

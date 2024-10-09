@@ -146,7 +146,7 @@ class TestObjectController(unittest.TestCase):
         resp = req.get_response(self.app)
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, create_delete_marker=None,
-            bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
+            bypass_governance=None, reqid=ANY, cache=None, perfdata=ANY,
             properties=ANY, replication_destinations=None, dryrun=False,
             replication_replicator_id=None, replication_role_project_id=None,
             end_user_request=True)
@@ -160,7 +160,7 @@ class TestObjectController(unittest.TestCase):
         resp = req.get_response(self.app)
         self.storage.object_delete.assert_called_once_with(
             'a', 'c', 'o', version=None, create_delete_marker=None,
-            bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
+            bypass_governance=None, reqid=ANY, cache=None, perfdata=ANY,
             properties=ANY, replication_destinations=None, dryrun=False,
             replication_replicator_id=None, replication_role_project_id=None,
             end_user_request=True)
@@ -178,7 +178,7 @@ class TestObjectController(unittest.TestCase):
         self.storage.object_get_properties = Mock(return_value=ret_val)
         resp = req.get_response(self.app)
         self.storage.object_get_properties.assert_called_once_with(
-            'a', 'c', 'o', version=None, headers=ANY, force_master=False,
+            'a', 'c', 'o', version=None, reqid=ANY, force_master=False,
             cache=None, perfdata=ANY)
         self.assertEqual(resp.status_int, 200)
         self.assertIn('Accept-Ranges', resp.headers)
@@ -230,7 +230,7 @@ class TestObjectController(unittest.TestCase):
             properties={}, extra_properties={},
             mime_type='application/octet-stream',
             file_or_path=ANY,
-            policy=None, headers=ANY, container_properties=ANY, cache=None,
+            policy=None, reqid=ANY, container_properties=ANY, cache=None,
             perfdata=ANY, properties_callback=ANY,
             replication_destinations=None, replication_replicator_id=None,
             replication_role_project_id=None, end_user_request=True)

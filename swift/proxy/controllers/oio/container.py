@@ -17,7 +17,7 @@ import json
 
 from swift.common.oio_utils import \
     handle_oio_no_such_container, handle_oio_timeout, \
-    handle_service_busy, REQID_HEADER, BUCKET_NAME_PROP, \
+    handle_service_busy, BUCKET_NAME_PROP, \
     BUCKET_OBJECT_LOCK_PROP, oio_versionid_to_swift_versionid, \
     split_oio_version_from_name
 from swift.common.utils import public, Timestamp, \
@@ -159,7 +159,6 @@ class ContainerController(SwiftContainerController):
                 prefix = path.rstrip('/') + '/'
             delimiter = '/'
         opts = req.environ.get('oio.query', {})
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         if limit > 0:
@@ -171,7 +170,7 @@ class ContainerController(SwiftContainerController):
                 mpu_marker_only=mpu_marker_only,
                 deleted=opts.get('deleted', False),
                 force_master=opts.get('force_master', False),
-                headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+                reqid=self.trans_id, cache=oio_cache, perfdata=perfdata)
             if (
                 not result.get('objects') and not result.get('system')
                 and not result.get('properties')
@@ -193,7 +192,7 @@ class ContainerController(SwiftContainerController):
                 info = self.app.storage.container_get_properties(
                     self.account_name, self.container_name,
                     force_master=opts.get('force_master', False),
-                    headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+                    reqid=self.trans_id, cache=oio_cache, perfdata=perfdata)
                 resp_headers = self.get_metadata_resp_headers(info)
 
         resp = self.create_listing(req, resp_headers, result, **opts)
@@ -273,13 +272,12 @@ class ContainerController(SwiftContainerController):
     def get_container_head_resp(self, req):
         headers = {}
         opts = req.environ.get('oio.query', {})
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         meta = self.app.storage.container_get_properties(
             self.account_name, self.container_name,
             force_master=opts.get('force_master', False),
-            headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+            reqid=self.trans_id, cache=oio_cache, perfdata=perfdata)
         headers.update(self.get_metadata_resp_headers(meta))
         return HTTPNoContent(request=req, headers=headers, charset='utf-8')
 
@@ -336,15 +334,13 @@ class ContainerController(SwiftContainerController):
         if bucket_object_lock_enabled is not None:
             system[BUCKET_OBJECT_LOCK_PROP] = \
                 bucket_object_lock_enabled
-        # TODO container update metadata
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         oio_params = req.environ.get('oio.query', {})  # e.g. region
         perfdata = req.environ.get('swift.perfdata')
         created = self.app.storage.container_create(
             self.account_name, self.container_name,
             properties=properties, system=system,
-            headers=oio_headers, cache=oio_cache, perfdata=perfdata,
+            reqid=self.trans_id, cache=oio_cache, perfdata=perfdata,
             **oio_params)
         if created:
             return HTTPCreated(request=req)
@@ -441,7 +437,6 @@ class ContainerController(SwiftContainerController):
         if not properties and not system:
             return self.PUT(req)
 
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         oio_params = req.environ.get('oio.query', {})
         perfdata = req.environ.get('swift.perfdata')
@@ -454,7 +449,7 @@ class ContainerController(SwiftContainerController):
             self.app.storage.container_set_properties(
                 self.account_name, self.container_name,
                 properties=properties, system=system,
-                headers=oio_headers, cache=oio_cache, perfdata=perfdata)
+                reqid=self.trans_id, cache=oio_cache, perfdata=perfdata)
             resp = HTTPNoContent(request=req)
         except exceptions.NoSuchContainer:
             if autocreate:
@@ -464,12 +459,11 @@ class ContainerController(SwiftContainerController):
         return resp
 
     def get_container_delete_resp(self, req):
-        oio_headers = {REQID_HEADER: self.trans_id}
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
         try:
             self.app.storage.container_delete(
-                self.account_name, self.container_name, headers=oio_headers,
+                self.account_name, self.container_name, reqid=self.trans_id,
                 cache=oio_cache, perfdata=perfdata)
         except exceptions.ContainerNotEmpty:
             return HTTPConflict(request=req)
