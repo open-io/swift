@@ -33,7 +33,7 @@ from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.swob import Response, HTTPBadRequest, HTTPNotFound, \
     HTTPNoContent, HTTPConflict, HTTPPreconditionFailed, HTTPForbidden, \
-    HTTPCreated, HTTPServiceUnavailable
+    HTTPCreated, HTTPServiceUnavailable, str_to_wsgi
 from swift.common.http import is_success, HTTP_ACCEPTED
 from swift.common.request_helpers import is_sys_or_user_meta, get_param, \
     get_reserved_name
@@ -209,7 +209,8 @@ class ContainerController(SwiftContainerController):
         for key in ("next_marker", "next_version_marker", "truncated"):
             if key not in result:
                 continue
-            resp_headers["x-listing-" + key.replace('_', '-')] = result[key]
+            resp_headers["x-listing-" + key.replace('_', '-')] = \
+                str_to_wsgi(str(result[key]))
         ret = Response(request=req, headers=resp_headers,
                        content_type='application/json', charset='utf-8')
         versions = kwargs.get('versions', False)

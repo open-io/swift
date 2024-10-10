@@ -155,6 +155,26 @@ class TestS3BasicTest(unittest.TestCase):
         self.assertEqual(0, first["Size"])
         self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', first["ETag"])
 
+    def test_list_non_ascii_next_marker_and_prefix(self):
+        keys = ('a', '🙂/b', '🙂/c')
+        for key in keys:
+            self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+
+        data = self.boto_client.list_objects_v2(
+            Bucket=self.bucket, Prefix='🙂/', MaxKeys=1,
+        )
+        self.assertEqual(1, len(data['Contents']))
+        self.assertEqual(keys[1], data['Contents'][0]['Key'])
+        self.assertIn('NextContinuationToken', data)
+
+        data2 = self.boto_client.list_objects_v2(
+            Bucket=self.bucket, Prefix='🙂/', MaxKeys=1,
+            ContinuationToken=data['NextContinuationToken'],
+        )
+        self.assertEqual(1, len(data2['Contents']))
+        self.assertEqual(keys[2], data2['Contents'][0]['Key'])
+        self.assertNotIn('NextContinuationToken', data2)
+
     def test_list_too_large_param(self):
         keys = ('a', 'b')
 
