@@ -343,7 +343,7 @@ from swift.common.swob import Request, HTTPBadRequest, HTTPServerError, \
     HTTPUnauthorized, HTTPConflict, HTTPUnprocessableEntity, \
     HTTPServiceUnavailable, HTTPForbidden, Response, Range, normalize_etag, \
     RESPONSE_REASONS, str_to_wsgi, bytes_to_wsgi, wsgi_to_str, wsgi_quote, \
-    HTTPInternalServerError
+    HTTPInternalServerError, HTTPNoContent
 from swift.common.utils import get_logger, config_true_value, \
     get_valid_utf8_str, override_bytes_from_content_type, split_path, \
     RateLimitedIterator, quote, close_if_possible, closing_if_possible, \
@@ -1688,6 +1688,9 @@ class StaticLargeObject(object):
                 request=req, body='Invalid UTF8 or contains NULL')
 
         if self.allow_async_delete:
+            # Body is empty when async mode is used.
+            resp = HTTPNoContent(request=req)
+
             # First, try the request as dryrun
             # If something blocks the deletion, it avoids playing it for real
             # (backend will not generate useless event to delete parts).
