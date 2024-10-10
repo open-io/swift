@@ -52,6 +52,8 @@ use = egg:swift#listing_formats
 
 [filter:slo]
 use = egg:swift#slo
+# Explicitely set to False here to have some tests done with the sync mode.
+allow_async_delete = False
 
 [filter:staticweb]
 use = egg:swift#staticweb

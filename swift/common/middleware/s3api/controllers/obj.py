@@ -452,6 +452,9 @@ class ObjectController(Controller):
                 query['symlink'] = 'get'
             # FIXME(FVE): only do this when allow_oio_versioning is true
             elif self._versioning_enabled(req):
+                # Notice that this "pop" is important to not delete the
+                # manifest and its parts.
+                # Only a delete marker will be created.
                 query.pop('multipart-manifest', None)
 
             try:

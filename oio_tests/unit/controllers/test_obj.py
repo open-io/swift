@@ -149,7 +149,7 @@ class TestObjectController(unittest.TestCase):
             bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
             properties=ANY, replication_destinations=None, dryrun=False,
             replication_replicator_id=None, replication_role_project_id=None,
-            end_user_request=True)
+            end_user_request=True, slo_manifest=False)
         self.assertEqual(204, resp.status_int)
         # oio-sds always sets version ids, even when versioning is suspended
         self.assertIn('x-amz-version-id', resp.headers)
@@ -163,7 +163,7 @@ class TestObjectController(unittest.TestCase):
             bypass_governance=None, headers=ANY, cache=None, perfdata=ANY,
             properties=ANY, replication_destinations=None, dryrun=False,
             replication_replicator_id=None, replication_role_project_id=None,
-            end_user_request=True)
+            end_user_request=True, slo_manifest=False)
         self.assertEqual(204, resp.status_int)
 
     def test_HEAD_simple(self):
