@@ -420,7 +420,9 @@ SEG_COUNT2=$(echo -n "${SEGS2}" | wc -l)
 echo "Explicitly deleting the old version of the object"
 ${AWS} s3api delete-object --bucket ${BUCKET} --key obj --version-id "$OBJ_VER"
 
-echo "Counting segments with openio CLI (should be zero, manifest has been deleted)"
+# This sleep is here to give the event-agent time to delete parts
+sleep 1
+echo "Counting segments with openio CLI (should be zero, mpu has been deleted)"
 SEGS4=$(openio object list ${BUCKET}+segments -f value)
 [ -z "$SEGS4" ]
 SEG_COUNT4=$(echo -n "${SEGS4}" | wc -l)

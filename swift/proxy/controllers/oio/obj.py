@@ -911,6 +911,7 @@ class ObjectController(BaseObjectController):
         replicator_id = req.headers.get("x-replication-replicator-id")
         role_project_id = req.headers.get("x-replication-role-project-id")
         dryrun = req.params.get('dryrun', False)
+        slo_manifest = req.params.get('slo_manifest', False)
 
         try:
             del_marker, oio_version = storage.object_delete(
@@ -923,7 +924,8 @@ class ObjectController(BaseObjectController):
                 replication_destinations=replication_destinations,
                 replication_replicator_id=replicator_id,
                 replication_role_project_id=role_project_id,
-                end_user_request=True, dryrun=dryrun)
+                end_user_request=True, dryrun=dryrun,
+                slo_manifest=slo_manifest)
         except exceptions.Conflict:
             raise HTTPConflict(request=req)
         except exceptions.NoSuchContainer:

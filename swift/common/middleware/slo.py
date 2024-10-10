@@ -342,7 +342,8 @@ from swift.common.swob import Request, HTTPBadRequest, HTTPServerError, \
     HTTPOk, HTTPPreconditionFailed, HTTPException, HTTPNotFound, \
     HTTPUnauthorized, HTTPConflict, HTTPUnprocessableEntity, \
     HTTPServiceUnavailable, HTTPForbidden, Response, Range, normalize_etag, \
-    RESPONSE_REASONS, str_to_wsgi, bytes_to_wsgi, wsgi_to_str, wsgi_quote
+    RESPONSE_REASONS, str_to_wsgi, bytes_to_wsgi, wsgi_to_str, wsgi_quote, \
+    HTTPInternalServerError
 from swift.common.utils import get_logger, config_true_value, \
     get_valid_utf8_str, override_bytes_from_content_type, split_path, \
     RateLimitedIterator, quote, close_if_possible, closing_if_possible, \
@@ -1436,24 +1437,27 @@ class StaticLargeObject(object):
 
         return resp_iter()
 
-    def _check_manifest_deletion(self, req):
+    def _delete_manifest(self, req, dryrun=True, slo_manifest=False):
         """
-        Try to delete the manifest.
-        In case of 204, nothing blocks the deletion, parts can be deleted.
-        Otherwise, something (lock, etc..) may block the object deletion,
-        parts should not be deleted.
+        Request the backend to delete only the manifest.
+        If slo_manifest is True, backend is responsible to delete parts.
+        If dryrun is True, nothing is deleted but it allows to check if the
+        deletion is allowed.
 
         :param req: a :class:`~swift.common.swob.Request` with an SLO manifest
             in path
-        :raises HTTPForbidden: if manifest deletion is not allowed
+        :raises HTTPForbidden: if manifest deletion is not successful
         """
-        if not check_utf8(wsgi_to_str(req.path_info)):
-            raise HTTPPreconditionFailed(
-                request=req, body='Invalid UTF8 or contains NULL')
-
         new_env = req.environ.copy()
-        new_query_string = 'dryrun=True'
         old_query_string = new_env.get('QUERY_STRING')
+        if dryrun and not slo_manifest:
+            new_query_string = 'dryrun=True'
+        elif slo_manifest and not dryrun:
+            new_query_string = 'slo_manifest=True'
+        else:
+            # It's either slo_manifest or dryrun at True
+            raise HTTPInternalServerError(
+                request=req, body='_delete_manifest cannot be called this way')
         if old_query_string:
             new_query_string = f'{old_query_string}&{new_query_string}'
         new_env['QUERY_STRING'] = new_query_string
@@ -1466,7 +1470,14 @@ class StaticLargeObject(object):
             path=req.path,
         )
         resp = sub_req.get_response(self.app)
-        if resp.status_int != 204:
+        # The previous request only delete the manifest.
+        # However, the backend generates a synchronous event to delete
+        # associated parts. If this event cannot be acked, an error is sent
+        # and nothing (nor the manifest not the parts) will be deleted.
+        # As it is an error from the backend, send a 503 to the customer.
+        if resp.status_int == 503:
+            raise HTTPServiceUnavailable(request=req)
+        elif resp.status_int != 204:
             raise HTTPForbidden(request=req)
 
     def get_segments_to_delete_iter(self, req):
@@ -1578,6 +1589,7 @@ class StaticLargeObject(object):
             raise HTTPServerError('Unable to load SLO manifest or segment.')
 
     def handle_async_delete(self, req):
+        "Legacy async deletion"
         if not check_utf8(wsgi_to_str(req.path_info)):
             raise HTTPPreconditionFailed(
                 request=req, body='Invalid UTF8 or contains NULL')
@@ -1656,18 +1668,12 @@ class StaticLargeObject(object):
 
     def handle_multipart_delete(self, req):
         """
-        First, will try to delete the manifest in dryrun (some triggers may
-        prevent the deletion).
-        If this dryrun is ok, will delete all the segments in the SLO manifest
-        and then, if successful, will delete the manifest file.
+        Delete SLO on sync or async mode.
+        Sync is faster for the customer, but requires a compatible backend.
 
         :param req: a :class:`~swift.common.swob.Request` with an obj in path
         :returns: swob.Response whose app_iter set to Bulk.handle_delete_iter
         """
-        if self.allow_async_delete and config_true_value(
-                req.params.get('async')):
-            return self.handle_async_delete(req)
-
         req.headers['Content-Type'] = None  # Ignore content-type from client
         resp = HTTPOk(request=req)
         try:
@@ -1677,13 +1683,26 @@ class StaticLargeObject(object):
         if out_content_type:
             resp.content_type = out_content_type
 
-        # If manifest deletion is not allowed, do not delete any parts
-        self._check_manifest_deletion(req)
+        if not check_utf8(wsgi_to_str(req.path_info)):
+            raise HTTPPreconditionFailed(
+                request=req, body='Invalid UTF8 or contains NULL')
 
-        resp.app_iter = self.bulk_deleter.handle_delete_iter(
-            req, objs_to_delete=self.get_segments_to_delete_iter(req),
-            user_agent='MultipartDELETE', swift_source='SLO',
-            out_content_type=out_content_type)
+        if self.allow_async_delete:
+            # First, try the request as dryrun
+            # If something blocks the deletion, it avoids playing it for real
+            # (backend will not generate useless event to delete parts).
+            self._delete_manifest(req, dryrun=True, slo_manifest=False)
+
+            # Now the deletion can safely be executed.
+            self._delete_manifest(req, dryrun=False, slo_manifest=True)
+        else:
+            # If manifest deletion is not allowed, do not delete any parts
+            self._delete_manifest(req, dryrun=True, slo_manifest=False)
+
+            resp.app_iter = self.bulk_deleter.handle_delete_iter(
+                req, objs_to_delete=self.get_segments_to_delete_iter(req),
+                user_agent='MultipartDELETE', swift_source='SLO',
+                out_content_type=out_content_type)
 
         return resp
 
