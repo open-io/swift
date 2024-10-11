@@ -6,4 +6,4 @@ git+ssh://git@stash.ovh.net:7999/cloudstoragepcs/swift-logger-ltsv@master#egg=sw
 git+ssh://git@stash.ovh.net:7999/cloudstoragepcs/swift-endpoint-filter@master#egg=swift_endpoint_filter
 keystonemiddleware
 xmltodict
-git+ssh://git@stash.ovh.net:7999/openio/oio-sds@master#egg=oio
+git+ssh://git@stash.ovh.net:7999/openio/oio-sds@dev/aducroqu/rawx-add-more-logs-when-uploading-chunk#egg=oio
