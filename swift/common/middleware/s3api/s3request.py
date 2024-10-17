@@ -1414,10 +1414,13 @@ class S3Request(swob.Request):
                 "allowable size for a copy source: "
                 f"{self.conf.max_server_side_copy_size}")
 
+        dst_stgclass = self.headers.get('x-amz-storage-class')
+        src_stgclass = src_resp.headers.get('x-amz-storage-class', 'STANDARD')
         if (
             dst_container == src_bucket and dst_obj == src_obj
             and self.headers.get('x-amz-metadata-directive', 'COPY') == 'COPY'
             and not query
+            and (not dst_stgclass or dst_stgclass == src_stgclass)
         ):
             raise InvalidRequest("This copy request is illegal "
                                  "because it is trying to copy an "
