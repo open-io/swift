@@ -38,8 +38,11 @@ class TestS3ServerSideCopy(unittest.TestCase):
         run_awscli_s3('mb', bucket=self.bucket_dst)
 
     def tearDown(self):
-        run_awscli_s3('rb', '--force', bucket=self.bucket_src)
-        run_awscli_s3('rb', '--force', bucket=self.bucket_dst)
+        try:
+            run_awscli_s3('rb', '--force', bucket=self.bucket_src)
+            run_awscli_s3('rb', '--force', bucket=self.bucket_dst)
+        except CliError as cli_err:
+            self.logger.warning("Failed to clean test buckets: %s", cli_err)
         super(TestS3ServerSideCopy, self).tearDown()
 
     def _create_object_src(self, key, size):
@@ -120,17 +123,37 @@ class TestS3ServerSideCopy(unittest.TestCase):
         self.assertEqual(expected_size, res['ContentLength'])
         self.assertEqual(expected_etag, res['ETag'])
 
-    def _test_copy_object(self, size, with_mpu_object_src=False):
-        key = random_str(8)
+    def _test_change_storage_class(self, size, with_mpu_object_src=False,
+                                   storage_class="EXPRESS_ONEZONE"):
+        orig_dst = self.bucket_dst
+        self.bucket_dst = self.bucket_src
+        try:
+            self._test_copy_object(
+                size,
+                with_mpu_object_src=with_mpu_object_src,
+                storage_class=storage_class,
+                copy_params=["--metadata-directive", "COPY"],
+            )
+        finally:
+            self.bucket_dst = orig_dst
+
+    def _test_copy_object(self, size, with_mpu_object_src=False,
+                          storage_class=None, copy_params=[]):
+        key = f"copy-object-{random_str(4)}"
+        dst_key = key if storage_class else f"{key}.copy"
         if with_mpu_object_src:
             obj_src, expected_etag = self._create_mpu_object_src(key, size)
         else:
             obj_src, expected_etag = self._create_object_src(key, size)
+        if storage_class:
+            copy_params.append("--storage-class")
+            copy_params.append(storage_class)
         start = time.time()
         obj_dst = run_awscli_s3api(
             'copy-object',
             '--copy-source', f'{self.bucket_src}/{key}',
-            bucket=self.bucket_dst, key=f'{key}.copy'
+            *copy_params,
+            bucket=self.bucket_dst, key=dst_key,
         )
         request_time = time.time() - start
         # Check the response
@@ -141,7 +164,7 @@ class TestS3ServerSideCopy(unittest.TestCase):
         self.assertGreater(request_time, expected_request_time - 5)
         self.assertLess(request_time, expected_request_time + 5)
         # Check the destination
-        self._check_object_dst(f'{key}.copy', size, expected_etag)
+        self._check_object_dst(dst_key, size, expected_etag)
 
     def _init_mpu_object_dst(self, key):
         res = run_awscli_s3api(
@@ -207,6 +230,22 @@ class TestS3ServerSideCopy(unittest.TestCase):
         finally:
             self._abort_mpu_object_dst(f'{key}_mpu', upload_id)
 
+    def test_change_storage_class_empty_object(self):
+        self._test_change_storage_class(0)
+
+    def test_change_storage_class_small_object(self):
+        self._test_change_storage_class(1024)
+
+    def test_change_storage_class_mpu(self):
+        self._test_change_storage_class(8388608, with_mpu_object_src=True)
+
+    def test_change_storage_class_same_class(self):
+        self.assertRaisesRegex(
+            CliError, 'InvalidRequest',
+            self._test_change_storage_class,
+            1024, storage_class="STANDARD",
+        )
+
     def test_copy_object_with_empty_object_src(self):
         self._test_copy_object(0)
 
@@ -240,7 +279,7 @@ class TestS3ServerSideCopy(unittest.TestCase):
             104857600,  # 100 MB
             with_mpu_object_src=True)
 
-    def test_copy_same_objec_replace_directive(self):
+    def test_copy_same_object_replace_directive(self):
         key = random_str(8)
         size = 8388608
         obj_src, expected_etag = self._create_mpu_object_src(key, size)
