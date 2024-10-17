@@ -22,7 +22,8 @@ from urllib.parse import unquote_plus
 from swift import gettext_ as _
 from swift.common.utils import (
     clean_content_type, config_true_value, Timestamp, public,
-    close_if_possible, closing_if_possible, flat_dict_from_dict)
+    close_if_possible, closing_if_possible, flat_dict_from_dict,
+    MD5_OF_EMPTY_STRING)
 from swift.common.constraints import MAX_FILE_SIZE, check_metadata, \
     check_object_creation
 from swift.common.header_key_dict import HeaderKeyDict
@@ -839,6 +840,8 @@ class ObjectController(BaseObjectController):
         # number and set it in the response headers, instead of the oio
         # version number.
         version_id = oio_versionid_to_swift_versionid(meta.get('version'))
+        if size == 0:
+            checksum = MD5_OF_EMPTY_STRING
         resp = HTTPCreated(
             request=req, etag=checksum,
             last_modified=last_modified,
