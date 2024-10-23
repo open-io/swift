@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import itertools
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -43,6 +42,94 @@ XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
 MAX_RULES_ALLOWED = 1000
+
+# This version should be incremented every time a breaking change is done on
+# lifecycle configuration schema. We should also implement a function to
+# migrate configuration from a version to another.
+LIFECYCLE_SCHEMA_VERSION = 1
+LIFECYCLE_ACTIONS = (
+    "Expiration",
+    "Transition",
+    "NoncurrentVersionExpiration",
+    "NoncurrentVersionTransition",
+    "AbortIncompleteMultipartUpload",
+)
+
+
+class FilterSerializerMixin(object):
+    def _build_filter_str(self, rule):
+        filter_elems = []
+        filter_ = rule.get("Filter", {})
+        for part in (
+            "ObjectSizeGreaterThan", "ObjectSizeLessThan", "Prefix"
+        ):
+            value = filter_.get(part)
+            if value is None:
+                continue
+            filter_elems.append(f"{part.lower()}={value}")
+
+        # Add tags if any
+        tags_ = filter_.get("Tag", [])
+        filter_elems.extend(
+            [f"tag: key={t['Key']}, value={t['Value']}" for t in tags_])
+
+        return f"filter '({' and '.join(filter_elems)})'"
+
+
+class InvalidDuplicatedStorageClass(InvalidRequest, FilterSerializerMixin):
+    _code = 'InvalidRequest'
+
+    def __init__(self, transition_type, rule):
+        super().__init__()
+        filter_str = FilterSerializerMixin._build_filter_str(self, rule)
+        self._msg = (
+            f"'StorageClass' must be different for '{transition_type}' "
+            f"actions in same 'Rule' with {filter_str}"
+        )
+
+
+class InvalidMixedDaysAndDate(InvalidRequest, FilterSerializerMixin):
+    _code = 'InvalidRequest'
+
+    def __init__(self, time_types, rule):
+        super().__init__()
+        filter_str = FilterSerializerMixin._build_filter_str(self, rule)
+        time_str = " and ".join([f"'{t}'" for t in sorted(time_types)])
+        self._msg = (
+            f"Found mixed {time_str} based Expiration and "
+            f"Transition actions in lifecycle rule for {filter_str}"
+        )
+
+
+class InvalidTransition(InvalidArgument, FilterSerializerMixin):
+    _code = 'InvalidArgument'
+
+    def __init__(
+            self, name, value, transition_type, time_type, stg1, stg2, rule):
+        super().__init__(name, value)
+        filter_str = FilterSerializerMixin._build_filter_str(self, rule)
+        self._msg = (
+            f"'{time_type}' in the '{transition_type}' action for "
+            f"StorageClass '{stg1}' for {filter_str} must be greater "
+            f"than '{time_type}' in the '{transition_type}' action for "
+            f"StorageClass '{stg2}' for {filter_str}"
+        )
+
+
+class InvalidExpirationBeforeTransition(
+        InvalidArgument, FilterSerializerMixin):
+    _code = 'InvalidArgument'
+
+    def __init__(self, time_type, max_expiration, non_current, rule):
+        super().__init__(time_type, max_expiration)
+        filter_str = FilterSerializerMixin._build_filter_str(self, rule)
+        prefix = "NonCurrent" if non_current else ""
+        adj = "later" if time_type == "Date" else "greater"
+        self._msg = (
+            f"'{time_type}' in the {prefix}Expiration action"
+            f" for {filter_str} must be {adj} than "
+            f"'{time_type}' in the {prefix}Transition action"
+        )
 
 
 def _match_prefix(prefix, key, _size, _tags):
@@ -75,7 +162,7 @@ def _match_rule(filter_fields, key, size, tags):
         "Prefix": _match_prefix,
         "ObjectSizeGreaterThan": _match_object_size_greater,
         "ObjectSizeLessThan": _match_object_size_less,
-        "Tags": _match_tags,
+        "Tag": _match_tags,
     }
     for field_name, field_value in filter_fields.items():
         validator = validators[field_name]
@@ -95,38 +182,44 @@ def get_expiration(conf, key, size, last_modified, tags=None):
     expiration_rule = None
     last_modified = datetime(
         last_modified.year, last_modified.month, last_modified.day)
-    for rule_id in conf.get("_expiration_rules", []):
+    # Priorize absolute dates
+    for rule_action_id in conf.get("_expiration_rules", {}).get("date", []):
+        rule_id, action_id = rule_action_id.split("-", 1)
         rule = conf["Rules"][rule_id]
         filters = rule.get("Filter", {})
-        if "Days" in rule["Expiration"]:
-            # Add one extra day because lifecycle pass is triggered at
-            # midnight the next day
-            days = rule["Expiration"]["Days"] + 1
-            expiration_candidate = (
-                last_modified + timedelta(days=days))
-        elif "Date" in rule["Expiration"]:
-            expiration_candidate = datetime.fromtimestamp(
-                iso8601_to_int(rule["Expiration"]["Date"]))
-        else:
-            # Dealing with ExpiredObjectDeleteMarker
-            continue
-        # Only match rule if the expiration delay can be reduced or is the
-        # first
-        if (expiration_date is not None
-                and expiration_candidate >= expiration_date):
-            continue
-        # Propagate V1 Prefix declaration to Filter
-        if "Prefix" in rule:
-            filters["Prefix"] = rule["Prefix"]
+        expiration_candidate = datetime.fromtimestamp(
+            iso8601_to_int(rule["Expiration"][action_id]["Date"]))
         if _match_rule(filters, key, size, tags):
             expiration_date = expiration_candidate
-            expiration_rule = rule_id
+            expiration_rule = rule["ID"]
+            break
+    # Try to get a earlier match in days
+    for rule_action_id in conf.get("_expiration_rules", {}).get("days", []):
+        # Add one extra day because lifecycle pass is triggered at
+        # midnight the next day
+        rule_id, action_id = rule_action_id.split("-", 1)
+        rule = conf["Rules"][rule_id]
+        days = rule["Expiration"][action_id]["Days"] + 1
+        filters = rule.get("Filter", {})
+        expiration_candidate = (
+            last_modified + timedelta(days=days))
+        if _match_rule(filters, key, size, tags):
+            if (
+                expiration_date is None
+                or expiration_candidate < expiration_date
+            ):
+                # The match does improve the expiration date
+                expiration_date = expiration_candidate
+                expiration_rule = rule["ID"]
+            # No need to test next rules as we already matched the best
+            # candidate
+            break
     return expiration_date, expiration_rule
 
 
 def iso8601_to_int(when):
     try:
-        parsed = parser.parse(when)
+        parsed = parser.isoparse(when)
     except ValueError:
         # What is better message to raise here
         raise MalformedXML("malformed date %s", when)
@@ -135,10 +228,6 @@ def iso8601_to_int(when):
 
 def int_to_iso8601(when):
     return datetime.utcfromtimestamp(when).isoformat()
-
-
-def tag(tagname):
-    return '{%s}%s' % (XMLNS_S3, tagname)
 
 
 def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
@@ -152,45 +241,607 @@ def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
     """
 
     def _to_xml(data, p=None, element=None):
-        if not isinstance(data, (dict, list)):
-            subelement = SubElement(element, p)
-            subelement.text = str(data)
-        elif isinstance(data, list):
-            for i in data:
-                # p = "Tags"  -> p = "Tag"
-                # p = "Transitions"-> p = "Transition"
-                # p = "NoncurrentVersionTransitions" -> \
-                # p = "NoncurrentVersionTransition"
-                subelement = SubElement(element, p[:-1])
-                _to_xml(i, element=subelement)
-
-        else:
-            for i in sorted(data):  # sorting the keys
-                if not isinstance(data[i], dict):
-                    _to_xml(data[i], i, element)
+        if p and p.startswith("_"):
+            # Skip internal fields
+            return
+        if isinstance(data, list):
+            for key in data:
+                subelement = SubElement(element, p)
+                _to_xml(key, element=subelement)
+        elif isinstance(data, dict):
+            for key in sorted(data):  # sorting the keys
+                if key.startswith("_"):
+                    # Skip internal fields
+                    continue
+                if not isinstance(data[key], dict):
+                    _to_xml(data[key], key, element)
                 else:
-                    if i == 'Filter' and \
-                       (len(data[i]) >= 2 or
-                        (len(data[i]) == 1 and
-                         len(data[i].get('Tags', [])) > 1)):
-                        subelement = SubElement(element, i)
+                    if key == 'Filter' and \
+                       (len(data[key]) >= 2 or
+                        (len(data[key]) == 1 and
+                         len(data[key].get('Tags', [])) > 1)):
+                        subelement = SubElement(element, key)
                         and_subelement = SubElement(subelement, "And")
-                        _to_xml(data[i], element=and_subelement)
-                    elif i == "Rules":
-                        for idx, val in data[i].items():
-                            subelement = SubElement(element, i[:-1])
-                            val["ID"] = idx
+                        _to_xml(data[key], element=and_subelement)
+                    elif key in ("Rules", *LIFECYCLE_ACTIONS):
+                        _key = key[:-1] if key == "Rules" else key
+                        for _, val in _iter_skip_internal(data[key]):
+                            subelement = (SubElement)(element, _key)
                             _to_xml(val, element=subelement)
                     else:
-                        subelement = SubElement(element, i)
-                        _to_xml(data[i], element=subelement)
+                        subelement = SubElement(element, key)
+                        _to_xml(data[key], element=subelement)
+        else:
+            subelement = SubElement(element, p)
+            subelement.text = str(data)
 
     root_elem = Element(root)
-    if "_expiration_rules" in conf:
-        conf.pop("_expiration_rules")
     _to_xml(conf, element=root_elem)
     body = tostring(root_elem)
     return body
+
+
+def _get_days(action):
+    for key in ("Days", "NoncurrentDays", "DaysAfterInitiation"):
+        if key in action:
+            return action[key], key
+    return None, None
+
+
+def _get_days_or_date(action):
+    if "Date" in action:
+        return action["Date"], "Date"
+    return _get_days(action)
+
+
+def _action_to_int(action):
+    # Build a integer from action to sort actions
+    # This integer is build like this 'ABBBBBBBBBBBBBBBBCC' where
+    # - A: indicates if the action is date or days based. Dates should be
+    #      evaluated first. Date: 1 Days: 2 Other: 0
+    # - BBBBBBBBBBBBBBBB: 16 digits with leading zeros. This represents the
+    #                     timestamp (in seconds) or the number of days.
+    #                     123 days translates to 0000000000000123
+    #                     2024-10-11 00:00:00 translates to 0000001728597600
+    # - CC: represents the storage class index.
+    #       See swift.common.middleware.s3api.utils.S3_STORAGE_CLASSES
+    date = action.get("Date")
+    days, _ = _get_days(action)
+
+    action_type = None
+    timestamp = 0
+    date_flag = 0
+    if date is not None:
+        timestamp = int(iso8601_to_int(date))
+        date_flag = 1
+        action_type = "date"
+    elif days is not None:
+        timestamp = days or 0
+        date_flag = 2
+        action_type = "days"
+
+    storage_class_flag = 0
+    if "StorageClass" in action:
+        storage_class_flag = \
+            S3_STORAGE_CLASSES.index(action["StorageClass"]) + 1
+
+    int_str = f"{date_flag}{timestamp:016}{storage_class_flag:02}"
+    return int(int_str), action_type
+
+
+def _populate_accelerators(rule_name, json_rule, conf):
+    def _register_accelerator(keys, action_index, index):
+        _accelerator = conf
+        for key in keys:
+            if key is None:
+                continue
+            _accelerator = _accelerator[key]
+        _rule_name = f"{rule_name}-{action_index}"
+        _accelerator.append((_rule_name, index))
+
+    for tag, acc_name in {
+        "Expiration": "_expiration_rules",
+        "Transition": "_transition_rules",
+        "AbortIncompleteMultipartUpload": "_abort_mpu_rules",
+        "NoncurrentVersionTransition": "_non_current_transition_rules",
+        "NoncurrentVersionExpiration": "_non_current_expiration_rules",
+    }.items():
+        for idx, action in _iter_skip_internal(json_rule.get(tag, {})):
+            # Handle specific case of delete marker expiration
+            if tag == "Expiration" and "ExpiredObjectDeleteMarker" in action:
+                if action.get("ExpiredObjectDeleteMarker", "") == "true":
+                    _register_accelerator(("_delete_marker_rules",), idx, 0)
+                continue
+            index, action_type = _action_to_int(action)
+            if tag not in ("Expiration", "Transition"):
+                action_type = None
+            _register_accelerator((acc_name, action_type), idx, index)
+
+
+def _sort_accelerators(conf):
+
+    def _sort_accelerator(acc):
+        _sorted = sorted(acc, key=lambda x: x[1])
+        return [r for r, _ in _sorted]
+
+    for accelerator, *extras in (("_delete_marker_rules",),
+                                 ("_expiration_rules", ("days", "date")),
+                                 ("_transition_rules", ("days", "date")),
+                                 ("_abort_mpu_rules",),
+                                 ("_non_current_transition_rules",),
+                                 ("_non_current_expiration_rules",)):
+        if isinstance(conf[accelerator], list):
+            conf[accelerator] = _sort_accelerator(conf[accelerator])
+        elif isinstance(conf[accelerator], dict):
+            for k in conf[accelerator]:
+                conf[accelerator][k] = _sort_accelerator(conf[accelerator][k])
+
+
+def _get_rule_id(rule):
+    rule_id = rule.find("ID")
+    rule_id = (
+        rule_id.text
+        if rule_id is not None and rule_id.text
+        else uuid.uuid4().hex
+    )
+    # Validate
+    if len(rule_id) > MAX_LENGTH_RULE_ID:
+        raise InvalidArgument(
+            "ID",
+            rule_id,
+            f"The maximum value is {MAX_LENGTH_RULE_ID} characters."
+        )
+    return rule_id
+
+
+def _validate_prefix_filter_consistency(rule):
+    if "Prefix" in rule and "Filter" in rule:
+        raise MalformedXML()
+    if "Prefix" not in rule and "Filter" not in rule:
+        raise MalformedXML()
+
+
+def _validate_rules_version_consistency(rules):
+    use_v1 = set(["Prefix" in rule for rule in rules.values()])
+    if len(use_v1) > 1:
+        raise InvalidRequest("Base level prefix cannot be used in Lifecycle "
+                             "V2, prefixes are only supported in the Filter.")
+
+
+def _build_rule(rule_xml, index):
+    rule = {
+        "ID": _get_rule_id(rule_xml),
+        "Status": rule_xml.find("Status").text,
+    }
+
+    # Handle deprecated v1 prefix style
+    prefix = _get_field("Prefix", rule_xml)
+    if prefix is not None:
+        rule["Prefix"] = prefix
+
+    # Filter
+    _build_filter(rule_xml, rule)
+
+    _validate_prefix_filter_consistency(rule)
+
+    # Actions
+    index = _build_actions(rule_xml, rule, index)
+
+    return rule, index
+
+
+def _get_field(field, elem):
+    e = elem.find(field)
+    return (e.text or "") if e is not None else None
+
+
+def _get_integer(field, elem):
+    e = elem.find(field)
+    if e is not None:
+        return int(e.text)
+    return None
+
+
+def _get_tags(field, elem):
+    tags = []
+    for e in elem.findall(field):
+        tags.append(
+            {"Key": _get_field("Key", e), "Value": _get_field("Value", e)})
+    return tags if tags else None
+
+
+def _get_forbidden_field(rule):
+    _filter = rule.get("Filter", {})
+    for field in ("Tag", "ObjectSizeGreaterThan", "ObjectSizeLessThan"):
+        if field in _filter:
+            return field
+    return None
+
+
+def _iter_skip_internal(hash):
+    for k, v in hash.items():
+        if k.startswith("_"):
+            continue
+        yield k, v
+
+
+def _get_max_time_in_actions(actions):
+    max_time = None
+    for key, action in _iter_skip_internal(actions):
+        if max_time is None:
+            max_time = _get_days_or_date(action)[0]
+        else:
+            max_time = max(max_time, _get_days_or_date(action)[0] or max_time)
+    return max_time
+
+
+def _extract_from_field(element, fields, context):
+    info = {}
+    for field, trans_func, valid_func in fields:
+        if trans_func:
+            field_data = trans_func(field, element)
+        else:
+            field_data = _get_field(field, element)
+        if field_data is not None:
+            if valid_func:
+                valid_func(field, field_data, context)
+            info[field] = field_data
+    return info
+
+
+def _validate_positive_integer(field, value, context):
+    if value is None or value <= 0:
+        raise InvalidArgument(
+            field,
+            value,
+            msg=f"'{field}' for {context} action must be a positive "
+                "integer")
+
+
+def _validate_date(field, value, context):
+    date = iso8601_to_int(value)
+    if date % 86400 > 0:
+        raise InvalidArgument(
+            field, value, "'Date' must be at midnight GMT")
+
+
+def _validate_storage_class(field, value, context):
+    if value not in S3_STORAGE_CLASSES:
+        raise MalformedXML()
+
+
+def _validate_tags(field, tags, context):
+    keys = []
+    for tag in tags:
+        if tag["Key"] in keys:
+            raise InvalidRequest("Duplicate Tag Keys are not allowed.")
+        keys.append(tag["Key"])
+        # TODO: validate key and value content
+        if not validate_tag_key(tag["Key"]):
+            raise InvalidTagKey()
+        if not validate_tag_value(tag["Value"]):
+            raise InvalidTagValue()
+
+
+def _validate_object_size_consistency(rule_filter):
+    less = rule_filter.get("ObjectSizeLessThan")
+    greater = rule_filter.get("ObjectSizeGreaterThan")
+    if less is not None and greater is not None and less <= greater:
+        raise InvalidRequest(
+            msg=("'ObjectSizeLessThan' has to be a value "
+                 "greater than 'ObjectSizeGreaterThan'.")
+        )
+
+
+def _validate_one_time_per_actions(actions):
+    for action in actions.values():
+        found = False
+        for timed_type in ("Days", "Date", "ExpiredObjectDeleteMarker"):
+            if timed_type in action:
+                if found:
+                    raise MalformedXML()
+                found = True
+
+
+def _validate_time_consistency(actions, rule):
+    # Validate time type consistency
+    for prefix in ("", "NoncurrentVersion"):
+        time_type_used = None
+        for action_type in ("Transition", "Expiration"):
+            type_actions = actions.get(f"{prefix}{action_type}")
+            if not type_actions:
+                continue
+            _validate_one_time_per_actions(type_actions)
+            time_type = _validate_actions_time_type_consistency(
+                type_actions, rule)
+            for a in type_actions.values():
+                if (
+                    time_type is None
+                    and a.get("ExpiredObjectDeleteMarker") is None
+                ):
+                    raise MalformedXML()
+            time_type_used = time_type_used or time_type
+
+            # Only current version can use 'Date' and 'Days'
+            if time_type_used != time_type:
+                raise InvalidMixedDaysAndDate(
+                    [time_type_used, time_type], rule)
+            type_actions["__time_type"] = time_type
+        _validate_transitions_before_expiration(
+            actions, prefix, time_type_used, rule)
+
+
+def _validate_transitions_before_expiration(actions, prefix, time_type, rule):
+    # Validate all transitions occur before expiration
+    max_transition = (
+        _get_max_time_in_actions(actions.get(f"{prefix}Transition", {}))
+    )
+    max_expiration = (
+        _get_max_time_in_actions(actions.get(f"{prefix}Expiration", {}))
+    )
+    if (
+        max_transition is not None
+        and max_expiration is not None
+        and max_expiration <= max_transition
+    ):
+        raise InvalidExpirationBeforeTransition(
+            time_type, max_expiration, prefix == "NonCurrent", rule)
+
+
+def _validate_transitions(actions, rule):
+    for action_type in ("Transition", "NoncurrentVersionTransition"):
+        _validate_transitions_no_duplicate(
+            actions.get(action_type, {}), action_type, rule)
+        _validate_transitions_consistency(
+            actions.get(action_type, {}), action_type, rule)
+        _validate_transitions_days(
+            actions.get(action_type, {}), action_type, rule)
+        _validate_transitions_different_times(
+            actions.get(action_type, {}), action_type, rule)
+
+
+def _validate_object_size(field, value, _rule):
+    if value <= 0 or value >= 1099511627776000:
+        raise InvalidRequest(
+            msg="'{field}' should be between 0 and 1099511627776000."
+        )
+
+
+def _validate_limited_action_filter(actions, rule):
+    forbidden_field = _get_forbidden_field(rule)
+    if not forbidden_field:
+        return
+    for action_type, cond, name in (
+        (
+            "Expiration",
+            lambda x: "ExpiredObjectDeleteMarker" in x,
+            "ExpiredObjectDeleteMarker"
+        ),
+        ("AbortIncompleteMultipartUpload", lambda _x: True, None),
+    ):
+        for action in actions.get(action_type, {}).values():
+            if cond(action):
+                action_type = name or action_type
+                raise InvalidRequest(
+                    msg=f"{action_type} cannot be specified with "
+                    f"{forbidden_field}."
+                )
+
+
+def _validate_one_action(actions, rule):
+    if not actions:
+        raise InvalidRequest(
+            "At least one action needs to be specified in a Rule")
+
+
+def _validate_actions_time_type_consistency(actions, rule):
+    time_types = set(
+        [x for x in [_get_days_or_date(a)[1] for a in actions.values()] if x])
+    if len(time_types) > 1:
+        raise InvalidMixedDaysAndDate(time_types, rule)
+    return time_types.pop() if time_types else None
+
+
+def _validate_transitions_no_duplicate(transitions, transition_type, rule):
+    stg_classes = [
+        v.get("StorageClass")
+        for k, v in _iter_skip_internal(transitions)
+    ]
+    if len(stg_classes) > len(set(stg_classes)):
+        raise InvalidDuplicatedStorageClass(transition_type, rule)
+
+
+def _validate_transitions_days(transitions, transition_type, rule):
+    for _, transition in _iter_skip_internal(transitions):
+        days, days_type = _get_days(transition)
+        if days is None:
+            continue
+        if days < 30:
+            stg_class = transition.get("StorageClass")
+            raise InvalidArgument(
+                days_type,
+                days,
+                msg=(
+                    f"'{days_type}' in {transition_type} action must be "
+                    "greater than or equal to 30 for storageClass "
+                    f"'{stg_class}'"
+                ),
+            )
+
+
+def _validate_transitions_different_times(transitions, transition_type, rule):
+    time_sorted = sorted(
+        [v for k, v in _iter_skip_internal(transitions)],
+        key=lambda x: _get_days_or_date(x)[0]
+    )
+    if not time_sorted:
+        return
+    previous = time_sorted[0]
+    for elem in time_sorted[1:]:
+        if _get_days_or_date(previous)[0] == _get_days_or_date(elem)[0]:
+            time_type = transitions.get("__time_type")
+            raise InvalidTransition(
+                time_type,
+                _get_days_or_date(previous)[0],
+                transition_type,
+                time_type,
+                elem.get("StorageClass"),
+                previous.get("StorageClass"),
+                rule,
+            )
+        previous = elem
+
+
+def _validate_transitions_consistency(transitions, transition_type, rule):
+    stg_sorted = sorted(
+        [v for k, v in _iter_skip_internal(transitions)],
+        key=lambda x: S3_STORAGE_CLASSES.index(x.get("StorageClass"))
+    )
+    time_sorted = sorted(
+        [v for k, v in _iter_skip_internal(transitions)],
+        key=lambda x: _get_days_or_date(x)[0]
+    )
+
+    for stg_sorted_elem, time_sorted_elem in zip(stg_sorted, time_sorted):
+        # Check transitions are in the same order
+        if stg_sorted_elem != time_sorted_elem:
+            raise InvalidTransition(
+                transitions.get("__time_type"),
+                _get_days_or_date(time_sorted_elem)[0],
+                transition_type,
+                transitions.get("__time_type"),
+                time_sorted_elem.get("StorageClass"),
+                stg_sorted_elem.get("StorageClass"),
+                rule,
+            )
+    return None, None
+
+
+def _build_actions(rule_xml, rule, index=0):
+    """
+    Return actions from conf
+    """
+    action_fields = (
+        (
+            "Expiration",
+            (
+                ("Days", _get_integer, _validate_positive_integer),
+                ("Date", None, _validate_date),
+                ("ExpiredObjectDeleteMarker", None, None),
+            ),
+        ),
+        (
+            "Transition",
+            (
+                ("Days", _get_integer, _validate_positive_integer),
+                ("Date", None, _validate_date),
+                ("StorageClass", None, _validate_storage_class),
+            ),
+        ),
+        (
+            "AbortIncompleteMultipartUpload",
+            (
+                (
+                    "DaysAfterInitiation",
+                    _get_integer,
+                    _validate_positive_integer,
+                ),
+            ),
+        ),
+        (
+            "NoncurrentVersionExpiration",
+            (
+                (
+                    "NoncurrentDays",
+                    _get_integer,
+                    _validate_positive_integer,
+                ),
+                (
+                    "NewerNoncurrentVersions",
+                    _get_integer,
+                    _validate_positive_integer,
+                ),
+            ),
+        ),
+        (
+            "NoncurrentVersionTransition",
+            (
+                (
+                    "NoncurrentDays",
+                    _get_integer,
+                    _validate_positive_integer,
+                ),
+                (
+                    "NewerNoncurrentVersions",
+                    _get_integer,
+                    _validate_positive_integer,
+                ),
+                (
+                    "StorageClass",
+                    None,
+                    _validate_storage_class,
+                ),
+            ),
+        ),
+    )
+
+    actions = {}
+    for action_type, fields in action_fields:
+        for action in rule_xml.findall(action_type):
+            tag_actions = actions.setdefault(action_type, {})
+            tag_actions[str(index)] = _extract_from_field(
+                action, fields, action_type)
+            index += 1
+
+    # Validation
+    _validate_limited_action_filter(actions, rule)
+    _validate_time_consistency(actions, rule)
+    _validate_transitions(actions, rule)
+    _validate_one_action(actions, rule)
+
+    rule.update(**actions)
+    return index
+
+
+def _build_filter(rule_xml, rule):
+    filter_fields = (
+        ("Prefix", None, None),
+        (
+            "ObjectSizeGreaterThan",
+            _get_integer,
+            _validate_object_size,
+        ),
+        (
+            "ObjectSizeLessThan",
+            _get_integer,
+            _validate_object_size,
+        ),
+        ("Tag", _get_tags, _validate_tags),
+    )
+
+    filter_elem = rule_xml.find("Filter")
+    if filter_elem is None:
+        return
+
+    rule_filter = rule.setdefault("Filter", {})
+    # Get filter parts at filter root
+    rule_filter.update(
+        _extract_from_field(filter_elem, filter_fields, "Filter"))
+    # Handle And
+    and_elem = filter_elem.find("And")
+    if and_elem is not None:
+        if rule_filter:
+            raise MalformedXML()
+        parts = _extract_from_field(and_elem, filter_fields, "Filter")
+        parts_count = len(parts)
+        if "Tag" in parts:
+            parts_count += len(parts["Tag"]) - 1
+        if parts_count < 2:
+            raise MalformedXML()
+        rule_filter.update(parts)
+
+    # Validate
+    _validate_object_size_consistency(rule_filter)
 
 
 def lifecycle_xml_conf_to_dict(lifecycle_conf):
@@ -205,233 +856,57 @@ def lifecycle_xml_conf_to_dict(lifecycle_conf):
     """
     out = {
         "Rules": {},
-        "_expiration_rules": [],
+        # Lifecycle internal schema
+        "_schema_version": LIFECYCLE_SCHEMA_VERSION,
+        # Accelerators section
+        "_expiration_rules": {
+            "days": [],
+            "date": []
+        },
+        "_transition_rules": {
+            "days": [],
+            "date": []
+        },
+        "_delete_marker_rules": [],
+        "_abort_mpu_rules": [],
+        "_non_current_expiration_rules": [],
+        "_non_current_transition_rules": [],
     }
-    IDs = set()
-    for rule in lifecycle_conf.findall("Rule"):
-        id_marker = rule.find("ID")
-        id_text = id_marker.text if id_marker is not None and id_marker.text \
-            else uuid.uuid4().hex
-        if id_text in IDs:
+    registered_rules = []
+    action_index = 0
+    rule_index = 0
+
+    # Ensure configuration does not exceed allowed rules count
+    rules = lifecycle_conf.findall("Rule")
+    if len(rules) > MAX_RULES_ALLOWED:
+        raise InvalidRequest(
+            "The number of lifecycle rules must not exceed the "
+            f"allowed limit of {MAX_RULES_ALLOWED} rules."
+        )
+
+    for rule_xml in rules:
+        rule, action_index = _build_rule(rule_xml, action_index)
+        rule_id = rule.get("ID")
+        if rule_id in registered_rules:
             raise InvalidArgument(
-                None, None,
-                "Rule ID must be unique. Found same ID for more "
-                "than one rule")
+                "ID",
+                rule_id,
+                msg=("Rule ID must be unique. Found same ID for more than one"
+                     " rule")
+            )
+        registered_rules.append(rule_id)
+        out["Rules"][str(rule_index)] = rule
 
-        IDs.add(id_text)
-        status = rule.find("Status")
-        json_rule = {
-            "Status": status.text,
-            **get_actions(rule),
-        }
+        if rule.get("Status") == "Enabled":
+            _populate_accelerators(rule_index, rule, out)
 
-        filter_xml = rule.find("Filter")
-        if filter_xml is not None:
-            filter_ = get_filters(filter_xml)
-            json_rule["Filter"] = filter_
-        prefix_xml = rule.find("Prefix")
-        if prefix_xml is not None:
-            json_rule["Prefix"] = prefix_xml.text or ""
+        rule_index += 1
 
-        out["Rules"][id_text] = json_rule
-        if (status.text == "Enabled") and \
-           "Expiration" in json_rule:
-            out["_expiration_rules"].append(id_text)
+    _validate_rules_version_consistency(out["Rules"])
+
+    # Resolve actions order
+    _sort_accelerators(out)
     return out
-
-
-def get_tags(tag_xml_items, tag_keys):
-    """
-    Return tags from XML lifecycle conf
-
-    :param tag_xml_items: List of XML items gathering tags
-    :type tag_xml_items: list
-    :param tag_keys: collection of all tags key
-    :type tag_keys: set
-    :return: list of identified tags
-    :rtype: list
-    """
-    tags = []
-    if tag_xml_items is None:
-        return None
-    for tag in tag_xml_items:
-        key = tag.find("Key").text
-        value = tag.find("Value").text or ""
-        if not validate_tag_key(key):
-            raise InvalidTagKey()
-        if not validate_tag_value(value):
-            raise InvalidTagValue()
-        tags.append({"Key": key,
-                     "Value": value})
-        if key in tag_keys:
-            raise InvalidRequest('Duplicate Tag Keys are not allowed.')
-        tag_keys.add(key)
-    return tags
-
-
-def _get_field(action, fieldname):
-    field = action.find(fieldname)
-    return field.text if field is not None else None
-
-
-def get_actions(rule):
-    """
-    Return actions from conf
-    """
-    actions = {}
-    expiration = rule.find("Expiration")
-    transitions = rule.findall("Transition")
-    abort_incomplete_multipart_upload = rule.find(
-        "AbortIncompleteMultipartUpload")
-    noncurrent_version_expiration = rule.find("NoncurrentVersionExpiration")
-    noncurrent_version_transitions = rule.findall(
-        "NoncurrentVersionTransition")
-
-    if expiration is not None:
-        actions["Expiration"] = {}
-        days = _get_field(expiration, "Days")
-        date = _get_field(expiration, "Date")
-        expire_delete_marker = _get_field(
-            expiration, "ExpiredObjectDeleteMarker")
-        if days:
-            actions["Expiration"]["Days"] = int(days)
-        if date:
-            actions["Expiration"]["Date"] = date
-        if expire_delete_marker:
-            actions["Expiration"]["ExpiredObjectDeleteMarker"] = \
-                expire_delete_marker
-
-    if len(transitions) > 0:
-        actions["Transitions"] = []
-        for act in transitions:
-            current = {}
-            days = _get_field(act, "Days")
-            date = _get_field(act, "Date")
-
-            storage_class = _get_field(act, "StorageClass")
-            if days:
-                current["Days"] = int(days)
-            if date:
-                current["Date"] = date
-            current["StorageClass"] = storage_class
-            actions["Transitions"].append(current)
-
-    if abort_incomplete_multipart_upload is not None:
-        days = _get_field(
-            abort_incomplete_multipart_upload, "DaysAfterInitiation")
-
-        actions["AbortIncompleteMultipartUpload"] = {
-            "DaysAfterInitiation": int(days)}
-
-    if noncurrent_version_expiration is not None:
-        days = _get_field(noncurrent_version_expiration, "NoncurrentDays")
-        newer_noncurrent_versions = _get_field(
-            noncurrent_version_expiration, "NewerNoncurrentVersions")
-        actions["NoncurrentVersionExpiration"] = {
-            "NoncurrentDays": int(days)
-        }
-        if newer_noncurrent_versions:
-            actions["NoncurrentVersionExpiration"]["NewerNoncurrentVersions"] \
-                = int(newer_noncurrent_versions)
-
-    if len(noncurrent_version_transitions) > 0:
-        actions["NoncurrentVersionTransitions"] = []
-        for act in noncurrent_version_transitions:
-            noncurrent_days = _get_field(act, "NoncurrentDays")
-            newer_noncurrent_versions = _get_field(
-                act, "NewerNoncurrentVersions")
-            storage_class = _get_field(act, "StorageClass")
-            current_act = {
-                "NoncurrentDays": noncurrent_days,
-                "StorageClass": storage_class}
-            if newer_noncurrent_versions:
-                current_act["NewerNoncurrentVersions"] = \
-                    int(newer_noncurrent_versions)
-            actions["NoncurrentVersionTransitions"].append(current_act)
-
-    return actions
-
-
-def get_filters(filter_xml_item):
-    """
-    Return filters from XML lifecycle conf
-
-    :param filter_xml_item: XML item gathering filters
-    :type filter_xml_item: bytes
-    :return: dictionary of tags and prefixes
-    :rtype: dict
-    """
-    d_filters = {}
-    tag_keys = set()
-    if filter_xml_item is not None:
-        # Check if filters are packed into an AND marker
-        and_item = filter_xml_item.find("And")
-        if and_item is not None:
-            prefix = and_item.find("Prefix")
-            tags = get_tags(and_item.findall("Tag"), tag_keys=tag_keys)
-            greater_field = and_item.find("ObjectSizeGreaterThan")
-            lesser_field = and_item.find("ObjectSizeLessThan")
-
-            greater = int(greater_field.text) if greater_field is not None \
-                else None
-            lesser = int(lesser_field.text) if lesser_field is not None \
-                else None
-
-            if len(list(and_item)) > 1:
-                if prefix is not None:
-                    d_filters["Prefix"] = prefix.text or ""
-                if tags:
-                    d_filters["Tags"] = tags
-                if greater is not None:
-                    if greater < 0:
-                        raise InvalidRequest(
-                            msg="'ObjectSizeGreaterThan' should be between "
-                            " 0 and 1099511627776000."
-                        )
-                    d_filters["ObjectSizeGreaterThan"] = greater
-                if lesser is not None:
-                    if lesser < 0:
-                        raise InvalidRequest(
-                            msg="'ObjectSizeLessThan' should be between "
-                            " 0 and 1099511627776000."
-                        )
-                    d_filters["ObjectSizeLessThan"] = lesser
-
-                if lesser is not None and greater is not None:
-                    if lesser <= greater:
-                        raise InvalidRequest(
-                            msg="'ObjectSizeLessThan' has to be a value "
-                            "greater than 'ObjectSizeGreaterThan'.")
-            else:
-                raise MalformedXML()
-        else:
-            prefix = filter_xml_item.find("Prefix")
-            tags = get_tags(filter_xml_item.findall("Tag"), tag_keys=tag_keys)
-            greater_field = filter_xml_item.find("ObjectSizeGreaterThan")
-            lesser_field = filter_xml_item.find("ObjectSizeLessThan")
-            greater = int(greater_field.text) if greater_field is not None \
-                else None
-            lesser = int(lesser_field.text) if lesser_field is not None \
-                else None
-            if prefix is not None:
-                d_filters["Prefix"] = prefix.text or ""
-            if tags:
-                d_filters["Tags"] = tags
-            if greater is not None:
-                if greater < 0:
-                    raise InvalidRequest(
-                        msg="'ObjectSizeGreaterThan' should be between"
-                            " 0 and 1099511627776000."
-                    )
-                d_filters["ObjectSizeGreaterThan"] = greater
-            if lesser is not None:
-                if lesser < 0:
-                    raise InvalidRequest(
-                        msg="'ObjectSizeLessThan' should be between"
-                            " 0 and 1099511627776000."
-                    )
-                d_filters["ObjectSizeLessThan"] = lesser
-    return d_filters
 
 
 class LifecycleController(Controller):
@@ -443,445 +918,6 @@ class LifecycleController(Controller):
      - DELETE Bucket lifecycle
 
     """
-
-    def _validate_rule(self, rule):
-        rule_id = rule.find("ID")
-        if rule_id is not None:
-            if rule_id.text is not None and \
-               len(rule_id.text) > MAX_LENGTH_RULE_ID:
-                raise InvalidArgument(
-                    "ID",
-                    rule_id.text,
-                    f"The maximum value is {MAX_LENGTH_RULE_ID} characters."
-                )
-
-        prefix = rule.find("./Prefix")
-        if prefix is not None and prefix.text is not None and \
-           len(prefix.text) > MAX_LENGTH_PREFIX:
-            raise InvalidArgument(
-                "Prefix",
-                prefix.text,
-                f"The maximum value is {MAX_LENGTH_RULE_ID} characters."
-            )
-        filter_xml_item = rule.find("Filter")
-        if prefix is None and filter_xml_item is None:
-            raise MalformedXML()
-        if prefix is not None and filter_xml_item is not None:
-            raise MalformedXML()
-        self._validate_filter(filter_xml_item)
-        self._validate_actions(rule)
-
-    def _validate_filter(self, filter_xml_item):
-        if filter_xml_item is not None:
-            # Check if filters are packed into an AND marker
-            and_item = filter_xml_item.find("And")
-            if and_item is not None:
-                if len(list(and_item)) <= 1:
-                    raise MalformedXML()
-
-    def _validate_days(self, days_field, action, field='Days'):
-        if days_field is not None:
-            if int(days_field) <= 0:
-                raise InvalidArgument(
-                    None, None,
-                    (f"'{field}' for {action} action must be a positive "
-                     "integer"))
-
-    def _validate_date(self, date_field):
-        if date_field is not None:
-            date = iso8601_to_int(date_field or '')
-            residue = (date % 86400)
-            if residue:
-                raise InvalidArgument(
-                    None, None, "'Date' must be at midnight GMT")
-
-    def _validate_noncurrent_versions(self, noncurrentversion_field, action):
-        if noncurrentversion_field is not None:
-            if int(noncurrentversion_field) <= 0:
-                raise InvalidArgument(
-                    None, None, "'NewerNoncurrentVersions' for " +
-                    action +
-                    " action must be a positive integer")
-
-    def _validate_actions(self, rule):
-        expiration = rule.find("Expiration")
-        transitions = rule.findall("Transition")
-        abort_incomplete_mpu = rule.find("AbortIncompleteMultipartUpload")
-        noncurrent_version_expiration = rule.find(
-            "NoncurrentVersionExpiration")
-        noncurrent_version_transitions = rule.findall(
-            "NoncurrentVersionTransition")
-
-        nb_transitions = len(transitions) + len(noncurrent_version_transitions)
-
-        actions_elements = (
-            expiration, abort_incomplete_mpu,
-            noncurrent_version_expiration)
-        if sum(x is not None for x in actions_elements) + nb_transitions == 0:
-            raise InvalidRequest(
-                "At least one action needs to be specified in a Rule")
-
-        if expiration is not None:
-            days = _get_field(expiration, "Days")
-            date = _get_field(expiration, "Date")
-            expire_delete_marker = _get_field(
-                expiration, "ExpiredObjectDeleteMarker")
-            self._validate_days(days, "Expiration")
-            self._validate_date(date)
-
-            elements = (days, date, expire_delete_marker)
-            if sum(x is not None for x in elements) != 1:
-                raise MalformedXML()
-
-        for act in transitions:
-            days = _get_field(act, "Days")
-            date = _get_field(act, "Date")
-            storage_class = _get_field(act, "StorageClass")
-            if storage_class not in S3_STORAGE_CLASSES:
-                raise MalformedXML()
-            elements = (days, date)
-            self._validate_days(days, "Transition")
-            self._validate_date(date)
-            if sum(x is not None for x in elements) != 1:
-                raise MalformedXML()
-
-        if abort_incomplete_mpu is not None:
-            days = _get_field(
-                abort_incomplete_mpu, "DaysAfterInitiation")
-            self._validate_days(
-                days,
-                "AbortIncompleteMultipartUpload",
-                field="DaysAfterInitiation")
-
-        if noncurrent_version_expiration is not None:
-            noncurrent_days = _get_field(
-                noncurrent_version_expiration, "NoncurrentDays")
-            newer_noncurrent_versions = _get_field(
-                noncurrent_version_expiration, "NewerNoncurrentVersions")
-            if noncurrent_days is None:
-                raise MalformedXML()
-            self._validate_days(noncurrent_days, "NoncurrentVersionExpiration")
-            self._validate_noncurrent_versions(
-                newer_noncurrent_versions, "NoncurrentVersionExpiration")
-
-        stg_classes = set()
-        for act in noncurrent_version_transitions:
-            noncurrent_days = _get_field(act, "NoncurrentDays")
-            newer_noncurrent_versions = _get_field(
-                act, "NewerNoncurrentVersions")
-            storage_class = _get_field(act, "StorageClass")
-            if storage_class not in S3_STORAGE_CLASSES:
-                raise MalformedXML()
-            if storage_class in stg_classes:
-                raise InvalidRequest(
-                    "'StorageClass' must be different for "
-                    "'NoncurrentVersionTransition' actions in same 'Rule' "
-                    f" with filter '({rule.find('Filter')})'"
-                )
-            stg_classes.add(storage_class)
-            if noncurrent_days is None:
-                raise MalformedXML()
-            self._validate_days(noncurrent_days, "NoncurrentVersionTransition")
-            self._validate_noncurrent_versions(
-                newer_noncurrent_versions,
-                "NoncurrentVersionTranstion")
-
-    def _validate_configuration(self, conf):
-        """
-        Validate the LifecycleConfiguration.
-
-        :returns: the parsed version of the configuration
-        """
-        conf = conf if conf is not None else ""
-        try:
-            # See CorsController.PUT for an explanation
-            data = fromstring(conf, "LifecycleConfiguration")
-            filtered = tostring(data, xml_declaration=False)
-            conf_xml = fromstring(filtered, "LifecycleConfiguration")
-        except DocumentInvalid:
-            raise MalformedXML()
-        except XMLSyntaxError as exc:
-            raise MalformedXML(str(exc))
-
-        # Ensure configuration does not exceed allowed rules count
-        rules = conf_xml.findall("./Rule")
-        if len(rules) > MAX_RULES_ALLOWED:
-            raise InvalidRequest(
-                "The number of replication rules must not exceed the "
-                f"allowed limit of {MAX_RULES_ALLOWED} rules."
-            )
-
-        for rule in rules:
-            self._validate_rule(rule)
-
-        return conf_xml
-
-    # Validate comparing between transitions
-    def _compare_transitions(self, stg, type_act, type_d, filter_str):
-        for pol, days in stg.items():
-            idx = S3_STORAGE_CLASSES.index(pol)
-            for next_pol, next_days in stg.items():
-                if pol == next_pol:
-                    continue
-                next_idx = S3_STORAGE_CLASSES.index(next_pol)
-                if (next_idx < idx and next_days >= days) or \
-                   (next_idx > idx and next_days <= days):
-                    raise InvalidArgument(
-                        None, None,
-                        msg=f"'{type_d}' in the '{type_act}' action for "
-                        f"StorageClass '{next_pol}'for "
-                        f"'({filter_str})' must be greater than '{type_d}' in "
-                        f"the '{type_act}' action for StorageClass '{pol}'for "
-                        f"'({filter_str})'"
-                    )
-
-    def _get_max_days_or_date(self, stg):
-        """
-        Get Max days or date from lowest transition
-        """
-        sorted_transitions = sorted(
-            stg,
-            key=lambda x: S3_STORAGE_CLASSES.index(x),
-            reverse=True,)
-        return stg[sorted_transitions[0]]
-
-    def _build_filter_message_for_exception(self, rule):
-        """
-        Build filter string for exception message
-        """
-        filter_str = ""
-        prefix_ = rule.get("Prefix", None)
-        filter_ = rule.get("Filter", None)
-        names = ["objectsizegreaterthan=", "objectsizegreaterthan=",
-                 "prefix=", ""]
-
-        if prefix_ is not None:
-            filter_str = f"prefix '{prefix_}'"
-        if filter_ is not None:
-            prefix_ = filter_.get("Prefix", None)
-            greater_ = filter_.get("ObjectSizeGreaterThan", None)
-            lesser_ = filter_.get("ObjectSizeLessThan", None)
-            tags_ = filter_.get("Tags", None)
-            tags_str = None
-            if tags_ is not None:
-                for el in tags_:
-                    k = el["Key"]
-                    v = el["Value"]
-                    if not tags_str:
-                        tags_str = f"tag: key={k}, value={v}"
-                    else:
-                        tags_str = f"{tags_str} and tag: key={k},"
-                        tags_str = f"{tags_str} value={v}"
-
-            elems = [greater_, lesser_, prefix_, tags_str]
-            f_elems = [el for el in elems if el is not None]
-            selectors = [el is not None for el in elems]
-            f_names = list(itertools.compress(names, selectors))
-
-            filter_str = "filter '("
-            for idx, el in enumerate(f_elems):
-                if idx == 0:
-                    filter_str = f"{filter_str}{f_names[idx]}"
-                    filter_str = f"{filter_str}{f_elems[idx]}"
-                else:
-                    filter_str = f"{filter_str} and {f_names[idx]}"
-                    filter_str = f"{filter_str}{f_elems[idx]}"
-
-            filter_str = f"{filter_str})'"
-        return filter_str
-
-    def _post_validate_rules(self, conf_dict):
-        prefixes = set()
-        has_filter = False
-
-        def _filter_forbiden_field(current_filter):
-            if current_filter.get("Tags") is not None:
-                return "Tags"
-            if current_filter.get("ObjectSizeGreaterThan") is not None:
-                return "ObjectSizeGreaterThan"
-            if current_filter.get("ObjectSizeLessThan") is not None:
-                return "ObjectSizeLessThan"
-            return None
-
-        prefix_expirations = []
-        prefix_noncurrent_expirations = []
-        for rule_id, rule in conf_dict["Rules"].items():
-            prefix_ = rule.get("Prefix", None)
-            filter_ = rule.get("Filter", None)
-            filter_forbiden_field = None
-            if prefix_ is not None:
-                expiration = rule.get("Expiration")
-                noncurrent_expiration = rule.get("NoncurrentVersionExpiration")
-
-                if prefix_ in prefixes:
-                    raise InvalidArgument(
-                        None, None,
-                        "Found two rules with same prefix '" + prefix_ + "'")
-                prefixes.add(prefix_)
-
-                if expiration:
-                    for el in prefix_expirations:
-                        if el.startswith(prefix_) or prefix_.startswith(el):
-                            min_ = min(el, prefix_)
-                            max_ = max(el, prefix_)
-                            raise InvalidRequest(
-                                msg=f"Found overlapping prefixes '{min_}' " +
-                                f"and '{max_}' for same action type " +
-                                " 'Expiration'")
-                    prefix_expirations.append(prefix_)
-                if noncurrent_expiration:
-                    for el in prefix_noncurrent_expirations:
-                        if el.startswith(prefix_) or prefix_.startswith(el):
-                            min_ = min(el, prefix_)
-                            max_ = max(el, prefix_)
-                            raise InvalidRequest(
-                                msg=f"Found overlapping prefixes '{min_}' " +
-                                f"and'{max_}' for same action type " +
-                                "'NoncurrentVersionExpiration'")
-                    prefix_noncurrent_expirations.append(prefix_)
-
-            if filter_ is not None:
-                filter_forbiden_field = _filter_forbiden_field(filter_)
-                has_filter = True
-
-        if prefixes and has_filter:
-            raise InvalidRequest(
-                msg="Base level prefix cannot be used in Lifecycle V2," +
-                " prefixes are only supported in the Filter.")
-
-        # Validate days, dates, mixed configs
-        for rule_id, rule in conf_dict["Rules"].items():
-            expiration = rule.get("Expiration")
-            transitions = rule.get("Transitions", ())
-            noncurrent_expiration = rule.get("NoncurrentVersionExpiration")
-            noncurrent_transitions = rule.get(
-                "NoncurrentVersionTransitions", ())
-
-            abort_incomplete_mpu = rule.get(
-                "AbortIncompleteMultipartUpload")
-
-            if filter_forbiden_field and abort_incomplete_mpu:
-                raise InvalidRequest(
-                    msg="AbortIncompleteMultipartUpload cannot be specified "
-                    f"with {filter_forbiden_field}."
-                )
-
-            expiration_type = None
-            transition_type = None
-            if expiration:
-                expiration_type = 'Days' if 'Days' in expiration else 'Date'
-                exp_days = expiration.get("Days", None)
-                exp_date = expiration.get("Date", None)
-                delete_marker = expiration.get("ExpiredObjectDeleteMarker")
-
-                if filter_forbiden_field and delete_marker:
-                    raise InvalidRequest(
-                        msg="ExpiredObjectDeleteMarker cannot be specified "
-                            f"with {filter_forbiden_field}."
-                    )
-
-            stg_classes = {}
-            for act in transitions:
-                act_days = act.get("Days", None)
-                act_date = act.get("Date", None)
-                stg_class = act.get("StorageClass", None)
-                if act_days and int(act_days) < 30:
-                    raise InvalidArgument(
-                        None, None, msg="'Days' in Transition "
-                        "action must be greater than or equal to 30 "
-                        f"for storageClass '{stg_class}'")
-                if transition_type is None:
-                    transition_type = 'Days' if 'Days' in act else 'Date'
-                else:
-                    current_type = 'Days' if 'Days' in act else 'Date'
-                    if current_type != transition_type:
-                        filter_str = \
-                            self._build_filter_message_for_exception(
-                                rule)
-                        raise InvalidRequest(
-                            msg="Found mixed 'Date' and"
-                            " 'Days' based Expiration and Transition actions"
-                            f"in lifecycle rule for {filter_str}")
-
-                if (stg_class in stg_classes):
-                    filter_str = self._build_filter_message_for_exception(rule)
-                    raise InvalidRequest(
-                        "'StorageClass' must be different for 'Transition' "
-                        f"actions in same 'Rule' with {filter_str}")
-
-                if act_days:
-                    stg_classes[stg_class] = int(act_days)
-                else:
-                    stg_classes[stg_class] = act_date
-
-            if expiration_type is not None and transition_type is not None:
-                if expiration_type != transition_type:
-                    filter_str = self._build_filter_message_for_exception(rule)
-                    raise InvalidRequest(
-                        msg="Found mixed 'Date' and"
-                        " 'Days' based Expiration and Transition actions in"
-                        "lifecycle rule for filter {filter_str}")
-
-            noncurrent_exp_days = None
-            if noncurrent_expiration:
-                noncurrent_exp_days = noncurrent_expiration.get(
-                    "NoncurrentDays")
-
-            noncurrent_stg_classes = {}
-            for act in noncurrent_transitions:
-                act_days = act.get("NoncurrentDays", None)
-                stg_class = act.get("StorageClass", None)
-                if act_days and int(act_days) < 30:
-                    raise InvalidArgument(
-                        None, None, msg="'Days' in NoncurrentTransition "
-                        "action must be greater than or equal to 30 "
-                        f"for storageClass '{stg_class}'")
-                noncurrent_stg_classes[stg_class] = int(act_days)
-
-            # Validate days/date field between transitions, expiration
-            if transition_type is not None:
-                filter_str = self._build_filter_message_for_exception(rule)
-                self._compare_transitions(
-                    stg_classes, 'Transition', expiration_type, filter_str)
-
-                if expiration_type == 'Days':
-                    max_field = self._get_max_days_or_date(stg_classes)
-                    if max_field >= int(exp_days):
-                        raise InvalidArgument(
-                            None, None,
-                            msg="'Days' in the Expiration action for "
-                            f"{filter_str} must be greater"
-                            " than 'Days' in the Transition action"
-                        )
-                if expiration_type == 'Date':
-                    max_field = self._get_max_days_or_date(stg_classes)
-
-                    if max_field >= exp_date:
-                        raise InvalidArgument(
-                            None, None,
-                            msg="'Date' in the Expiration action for "
-                            f"{filter_str} must be later"
-                            " than 'Date' in the Transition action"
-                        )
-
-            # Validate days field between NoncurrentTransitions,
-            # NoncurrentExpiration
-            if noncurrent_stg_classes:
-                type_act = 'NoncurrentTransition'
-                type_d = 'NoncurrentDays'
-                filter_str = self._build_filter_message_for_exception(rule)
-                self._compare_transitions(
-                    noncurrent_stg_classes, type_act, type_d, filter_str)
-                if noncurrent_exp_days:
-                    max_field = self._get_max_days_or_date(
-                        noncurrent_stg_classes)
-                    if max_field >= int(noncurrent_exp_days):
-                        raise InvalidArgument(
-                            None, None,
-                            msg="'{type_d}' in the NoncurrentExpiration "
-                            f"action for {filter_str} must be greater "
-                            f"than '{type_d}' in the {type_act} action"
-                        )
 
     @set_s3_operation_rest('LIFECYCLE')
     @ratelimit
@@ -930,14 +966,22 @@ class LifecycleController(Controller):
                 'configuration, first enable the versioning.'
             )
 
-        config = req.xml(MAX_LIFECYCLE_BODY_SIZE)
-        # Validation
-        validated = self._validate_configuration(config)
+        xml = req.xml(MAX_LIFECYCLE_BODY_SIZE)
+        try:
+            # Since we do not resolve entities, the entity declarations get
+            # stripped out. Try a roundtrip here, so we don't save a document
+            # we won't be able to parse later.
+            data = fromstring(xml, "LifecycleConfiguration")
+            filtered = tostring(data, xml_declaration=False)
+            data = fromstring(filtered, "LifecycleConfiguration")
+        except DocumentInvalid:
+            raise MalformedXML()
+        except XMLSyntaxError as exc:
+            raise MalformedXML(str(exc))
 
-        dict_conf = lifecycle_xml_conf_to_dict(validated)
-        self._post_validate_rules(dict_conf)
-        json_conf = json.dumps(dict_conf, separators=(',', ':'))
-        req.headers[LIFECYCLE_HEADER] = json_conf
+        config = lifecycle_xml_conf_to_dict(data)
+        req.headers[LIFECYCLE_HEADER] = json.dumps(
+            config, separators=(',', ':'))
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 

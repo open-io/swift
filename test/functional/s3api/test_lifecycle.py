@@ -30,16 +30,16 @@ def tearDownModule():
 class TestS3ApiLifecycle(S3ApiBaseBoto3):
 
     lifecycle_configuration = {
-        'Rules': [
+        "Rules": [
             {
-                'Expiration': {
-                    'Days': 7,
+                "Expiration": {
+                    "Days": 7,
                 },
-                'ID': 'myfirstrule',
-                'Filter': {
-                    'Prefix': 'garbage/'
+                "ID": "myfirstrule",
+                "Filter": {
+                    "Prefix": "garbage/",
                 },
-                'Status': 'Enabled',
+                "Status": "Enabled",
             }
         ]
     }
@@ -83,10 +83,12 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
-                        'Status': 'Enabled',
-                        'Prefix': 'doc',
+                        "Status": "Enabled",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
                         "Expiration": {
                             "Days": 10
                         }
@@ -100,11 +102,13 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
-                        'ID': '',
-                        'Status': 'Enabled',
-                        'Prefix': 'doc',
+                        "ID": "",
+                        "Status": "Enabled",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
                         "Expiration": {
                             "Days": 10
                         }
@@ -118,13 +122,34 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
-                        'ID': 'id1',
-                        'Status': 'Enabled',
-                        'Filter': {
-                            'Tag': {'Key': 'key', 'Value': ''}
+                        "ID": "id1",
+                        "Status": "Enabled",
+                        "Filter": {
+                            "Tag": {
+                                "Key": "key",
+                                "Value": "",
+                            },
                         },
+                        "Expiration": {
+                            "Days": 10
+                        }
+                    }
+                ]
+            }
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+
+        # Test empty filter
+        resp = self.conn.put_bucket_lifecycle_configuration(
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "id1",
+                        "Status": "Enabled",
+                        "Filter": {},
                         "Expiration": {
                             "Days": 10
                         }
@@ -144,10 +169,10 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
-                        'ID': 'myfirstrule',
-                        'Status': 'Enabled',
+                        "ID": "myfirstrule",
+                        "Status": "Enabled",
                     }
                 ]
             }
@@ -160,11 +185,13 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
-                        'ID': 'myfirstrule',
-                        "Prefix": "a",
-                        'Status': 'Enabled',
+                        "ID": "myfirstrule",
+                        "Filter": {
+                            "Prefix": "a",
+                        },
+                        "Status": "Enabled",
                     }
                 ]
             }
@@ -221,19 +248,23 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                         "Status": "Enabled"
                     }
                 ]
-            })
+            }
+        )
 
+        # Missing date/days
         self.assertRaisesRegex(
             botoexc.ClientError,
             r'.*MalformedXML.*',
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
-                        'ID': 'myfirstrule',
-                        'Status': 'Enabled',
-                        "Prefix": "doc",
+                        "ID": "myfirstrule",
+                        "Status": "Enabled",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
                         "Transitions": [{
                             "StorageClass": "STANDARD_IA"
                         }]
@@ -252,7 +283,9 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                     {
                         "ID": "myfirstrule",
                         "Status": "Enabled",
-                        "Prefix": "doc",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
                         "Transitions": [{
                             "Days": 32,
                             "Date": "2023-10-10T00:00:00.000Z",
@@ -273,7 +306,9 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                     {
                         "ID": "myfirstrule",
                         "Status": "Enabled",
-                        "Prefix": "doc",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
                         "Expiration": {
                             "Days": 19,
                             "Date": "2030-10-10T00:00:00.000Z",
@@ -293,7 +328,9 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                     {
                         "ID": "myfirstrule",
                         "Status": "Enabled",
-                        "Prefix": "doc",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
                         "Expiration": {
                         }
                     }
@@ -310,7 +347,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -335,32 +372,11 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
                             "Prefix": "doc/",
-                            "ObjectSizeLessThan": 15
-                        },
-                        "Status": "Enabled",
-                        "Expiration": {
-                            "Days": 1
-                        }
-                    }]
-            }
-        )
-        # Mix V1 and V2: Prefix and Filter
-        self.assertRaisesRegex(
-            botoexc.ClientError,
-            r'.*MalformedXML.*',
-            self.conn.put_bucket_lifecycle_configuration,
-            Bucket='bucket',
-            LifecycleConfiguration={
-                'Rules': [
-                    {
-                        "ID": "lifecycle-s3",
-                        "Prefix": "doc/",
-                        "Filter": {
                             "ObjectSizeLessThan": 15
                         },
                         "Status": "Enabled",
@@ -377,7 +393,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -405,7 +421,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -425,7 +441,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -445,7 +461,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -470,11 +486,12 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
-                            "Prefix": "docs/"},
+                            "Prefix": "docs/"
+                        },
                         "Status": "Enabled",
                         "Expiration": {
                             "Days": 10
@@ -499,7 +516,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -524,7 +541,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -548,7 +565,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -573,7 +590,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -599,7 +616,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -628,7 +645,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -656,7 +673,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -686,7 +703,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -707,7 +724,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -727,7 +744,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -749,7 +766,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -771,7 +788,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -794,7 +811,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -815,7 +832,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -829,7 +846,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                     }]
             }
         )
-        # NoncurrentDays in expiration must be geater than Noncurrent
+        # NoncurrentDays in expiration must be greater than Noncurrent
         # days in transition
         self.assertRaisesRegex(
             botoexc.ClientError,
@@ -837,7 +854,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -854,7 +871,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             }
         )
 
-        # NoncurrentDays in expiration must be geater than Noncurrent
+        # NoncurrentDays in expiration must be greater than Noncurrent
         # days in transition
         self.assertRaisesRegex(
             botoexc.ClientError,
@@ -862,7 +879,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -894,7 +911,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -913,7 +930,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -930,7 +947,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -947,7 +964,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -971,7 +988,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "Filter": {
                             "Prefix": "doc/"
@@ -1061,7 +1078,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -1076,63 +1093,6 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             }
         )
 
-    def test_same_prefix(self):
-        """Two rules shoudln't have same prefix (only in V1)"""
-        resp = self.conn.create_bucket(Bucket='bucket')
-        self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertRaisesRegex(
-            botoexc.ClientError,
-            r'.*InvalidArgument.*Found two rules with same prefix*',
-            self.conn.put_bucket_lifecycle_configuration,
-            Bucket='bucket',
-            LifecycleConfiguration={
-                'Rules': [
-                    {
-                        "ID": "rule1",
-                        "Prefix": "doc",
-                        "Status": "Enabled",
-                        "Expiration": {
-                            "Days": 60,
-
-                        }
-                    },
-                    {
-                        "ID": "rule2",
-                        "Prefix": "doc",
-                        "Status": "Enabled",
-                        "Expiration": {
-                            "Days": 50
-                        }
-                    }]
-            }
-        )
-        # Overlapping prefix
-        self.assertRaisesRegex(
-            botoexc.ClientError,
-            r'.*InvalidRequest.*overlapping*',
-            self.conn.put_bucket_lifecycle_configuration,
-            Bucket='bucket',
-            LifecycleConfiguration={
-                'Rules': [
-                    {
-                        "ID": "id1",
-                        "Status": "Enabled",
-                        "Prefix": "doc",
-                        "Expiration": {
-                            "Days": 30
-                        }
-                    },
-                    {
-                        "ID": "id2",
-                        "Status": "Enabled",
-                        "Prefix": "doc/test",
-                        "Expiration": {
-                            "Days": 180
-                        }
-                    }]
-            }
-        )
-
     def test_same_id(self):
         """Two rules shoudln't have same id """
         resp = self.conn.create_bucket(Bucket='bucket')
@@ -1143,7 +1103,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "rule1",
                         "Filter": {
@@ -1168,26 +1128,14 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             }
         )
 
-    def test_mix_rules(self):
-        """Mixing V2 and V1 rules is forbiden """
+    def test_v1(self):
         resp = self.conn.create_bucket(Bucket='bucket')
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertRaisesRegex(
-            botoexc.ClientError,
-            r'.*InvalidRequest.*prefix cannot be used in Lifecycle V2*',
-            self.conn.put_bucket_lifecycle_configuration,
+
+        self.conn.put_bucket_lifecycle_configuration(
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
-                    {
-                        "ID": "rule1",
-                        "Filter": {},
-                        "Status": "Enabled",
-                        "Transitions": [{
-                            "Days": 30,
-                            "StorageClass": "STANDARD_IA"
-                        }]
-                    },
+                "Rules": [
                     {
                         "ID": "rule2",
                         "Prefix": "",
@@ -1196,7 +1144,40 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                             "Days": 50
                         }
                     }]
-            })
+            }
+        )
+
+    def test_v1_v2_mixed(self):
+        resp = self.conn.create_bucket(Bucket='bucket')
+        self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assertRaisesRegex(
+            botoexc.ClientError,
+            r'.*InvalidRequest.*Base level prefix cannot be used in Lifecycle '
+            'V2, prefixes are only supported in the Filter.',
+            self.conn.put_bucket_lifecycle_configuration,
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "rule1",
+                        "Prefix": "",
+                        "Status": "Enabled",
+                        "Expiration": {
+                            "Days": 50
+                        }
+                    },
+                    {
+                        "ID": "rule2",
+                        "Filter": {
+                            "Prefix": "",
+                        },
+                        "Status": "Enabled",
+                        "Expiration": {
+                            "Days": 50
+                        }
+                    }]
+            }
+        )
 
     def test_expired_object_delete_marker(self):
         resp = self.conn.create_bucket(Bucket='bucket')
@@ -1418,14 +1399,16 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
 
         self.assertRaisesRegex(
             botoexc.ClientError,
-            r'.*InvalidRequest.*prefix \'doc/\'.*',
+            r'.*InvalidRequest.*prefix=doc/.*',
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
-                        "Prefix": "doc/",
+                        "Filter": {
+                            "Prefix": "doc/"
+                        },
                         "Status": "Enabled",
                         "Transitions": [{
                             "Days": 60,
@@ -1443,7 +1426,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -1467,7 +1450,7 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
             self.conn.put_bucket_lifecycle_configuration,
             Bucket='bucket',
             LifecycleConfiguration={
-                'Rules': [
+                "Rules": [
                     {
                         "ID": "lifecycle-s3",
                         "Filter": {
@@ -1486,4 +1469,34 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                         }]
                     }]
             }
+        )
+
+    def test_expiration_header(self):
+        resp = self.conn.create_bucket(Bucket='bucket')
+        self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+
+        resp = self.conn.put_bucket_lifecycle_configuration(
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "lifecycle-s3",
+                        "Filter": {
+                            "Prefix": "foo/"
+                        },
+                        "Status": "Enabled",
+                        "Expiration": {
+                            "Date": "2030-10-10T00:00:00"
+                        }
+                    }]
+            }
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+
+        resp = self.conn.put_object(Bucket='bucket', Key='foo/bar', Body=b'')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(
+            'expiry-date="Thu, 10 Oct 2030 02:00:00 GMT", '
+            'rule-id="lifecycle-s3"',
+            resp['Expiration']
         )

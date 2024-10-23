@@ -4,6 +4,8 @@ start =
   element LifecycleConfiguration {
     element Rule {
       element ID { xsd:string }? &
+      # Prefix outside Filter is deprecated
+      element Prefix { xsd:string }? &
       element Filter {
           element And {
             element Prefix { xsd:string }? &
@@ -23,7 +25,6 @@ start =
           element ObjectSizeLessThan {xsd:int}?
 
       }? &
-      element Prefix { xsd:string }? &
       element Status { "Enabled" | "Disabled" } &
       element AbortIncompleteMultipartUpload {
           element DaysAfterInitiation { xsd:int }
