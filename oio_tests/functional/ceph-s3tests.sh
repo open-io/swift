@@ -14,6 +14,8 @@ S3TEST_CONF=ceph-s3tests.conf nosetests \
   -a '!fails_on_aws' -v \
   -logging-level=INFO -logging-level \
   --with-xunit --xunit-file=tests_report.xml \
-  s3tests_boto3.functional.test_s3 s3tests_boto3.functional.test_s3_cross_account_acl
+  s3tests_boto3.functional.test_headers \
+  s3tests_boto3.functional.test_s3 \
+  s3tests_boto3.functional.test_s3_cross_account_acl
 
 mv tests_report.xml ../../
