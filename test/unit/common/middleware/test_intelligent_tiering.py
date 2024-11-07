@@ -644,7 +644,7 @@ class TestIntelligentTiering(unittest.TestCase):
         self.req.method = 'DELETE'
         self.expected_rabbit_args = [
             (self.ACCOUNT, self.CONTAINER_NAME, 'delete'),
-            {}
+            {'bucket_size': 42, 'bucket_region': None}
         ]
         self.expected_container_props_args = [
             (self.req, BUCKET_STATE_DELETING),

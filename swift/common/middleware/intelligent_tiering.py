@@ -199,8 +199,20 @@ class RabbitMQClient(object):
             bucket_region=bucket_region
         )
 
-    def start_archive_deletion(self, account, bucket):
-        self._send_message(account, bucket, RABBITMQ_MSG_DELETION)
+    def start_archive_deletion(
+        self,
+        account,
+        bucket,
+        bucket_size,
+        bucket_region
+    ):
+        self._send_message(
+            account,
+            bucket,
+            RABBITMQ_MSG_DELETION,
+            bucket_size=bucket_size,
+            bucket_region=bucket_region
+        )
 
 
 class IntelligentTieringMiddleware(object):
@@ -538,8 +550,14 @@ class IntelligentTieringMiddleware(object):
                     f'Archive deletion is locked until {timestamp.s3xmlformat}'
                 )
 
-        self.rabbitmq_client.start_archive_deletion(req.account,
-                                                    req.container_name)
+        bucket_info = req.get_bucket_info(self.app)
+
+        self.rabbitmq_client.start_archive_deletion(
+            req.account,
+            req.container_name,
+            bucket_info.get('bytes'),
+            bucket_info.get('region'),
+        )
         self._set_archiving_status(req, current_status, new_status)
         return new_status
 
