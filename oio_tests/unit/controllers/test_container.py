@@ -134,3 +134,23 @@ class TestContainerController(unittest.TestCase):
         meta = self.storage.container.container_set_properties.call_args[0][2]
         self.assertEqual(meta[sys_meta_key], 'foo')
         self.assertEqual(meta[user_meta_key], 'bar')
+
+    def test_update_data_record_default_content_type(self):
+        broken_record = {
+            "name": "broken",
+            "size": 666,
+            "mtime": 1731940635,
+            "mime_type": None,  # not supposed to be None
+            "version": 1731940635000000,
+        }
+        expected = {
+            "bytes": 666,
+            "content_type": "application/octet-stream",
+            "is_latest": True,
+            "last_modified": "2024-11-18T14:37:15.000000",
+            "name": "broken",
+        }
+        req = Request.blank('/v1/a/c', method='GET')
+        controller, _ = self.app.get_controller(req)
+        res = controller(self.app, "a", "c").update_data_record(broken_record)
+        self.assertEqual(expected, res)

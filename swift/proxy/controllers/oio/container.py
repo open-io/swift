@@ -242,8 +242,8 @@ class ContainerController(SwiftContainerController):
         if record.get('deleted', False):
             response['content_type'] = DELETE_MARKER_CONTENT_TYPE
         else:
-            response['content_type'] = record.get(
-                'mime_type', 'application/octet-stream')
+            response['content_type'] = \
+                record.get('mime_type') or 'application/octet-stream'
         storage_policy = record.get('policy')
         if storage_policy:
             response['storage_policy'] = storage_policy
