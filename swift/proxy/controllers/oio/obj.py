@@ -34,7 +34,7 @@ from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
     header_mapping, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
     obj_version_from_env, oio_versionid_to_swift_versionid, \
-    swift_versionid_to_oio_versionid, extract_oio_headers
+    swift_versionid_to_oio_versionid, extract_oio_headers, AWS_OIO_PREFIX
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
     HTTPNotFound, HTTPConflict, HTTPPreconditionFailed, HTTPRequestTimeout, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
@@ -771,12 +771,40 @@ class ObjectController(BaseObjectController):
             req.headers.get("x-replication-destinations")
         replicator_id = req.headers.get("x-replication-replicator-id")
         role_project_id = req.headers.get("x-replication-role-project-id")
+        only_put_metadata = config_true_value(headers.get(
+            f"{AWS_OIO_PREFIX}Replication-Add-Customer-Metadata"))
         if bucket_name:
             # In case a shard is being created, save the name of the S3 bucket
             # in a container property. This will be used when aggregating
             # container statistics to make bucket statistics.
             ct_props['system'][BUCKET_NAME_PROP] = bucket_name
         try:
+            if only_put_metadata:
+                version = kwargs['version']
+                # Version is mandatory to update metadata in a replication
+                # context.
+                if not version:
+                    return HTTPBadRequest(
+                        'Missing version to update object metadata'
+                    )
+                # Remove all non customer metadata (could be a dict
+                # comprehension but the line is too long and hard to indent).
+                new_metadata = {}
+                for k, v in metadata.items():
+                    if k.startswith((
+                        'x-object-meta-',
+                        'x-object-transient-sysmeta-crypto-meta',
+                    )):
+                        new_metadata[k] = v
+
+                self.app.storage.object_set_properties(
+                    self.account_name,
+                    self.container_name,
+                    self.object_name,
+                    properties=new_metadata,
+                    version=version,
+                )
+                return HTTPNoContent(request=req)
 
             _chunks, size, checksum, meta = self.app.storage.object_create_ext(
                 self.account_name, self.container_name,

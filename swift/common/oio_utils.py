@@ -30,6 +30,11 @@ from oio.common.exceptions import MethodNotAllowed, NoSuchContainer, \
 from oio.common.redis_conn import catch_service_errors, RedisConnection
 
 
+# As it is difficult to pass custom header with most S3 SDKs. The only way is
+# to pass "metadata". But we don't want this metadata to be saved, thus we pass
+# a disallowed character (the final question mark).
+AWS_OIO_PREFIX = "x-amz-meta-" + OIO_HEADER_PREFIX + "?"
+AWS_OIO_PREFIX_LEN = len(AWS_OIO_PREFIX)
 BUCKET_NAME_PROP = "sys.m2.bucket.name"
 BUCKET_OBJECT_LOCK_PROP = "sys.m2.bucket.objectlock.enabled"
 FORCED_VERSION_HEADER = OIO_HEADER_PREFIX + "Version-Id"
@@ -41,6 +46,10 @@ header_mapping = {
     "replication-status": {
         "query": ("replication_status", str),
         "header": "x-object-sysmeta-s3api-replication-status",
+    },
+    "replication-add-customer-metadata": {
+        "query": ("replication_add_customer_metadata", str),
+        "header": "x-object-sysmeta-s3api-replication-add-customer-metadata",
     },
     "retention-mode": {
         "query": ("retention_mode", str),
@@ -198,14 +207,12 @@ def extract_oio_headers(fnc):
             # This was our preferred versions of passing custom parameters...
             if FORCED_VERSION_HEADER in req.headers:
                 query['new_version'] = req.headers[FORCED_VERSION_HEADER]
-            # ... however it's difficult to pass custom header with most
-            # S3 SDKs. The only way is to pass "metadata". But we don't want
-            # this metadata to be saved, thus we pass a disallowed character.
-            aws_oio_prefix = "x-amz-meta-" + OIO_HEADER_PREFIX + "?"
+            # ... however it's now best to use AWS_OIO_PREFIX for S3 SDKs
+            # compatibilities.
             for key, val in list(req.environ["headers_raw"]):
                 lowered = key.lower()
-                if lowered.startswith(aws_oio_prefix):
-                    suffix = lowered[len(aws_oio_prefix):]
+                if lowered.startswith(AWS_OIO_PREFIX):
+                    suffix = lowered[AWS_OIO_PREFIX_LEN:]
                     if suffix in header_mapping:
                         query_key, convert_query_val = header_mapping[
                             suffix]["query"]

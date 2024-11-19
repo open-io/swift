@@ -33,12 +33,13 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
 from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
     convert_response, sysmeta_header, is_valid_token, validate_tag_key, \
     validate_tag_value
+from swift.common.oio_utils import AWS_OIO_PREFIX
 from swift.common.utils import config_true_value, public
 from swift.proxy.controllers.base import get_container_info
 
 BUCKET_REPLICATION_HEADER = sysmeta_header("bucket", "replication")
 
-HTTP_HEADER_REPLICATION_STATUS = 'X-Amz-Meta-X-Oio-?replication-status'
+HEADER_ADD_METADATA = f'{AWS_OIO_PREFIX}Replication-Add-Customer-Metadata'
 OBJECT_REPLICATION_STATUS = sysmeta_header("object", "replication-status")
 
 REPLICATION_CALLBACK = "swift.callback.replication.apply"
@@ -456,7 +457,7 @@ class ReplicationController(Controller):
                 raise InternalError(
                     'Unexpected status code %d' % info['status'])
         else:
-            # TODO(FIR) verify versionning across regions
+            # TODO(FIR) verify versioning across regions
             pass
 
     def _validate_rule(self, rule, req):

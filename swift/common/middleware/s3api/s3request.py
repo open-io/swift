@@ -1893,6 +1893,7 @@ class S3Request(swob.Request):
                 'PUT': [
                     HTTP_CREATED,
                     HTTP_ACCEPTED,  # For SLO with heartbeating
+                    HTTP_NO_CONTENT,  # To add metadata by replicator
                 ],
                 'POST': [
                     HTTP_ACCEPTED,

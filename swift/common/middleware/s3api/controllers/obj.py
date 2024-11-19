@@ -36,7 +36,7 @@ from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.encryption import \
     encryption_set_env_variable
 from swift.common.middleware.s3api.controllers.replication import \
-    replication_resolve_rules
+    replication_resolve_rules, HEADER_ADD_METADATA
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -297,6 +297,18 @@ class ObjectController(Controller):
         """
         Handle PUT Object and PUT Object (Copy) request
         """
+        # Check that request comes from replicator if it is to add customer
+        # metadata. Do it early to avoid unnecessary processing.
+        if HEADER_ADD_METADATA.title() in req.headers \
+                and not req.from_replicator():
+            self.logger.warning(
+                "Request to update customer metadata not coming from "
+                "the replicator"
+            )
+            # No detail given to the customer on purpose as only the replicator
+            # is supposed to make such calls.
+            raise AccessDenied()
+
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
         # set X-Timestamp by s3api to use at copy resp body
