@@ -53,6 +53,7 @@ from bisect import bisect
 
 from eventlet.green import socket
 from eventlet.pools import Pool
+from eventlet.queue import Full
 from eventlet import Timeout
 from six.moves import range
 from swift.common import utils
@@ -194,7 +195,17 @@ class MemcacheConnPool(Pool):
             # from the pool, so it has to be responsible for repopulating it.
             # Any other errors should get handled in _get_conns(); see the
             # comment about timeouts during create() there.
-            self.put((None, None))
+            try:
+                # Beware that such an action prone to raise exceptions, being
+                # called from an exception handler, might propagate an
+                # unexpected exception
+                self.put((None, None))
+            except Full:
+                # Before the try/except block, we were failing the Swift req
+                # management and thus also the put of that tuple made of None
+                # values. So catching the exception with any more action won't
+                # make more harm than we did.
+                pass
             raise mpt
 
 
