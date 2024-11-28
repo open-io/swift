@@ -30,6 +30,9 @@ from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import sysmeta_header
+from swift.common.middleware.s3api.controllers.multi_upload import (
+    MpuAlreadyCompleted,
+)
 from swift.common.oio_utils import check_if_none_match, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
     header_mapping, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
@@ -829,6 +832,12 @@ class ObjectController(BaseObjectController):
                 properties=metadata, container_properties=ct_props,
                 properties_callback=(
                     lambda: self.load_object_metadata(self._get_footers(req))),
+                pre_commit_hook=(
+                    req.environ.get(
+                        'swift.callback.pre_commit_hook',
+                        None
+                    )
+                ),
                 extra_properties=extra_properties,
                 cache=oio_cache, perfdata=perfdata,
                 replication_destinations=replication_destinations,
@@ -860,6 +869,18 @@ class ObjectController(BaseObjectController):
             raise  # see handle_oio_timeout
         except exceptions.NoSuchContainer:
             raise HTTPNotFound(request=req)
+        except MpuAlreadyCompleted as err:
+            last_modified = int(err.info.get("mtime"))
+            version_id = oio_versionid_to_swift_versionid(
+                err.info.get("version")
+            )
+            resp = HTTPCreated(
+                request=req, etag=err.info.get("obj_checksum"),
+                last_modified=last_modified,
+                headers={
+                    'x-object-sysmeta-version-id': version_id
+                })
+            return resp
         except exceptions.ClientException as err:
             # 481 = CODE_POLICY_NOT_SATISFIABLE
             if err.status == 481:

@@ -116,6 +116,9 @@ from swift.common.middleware.s3api.multi_upload_utils import \
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 from swift.common.middleware.s3api.controllers.lifecycle import \
     get_mpu_abortion
+
+from oio.common import exceptions
+
 # 10000 parts about 200 bytes each, plus envelope
 MAX_COMPLETE_UPLOAD_BODY_SIZE = 3 * 1024 * 1024
 
@@ -234,6 +237,11 @@ class LifecycleAbortDateMixin(object):
                     "%a, %d %b %Y %H:%M:%S GMT")
                 headers["x-amz-abort-rule-id"] = abortion_rule
         return headers
+
+
+class MpuAlreadyCompleted(exceptions.ClientPreconditionFailed):
+    def __init__(self, http_status=412, status=None, message=None):
+        super(MpuAlreadyCompleted, self).__init__(http_status, status, message)
 
 
 class PartController(Controller):
@@ -364,6 +372,27 @@ class PartController(Controller):
         if req.from_replicator():  # Upload part from replicator
             # Set replication status on destination side
             req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_REPLICA
+
+        def check_upload_marker():
+            put_backend_path = resp.environ['PATH_INFO']
+            copy_source = req.headers.pop('X-Amz-Copy-Source', None)
+            try:
+                container = req.container_name + MULTIUPLOAD_SUFFIX
+                obj = '%s/%s' % (req.object_name, upload_id)
+                req.get_response(
+                    self.app,
+                    "HEAD",
+                    container=container,
+                    obj=obj,
+                )
+            except NoSuchKey:
+                raise MpuAlreadyCompleted()
+            finally:
+                if copy_source is not None:
+                    req.headers['X-Amz-Copy-Source'] = copy_source
+                req.environ['s3api.backend_path'] = put_backend_path
+
+        req.environ['swift.callback.pre_commit_hook'] = check_upload_marker
 
         resp = req.get_response(self.app,
                                 container=seg_container_name,

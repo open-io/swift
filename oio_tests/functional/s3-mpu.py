@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Copyright (c) 2020 OpenStack Foundation
-# Copyright (c) 2023 OVH SAS
+# Copyright (c) 2023-2024 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,13 @@
 
 from datetime import datetime, timedelta
 import json
+import os
+import queue
 import re
 import requests
 import tempfile
+import threading
+from time import sleep
 import unittest
 from urllib.parse import quote
 
@@ -221,7 +225,6 @@ class TestS3Mpu(unittest.TestCase):
         for part in listing['Parts']:
             parts.add(part['PartNumber'])
         self.assertEqual(10, len(parts))
-
 
     def _test_mpu(self, path):
         """
@@ -680,6 +683,91 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket,
             key=path
         )
+
+    def test_reupload_part_before_complete_but_finish_after(self):
+        raise unittest.SkipTest(
+            "Skip this test because it relies on a sleep and the size of the "
+            "re-uploaded part to reproduce the bug (put_part starts first, "
+            "then completeMPU before end of put_part). "
+            "This test should work in local."
+        )
+        path = "inconsistent-part-size-mpu" + random_str(4)
+        upload_file = "/etc/magic"
+
+        # Create a legitimate multipart upload
+        data = self._create_multipart_upload(self.bucket, path)
+        self.assertEqual(path, data['Key'])
+        upload_id = data["UploadId"]
+        mpu_parts = []
+
+        def upload_part(part_number, data, fail_expected, output_queue):
+            try:
+                resp = run_awscli_s3api(
+                    "upload-part",
+                    "--part-number", "1",
+                    "--upload-id", upload_id,
+                    "--body", data,
+                    bucket=self.bucket,
+                    key=path
+                )
+                mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
+                print(f"Part {part_number} with body={data} is uploaded")
+                output_queue.put(None)
+            except Exception as err:
+                output_queue.put(err)
+
+        result_queue = queue.Queue()
+        # Upload the part 1
+        upload_part(1, upload_file, False, result_queue)
+        err = result_queue.get()
+        if err:
+            raise err
+
+        # Re-upload the part 1
+        bigger_part = b"*" * 100000000
+        reupload_file = tempfile.NamedTemporaryFile()
+        reupload_file.write(bigger_part)
+        reupload_file.flush()
+
+        thread = threading.Thread(
+            target=upload_part, args=(1, reupload_file.name, True, result_queue)
+        )
+        thread.start()
+
+        sleep(1)
+        # Complete MPU (before re-upload of part 1 is finish)
+        final = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload",
+            json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket, key=path)
+        self.assertEqual(final['Key'], path)
+
+        print("Multipart upload completed successfully.")
+
+        thread.join()
+        reupload_file.close()
+
+        err = result_queue.get()
+        if err:
+            raise err
+        print("The re-upload of the part didn't return an error.")
+
+        # Check if the object is the legitimate file we uploaded the first time
+        with tempfile.NamedTemporaryFile() as file:
+            resp = run_awscli_s3api(
+                "get-object",
+                file.name,
+                bucket=self.bucket,
+                key=path,
+            )
+            self.assertEqual(
+                resp["ContentLength"], os.stat(upload_file).st_size
+            )
+            self.assertEqual(
+                os.stat(file.name).st_size, os.stat(upload_file).st_size
+            )
 
     def test_list_multipart_uploads(self):
         name = "list-upload-" + random_str(4)

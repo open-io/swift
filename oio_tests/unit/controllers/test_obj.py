@@ -231,7 +231,7 @@ class TestObjectController(unittest.TestCase):
             mime_type='application/octet-stream',
             file_or_path=ANY,
             policy=None, reqid=ANY, container_properties=ANY, cache=None,
-            perfdata=ANY, properties_callback=ANY,
+            perfdata=ANY, properties_callback=ANY, pre_commit_hook=ANY,
             replication_destinations=None, replication_replicator_id=None,
             replication_role_project_id=None, end_user_request=True)
         self.assertEqual(201, resp.status_int)
