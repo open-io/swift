@@ -382,6 +382,11 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
             # now update with original req headers
             sink_req.headers.update(req.headers)
 
+        # New crypto sysmeta will be created if encryption is enabled on the
+        # destination bucket. If encryption is not enabled we MUST NOT copy
+        # encryption metadata.
+        sink_req.headers.pop("X-Object-Sysmeta-Crypto-Body-Meta", None)
+
         params = sink_req.params
         params_updated = False
 

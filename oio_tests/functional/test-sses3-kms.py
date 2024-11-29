@@ -65,6 +65,51 @@ class TestSses3Kms(unittest.TestCase):
         super().tearDown()
 
     @unittest.skipIf(
+        # Skip if there is a default encryption for buckets
+        (DEFAULT_SSE_CONF
+        # Skip if there is a default encryption for everything
+         or FALLBACK_ON_ROOT_SECRET
+        # Skip if there our account is not allowed to do encryption
+         or (ACCOUNT_WHITELIST and OIO_ACCOUNT not in ACCOUNT_WHITELIST)),
+        "Requires no default SSE configuration")
+    def test_encrypted_empty_object_copy_unencrypted(self):
+        """
+        Test the copy of an empty object from an encryption-enabled bucket
+        to an encryption-disabled bucket.
+        """
+        key = "empty"
+        dst_bucket = self.bucket.replace("kms", "nokms")
+        self.boto.create_bucket(Bucket=dst_bucket)
+        self._buckets_to_delete.append(dst_bucket)
+        self.boto.create_bucket(Bucket=self.bucket)
+        self.boto.put_bucket_encryption(
+            Bucket=self.bucket,
+            ServerSideEncryptionConfiguration={
+                'Rules': [{
+                    'ApplyServerSideEncryptionByDefault': {
+                        'SSEAlgorithm': 'AES256'
+                    }
+                }]
+            }
+        )
+        put_res = self.boto.put_object(
+            Bucket=self.bucket, Key=key, Body=b""
+        )
+        # Ensure the result is an empty object, with encryption
+        self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', put_res["ETag"])
+        self.assertIn("ServerSideEncryption", put_res)
+
+        copy_res = self.boto.copy_object(
+            Bucket=dst_bucket, Key=key, CopySource=f"{self.bucket}/{key}"
+        )
+        # Ensure the result is an empty object, without encryption
+        self.assertEqual(
+            f'"{MD5_OF_EMPTY_STRING}"',
+            copy_res["CopyObjectResult"]["ETag"]
+        )
+        self.assertNotIn("ServerSideEncryption", copy_res)
+
+    @unittest.skipIf(
         not DEFAULT_SSE_CONF, "Requires a default SSE configuration")
     def test_object_encrypted_with_bucket_secret(self):
         key = "encrypted"
