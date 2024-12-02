@@ -288,15 +288,15 @@ class EncrypterObjContext(CryptoWSGIContext):
         # provided it matches the ciphertext etag. If it does not match then do
         # not overwrite and allow the response value to return to client.
         mod_resp_headers = self._response_headers
-        if (is_success(self._get_status_int()) and
-                enc_input_proxy.plaintext_md5):
-            plaintext_etag = enc_input_proxy.plaintext_md5.hexdigest()
-            ciphertext_etag = enc_input_proxy.ciphertext_hash.hexdigest()
-            mod_resp_headers = [
-                (h, v if (h.lower() != 'etag' or
-                          normalize_etag(v) != ciphertext_etag)
-                    else plaintext_etag)
-                for h, v in mod_resp_headers]
+        if is_success(self._get_status_int()):
+            if enc_input_proxy.plaintext_md5:
+                plaintext_etag = enc_input_proxy.plaintext_md5.hexdigest()
+                ciphertext_etag = enc_input_proxy.ciphertext_hash.hexdigest()
+                mod_resp_headers = [
+                    (h, v if (h.lower() != 'etag' or
+                              normalize_etag(v) != ciphertext_etag)
+                        else plaintext_etag)
+                    for h, v in mod_resp_headers]
 
             put_crypto_meta = enc_input_proxy.body_crypto_meta
             if put_crypto_meta:
