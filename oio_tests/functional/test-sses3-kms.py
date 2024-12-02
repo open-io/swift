@@ -30,11 +30,15 @@ from oio_tests.functional.common import (
     random_str,
     run_awscli_s3,
 )
+from swift.common.utils import MD5_OF_EMPTY_STRING, config_true_value
 
 
 CRYPTO_META_KEY = "x-object-sysmeta-crypto-body-meta"
 BOTO_PROFILE = os.getenv("BOTO_PROFILE", "default")
 ACCOUNT_WHITELIST = os.getenv("ACCOUNT_WHITELIST")
+DEFAULT_SSE_CONF = os.getenv("DEFAULT_SSE_CONF")
+FALLBACK_ON_ROOT_SECRET = config_true_value(
+    os.getenv("FALLBACK_ON_ROOT_SECRET"))
 
 
 class TestSses3Kms(unittest.TestCase):
@@ -60,6 +64,8 @@ class TestSses3Kms(unittest.TestCase):
                     raise
         super().tearDown()
 
+    @unittest.skipIf(
+        not DEFAULT_SSE_CONF, "Requires a default SSE configuration")
     def test_object_encrypted_with_bucket_secret(self):
         key = "encrypted"
         self.boto.create_bucket(Bucket=self.bucket)
@@ -89,7 +95,8 @@ class TestSses3Kms(unittest.TestCase):
         data = b"".join(get_res["Body"])
         self.assertEqual(data, key.encode("utf-8"))
 
-    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
+    @unittest.skipIf(
+        DEFAULT_SSE_CONF is None, "Requires a default SSE configuration")
     def test_mpu_encrypted_with_bucket_secret(self):
         key = "encrypted_mpu"
         self.boto.create_bucket(Bucket=self.bucket)
@@ -121,7 +128,8 @@ class TestSses3Kms(unittest.TestCase):
             # The part has been encrypted, the hash must be different
             self.assertNotEqual(parts[pnum - 1]["ETag"], meta["hash"])
 
-    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
+    @unittest.skipIf(
+        DEFAULT_SSE_CONF is None, "Requires a default SSE configuration")
     def test_1_two_buckets_have_different_secrets(self):
         """
         Checks the creation of two buckets generates two secrets.
@@ -147,7 +155,8 @@ class TestSses3Kms(unittest.TestCase):
         )
         self.assertNotEqual(secret1, secret2)
 
-    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
+    @unittest.skipIf(
+        DEFAULT_SSE_CONF is None, "Requires a default SSE configuration")
     def test_2_same_object_in_two_buckets(self):
         """
         Checks the same object in two different buckets is encrypted
@@ -174,7 +183,8 @@ class TestSses3Kms(unittest.TestCase):
         self.assertEqual(data, data2)
         self.assertEqual(data, key.encode("utf-8"))
 
-    @unittest.skipUnless(ACCOUNT_WHITELIST is None, "Testing account whitelist")
+    @unittest.skipIf(
+        DEFAULT_SSE_CONF is None, "Requires a default SSE configuration")
     def test_3_delete_bucket_deletes_secret(self):
         """
         Checks the creation of a bucket generates a new secret, and
