@@ -45,12 +45,12 @@ jobs:
           extra_index_url = https://pypi.org/simple
           EOF
           . $HOME/swiftenv/bin/activate
-          pip install --upgrade pip setuptools virtualenv "tox<4.0.0" -r test-requirements.txt
+          pip install --progress-bar off --upgrade pip setuptools virtualenv "tox<4.0.0" -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
           eval $(worker key install --env-git proj-ssh-openio)
           git submodule update --init --remote
-          cd third_party/oio-sds && pip install -e . && cd ../..
-          pip install -e .
+          cd third_party/oio-sds && pip install --progress-bar off -e . && cd ../..
+          pip install --progress-bar off -e .
           ./third_party/oio-sds/tools/patch-python-modules.sh
           . ./oio_tests/functional/common.sh
           install_foundationdb "${FDB_VERSION}"

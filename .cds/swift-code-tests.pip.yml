@@ -21,12 +21,12 @@ jobs:
           sed -i '/tox/d' .cds/deps-ubuntu-focal.txt
           apt update
 
-          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE}
+          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE} cargo
           echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:$PATH" > $HOME/swift-env.sh
           source $HOME/swift-env.sh
           /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
           . $HOME/swiftenv/bin/activate
-          pip install --upgrade pip setuptools virtualenv "tox<4.0.0"
+          pip install --progress-bar off --upgrade pip setuptools virtualenv "tox<4.0.0"
       - name: Run coding style tests
         script: |+
           #!/bin/bash
