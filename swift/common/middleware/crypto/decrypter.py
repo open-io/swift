@@ -331,8 +331,11 @@ class DecrypterObjContext(BaseDecrypterContext):
         if self.crypto.ssec_mode:
             info = get_object_info(req.environ, self.app,
                                    swift_source='DCRYPT')
-            if 'crypto-etag' not in info['sysmeta']:
-                # object is not cyphered
+            if (
+                'crypto-etag' not in info['sysmeta'] and
+                not info["transient_sysmeta"]
+            ):
+                # object is not cyphered and has not customer metadata
                 return None
 
         key_id = crypto_meta.get('key_id') if crypto_meta else None
@@ -367,7 +370,7 @@ class DecrypterObjContext(BaseDecrypterContext):
                 body='Error decrypting object',
                 content_type='text/plain')
 
-        if put_keys is None and post_keys is None:
+        if put_keys is None and post_keys is None and req.method != 'HEAD':
             # When encryption is enabled, but object is zero-length, no
             # encryption is performed and therefore no ETag is saved
             # by swift. Ensure we return the right ETag (MD5) in case the
