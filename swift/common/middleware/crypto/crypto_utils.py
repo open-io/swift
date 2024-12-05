@@ -28,7 +28,8 @@ from swift import gettext_ as _
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.swob import HTTPException, HTTPInternalServerError, \
     header_to_environ_key
-from swift.common.utils import get_logger, strict_b64decode, config_true_value
+from swift.common.utils import compute_md5, get_logger, strict_b64decode, \
+    config_true_value
 from swift.common.wsgi import WSGIContext
 from cgi import parse_header
 
@@ -339,6 +340,13 @@ def decode_secret(b64_secret):
     return binary_secret
 
 
+def check_md5(binary_secret, expected_md5):
+    """Compute encryption key md5 and compare it to the given one"""
+    md5_secret = compute_md5(binary_secret)
+    if md5_secret != expected_md5:
+        raise ValueError
+
+
 def get_hasher(algorithm='md5'):
     """
     Same hashlib.new, but supports other algorithms like 'blake3'.
@@ -381,5 +389,15 @@ SSEC_SRC_ALGO_ENV_KEY = header_to_environ_key(SSEC_SRC_ALGO_HEADER)
 SSEC_SRC_KEY_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_HEADER)
 SSEC_SRC_KEY_MD5_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_MD5_HEADER)
 
-MISSING_KEY_MSG = 'Missing %s header' % SSEC_KEY_HEADER
-MISSING_ALGO_MSG = 'Missing %s header' % SSEC_ALGO_HEADER
+MISSING_KEY_MSG = 'Requests specifying Server Side Encryption with Customer \
+provided keys must provide an appropriate secret key.'
+MISSING_ALGO_MSG = 'Requests specifying Server Side Encryption with Customer \
+provided keys must provide a valid encryption algorithm.'
+MISSING_KEY_ALGO_MSG = 'The object was stored using a form of Server Side \
+Encryption. The correct parameters must be provided to retrieve \
+the object.'
+INVALID_KEY = 'The secret key was invalid for the specified algorithm.'
+INVALID_MD5_VALUE = 'The MD5 hash of the secret key was improperly encoded. \
+The MD5 hash must be Base64 encoded.'
+WRONG_MD5_VALUE = 'The calculated MD5 hash of the key did not match the hash \
+that was provided.'

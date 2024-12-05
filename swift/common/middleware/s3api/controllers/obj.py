@@ -21,11 +21,14 @@ from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
     normalize_etag
-from swift.common.utils import public, list_from_csv, config_true_value
+from swift.common.utils import public, list_from_csv, \
+    config_true_value, strict_b64decode
 from swift.common.registry import get_swift_info
 
-from swift.common.middleware.crypto.crypto_utils import MISSING_KEY_MSG, \
-    SSEC_KEY_HEADER, SSEC_ALGO_HEADER
+from swift.common.middleware.crypto.crypto_utils import \
+    INVALID_KEY, INVALID_MD5_VALUE, MISSING_ALGO_MSG, MISSING_KEY_MSG, \
+    SSEC_KEY_HEADER, SSEC_ALGO_HEADER, SSEC_KEY_MD5_HEADER, WRONG_MD5_VALUE, \
+    check_md5, decode_secret
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
@@ -43,8 +46,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, BadRequest, InvalidRequest, AccessDenied, \
-    MethodNotAllowed
+    PreconditionFailed, InvalidRequest, AccessDenied, MethodNotAllowed
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
@@ -231,10 +233,39 @@ class ObjectController(Controller):
             # HEAD requests without keys on encrypted objects are allowed for
             # internal usage (e.g. ACLs). But we should deny them when they
             # come from the outside.
-            if (config_true_value(
-                    resp.sw_headers.get('X-Requires-Encryption-Key'))
-                    and SSEC_KEY_HEADER not in req.headers):
-                raise BadRequest(MISSING_KEY_MSG)
+            if config_true_value(resp.sw_headers.get(
+                'X-Requires-Encryption-Key')
+            ):
+                if SSEC_KEY_HEADER not in req.headers:
+                    raise InvalidArgument(
+                        'x-amz-server-side-encryption', None, MISSING_KEY_MSG)
+                elif SSEC_ALGO_HEADER not in req.headers:
+                    raise InvalidArgument(
+                        'x-amz-server-side-encryption', None, MISSING_ALGO_MSG)
+                if SSEC_KEY_MD5_HEADER in req.headers:
+                    b64_secret = req.headers.get(SSEC_KEY_HEADER)
+                    md5_secret = req.headers.get(SSEC_KEY_MD5_HEADER)
+                    try:
+                        secret = decode_secret(b64_secret)
+                    except ValueError:
+                        raise AccessDenied(INVALID_KEY)
+                    # validate given md5 value is base64 encoded
+                    try:
+                        strict_b64decode(
+                            md5_secret, allow_line_breaks=True)
+                    except ValueError:
+                        InvalidArgument(
+                            'x-amz-server-side-encryption',
+                            None, INVALID_MD5_VALUE
+                        )
+                    try:
+                        # Compute md5 from encryption key
+                        check_md5(secret, md5_secret)
+                    except ValueError:
+                        InvalidArgument(
+                            'x-amz-server-side-encryption',
+                            None, WRONG_MD5_VALUE
+                        )
 
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)

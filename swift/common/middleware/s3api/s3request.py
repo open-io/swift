@@ -26,8 +26,9 @@ from six.moves.urllib.parse import quote, unquote, parse_qsl
 import string
 from sys import version_info
 
-from swift.common.utils import split_path, json, close_if_possible, md5, \
-    reiterate, drain_and_close, is_from_replicator, REPLICATOR_EXPLICIT_ALLOW
+from swift.common.utils import compute_md5, split_path, json, \
+    close_if_possible, reiterate, drain_and_close, is_from_replicator, \
+    REPLICATOR_EXPLICIT_ALLOW
 from swift.common.registry import get_swift_info
 from swift.common import constraints, swob
 from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
@@ -79,7 +80,9 @@ from swift.common.middleware.s3api.acl_utils import handle_acl_header
 from swift.common.middleware.s3api.etree import XML_DECLARATION, tostring
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
-
+from swift.common.middleware.crypto.crypto_utils import INVALID_MD5_VALUE, \
+    MISSING_ALGO_MSG, MISSING_KEY_ALGO_MSG, MISSING_KEY_MSG, INVALID_KEY, \
+    WRONG_MD5_VALUE
 
 # List of sub-resources that must be maintained as part of the HMAC
 # signature string.
@@ -1364,8 +1367,7 @@ class S3Request(swob.Request):
             raise InvalidRequest('Missing required header for this request: '
                                  'Content-MD5')
 
-        digest = base64.b64encode(md5(
-            body, usedforsecurity=False).digest()).strip().decode('ascii')
+        digest = compute_md5(body)
         if self.environ['HTTP_CONTENT_MD5'] != digest:
             raise BadDigest(content_md5=self.environ['HTTP_CONTENT_MD5'])
 
@@ -2142,7 +2144,7 @@ class S3Request(swob.Request):
                 raise err_resp()
 
         if status == HTTP_BAD_REQUEST:
-            raise BadRequest(err_msg.decode('utf8'))
+            self._raise_expected_error(err_msg)
         if status == HTTP_UNAUTHORIZED:
             if self._is_anonymous:
                 raise AccessDenied()
@@ -2202,6 +2204,43 @@ class S3Request(swob.Request):
 
         raise InternalError('unexpected status code %d' %
                             status, backend_error=err_msg)
+
+    def _raise_expected_error(self, err_msg):
+        """Raise the expected error according error message"""
+        if MISSING_KEY_ALGO_MSG.encode("utf-8") in err_msg:
+            raise InvalidRequest(err_msg.decode('utf8'))
+        elif MISSING_ALGO_MSG.encode("utf-8") in err_msg:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None,
+                err_msg.decode('utf8')
+            )
+        elif MISSING_KEY_MSG.encode("utf-8") in err_msg:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None,
+                err_msg.decode('utf8')
+            )
+        elif INVALID_KEY.encode("utf-8") in err_msg:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None,
+                err_msg.decode('utf8')
+            )
+        elif INVALID_MD5_VALUE.encode("utf-8") in err_msg:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None,
+                err_msg.decode('utf8')
+            )
+        elif WRONG_MD5_VALUE.encode("utf-8") in err_msg:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None,
+                err_msg.decode('utf8')
+            )
+        else:
+            raise BadRequest(err_msg.decode('utf8'))
 
     def get_response(self, app, method=None, container=None, obj=None,
                      headers=None, body=None, query=None):

@@ -5017,6 +5017,15 @@ class sockaddr_alg(ctypes.Structure):
 _bound_md5_sockfd = None
 
 
+def compute_md5(body):
+    """Compute the md5 of the given body message and
+    return the base64 encoded md5.
+    """
+    digest = base64.b64encode(
+        md5(body, usedforsecurity=False).digest()).strip().decode('ascii')
+    return digest
+
+
 def get_md5_socket():
     """
     Get an MD5 socket file descriptor. One can MD5 data with it by writing it

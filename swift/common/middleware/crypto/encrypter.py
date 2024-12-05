@@ -19,9 +19,11 @@ from contextlib import contextmanager
 
 from swift.common.constraints import check_metadata
 from swift.common.http import is_success
-from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
-    dump_crypto_meta, append_crypto_meta, get_hasher, Crypto, \
-    CIPHER_NAME, CRYPTO_KEY_CALLBACK, MISSING_KEY_MSG
+from swift.common.middleware.crypto.crypto_utils import INVALID_KEY, \
+    INVALID_MD5_VALUE, MISSING_ALGO_MSG, MISSING_KEY_MSG, \
+    WRONG_MD5_VALUE, CryptoWSGIContext, dump_crypto_meta, \
+    append_crypto_meta, get_hasher, Crypto, CIPHER_NAME, \
+    CRYPTO_KEY_CALLBACK, MISSING_KEY_ALGO_MSG
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     strip_user_meta_prefix, is_user_meta, update_etag_is_at_header, \
     get_container_update_override_key
@@ -435,7 +437,7 @@ class Encrypter(object):
                 try:
                     fetch_crypto_keys()
                 except HTTPException as exc:
-                    if MISSING_KEY_MSG.encode('utf-8') in exc.body:
+                    if MISSING_KEY_ALGO_MSG.encode('utf-8') in exc.body:
                         if req.method in ('PUT', 'POST'):
                             # No key, just upload without encryption
                             env['swift.crypto.override'] = True
@@ -443,6 +445,16 @@ class Encrypter(object):
                         # else:
                         #   let the thing fail later,
                         #   if a key is required for decoding
+                    elif any(
+                        [
+                            msg.encode("utf-8") in exc.body for msg in (
+                                MISSING_ALGO_MSG, MISSING_KEY_MSG, INVALID_KEY,
+                                INVALID_MD5_VALUE, WRONG_MD5_VALUE
+                            )
+                        ]
+                    ):
+                        if req.method in ('PUT', 'POST'):
+                            raise
                     else:
                         raise
                 except Exception:

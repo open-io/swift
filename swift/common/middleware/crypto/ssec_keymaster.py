@@ -26,7 +26,7 @@ from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
 from swift.common.utils import config_positive_int_value, config_true_value, \
-    non_negative_int, list_from_csv, config_auto_int_value
+    non_negative_int, list_from_csv, config_auto_int_value, strict_b64decode
 from swift.common import wsgi
 
 from oio.account.kms_client import KmsClient
@@ -190,19 +190,40 @@ class SsecKeyMasterContext(KeyMasterContext):
         if (self.req.method == 'GET' and
                 crypto_utils.SSEC_SRC_KEY_HEADER in self.req.headers):
             b64_secret = self.req.headers.get(crypto_utils.SSEC_SRC_KEY_HEADER)
+            has_algo_encryption = (
+                crypto_utils.SSEC_SRC_ALGO_HEADER in self.req.headers)
+            md5_secret = self.req.headers.get(
+                crypto_utils.SSEC_SRC_KEY_MD5_HEADER)
         else:
             b64_secret = self.req.headers.get(crypto_utils.SSEC_KEY_HEADER)
-        if not b64_secret:
-            raise HTTPBadRequest(crypto_utils.MISSING_KEY_MSG)
-        elif not (crypto_utils.SSEC_ALGO_HEADER in self.req.headers
-                  or crypto_utils.SSEC_SRC_ALGO_HEADER in self.req.headers):
+            has_algo_encryption = (
+                crypto_utils.SSEC_ALGO_HEADER in self.req.headers)
+            md5_secret = self.req.headers.get(
+                crypto_utils.SSEC_KEY_MD5_HEADER, None)
+
+        if not b64_secret and not has_algo_encryption and not md5_secret:
+            raise HTTPBadRequest(crypto_utils.MISSING_KEY_ALGO_MSG)
+        elif not has_algo_encryption:
             raise HTTPBadRequest(crypto_utils.MISSING_ALGO_MSG)
+        elif not b64_secret:
+            raise HTTPBadRequest(crypto_utils.MISSING_KEY_MSG)
+        # Check key validity
         try:
             secret = crypto_utils.decode_secret(b64_secret)
         except ValueError:
-            raise HTTPBadRequest('%s header must be a base64 '
-                                 'encoding of exactly 32 raw bytes' %
-                                 crypto_utils.SSEC_KEY_HEADER)
+            raise HTTPBadRequest(crypto_utils.INVALID_KEY)
+        # Verify the encryption key md5
+        if md5_secret:
+            # validate given md5 value is base64 encoded
+            try:
+                strict_b64decode(md5_secret, allow_line_breaks=True)
+            except ValueError:
+                raise HTTPBadRequest(crypto_utils.INVALID_MD5_VALUE)
+            try:
+                # Compute md5 from encryption key
+                crypto_utils.check_md5(secret, md5_secret)
+            except ValueError:
+                raise HTTPBadRequest(crypto_utils.WRONG_MD5_VALUE)
         return secret
 
     def _delete_bucket_secret(self):
@@ -308,9 +329,12 @@ class SsecKeyMasterContext(KeyMasterContext):
                         path, secret=secret)
                     self._keys['id']['ssec'] = True
                 except HTTPException as exc:
-                    if (crypto_utils.MISSING_ALGO_MSG.encode('utf-8')
+                    if not (crypto_utils.MISSING_KEY_ALGO_MSG.encode('utf-8')
                             in exc.body):
                         raise
+                    # HEAD: decode system metadata with container key
+                    # POST, PUT: catch exception, do not encrypt
+                    # GET: transmit the exception to the client
                     if self._keys['bucket'] is not None:
                         self._keys['object'] = self._keys['bucket']
                         self._keys['id']['sses3'] = True
@@ -318,10 +342,10 @@ class SsecKeyMasterContext(KeyMasterContext):
                             crypto_utils.is_customer_provided_key(key_id):
                         return super().fetch_crypto_keys(
                             *args, key_id=key_id, **kwargs)
-                    # HEAD: decode system metadata with container key
-                    # POST, PUT: catch exception, do not encrypt
-                    # GET: transmit the exception to the client
-                    elif self.req.method != 'HEAD':
+                    elif not (
+                        self.container.endswith(MULTIUPLOAD_SUFFIX)
+                        and self.req.method == "HEAD"
+                    ):
                         raise
 
         return self._keys
