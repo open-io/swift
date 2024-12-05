@@ -39,7 +39,6 @@ ceph_s3:
   s3tests.functional.test_s3.test_bucket_policy_different_tenant: {status: KNOWN}
   s3tests.functional.test_s3.test_bucket_policy_set_condition_operator_end_with_IfExists: {status: KNOWN}
   s3tests.functional.test_s3.test_encryption_sse_c_multipart_invalid_chunks_1: {status: KNOWN}
-  s3tests.functional.test_s3.test_encryption_sse_c_multipart_invalid_chunks_2: {status: KNOWN}
   s3tests.functional.test_s3.test_bucket_policy_put_obj_enc: {status: KNOWN}
   s3tests.functional.test_s3.test_bucket_policy_put_obj_request_obj_tag: {status: KNOWN}
   s3tests.functional.test_s3.test_append_object_position_wrong: {status: KNOWN}
@@ -110,13 +109,10 @@ ceph_s3:
   s3tests_boto3.functional.test_s3.test_cors_origin_wildcard: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_delete_tags_obj_public: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_key_no_sse_c: {status: KNOWN}
-  s3tests_boto3.functional.test_s3.test_encryption_sse_c_invalid_md5: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_method_head: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_bad_download: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_invalid_chunks_1: {status: KNOWN}
-  s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_invalid_chunks_2: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_upload: {status: KNOWN}
-  s3tests_boto3.functional.test_s3.test_encryption_sse_c_no_key: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_no_md5: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_other_key: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_post_object_authenticated_request: {status: KNOWN}

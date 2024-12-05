@@ -109,15 +109,9 @@ ceph_s3:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_delete_tags_obj_public:
     status: KNOWN
-  s3tests_boto3.functional.test_s3.test_encryption_sse_c_invalid_md5:
-    status: KNOWN
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_bad_download:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_invalid_chunks_1:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_encryption_sse_c_multipart_invalid_chunks_2:
-    status: KNOWN
-  s3tests_boto3.functional.test_s3.test_encryption_sse_c_no_key:
     status: KNOWN
   s3tests_boto3.functional.test_s3.test_encryption_sse_c_no_md5:
     status: KNOWN
