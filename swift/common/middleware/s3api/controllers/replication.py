@@ -490,7 +490,7 @@ class ReplicationController(Controller):
 
         prefix = rule.find("./Prefix")
         if prefix is not None and prefix.text and \
-            len(prefix.text) > MAX_LENGTH_PREFIX:
+                len(prefix.text) > MAX_LENGTH_PREFIX:
             raise InvalidArgument(
                 "Prefix",
                 prefix.text,
