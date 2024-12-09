@@ -787,7 +787,7 @@ class SafeSegmentedIterable(SegmentedIterable):
 
     _InvalidKey = re.compile(r'got 403 \(Invalid key\) while retrieving',
                              re.IGNORECASE)
-    _BadCryptoReq = re.compile(r'got 400 \(.*Encryption.*\) while retrieving',
+    _BadCryptoReq = re.compile(r'got 400 \(.*Encrypt.*\) while retrieving',
                                re.IGNORECASE)
 
     def validate_first_segment(self):
