@@ -11,11 +11,23 @@ export OIO_ACCOUNT="${OIO_ACCOUNT:-AUTH_demo}"
 ALGO="AES256"
 SECRET="abcdef0123456789ABCDEF0123456789"
 
+MISSING_KEY_MSG="Requests specifying Server Side Encryption with Customer provided keys must provide an appropriate secret key."
+MISSING_ALGO_MSG="Requests specifying Server Side Encryption with Customer provided keys must provide a valid encryption algorithm."
+MISSING_KEY_ALGO_MSG="The object was stored using a form of Server Side Encryption. The correct parameters must be provided to retrieve the object."
+INVALID_KEY="The secret key was invalid for the specified algorithm."
+INVALID_MD5_VALUE="The MD5 hash of the secret key was improperly encoded. The MD5 hash must be Base64 encoded."
+WRONG_MD5_VALUE="The calculated MD5 hash of the key did not match the hash that was provided."
+
+GENERATED_SECRET=$(openssl rand 32)
+ENCKEY=$(echo -n $GENERATED_SECRET | base64)
+MD5KEY=$(echo -n $GENERATED_SECRET | openssl dgst -md5 -binary | base64)
+
 PORT=${PORT:-5000}
 AWS="aws --endpoint-url http://${STORAGE_DOMAIN}:${PORT} --no-verify-ssl"
 ENC_OPTS="--sse-c $ALGO --sse-c-key $SECRET"
 ENC_OPTS_EXT="--sse-customer-algorithm $ALGO --sse-customer-key $SECRET"
 COPY_ENC_OPTS_EXT="--copy-source-sse-customer-algorithm $ALGO --copy-source-sse-customer-key $SECRET"
+ENC_OPTS_BIS="--sse-customer-key $ENCKEY  --sse-customer-algorithm $ALGO"
 
 BUCKET=bucket-$RANDOM
 ETAG_REGEX='s/(.*ETag.*)([[:xdigit:]]{32})(.*)/\2/p'
@@ -23,7 +35,9 @@ SSE_REGEX='s/(.*ServerSideEncryption.*)"([[:alnum:]]+)",/\2/p'
 WORKDIR=$(mktemp -d -t encryption-tests-XXXX)
 OBJ_1_SRC="/etc/magic"
 OBJ_2_SRC="${WORKDIR}/bigfile_src"
+OBJ_3_SRC="${WORKDIR}/empty_file"
 dd if=/dev/urandom of="$OBJ_2_SRC" bs=1k count=20480
+touch $OBJ_3_SRC
 OBJ_1_CHECKSUM=$(md5sum "${OBJ_1_SRC}" | cut -d ' ' -f 1)
 OBJ_2_CHECKSUM=$(md5sum "${OBJ_2_SRC}" | cut -d ' ' -f 1)
 
@@ -44,6 +58,144 @@ ${AWS} s3 cp "${OBJ_2_SRC}" "s3://$BUCKET/obj_2"
 
 echo "Uploading a bigger file, with encryption"
 ${AWS} s3 cp "${OBJ_2_SRC}" "s3://$BUCKET/obj_2_cyphered" ${ENC_OPTS}
+
+echo "Uploading a big file with encryption and metadata"
+${AWS} s3api put-object --body $OBJ_2_SRC --bucket "$BUCKET" --key "obj_2_bis_cyphered" $ENC_OPTS_BIS --sse-customer-key-md5 $MD5KEY --metadata="test=toto"
+
+echo "Uploading an empty file with encryption and metadata"
+${AWS} s3api put-object --body $OBJ_3_SRC --bucket "$BUCKET" --key "obj_3_cyphered" $ENC_OPTS_BIS --sse-customer-key-md5 $MD5KEY --metadata="test=toto"
+
+PART_SIZE=5242880  # 5 MB
+UPLOAD_ID=""
+PART_NUM=1
+ETAGS=()
+
+# Start multipart upload
+echo "Starting multipart upload"
+UPLOAD_ID=$(${AWS} s3api create-multipart-upload --bucket "$BUCKET" --key "mpu_cyphered" $ENC_OPTS_BIS --sse-customer-key-md5 $MD5KEY --query 'UploadId' --output text)
+echo "Upload ID: $UPLOAD_ID"
+
+# Upload parts
+echo "Uploading parts"
+FILE_SIZE=$(stat --printf="%s" "$OBJ_2_SRC")
+while [ $((OFFSET=($PART_NUM-1)*$PART_SIZE)) -lt $FILE_SIZE ]; do
+    echo "Uploading part $PART_NUM..."
+    PART_FILE="part-$PART_NUM"
+    OUTPUT=$(dd if="$OBJ_2_SRC" of="$PART_FILE" bs=$PART_SIZE skip=$((PART_NUM-1)) count=1 2>/dev/null | \
+        ${AWS} s3api upload-part \
+            --bucket "$BUCKET" \
+            --key "mpu_cyphered" \
+            --part-number "$PART_NUM" \
+            --upload-id "$UPLOAD_ID" \
+            --body "$PART_FILE" \
+            $ENC_OPTS_BIS --sse-customer-key-md5 $MD5KEY)
+    # Capture ETag from the response
+    ETag=$(echo "$OUTPUT" | jq -r '.ETag')
+    ETag=${ETag//\"/\\\"}
+    ETAGS+=("{\"ETag\": \""$ETag"\", \"PartNumber\": $PART_NUM}")
+    PART_NUM=$((PART_NUM + 1))
+done
+
+echo "Completing multipart upload"
+PARTS_JSON=$(printf '[%s]' "$(IFS=,; echo "${ETAGS[*]}")")
+${AWS} s3api complete-multipart-upload \
+    --bucket "$BUCKET" \
+    --key "mpu_cyphered" \
+    --upload-id "$UPLOAD_ID" \
+    --multipart-upload "{\"Parts\":$PARTS_JSON}"
+echo "Multipart upload complete."
+
+
+check_put_with_encryption_error_messages() {
+    echo "Checking message error when uploading encrypted object with encryption key missing: "$1""
+    OUT=$(${AWS} s3api put-object --bucket "$BUCKET" --body "$1" --key "obj_3" --sse-customer-algorithm "$ALGO" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$MISSING_KEY_MSG"
+
+    echo "Checking message error when uploading encrypted object with encryption algo missing: "$1""
+    OUT=$(${AWS} s3api put-object --bucket "$BUCKET" --body "$1" --key "obj_3" --sse-customer-key "$ENCKEY" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$MISSING_ALGO_MSG"
+
+    echo "Checking message error when uploading encrypted object without md5 key: "$1""
+    OUT=$(${AWS} s3api put-object --bucket "$BUCKET" --body "$1" --key "obj_3"  $ENC_OPTS_BIS 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$INVALID_KEY"
+
+    echo "Checking message error when uploading encrypted object with invalid md5 key: "$1""
+    OUT=$(${AWS} s3api put-object --bucket "$BUCKET" --body "$1" --key "obj_3" $ENC_OPTS_BIS --sse-customer-key-md5 "AAAAAAAAA=" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$INVALID_MD5_VALUE"
+
+    echo "Checking message error when uploading encrypted object with wrong md5 key: "$1""
+    OUT=$(${AWS} s3api put-object --bucket "$BUCKET" --body "$1" --key "obj_3" $ENC_OPTS_BIS --sse-customer-key-md5 ${MD5KEY:0:${#MD5KEY}-4} 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$WRONG_MD5_VALUE"
+}
+
+KEYS=("$OBJ_1_SRC" "$OBJ_2_SRC" "$OBJ_3_SRC")
+for KEY in "$KEYS"; do
+    check_put_with_encryption_error_messages "$KEY"
+done
+
+check_head_with_encryption_error_messages () {
+    echo "Checking head-object (without) encryption key, algo and md5: $1"
+    OUT=$(${AWS} s3api head-object --bucket "$BUCKET" --key $1 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "Bad ?Request"
+
+    echo "Checking head-object without encryption key, algo and key md5: $1"
+    OUT=$(${AWS} s3api head-object --bucket "$BUCKET" --key $1 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "Bad ?Request"
+
+    echo "Checking head-object without encryption key and key md5: $1"
+    OUT=$(${AWS} s3api head-object --bucket "$BUCKET" --key $1 --sse-customer-algorithm $ALGO 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "Bad ?Request"
+
+    echo "Checking head-object without encryption key md5: $1"
+    OUT=$(${AWS} s3api head-object --bucket "$BUCKET" --key $1 $ENC_OPTS_BIS 2>&1 | tail -n 1)
+    echo "$OUT" | grep "Forbidden"
+
+    echo "Checking head-object without encryption key: $1"
+    OUT=$(${AWS} s3api head-object --bucket "$BUCKET" --key $1 --sse-customer-algorithm $ALGO --sse-customer-key-md5 $MD5KEY 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "Bad ?Request"
+}
+
+KEYS=("obj_2_bis_cyphered" "obj_3_cyphered")
+for KEY in "$KEYS"; do
+    check_head_with_encryption_error_messages "$KEY"
+done
+
+check_get_with_encryption_error_messages() {
+
+    echo "Checking message error when downloading encrypted object with wrong md5 key: $1"
+    OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "$1" "${WORKDIR}/obj_3" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$MISSING_KEY_ALGO_MSG"
+
+    echo "Checking message error when downloading encrypted object with encryption key missing: $1"
+    OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "$1"  "${WORKDIR}/obj_3" --sse-customer-algorithm "$ALGO" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$MISSING_KEY_MSG"
+
+    echo "Checking message error when downloading encrypted object with encryption algo missing: $1"
+    OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "$1" "${WORKDIR}/obj_3" --sse-customer-key "$ENCKEY" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$MISSING_ALGO_MSG"
+
+    echo "Checking message error when downloading encrypted object without md5 key: $1"
+    OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "$1" "${WORKDIR}/obj_3"  $ENC_OPTS_BIS 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$INVALID_KEY"
+
+    echo "Checking message error when downloading encrypted object with invalid md5 key: $1"
+    OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "$1" "${WORKDIR}/obj_3" $ENC_OPTS_BIS --sse-customer-key-md5 "AAAAAAAAA=" 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$INVALID_MD5_VALUE"
+
+    echo "Checking message error when downloading encrypted object with wrong md5 key: $1"
+    OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "$1" "${WORKDIR}/obj_3" $ENC_OPTS_BIS --sse-customer-key-md5 ${MD5KEY:0:${#MD5KEY}-4} 2>&1 | tail -n 1)
+    echo "$OUT" | grep -E "$WRONG_MD5_VALUE"
+}
+
+for KEY in "$KEYS"; do
+    check_get_with_encryption_error_messages "$KEY"
+done
+
+echo "Removing obj_2_bis_cyphered and   obj_3_cyphered"
+${AWS} s3 rm "s3://$BUCKET/obj_2_bis_cyphered"
+${AWS} s3 rm "s3://$BUCKET/obj_3_cyphered"
+${AWS} s3 rm "s3://$BUCKET/mpu_cyphered"
+
 
 echo "Checking objects appears in listings"
 LISTING=$(${AWS} s3 ls "s3://$BUCKET")
