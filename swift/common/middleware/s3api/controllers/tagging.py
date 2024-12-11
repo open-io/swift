@@ -34,7 +34,7 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
 from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp, \
     validate_tag_key, validate_tag_value
 from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG, \
-    REPLICATOR_USER_AGENT, close_if_possible, public
+    close_if_possible, public
 
 HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 
@@ -56,54 +56,12 @@ INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'shall be encoded as UTF-8 then URLEncoded URL query ' \
                   'parameters without tag name duplicates.'
 
-RESERVED_PREFIXES = ('ovh:', 'aws:')
-ALLOWED_PREFIX = 'ovh:'
-
 INTELLIGENT_TIERING_STATUS_KEY = 'ovh:intelligent_tiering_status'
 INTELLIGENT_TIERING_RESTO_END_KEY = \
     'ovh:intelligent_tiering_restoration_end_date'
 INTELLIGENT_TIERING_ARCHIVE_LOCK_UNTIL_KEY = \
     'ovh:intelligent_tiering_archive_lock_until'
-
-
-def _set_replication_status(req, status):
-    """
-    Used to set replication status using tagging
-    """
-    # This log is internal only (allows to update the replication status
-    # while updating the cache).
-    # There is no need for this request to be logged as a s3 request.
-    req.environ[IGNORE_CUSTOMER_ACCESS_LOG] = True
-    req.headers[OBJECT_REPLICATION_STATUS] = status
-
-
-ALLOWED_ACTION_BY_AGENT = {
-    REPLICATOR_USER_AGENT: {"replication_status": _set_replication_status}}
-
-
-def _is_allowed_action(key, agent):
-    """Check if the action is allowed for the
-    specified agent and return the function to execute.
-
-    :param key: the key tag used to identify the action
-        to execute
-    :type key: str
-    :param agent: user agent
-    :type agent: str
-    :return: function to execute
-    :rtype: function
-    """
-    for prefix in RESERVED_PREFIXES:
-        if key.startswith(prefix) and prefix != ALLOWED_PREFIX:
-            raise InvalidTag()
-        key_name = key[len(prefix):]
-        if (
-            agent in ALLOWED_ACTION_BY_AGENT
-            and
-            key_name in ALLOWED_ACTION_BY_AGENT[agent]
-        ):
-            return ALLOWED_ACTION_BY_AGENT[agent][key_name]
-    return None
+REPLICATION_STATUS_KEY = "ovh:replication_status"
 
 
 def _create_tagging_xml_document():
@@ -239,6 +197,17 @@ class TaggingController(Controller):
         return HTTPOk(body=body, content_type='application/xml',
                       headers=headers)
 
+    def _handle_put_replicator_request(self, req, key, status):
+        if key == REPLICATION_STATUS_KEY:
+            # This log is internal only (allows to update the replication
+            # status while updating the cache).
+            # There is no need for this request to be logged as a s3 request.
+            req.environ[IGNORE_CUSTOMER_ACCESS_LOG] = True
+            req.headers[OBJECT_REPLICATION_STATUS] = status
+            return True
+        # Replicator is replicating tags for the customer, let it go.
+        return None
+
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit
     @public
@@ -252,7 +221,9 @@ class TaggingController(Controller):
         Handles PUT Bucket and Object tagging.
         """
         body = req.xml(MAX_TAGGING_BODY_SIZE)
-        action = None
+        # This variable may be updated by special cases where tagging is used
+        # for something else than tags.
+        need_update_tags = True
         try:
             # Validate the body and reserved keys
             tagging = fromstring(body, 'Tagging')
@@ -261,19 +232,16 @@ class TaggingController(Controller):
             tags = tagset.xpath('//Tag')
 
             # Special handling for updating replication status
-            if (from_replicator and len(tags) == 1 and req.object_name):
+            if from_replicator and len(tags) == 1 and req.is_object_request:
                 # From the replicator we expect only one key
                 # starting with reserved prefixes, and there cannot be
                 # another tag beside the expected one.
                 key = tags[0].find('Key').text
                 value = tags[0].find('Value').text
-                action = _is_allowed_action(key, REPLICATOR_USER_AGENT)
-                if action:
-                    action(req, value)
+                if self._handle_put_replicator_request(req, key, value):
+                    need_update_tags = False
 
-            # If an action was found, tags won't be updated, no need to check
-            # prefixes.
-            if not action:
+            if need_update_tags:
                 tags_keys = []
                 for tag in tags:
                     key = tag.find('Key').text
@@ -291,8 +259,7 @@ class TaggingController(Controller):
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
-        # If an action occurred, tags should not be updated.
-        if not action:
+        if need_update_tags:
             if req.object_name:
                 req.headers[OBJECT_TAGGING_HEADER] = body
                 # In case of replicator request we do need to trigger
