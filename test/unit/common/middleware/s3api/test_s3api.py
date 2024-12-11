@@ -157,7 +157,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'auto_storage_policies_GLACIER': 'TWOCOPIES',
             'storage_domain':
                 'somewhere:EXPRESS_ONEZONE,some.other.where:GLACIER',
-            'force_storage_domain_storage_class': False,
             'standardize_default_storage_class': True,
             'location': 'us-west-1',
             'force_swift_request_proxy_log': True,
@@ -306,7 +305,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         }
         conf.pop('storage_domain')
         conf['storage_domains'] = ['somewhere', 'some.other.where']
-        conf.pop("force_storage_domain_storage_class")
         conf.pop("standardize_default_storage_class")
         expected_cors_rules = []
         for allow_origin in conf.pop('cors_allow_origin').split(','):
@@ -906,32 +904,14 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidArgument')
 
-    def test_force_storage_domain_storage_class(self):
-        self.conf['storage_domain'] = 'localhost:STANDARD'
-        # If the default value is set to False, uncomment these lines:
-        # self.conf['force_storage_domain_storage_class'] = True
-        self.s3api = filter_factory({}, **self.conf)(self.app)
-        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
-        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
-        self.swift.register('PUT', '/v1/AUTH_X/bucket/object',
-                            swob.HTTPCreated, {}, None)
-        req = Request.blank('/bucket/object',
-                            environ={'REQUEST_METHOD': 'PUT',
-                                     'HTTP_AUTHORIZATION': 'AWS X:Y:Z',
-                                     'HTTP_X_AMZ_STORAGE_CLASS': 'GLACIER'},
-                            headers={'Date': self.get_date_header()})
-        status, headers, body = self.call_s3api(req)
-        self.assertEqual(status, '200 OK')
-
     def test_invalid_storage_class(self):
-        self.conf['force_storage_domain_storage_class'] = False
         self.s3api = S3ApiMiddleware(None, self.conf)
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT',
                                      'HTTP_AUTHORIZATION': 'AWS X:Y:Z',
                                      'HTTP_X_AMZ_STORAGE_CLASS': 'INVALID'},
                             headers={'Date': self.get_date_header()})
-        status, headers, body = self.call_s3api(req)
+        _status, _headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidStorageClass')
 
     def test_check_account_enabled(self):

@@ -43,7 +43,6 @@ class _TestS3StorageClassMixin(object):
     endpoint_url = None
     default_storage_class = None
     use_storage_domain_storage_class = False
-    force_storage_domain_storage_class = True
     standardize_default_storage_class = False
 
     @classmethod
@@ -54,41 +53,11 @@ class _TestS3StorageClassMixin(object):
     def _setUpClass(cls):
         cls._storage_classes_mappings_write = {
             # - has storage domain storage class
-            # - force_storage_domain_storage_class = true
             # - standardize_default_storage_class = true
-            (True, True, True): {
-                "": cls.default_storage_class,
-                "EXPRESS_ONEZONE": cls.default_storage_class,
-                "STANDARD": cls.default_storage_class,
-                "STANDARD_IA": cls.default_storage_class,
-                "INTELLIGENT_TIERING": cls.default_storage_class,
-                "ONEZONE_IA": cls.default_storage_class,
-                "GLACIER_IR": cls.default_storage_class,
-                "GLACIER": cls.default_storage_class,
-                "DEEP_ARCHIVE": cls.default_storage_class,
-            },
+            (True, True): {},
             # - has storage domain storage class
-            # - force_storage_domain_storage_class = true
             # - standardize_default_storage_class = false
-            (True, True, False): {
-                "": cls.default_storage_class,
-                "EXPRESS_ONEZONE": cls.default_storage_class,
-                "STANDARD": cls.default_storage_class,
-                "STANDARD_IA": cls.default_storage_class,
-                "INTELLIGENT_TIERING": cls.default_storage_class,
-                "ONEZONE_IA": cls.default_storage_class,
-                "GLACIER_IR": cls.default_storage_class,
-                "GLACIER": cls.default_storage_class,
-                "DEEP_ARCHIVE": cls.default_storage_class,
-            },
-            # - has storage domain storage class
-            # - force_storage_domain_storage_class = false
-            # - standardize_default_storage_class = true
-            (True, False, True): {},
-            # - has storage domain storage class
-            # - force_storage_domain_storage_class = false
-            # - standardize_default_storage_class = false
-            (True, False, False): {
+            (True, False): {
                 "": cls.default_storage_class,
                 "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
                 "STANDARD": "STANDARD",
@@ -100,9 +69,8 @@ class _TestS3StorageClassMixin(object):
                 "DEEP_ARCHIVE": "STANDARD_IA",
             },
             # - has not storage domain storage class
-            # - force_storage_domain_storage_class = true
             # - standardize_default_storage_class = true
-            (False, True, True): {
+            (False, True): {
                 "": "STANDARD",
                 "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
                 "STANDARD": "STANDARD",
@@ -114,37 +82,8 @@ class _TestS3StorageClassMixin(object):
                 "DEEP_ARCHIVE": "STANDARD_IA",
             },
             # - has not storage domain storage class
-            # - force_storage_domain_storage_class = true
             # - standardize_default_storage_class = false
-            (False, True, False): {
-                "": "STANDARD",
-                "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
-                "STANDARD": "STANDARD",
-                "STANDARD_IA": "STANDARD_IA",
-                "INTELLIGENT_TIERING": "STANDARD_IA",
-                "ONEZONE_IA": "STANDARD_IA",
-                "GLACIER_IR": "STANDARD_IA",
-                "GLACIER": "STANDARD_IA",
-                "DEEP_ARCHIVE": "STANDARD_IA",
-            },
-            # - has not storage domain storage class
-            # - force_storage_domain_storage_class = false
-            # - standardize_default_storage_class = true
-            (False, False, True): {
-                "": "STANDARD",
-                "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
-                "STANDARD": "STANDARD",
-                "STANDARD_IA": "STANDARD_IA",
-                "INTELLIGENT_TIERING": "STANDARD_IA",
-                "ONEZONE_IA": "STANDARD_IA",
-                "GLACIER_IR": "STANDARD_IA",
-                "GLACIER": "STANDARD_IA",
-                "DEEP_ARCHIVE": "STANDARD_IA",
-            },
-            # - has not storage domain storage class
-            # - force_storage_domain_storage_class = false
-            # - standardize_default_storage_class = false
-            (False, False, False): {
+            (False, False): {
                 "": "STANDARD",
                 "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
                 "STANDARD": "STANDARD",
@@ -170,7 +109,6 @@ class _TestS3StorageClassMixin(object):
         cls.storage_classes_mapping_write = cls._storage_classes_mappings_write[
             (
                 cls.use_storage_domain_storage_class,
-                cls.force_storage_domain_storage_class,
                 cls.standardize_default_storage_class,
             )
         ]
@@ -313,7 +251,6 @@ class _TestS3StorageClassMixin(object):
             self._check_storage_class(key, expected_storage_class)
         else:
             # use_storage_domain_storage_class
-            # AND NOT force_storage_domain_storage_class
             self.assertRaisesRegex(
                 ClientError,
                 "InvalidStorageClass",
@@ -333,7 +270,6 @@ class _TestS3StorageClassMixin(object):
         self.assertIsNotNone(expected_storage_class)
         self.client.create_bucket(Bucket=self.bucket)
         # use_storage_domain_storage_class
-        # AND force_storage_domain_storage_class
         self.client.put_object(
             Bucket=self.bucket,
             Key=key,
@@ -517,15 +453,13 @@ class TestS3StorageClassStandard(_TestS3StorageClassMixin, unittest.TestCase):
     endpoint_url = ENDPOINT_URL
     default_storage_class = "STANDARD"
     use_storage_domain_storage_class = False
-    force_storage_domain_storage_class = False
     standardize_default_storage_class = True
 
     @classmethod
     def _complete_mappings(cls):
         # - has storage domain storage class
-        # - force_storage_domain_storage_class = false
         # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_write[(True, False, True)] = {
+        cls._storage_classes_mappings_write[(True, True)] = {
             "": cls.default_storage_class,
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "STANDARD",
@@ -549,15 +483,13 @@ class TestS3StorageClassPerf(_TestS3StorageClassMixin, unittest.TestCase):
     endpoint_url = PERF_ENDPOINT_URL
     default_storage_class = "EXPRESS_ONEZONE"
     use_storage_domain_storage_class = True
-    force_storage_domain_storage_class = False
     standardize_default_storage_class = True
 
     @classmethod
     def _complete_mappings(cls):
         # - has storage domain storage class
-        # - force_storage_domain_storage_class = false
         # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_write[(True, False, True)] = {
+        cls._storage_classes_mappings_write[(True, True)] = {
             "": cls.default_storage_class,
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "EXPRESS_ONEZONE",
@@ -581,15 +513,13 @@ class TestS3StorageClassIA(_TestS3StorageClassMixin, unittest.TestCase):
     endpoint_url = IA_ENDPOINT_URL
     default_storage_class = "STANDARD_IA"
     use_storage_domain_storage_class = True
-    force_storage_domain_storage_class = False
     standardize_default_storage_class = True
 
     @classmethod
     def _complete_mappings(cls):
         # - has storage domain storage class
-        # - force_storage_domain_storage_class = false
         # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_write[(True, False, True)] = {
+        cls._storage_classes_mappings_write[(True, True)] = {
             "": cls.default_storage_class,
             "EXPRESS_ONEZONE": "STANDARD",
             "STANDARD": "STANDARD_IA",

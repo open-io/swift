@@ -745,10 +745,6 @@ use = egg:swift#s3api
 # [STORAGE_DOMAIN]:[STORAGE_CLASS]
 # storage_domain =
 #
-# Ignore the storage class requested by the client, force the storage domain's
-# default storage class instead.
-# force_storage_domain_storage_class = True
-#
 # Consider the default storage class as the STANDARD storage class
 # for each storage domain.
 # For example, with a storage domain where EXPRESS_ONEZONE is considered

@@ -429,9 +429,6 @@ class S3ApiMiddleware(object):
     ):
         default = storage_domain_storage_class or STANDARD_STORAGE_CLASS
         storage_classes = self._get_storage_classes(wsgi_conf)
-        force_storage_domain_storage_class = config_true_value(
-            wsgi_conf.get("force_storage_domain_storage_class", True)
-        ) and storage_domain_storage_class is not None
         standardize_default_storage_class = config_true_value(
             wsgi_conf.get("standardize_default_storage_class", False)
         )
@@ -495,11 +492,7 @@ class S3ApiMiddleware(object):
                 next_storage_class_shifted = None
             # Assign the S3 storage class to the storage class offered
             storage_class = storage_classes[storage_class_index]
-            if force_storage_domain_storage_class:
-                storage_class_customer = default
-            else:
-                storage_class_customer = storage_class
-            mapping_write[s3_storage_class] = storage_class_customer
+            mapping_write[s3_storage_class] = storage_class
             # Internal tools are not affected by forcing the storage domain's
             # storage class
             mapping_write_internal[s3_storage_class] = storage_class
