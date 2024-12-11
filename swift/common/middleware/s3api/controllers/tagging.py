@@ -16,6 +16,7 @@
 
 from six.moves.urllib.parse import parse_qs
 
+from swift.common.middleware.crypto.crypto_utils import get_hasher
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_access, \
     set_s3_operation_rest, handle_no_such_key
@@ -41,6 +42,7 @@ HTTP_HEADER_TAGGING_KEY = "x-amz-tagging"
 SYSMETA_TAGGING_KEY = 'swift3-tagging'
 BUCKET_TAGGING_HEADER = sysmeta_header('bucket', 'tagging')
 OBJECT_TAGGING_HEADER = sysmeta_header('object', 'tagging')
+BUCKET_BACKUP_HEADER = sysmeta_header('bucket', 'bucket_backup')
 
 # Not a swift3 header, cannot use sysmeta_header()
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
@@ -56,6 +58,7 @@ INVALID_TAGGING = 'An error occurred (InvalidArgument) when calling ' \
                   'shall be encoded as UTF-8 then URLEncoded URL query ' \
                   'parameters without tag name duplicates.'
 
+BUCKET_BACKUP_KEY = 'ovh:backup'
 INTELLIGENT_TIERING_STATUS_KEY = 'ovh:intelligent_tiering_status'
 INTELLIGENT_TIERING_RESTO_END_KEY = \
     'ovh:intelligent_tiering_restoration_end_date'
@@ -123,7 +126,11 @@ class TaggingController(Controller):
     * DELETE Bucket and Object tagging
 
     """
-    def _add_intelligent_tiering_tags(self, req, tagging):
+    def _enrich_tags_with_intelligent_tiering(self, req, tagging):
+        """
+        This method should only be called in an intelligent-tiering context.
+        It called, it will create or enrich the provided tags.
+        """
         if tagging:
             root = fromstring(tagging)
             tagset = root.find('TagSet')
@@ -158,6 +165,25 @@ class TaggingController(Controller):
             )
         return tostring(root)
 
+    def _enrich_tags_with_backup_info(self, req, tagging):
+        info = req.get_container_info(self.app, req)
+        bucket_backup = info.get('sysmeta', {}).get('s3api-bucket-backup')
+        if bucket_backup:
+            if tagging:
+                root = fromstring(tagging)
+                tagset = root.find('TagSet')
+            else:
+                root, tagset = _create_tagging_xml_document()
+            _add_tag_to_tag_set(
+                tagset,
+                BUCKET_BACKUP_KEY,
+                bucket_backup,
+                check_key_prefix=False,
+            )
+            return tostring(root)
+        # Metadata not found, return the provided tags (which may be None)
+        return tagging
+
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit
     @public
@@ -183,7 +209,8 @@ class TaggingController(Controller):
             if self.conf.get("enable_intelligent_tiering"):
                 # If body is None, intelligent tiering tags will be added to a
                 # new empty document.
-                body = self._add_intelligent_tiering_tags(req, body)
+                body = self._enrich_tags_with_intelligent_tiering(req, body)
+            body = self._enrich_tags_with_backup_info(req, body)
         close_if_possible(resp.app_iter)
 
         if not body:
@@ -206,6 +233,25 @@ class TaggingController(Controller):
             req.headers[OBJECT_REPLICATION_STATUS] = status
             return True
         # Replicator is replicating tags for the customer, let it go.
+        return None
+
+    def _handle_put_backup_request(self, req, key, value):
+        if key == BUCKET_BACKUP_KEY and self.conf.backup_pepper \
+                and ":" in value:
+            try:
+                bucket_src, token = value.split(":")
+            except ValueError:
+                # The value is not using the expected format.
+                raise InvalidTagValue()
+
+            hasher = get_hasher("blake3")
+            hasher.update(f"{req.bucket}/{self.conf.backup_pepper}".encode())
+            if token == hasher.hexdigest():
+                req.headers[BUCKET_BACKUP_HEADER] = bucket_src
+                return True
+            else:
+                # This key is reserved but the value is not the one expected.
+                raise InvalidTagKey()
         return None
 
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
@@ -239,6 +285,13 @@ class TaggingController(Controller):
                 key = tags[0].find('Key').text
                 value = tags[0].find('Value').text
                 if self._handle_put_replicator_request(req, key, value):
+                    need_update_tags = False
+
+            # Special handling for buckets declared as backup bucket
+            if len(tags) == 1 and req.is_bucket_request:
+                key = tags[0].find('Key').text
+                value = tags[0].find('Value').text
+                if self._handle_put_backup_request(req, key, value):
                     need_update_tags = False
 
             if need_update_tags:

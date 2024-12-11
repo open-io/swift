@@ -15,13 +15,18 @@
 # limitations under the License.
 
 import copy
+import string
 import unittest
 
 from botocore.exceptions import ClientError
 
+from swift.common.middleware.crypto.crypto_utils import get_hasher
+
 from oio_tests.functional.common import get_boto3_client, random_str
 
 
+# Note: this could be retrieved from the swift configuration
+BACKUP_PEPPER = "this-is-not-really-a-random-string-but-should-be-in-prod"
 TAGSET = [{"Key": "organization", "Value": "marketing"}]
 TAGSET_RESERVED = [{"Key": "ovh:organization", "Value": "marketing"}]
 
@@ -307,3 +312,69 @@ class TestS3Tagging(unittest.TestCase):
         # it returns an empty tagset.
         resp = self._get_object_tagging(key=key)
         self.assertListEqual(resp["TagSet"], [])
+
+    def _get_backup_bucket_token(self, bucket):
+        hasher = get_hasher("blake3")
+        hasher.update(f"{bucket}/{BACKUP_PEPPER}".encode())
+        return hasher.hexdigest()
+
+    def test_bucket_operation_backup_bucket(self):
+        src_bucket = f"mybucket-{random_str(8)}"
+        self.bucket = f"backup-foo-bar-{random_str(8, string.digits)}-" \
+            f"{src_bucket}"
+        self.boto.create_bucket(Bucket=self.bucket)
+
+        # Bad value
+        tagset = [{"Key": "ovh:backup", "Value": "foobar"}]
+        self.assertRaisesRegex(
+            ClientError,
+            "InvalidTag",
+            self._put_bucket_tagging,
+            tagset=tagset,
+        )
+
+        self.assertRaisesRegex(
+            ClientError,
+            "There is no tag set associated with the bucket or object",
+            self._get_bucket_tagging,
+        )
+
+        # Bad value (only token)
+        tagset = [
+            {
+                "Key": "ovh:backup",
+                "Value": self._get_backup_bucket_token(self.bucket),
+            }
+        ]
+        self.assertRaisesRegex(
+            ClientError,
+            "InvalidTag",
+            self._put_bucket_tagging,
+            tagset=tagset,
+        )
+
+        self.assertRaisesRegex(
+            ClientError,
+            "There is no tag set associated with the bucket or object",
+            self._get_bucket_tagging,
+        )
+
+        # Good value, should be accepted
+        token = f"{src_bucket}:{self._get_backup_bucket_token(self.bucket)}"
+        tagset = [
+            {
+                "Key": "ovh:backup",
+                "Value": token,
+            }
+        ]
+        expected_tagset = [{"Key": "ovh:backup", "Value": src_bucket}]
+        self._put_bucket_tagging(tagset=tagset)
+
+        resp = self._get_bucket_tagging()
+        self.assertListEqual(resp["TagSet"], expected_tagset)
+
+        # Add another (but real) tag
+        self._put_bucket_tagging()
+        resp = self._get_bucket_tagging()
+        expected_tagset = TAGSET + expected_tagset  # order matters
+        self.assertListEqual(resp["TagSet"], expected_tagset)

@@ -397,6 +397,7 @@ class S3ApiMiddleware(object):
         #  token = hash of the (token_prefix + account + container)
         self.conf.token_prefix = \
             wsgi_conf.get('token_prefix', '')
+        self.conf.backup_pepper = wsgi_conf.get('backup_pepper')
         self.logger = get_logger(
             wsgi_conf, log_route=wsgi_conf.get('log_name', 's3api'))
         self.check_pipeline(wsgi_conf)
@@ -658,7 +659,7 @@ class S3ApiMiddleware(object):
             return [b'']
 
         try:
-            # XXX(FVE): this should be done in an independant middleware
+            # XXX(FVE): this should be done in an independent middleware
             if self.bucket_db:
                 env['s3api.bucket_db'] = BucketDbWrapper(self.bucket_db)
             req_class = get_request_class(env, self.conf.s3_acl)

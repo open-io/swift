@@ -175,6 +175,7 @@ enable_access_logging = true
 retry_after = 1
 #enable_beta_features = true
 enable_encryption = true
+backup_pepper = this-is-not-really-a-random-string-but-should-be-in-prod
 
 [filter:tempauth]
 use = egg:swift#tempauth
