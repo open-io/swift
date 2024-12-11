@@ -42,7 +42,6 @@ class _TestS3StorageClassMixin(object):
 
     endpoint_url = None
     default_storage_class = None
-    check_bucket_storage_domain = False
     use_storage_domain_storage_class = False
     force_storage_domain_storage_class = True
     standardize_default_storage_class = False
@@ -253,8 +252,6 @@ class _TestS3StorageClassMixin(object):
             STORAGE_POLICIES[actuel_storage_class][0], meta["policy"]
         )
 
-        if self.check_bucket_storage_domain:
-            return
         # Check on another storage domain
         storage_class_domain2 = (
             self.test_instance2._storage_classes_mappings_read[
@@ -613,8 +610,6 @@ class TestS3StorageClassIA(_TestS3StorageClassMixin, unittest.TestCase):
 
 class TestMultipleStorageDomains(unittest.TestCase):
 
-    check_bucket_storage_domain = False
-
     @classmethod
     def setUpClass(cls):
         super(TestMultipleStorageDomains, cls).setUpClass()
@@ -650,77 +645,24 @@ class TestMultipleStorageDomains(unittest.TestCase):
             (b["Name"] for b in good_client.list_buckets()["Buckets"]),
         )
 
-        if self.check_bucket_storage_domain:
-            self.assertRaisesRegex(
-                ClientError,
-                "BadEndpoint",
-                bad_client.put_object,
-                Bucket=self.bucket,
-                Key=key,
-                Body=b"test",
-            )
-        else:
-            bad_client.put_object(Bucket=self.bucket, Key=key, Body=b"test")
-        if self.check_bucket_storage_domain:
-            self.assertRaisesRegex(
-                ClientError,
-                "Forbidden",
-                bad_client.head_object,
-                Bucket=self.bucket,
-                Key=key,
-            )
-        else:
-            bad_client.head_object(Bucket=self.bucket, Key=key)
-        if self.check_bucket_storage_domain:
-            self.assertRaisesRegex(
-                ClientError,
-                "BadEndpoint",
-                bad_client.list_objects,
-                Bucket=self.bucket,
-            )
-        else:
-            bad_client.list_objects(Bucket=self.bucket)
-        if self.check_bucket_storage_domain:
-            self.assertNotIn(
-                self.bucket,
-                (b["Name"] for b in bad_client.list_buckets()["Buckets"]),
-            )
-        else:
-            self.assertIn(
-                self.bucket,
-                (b["Name"] for b in bad_client.list_buckets()["Buckets"]),
-            )
+        bad_client.put_object(Bucket=self.bucket, Key=key, Body=b"test")
+        bad_client.head_object(Bucket=self.bucket, Key=key)
+        bad_client.list_objects(Bucket=self.bucket)
+        self.assertIn(
+            self.bucket,
+            (b["Name"] for b in bad_client.list_buckets()["Buckets"]),
+        )
 
-        if self.check_bucket_storage_domain:
-            self.assertRaisesRegex(
-                ClientError,
-                "BadEndpoint",
-                bad_client.delete_object,
-                Bucket=self.bucket,
-                Key=key,
-            )
-        else:
-            bad_client.delete_object(Bucket=self.bucket, Key=key)
+        bad_client.delete_object(Bucket=self.bucket, Key=key)
         good_client.delete_object(Bucket=self.bucket, Key=key)
 
-        if self.check_bucket_storage_domain:
-            self.assertRaisesRegex(
-                ClientError,
-                "BadEndpoint",
-                bad_client.delete_bucket,
-                Bucket=self.bucket,
-            )
-        else:
-            bad_client.delete_bucket(Bucket=self.bucket)
-        if self.check_bucket_storage_domain:
-            good_client.delete_bucket(Bucket=self.bucket)
-        else:
-            self.assertRaisesRegex(
-                ClientError,
-                "NoSuchBucket",
-                good_client.delete_bucket,
-                Bucket=self.bucket,
-            )
+        bad_client.delete_bucket(Bucket=self.bucket)
+        self.assertRaisesRegex(
+            ClientError,
+            "NoSuchBucket",
+            good_client.delete_bucket,
+            Bucket=self.bucket,
+        )
 
     def test_create_standard_use_perf(self):
         self._test_using_multiple_storage_domains(

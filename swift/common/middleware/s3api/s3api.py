@@ -295,14 +295,6 @@ class S3ApiMiddleware(object):
             self.conf.auto_storage_policies,
             self.conf.storage_class_by_policy,
         ) = self._get_storage_policies_conf(wsgi_conf)
-        self.conf.check_bucket_storage_domain = config_true_value(
-            wsgi_conf.get('check_bucket_storage_domain', False))
-        # Used only if "check_bucket_storage_domain" is enabled.
-        # As some buckets were created without this information,
-        # they will use the first storage domain defined in the conf file.
-        self.conf.default_storage_domain = None
-        if self.conf.storage_domains:
-            self.conf.default_storage_domain = self.conf.storage_domains[0]
         self.conf.check_account_enabled = config_true_value(
             wsgi_conf.get('check_account_enabled', False))
         self.conf.check_ip_whitelist = config_true_value(

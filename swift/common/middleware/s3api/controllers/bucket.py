@@ -40,9 +40,9 @@ from swift.common.middleware.s3api.s3response import \
     HTTPOk, S3NotImplemented, InvalidArgument, \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
-    BadEndpoint, VersionedBucketNotEmpty
+    VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    sysmeta_header, OBJECT_LOCK_ENABLED_HEADER, truncate_excess_characters
+    OBJECT_LOCK_ENABLED_HEADER, truncate_excess_characters
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
@@ -497,12 +497,6 @@ class BucketController(Controller):
                                 self.conf.location.lower()):
                 # s3api cannot support multiple regions currently.
                 raise InvalidLocationConstraint()
-
-        if self.conf.check_bucket_storage_domain:
-            if not req.storage_domain:
-                raise BadEndpoint
-            req.headers[sysmeta_header('container', 'storage-domain')] = \
-                req.storage_domain
 
         req.environ.setdefault('oio.query', {})['region'] = location
 

@@ -155,7 +155,6 @@ auto_storage_policies_STANDARD = EC21
 storage_domain = s3.regionone.io.lo.team-swift.ovh:STANDARD
 force_storage_domain_storage_class = true
 standardize_default_storage_class = false
-check_bucket_storage_domain = false
 check_ip_whitelist = false
 max_multi_delete_objects = 1000
 allow_anonymous_path_requests = false

@@ -24,7 +24,7 @@ from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
     check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
-    InvalidRequest, BadEndpoint, NoSuchBucket, AccessDenied, NoSuchKey, \
+    InvalidRequest, NoSuchBucket, AccessDenied, NoSuchKey, \
     NoSuchVersion
 from swift.common.middleware.s3api.utils import camel_to_snake
 from swift.common.swob import str_to_wsgi
@@ -112,26 +112,6 @@ def check_bucket_access(func):
                         raise AccessDenied
                     if not any(ip in network for network in whitelist):
                         raise AccessDenied
-
-        if self.conf.check_bucket_storage_domain:
-            if req.from_internal_tool():
-                # Internal tool are always uploaded with the all
-                # storage classes available.
-                # And since in some configurations, some storage classes are
-                # only allowed from a specific storage domain,
-                # the internal tools must skip this check.
-                pass
-            else:
-                try:
-                    info = req.get_container_info(self.app)
-                    storage_domain = info.get('sysmeta', {}).get(
-                        's3api-storage-domain',
-                        self.conf.default_storage_domain)
-                    if req.storage_domain != storage_domain:
-                        raise BadEndpoint
-                except NoSuchBucket:
-                    # The bucket does not exist, the request is authorized
-                    pass
 
         # If the request is coming from the replicator, then the destination
         # bucket must have versioning enabled.

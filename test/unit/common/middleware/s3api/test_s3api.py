@@ -116,7 +116,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'check_account_enabled': False,
             'check_bucket_owner': False,
             'check_ip_whitelist': False,
-            'check_bucket_storage_domain': False,
             'cors_rules': [],
             'default_sse_configuration': None,
             'landing_page': 'https://aws.amazon.com/s3/',
@@ -133,7 +132,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'cors_preflight_allow_origin': [],
             'ratelimit_as_client_error': False,
             'retry_after': 1,
-            'default_storage_domain': None,
             'auto_storage_policies': {},
             'storage_class_by_policy': {},
             'replicator_ids': set(),
@@ -173,7 +171,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'check_account_enabled': True,
             'check_bucket_owner': True,
             'check_ip_whitelist': True,
-            'check_bucket_storage_domain': True,
             'cors_allow_origin': 'somewhere.com,some.*.where.io',
             'default_sse_configuration': None,
             'landing_page':
@@ -311,7 +308,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         conf['storage_domains'] = ['somewhere', 'some.other.where']
         conf.pop("force_storage_domain_storage_class")
         conf.pop("standardize_default_storage_class")
-        conf['default_storage_domain'] = 'somewhere'
         expected_cors_rules = []
         for allow_origin in conf.pop('cors_allow_origin').split(','):
             rule = Element('CORSRule')
