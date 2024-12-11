@@ -740,13 +740,10 @@ use = egg:swift#s3api
 #
 # Specify a (comma-separated) list of host names for your Swift cluster.
 # This enables virtual-hosted style requests.
-# It is possible to force a storage class (must be contained in the
-# 'storage_classes' parameter) for a storage domain using the following format:
-# [STORAGE_DOMAIN]:[STORAGE_CLASS]
-# storage_domain =
-#
-# Consider the default storage class as the STANDARD storage class
-# for each storage domain.
+# It is possible to change the default storage class and consider it as
+# the STANDARD storage class for a storage domain using the following format:
+# [STORAGE_DOMAIN]:[STORAGE_CLASS] (must be contained in the 'storage_classes'
+# parameter)
 # For example, with a storage domain where EXPRESS_ONEZONE is considered
 # the default (no storage class specified), from the client's perspective
 # on that storage domain:
@@ -756,7 +753,7 @@ use = egg:swift#s3api
 #   a STANDARD storage class.
 # Therefore, all other managed storage classes are shifted from
 # this new STANDARD storage class.
-# standardize_default_storage_class = False
+# storage_domain =
 #
 # Enable pipeline order check for SLO, s3token, authtoken, keystoneauth
 # according to standard s3api/Swift construction using either tempauth or

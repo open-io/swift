@@ -43,7 +43,6 @@ class _TestS3StorageClassMixin(object):
     endpoint_url = None
     default_storage_class = None
     use_storage_domain_storage_class = False
-    standardize_default_storage_class = False
 
     @classmethod
     def _complete_mappings(cls):
@@ -53,68 +52,26 @@ class _TestS3StorageClassMixin(object):
     def _setUpClass(cls):
         cls._storage_classes_mappings_write = {
             # - has storage domain storage class
-            # - standardize_default_storage_class = true
-            (True, True): {},
-            # - has storage domain storage class
-            # - standardize_default_storage_class = false
-            (True, False): {
-                "": cls.default_storage_class,
-                "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
-                "STANDARD": "STANDARD",
-                "STANDARD_IA": "STANDARD_IA",
-                "INTELLIGENT_TIERING": "STANDARD_IA",
-                "ONEZONE_IA": "STANDARD_IA",
-                "GLACIER_IR": "STANDARD_IA",
-                "GLACIER": "STANDARD_IA",
-                "DEEP_ARCHIVE": "STANDARD_IA",
-            },
-            # - has not storage domain storage class
-            # - standardize_default_storage_class = true
-            (False, True): {
-                "": "STANDARD",
-                "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
-                "STANDARD": "STANDARD",
-                "STANDARD_IA": "STANDARD_IA",
-                "INTELLIGENT_TIERING": "STANDARD_IA",
-                "ONEZONE_IA": "STANDARD_IA",
-                "GLACIER_IR": "STANDARD_IA",
-                "GLACIER": "STANDARD_IA",
-                "DEEP_ARCHIVE": "STANDARD_IA",
-            },
-            # - has not storage domain storage class
-            # - standardize_default_storage_class = false
-            (False, False): {
-                "": "STANDARD",
-                "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
-                "STANDARD": "STANDARD",
-                "STANDARD_IA": "STANDARD_IA",
-                "INTELLIGENT_TIERING": "STANDARD_IA",
-                "ONEZONE_IA": "STANDARD_IA",
-                "GLACIER_IR": "STANDARD_IA",
-                "GLACIER": "STANDARD_IA",
-                "DEEP_ARCHIVE": "STANDARD_IA",
-            },
-        }
-        cls._storage_classes_mappings_read = {
-            # - standardize_default_storage_class = true
             True: {},
-            # - standardize_default_storage_class = false
+            # - has not storage domain storage class
             False: {
+                "": "STANDARD",
                 "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
                 "STANDARD": "STANDARD",
                 "STANDARD_IA": "STANDARD_IA",
+                "INTELLIGENT_TIERING": "STANDARD_IA",
+                "ONEZONE_IA": "STANDARD_IA",
+                "GLACIER_IR": "STANDARD_IA",
+                "GLACIER": "STANDARD_IA",
+                "DEEP_ARCHIVE": "STANDARD_IA",
             },
         }
+        cls._storage_classes_mappings_read = {}
         cls._complete_mappings()
         cls.storage_classes_mapping_write = cls._storage_classes_mappings_write[
-            (
-                cls.use_storage_domain_storage_class,
-                cls.standardize_default_storage_class,
-            )
+            cls.use_storage_domain_storage_class
         ]
-        cls.storage_classes_mapping_read = cls._storage_classes_mappings_read[
-            cls.standardize_default_storage_class
-        ]
+        cls.storage_classes_mapping_read = cls._storage_classes_mappings_read
         cls.default_storage_class = cls.storage_classes_mapping_write[""]
         cls.valid_storage_classes = tuple(
             set(cls.storage_classes_mapping_read.values())
@@ -193,8 +150,8 @@ class _TestS3StorageClassMixin(object):
         # Check on another storage domain
         storage_class_domain2 = (
             self.test_instance2._storage_classes_mappings_read[
-                self.standardize_default_storage_class
-            ][actuel_storage_class]
+                actuel_storage_class
+            ]
         )
         for obj in self.client2.list_objects(Bucket=self.bucket).get(
             "Contents", []
@@ -453,13 +410,11 @@ class TestS3StorageClassStandard(_TestS3StorageClassMixin, unittest.TestCase):
     endpoint_url = ENDPOINT_URL
     default_storage_class = "STANDARD"
     use_storage_domain_storage_class = False
-    standardize_default_storage_class = True
 
     @classmethod
     def _complete_mappings(cls):
         # - has storage domain storage class
-        # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_write[(True, True)] = {
+        cls._storage_classes_mappings_write[True] = {
             "": cls.default_storage_class,
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "STANDARD",
@@ -470,8 +425,7 @@ class TestS3StorageClassStandard(_TestS3StorageClassMixin, unittest.TestCase):
             "GLACIER": "STANDARD_IA",
             "DEEP_ARCHIVE": "STANDARD_IA",
         }
-        # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_read[True] = {
+        cls._storage_classes_mappings_read = {
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "STANDARD",
             "STANDARD_IA": "STANDARD_IA",
@@ -483,13 +437,11 @@ class TestS3StorageClassPerf(_TestS3StorageClassMixin, unittest.TestCase):
     endpoint_url = PERF_ENDPOINT_URL
     default_storage_class = "EXPRESS_ONEZONE"
     use_storage_domain_storage_class = True
-    standardize_default_storage_class = True
 
     @classmethod
     def _complete_mappings(cls):
         # - has storage domain storage class
-        # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_write[(True, True)] = {
+        cls._storage_classes_mappings_write[True] = {
             "": cls.default_storage_class,
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "EXPRESS_ONEZONE",
@@ -500,8 +452,7 @@ class TestS3StorageClassPerf(_TestS3StorageClassMixin, unittest.TestCase):
             "GLACIER": "STANDARD_IA",
             "DEEP_ARCHIVE": "STANDARD_IA",
         }
-        # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_read[True] = {
+        cls._storage_classes_mappings_read = {
             "EXPRESS_ONEZONE": "STANDARD",
             "STANDARD": "STANDARD_IA",
             "STANDARD_IA": "INTELLIGENT_TIERING",
@@ -513,13 +464,11 @@ class TestS3StorageClassIA(_TestS3StorageClassMixin, unittest.TestCase):
     endpoint_url = IA_ENDPOINT_URL
     default_storage_class = "STANDARD_IA"
     use_storage_domain_storage_class = True
-    standardize_default_storage_class = True
 
     @classmethod
     def _complete_mappings(cls):
         # - has storage domain storage class
-        # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_write[(True, True)] = {
+        cls._storage_classes_mappings_write[True] = {
             "": cls.default_storage_class,
             "EXPRESS_ONEZONE": "STANDARD",
             "STANDARD": "STANDARD_IA",
@@ -530,8 +479,7 @@ class TestS3StorageClassIA(_TestS3StorageClassMixin, unittest.TestCase):
             "GLACIER": "STANDARD_IA",
             "DEEP_ARCHIVE": "STANDARD_IA",
         }
-        # - standardize_default_storage_class = true
-        cls._storage_classes_mappings_read[True] = {
+        cls._storage_classes_mappings_read = {
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "EXPRESS_ONEZONE",
             "STANDARD_IA": "STANDARD",

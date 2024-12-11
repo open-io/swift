@@ -429,17 +429,12 @@ class S3ApiMiddleware(object):
     ):
         default = storage_domain_storage_class or STANDARD_STORAGE_CLASS
         storage_classes = self._get_storage_classes(wsgi_conf)
-        standardize_default_storage_class = config_true_value(
-            wsgi_conf.get("standardize_default_storage_class", False)
-        )
 
         # Calculate the default storage class shift from STANDARD
-        shift = 0
-        if standardize_default_storage_class:
-            shift = (
-                S3_STORAGE_CLASSES.index(STANDARD_STORAGE_CLASS)
-                - S3_STORAGE_CLASSES.index(default)
-            )
+        shift = (
+            S3_STORAGE_CLASSES.index(STANDARD_STORAGE_CLASS)
+            - S3_STORAGE_CLASSES.index(default)
+        )
 
         # WRITE
         mapping_write = {"": default}
@@ -498,11 +493,9 @@ class S3ApiMiddleware(object):
             mapping_write_internal[s3_storage_class] = storage_class
 
         # READ
-        mapping_read = {}
-        if standardize_default_storage_class:
-            mapping_read[""] = STANDARD_STORAGE_CLASS
-        else:
-            mapping_read[""] = default
+        mapping_read = {
+            "": STANDARD_STORAGE_CLASS,
+        }
         for storage_class in storage_classes:
             # When reading, these unmanaged storage classes will be displayed
             # as EXPRESS_ONEZONE or DEEP_ARCHIVE, even if other storage classes

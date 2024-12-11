@@ -157,7 +157,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'auto_storage_policies_GLACIER': 'TWOCOPIES',
             'storage_domain':
                 'somewhere:EXPRESS_ONEZONE,some.other.where:GLACIER',
-            'standardize_default_storage_class': True,
             'location': 'us-west-1',
             'force_swift_request_proxy_log': True,
             'dns_compliant_bucket_names': False,
@@ -305,7 +304,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         }
         conf.pop('storage_domain')
         conf['storage_domains'] = ['somewhere', 'some.other.where']
-        conf.pop("standardize_default_storage_class")
         expected_cors_rules = []
         for allow_origin in conf.pop('cors_allow_origin').split(','):
             rule = Element('CORSRule')
