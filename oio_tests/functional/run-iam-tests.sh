@@ -18,7 +18,7 @@ sed -e "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" etc/s3-default.cfg.in > etc/s
 run_functional_test s3-default.cfg \
   s3-forced-params.py \
   s3-iam.sh \
-  s3-tagging.sh \
+  s3-tagging.py \
   s3-versioning.py \
   s3-website.py
 
