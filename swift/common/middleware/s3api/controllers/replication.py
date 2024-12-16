@@ -332,15 +332,7 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
         if match is None:
             return
 
-        # Remove 'arn:aws:s3:::' prefix from bucket name
-        req.headers["X-Replication-Destinations"] = ";".join(
-            [
-                b[len(DEST_BUCKET_PREFIX):]
-                if b.startswith(DEST_BUCKET_PREFIX) else b
-                for b in destination_buckets
-            ]
-        )
-
+        req.headers["X-Replication-Destinations"] = destination_buckets
         role_project_id = match.group(1)
         req.headers["X-Replication-Role-Project-Id"] = role_project_id
         replicator_id = match.group(2)

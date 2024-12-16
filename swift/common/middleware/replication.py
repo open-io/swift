@@ -16,7 +16,7 @@
 import json
 import xmltodict
 from swift.common.middleware.s3api.controllers.replication import \
-    OBJECT_REPLICATION_REPLICA, REPLICATION_CALLBACK
+    OBJECT_REPLICATION_REPLICA, REPLICATION_CALLBACK, DEST_BUCKET_PREFIX
 from swift.common.swob import Request
 from swift.common.utils import get_logger
 
@@ -134,20 +134,20 @@ class ReplicationMiddleware(object):
         :param is_deletion: indicate if the object is being delete
         :param ensure_replicated: indicated the object must have been
         replicated. (Used for metadata updates)
-        :returns: List of destination buckets the object must be replicated to
-                  and role
+        :returns: String representing the list of destination buckets
+                  the object must be replicated to and the role
         """
         if not configuration:
-            return [], None
+            return None, None
 
         # Ensure we are not dealing with a replica
         replication_status = metadata.get("s3api-replication-status", "")
         if replication_status == OBJECT_REPLICATION_REPLICA:
-            return [], None
+            return None, None
 
         # Ensure we are dealing with an already replicated object if required
         if ensure_replicated and not replication_status:
-            return [], None
+            return None, None
 
         configuration = json.loads(configuration)
         category = "deletions" if is_deletion else "replications"
@@ -162,7 +162,7 @@ class ReplicationMiddleware(object):
             tags = (_tagging_obj_to_dict(xmltodict.parse(xml_tags))
                     if xml_tags else {})
 
-        dest_buckets = []
+        dest_buckets = None
         ruleset = configuration.get("rules", {})
         for destination, rules in rules_per_destination.items():
             for rule_name in rules:
@@ -172,11 +172,16 @@ class ReplicationMiddleware(object):
                 r_match, r_continue = _object_matches(
                     rule, key, tags, is_deletion)
                 if r_match:
-                    dest_buckets.append(destination)
+                    # Remove 'arn:aws:s3:::' prefix from bucket name
+                    if destination.startswith(DEST_BUCKET_PREFIX):
+                        destination = destination[len(DEST_BUCKET_PREFIX):]
+                    if not dest_buckets:
+                        dest_buckets = destination  # first element of the list
+                    else:
+                        dest_buckets = f"{dest_buckets};{destination}"
                 if not r_continue:
                     break
-        role = configuration.get("role")
-        return dest_buckets, role
+        return dest_buckets, configuration.get("role")
 
 
 def filter_factory(global_conf, **local_config):
