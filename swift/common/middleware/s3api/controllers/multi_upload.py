@@ -1090,11 +1090,17 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
         resp_part = get_part_info(self.app, req, upload_id)
         if resp_part:
-            header_encryption_name = 'x-amz-server-side-encryption'
-            encryption_header = resp_part.headers.get(header_encryption_name)
-            if encryption_header:
+            encryption_sse_s3_header = resp_part.headers.get(
+                'x-amz-server-side-encryption')
+            encryption_sse_c_header = resp_part.headers.get(
+                'x-amz-server-side-encryption-customer-algorithm')
+            if encryption_sse_s3_header or encryption_sse_c_header:
                 headers[sysmeta_header('object', 'cipher-name')] = \
-                    encryption_header
+                    encryption_sse_s3_header or encryption_sse_c_header
+            if encryption_sse_c_header:
+                headers[
+                    sysmeta_header(
+                        'object', 'requires-encryption-key')] = 'True'
 
         def size_checker(manifest):
             # Check the size of each segment except the last and make sure

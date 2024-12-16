@@ -382,7 +382,11 @@ class DecrypterObjContext(BaseDecrypterContext):
         # Some middlewares need to know the object is encrypted with a
         # customer-provided key but there is no key in the request.
         if self.crypto.ssec_mode and \
-                requires_customer_provided_key(put_crypto_meta):
+                (
+                    requires_customer_provided_key(put_crypto_meta)
+                    or
+                    self._response_header_value(
+                        "X-Object-Sysmeta-S3Api-Requires-Encryption-Key")):
             mod_resp_headers.append(('X-Requires-Encryption-Key', True))
 
         if put_crypto_meta and req.method == 'GET' and \
