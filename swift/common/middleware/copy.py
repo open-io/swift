@@ -376,7 +376,10 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
                                'x-object-sysmeta-slo-size',
                                'x-object-sysmeta-s3api-acl',
                                'x-object-sysmeta-s3api-etag',
-                               'x-object-sysmeta-s3api-upload-id')
+                               'x-object-sysmeta-s3api-upload-id',
+                               'x-amz-server-side-encryption-customer-'
+                               'algorithm',
+                               'x-amz-server-side-encryption',)
             copy_header_subset(source_resp, sink_req,
                                lambda k: k.lower() not in exclude_headers)
             # now update with original req headers
