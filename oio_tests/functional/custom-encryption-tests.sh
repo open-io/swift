@@ -25,13 +25,14 @@ MD5KEY=$(echo -n $GENERATED_SECRET | openssl dgst -md5 -binary | base64)
 PORT=${PORT:-5000}
 AWS="aws --endpoint-url http://${STORAGE_DOMAIN}:${PORT} --no-verify-ssl"
 ENC_OPTS="--sse-c $ALGO --sse-c-key $SECRET"
+ENC_OPTS_b64="--sse-customer-key YWJjZGVmMDEyMzQ1Njc4OUFCQ0RFRjAxMjM0NTY3ODk= --sse-customer-algorithm AES256 --sse-customer-key-md5 HJEY8ELYiHY/RlFGL4qvng=="
 ENC_OPTS_EXT="--sse-customer-algorithm $ALGO --sse-customer-key $SECRET"
 COPY_ENC_OPTS_EXT="--copy-source-sse-customer-algorithm $ALGO --copy-source-sse-customer-key $SECRET"
 ENC_OPTS_BIS="--sse-customer-key $ENCKEY  --sse-customer-algorithm $ALGO"
 
 BUCKET=bucket-$RANDOM
 ETAG_REGEX='s/(.*ETag.*)([[:xdigit:]]{32})(.*)/\2/p'
-SSE_REGEX='s/(.*ServerSideEncryption.*)"([[:alnum:]]+)",/\2/p'
+SSE_S3_REGEX='s/(.*ServerSideEncryption.*)"([[:alnum:]]+)",/\2/p'
 WORKDIR=$(mktemp -d -t encryption-tests-XXXX)
 OBJ_1_SRC="/etc/magic"
 OBJ_2_SRC="${WORKDIR}/bigfile_src"
@@ -155,7 +156,7 @@ check_head_with_encryption_error_messages () {
     echo "$OUT" | grep -E "Bad ?Request"
 }
 
-KEYS=("obj_2_bis_cyphered" "obj_3_cyphered")
+KEYS=("obj_2_bis_cyphered" "obj_3_cyphered" "mpu_cyphered")
 for KEY in "$KEYS"; do
     check_head_with_encryption_error_messages "$KEY"
 done
@@ -208,10 +209,10 @@ echo "Checking reported checksum of obj_1"
 OBJ_1_ETAG=$(${AWS} s3api head-object --bucket "$BUCKET" --key "obj_1" | sed -n -E -e "${ETAG_REGEX}")
 [ "$OBJ_1_ETAG" == "$OBJ_1_CHECKSUM" ]
 
-OBJ_1_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "obj_1" | sed -n -E -e "${SSE_REGEX}")
+OBJ_1_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "obj_1" | sed -n -E -e "${SSE_S3_REGEX}")
 [ "$OBJ_1_SSE" == "$ALGO" ]
 
-OBJ_1_SSE=$(${AWS} s3api get-object --bucket "$BUCKET" --key "obj_1" ./ob1_copy | sed -n -E -e "${SSE_REGEX}")
+OBJ_1_SSE=$(${AWS} s3api get-object --bucket "$BUCKET" --key "obj_1" ./ob1_copy | sed -n -E -e "${SSE_S3_REGEX}")
 [ "$OBJ_1_SSE" == "$ALGO" ]
 
 echo "Downloading it"
@@ -320,20 +321,20 @@ echo "Upload SLO object"
 ${AWS} s3 cp "$OBJ_2_SRC" "s3://${BUCKET}/32M" \
     --sse-c-key "$SECRET" --sse-c AES256
 
-OBJ_2_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "32M" | sed -n -E -e "${SSE_REGEX}")
+OBJ_2_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "32M" $ENC_OPTS_b64 | jq -r '.SSECustomerAlgorithm')
 [ "$OBJ_2_SSE" == "$ALGO" ]
 
-OBJ_2_PART_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "32M" --part-number 1 | sed -n -E -e "${SSE_REGEX}")
+OBJ_2_PART_SSE=$(${AWS} s3api head-object --bucket "$BUCKET" --key "32M" --part-number 1 $ENC_OPTS_b64 | jq -r '.SSECustomerAlgorithm')
 [ "$OBJ_2_PART_SSE" == "$ALGO" ]
 
 echo "Download object and check Encryption field"
 OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "32M" "$WORKDIR/32M_1" \
-    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 | sed -n -E -e "${SSE_REGEX}")
+    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 |  jq -r '.SSECustomerAlgorithm')
 [ "$OUT" == "$ALGO" ]
 
 echo "Download part and check Encryption field"
 OUT=$(${AWS} s3api get-object --bucket "$BUCKET" --key "32M" --part-number 1 "$WORKDIR/32M_1" \
-    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 | sed -n -E -e "${SSE_REGEX}")
+    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 |  jq -r '.SSECustomerAlgorithm')
 [ "$OUT" == "$ALGO" ]
 
 echo "Download object with proper key"
