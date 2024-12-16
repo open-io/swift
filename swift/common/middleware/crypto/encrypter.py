@@ -23,7 +23,7 @@ from swift.common.middleware.crypto.crypto_utils import INVALID_KEY, \
     INVALID_MD5_VALUE, MISSING_ALGO_MSG, MISSING_KEY_MSG, \
     WRONG_MD5_VALUE, CryptoWSGIContext, dump_crypto_meta, \
     append_crypto_meta, get_hasher, Crypto, CIPHER_NAME, \
-    CRYPTO_KEY_CALLBACK, MISSING_KEY_ALGO_MSG
+    CRYPTO_KEY_CALLBACK, MISSING_KEY_ALGO_MSG, is_customer_provided_key
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     strip_user_meta_prefix, is_user_meta, update_etag_is_at_header, \
     get_container_update_override_key
@@ -305,8 +305,33 @@ class EncrypterObjContext(CryptoWSGIContext):
                 cipher = put_crypto_meta.get('cipher')
                 if cipher:
                     cipher_name = CIPHER_NAME.get(cipher, 'AES256')
-                    mod_resp_headers.append(
-                        ('x-amz-server-side-encryption', cipher_name))
+                    if (
+                        self.crypto.ssec_mode
+                        and
+                        is_customer_provided_key(
+                            put_crypto_meta.get('key_id')
+                        )
+                    ):
+                        mod_resp_headers.append(
+                            (
+                                'x-amz-server-side-encryption-customer-'
+                                'algorithm',
+                                cipher_name,
+                            )
+                        )
+                        md5_secret = req.headers.get(
+                            'x-amz-server-side-encryption-customer-key-MD5')
+                        if md5_secret:
+                            mod_resp_headers.append(
+                                (
+                                    'x-amz-server-side-encryption-customer'
+                                    '-key-MD5',
+                                    md5_secret,
+                                )
+                            )
+                    else:
+                        mod_resp_headers.append(
+                            ('x-amz-server-side-encryption', cipher_name))
 
         start_response(self._response_status, mod_resp_headers,
                        self._response_exc_info)

@@ -214,7 +214,20 @@ class ObjectController(BaseObjectController):
             cipher_name = resp.headers.pop(
                 cipher_header, None)
             if cipher_name:
-                resp.headers['x-amz-server-side-encryption'] = cipher_name
+                header_name = 'x-amz-server-side-encryption'
+                if (
+                    'X-Object-Sysmeta-S3Api-Requires-Encryption-Key' in
+                    resp.headers
+                ):
+                    header_name = \
+                        'x-amz-server-side-encryption-customer-algorithm'
+                    md5_secret = req.headers.get(
+                        'x-amz-server-side-encryption-customer-key-MD5')
+                    if md5_secret:
+                        resp.headers[
+                            'x-amz-server-side-encryption-customer-key-MD5'
+                        ] = md5_secret
+                resp.headers[header_name] = cipher_name
 
         if ';' in resp.headers.get('content-type', ''):
             resp.content_type = clean_content_type(

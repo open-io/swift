@@ -498,10 +498,23 @@ class PartController(Controller):
             slo_resp.headers['Content-Length']
         # Add the number of parts in this object
         slo_resp.headers['X-Amz-Mp-Parts-Count'] = len(slo)
-        encryption_header = resp.headers.get('x-amz-server-side-encryption')
-        if encryption_header:
+        encryption_sse_s3_header = resp.headers.get(
+            'x-amz-server-side-encryption')
+        encryption_sse_c_header = resp.headers.get(
+            'x-amz-server-side-encryption-customer-algorithm')
+        if encryption_sse_s3_header:
             slo_resp.headers['x-amz-server-side-encryption'] = \
-                encryption_header
+                encryption_sse_s3_header
+        elif encryption_sse_s3_header:
+            slo_resp.headers[
+                'x-amz-server-side-encryption-customer-algorithm'] = \
+                encryption_sse_c_header
+            md5_secret = req.headers.get(
+                'x-amz-server-side-encryption-customer-key-MD5')
+            if md5_secret:
+                slo_resp.headers[
+                    'x-amz-server-side-encryption-customer-key-MD5'] = \
+                    md5_secret
 
         if req.from_replicator():
             # X-Amz-Part-ETag
@@ -698,6 +711,19 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             wsgi_to_str(req.object_name))
         SubElement(result_elem, 'UploadId').text = escape_xml_text(
             upload_id)
+        sse_c_algo = req.headers.get(
+            'x_amz_server_side_encryption_customer_algorithm')
+        headers = {}
+        if sse_c_algo:  # SSE-C algorithm provided
+            headers['x-amz-server-side-encryption-customer-algorithm'] = \
+                sse_c_algo
+            key_md5 = req.headers.get(
+                'x_amz_server_side_encryption_customer_key_md5')
+            headers['x-amz-server-side-encryption-customer-key-MD5'] = \
+                key_md5
+        elif self.conf.default_sse_configuration:  # SSE-S3 enabled
+            headers['x-amz-server-side-encryption'] = \
+                self.conf.default_sse_configuration
 
         body = finalize_xml_texts(tostring(result_elem))
 

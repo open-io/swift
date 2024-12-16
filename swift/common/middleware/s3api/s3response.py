@@ -39,7 +39,10 @@ HEADERS_TO_TRANSLATE_AS_IS = (
     'content-disposition', 'content-language', 'etag', 'last-modified',
     'x-robots-tag', 'cache-control', 'expires', 'retry-after',
     'x-amz-delete-marker', 'x-amz-version-id', 'x-amz-server-side-encryption',
-    'accept-ranges', 'x-amz-abort-date', 'x-amz-abort-rule-id'
+    'accept-ranges', 'x-amz-abort-date', 'x-amz-abort-rule-id',
+    'x-amz-server-side-encryption-customer-key',
+    'x-amz-server-side-encryption-customer-algorithm',
+    'x-amz-server-side-encryption-customer-key-md5',
 )
 
 

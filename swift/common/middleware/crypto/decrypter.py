@@ -21,6 +21,7 @@ from swift import gettext_ as _
 from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
+    is_customer_provided_key, \
     load_crypto_meta, extract_crypto_meta, Crypto, \
     requires_customer_provided_key, MISSING_KEY_MSG, CIPHER_NAME
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
@@ -417,8 +418,29 @@ class DecrypterObjContext(BaseDecrypterContext):
             cipher = put_crypto_meta.get('cipher')
             if cipher:
                 cipher_name = CIPHER_NAME.get(cipher, 'AES256')
-                mod_resp_headers.append(
-                    ('x-amz-server-side-encryption', cipher_name))
+                if (
+                        self.crypto.ssec_mode
+                        and
+                        is_customer_provided_key(
+                            put_crypto_meta.get('key_id')
+                        )
+                ):
+                    mod_resp_headers.append(
+                        (
+                            'x-amz-server-side-encryption-customer-algorithm',
+                            cipher_name,
+                        )
+                    )
+                    md5_secret = req.headers.get(
+                        'x-amz-server-side-encryption-customer-key-MD5')
+                    if md5_secret:
+                        mod_resp_headers.append(
+                            ('x-amz-server-side-encryption-customer-key-MD5',
+                             md5_secret)
+                        )
+                else:
+                    mod_resp_headers.append(
+                        ('x-amz-server-side-encryption', cipher_name))
 
         mod_resp_headers = purge_crypto_sysmeta_headers(mod_resp_headers)
         start_response(self._response_status, mod_resp_headers,
