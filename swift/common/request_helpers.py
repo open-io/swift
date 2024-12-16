@@ -53,6 +53,10 @@ OBJECT_SYSMETA_CONTAINER_UPDATE_OVERRIDE_PREFIX = \
 USE_REPLICATION_NETWORK_HEADER = 'x-backend-use-replication-network'
 MISPLACED_OBJECTS_ACCOUNT = '.misplaced_objects'
 
+ENCRYPTION_ERROR = re.compile(
+    r'.*Encryption|the secret key|The calculated MD5.*',
+    re.IGNORECASE
+)
 
 if six.PY2:
     import cgi
@@ -600,11 +604,13 @@ class SegmentedIterable(object):
                 body = seg_resp.body
                 if not six.PY2:
                     body = body.decode('utf8')
+                encryption_error = ENCRYPTION_ERROR
+                if not encryption_error.search(body):
+                    body = body if len(body) <= 60 else body[:57] + '...'
                 msg = 'While processing manifest %s, got %d (%s) ' \
                     'while retrieving %s' % (
                         self.name, seg_resp.status_int,
-                        body if len(body) <= 60 else body[:57] + '...',
-                        seg_req.path)
+                        body, seg_req.path)
                 if is_server_error(seg_resp.status_int):
                     self.logger.error(msg)
                     raise HTTPServiceUnavailable(
@@ -808,11 +814,10 @@ class SafeSegmentedIterable(SegmentedIterable):
     SegmentedIterable subclass that does not melt all segment errors
     into SegmentError.
     """
-
     _InvalidKey = re.compile(r'got 403 \(Invalid key\) while retrieving',
                              re.IGNORECASE)
-    _BadCryptoReq = re.compile(r'got 400 \(.*Encrypt.*\) while retrieving',
-                               re.IGNORECASE)
+    _BadCryptoReq = ENCRYPTION_ERROR
+    _segmentError = re.compile(r'\(.*\)', re.IGNORECASE)
 
     def validate_first_segment(self):
         try:
@@ -821,7 +826,10 @@ class SafeSegmentedIterable(SegmentedIterable):
             if self.__class__._InvalidKey.search(err.args[0]):
                 raise HTTPForbidden(request=self.req)
             elif self.__class__._BadCryptoReq.search(err.args[0]):
-                raise HTTPBadRequest(request=self.req)
+                # Get the original message error between parentheses
+                err_msg = self.__class__._segmentError.search(
+                    err.args[0])[0][1:-1]
+                raise HTTPBadRequest(err_msg, request=self.req)
             else:
                 raise
 
