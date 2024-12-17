@@ -1724,7 +1724,7 @@ class StaticLargeObject(object):
         for item in listing:
             if 'subdir' in item:
                 continue
-            etag, params = parse_header(item['hash'])
+            etag, params = parse_header(item.get('hash', ""))
             if 'slo_etag' in params:
                 item['slo_etag'] = '"%s"' % params.pop('slo_etag')
                 item['hash'] = etag + ''.join(
