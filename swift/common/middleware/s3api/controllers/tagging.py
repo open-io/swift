@@ -114,7 +114,8 @@ def tagging_header_to_xml(header_val):
                                   msg=INVALID_TAGGING)
         _add_tag_to_tag_set(tagset, key, val[0])
     _validate_tags_count(items)
-    return tostring(root)
+    # We don't need to save the XML declaration.
+    return tostring(root, xml_declaration=False)
 
 
 class TaggingController(Controller):
@@ -132,6 +133,10 @@ class TaggingController(Controller):
         It called, it will create or enrich the provided tags.
         """
         if tagging:
+            # fromstring() won't accept a string with an encoding declaration.
+            # Howewer, it will accept bytes with an encoding declaration.
+            if isinstance(tagging, str):
+                tagging = tagging.encode("utf-8")
             root = fromstring(tagging)
             tagset = root.find('TagSet')
         else:

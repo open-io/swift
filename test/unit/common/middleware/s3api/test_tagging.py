@@ -35,6 +35,17 @@ class TestS3ApiTagging(S3ApiTestCase):
         </Tagging>
     """
 
+    TAGGING_BODY_XML_DECLARATION = """<?xml version="1.0" encoding="UTF-8"?>
+        <Tagging>
+          <TagSet>
+            <Tag>
+              <Key>organization</Key>
+              <Value>marketing</Value>
+            </Tag>
+          </TagSet>
+        </Tagging>
+    """
+
     TAGGING_BODY_EMPTY_KEY = """
         <Tagging>
           <TagSet>
@@ -83,6 +94,7 @@ class TestS3ApiTagging(S3ApiTestCase):
 
     def setUp(self):
         super(TestS3ApiTagging, self).setUp()
+        self.s3api.conf['enable_intelligent_tiering'] = True
         self.swift.register('HEAD', '/v1/AUTH_test/missingbucket',
                             swob.HTTPNotFound, {}, None)
         self.swift.register('HEAD', '/v1/AUTH_test/bucket/missingobject',
@@ -93,6 +105,11 @@ class TestS3ApiTagging(S3ApiTestCase):
                             swob.HTTPNoContent,
                             {tagging.BUCKET_TAGGING_HEADER:
                              self.__class__.TAGGING_BODY},
+                            None)
+        self.swift.register('HEAD', '/v1/AUTH_test/bucket-xml-declaration',
+                            swob.HTTPNoContent,
+                            {tagging.BUCKET_TAGGING_HEADER:
+                             self.__class__.TAGGING_BODY_XML_DECLARATION},
                             None)
         self.swift.register('POST', '/v1/AUTH_test/bucket',
                             swob.HTTPNoContent, {}, None)
@@ -168,6 +185,15 @@ class TestS3ApiTagging(S3ApiTestCase):
 
     def test_bucket_tagging_GET(self):
         req = Request.blank('/bucket?tagging',
+                            environ={'REQUEST_METHOD': 'GET'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        status, _headers, body = self.call_s3api(req)
+        self.assertEqual('200 OK', status)
+        self._validate_tagset(body)
+
+    def test_bucket_tagging_GET_xml_declaration(self):
+        req = Request.blank('/bucket-xml-declaration?tagging',
                             environ={'REQUEST_METHOD': 'GET'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
