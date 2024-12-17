@@ -31,7 +31,8 @@ start =
         element StorageClass {
           "STANDARD" | "REDUCED_REDUNDANCY" | "STANDARD_IA" |
           "ONEZONE_IA" | "INTELLIGENT_TIERING" | "GLACIER" |
-          "DEEP_ARCHIVE" | "OUTPOSTS" | "GLACIER_IR"
+          "DEEP_ARCHIVE" | "OUTPOSTS" | "GLACIER_IR" |
+          "EXPRESS_ONEZONE"
         }?
       } &
       element ExistingObjectReplication {

@@ -98,6 +98,7 @@
                         <value>DEEP_ARCHIVE</value>
                         <value>OUTPOSTS</value>
                         <value>GLACIER_IR</value>
+                        <value>EXPRESS_ONEZONE</value>
                       </choice>
                     </element>
                   </optional>

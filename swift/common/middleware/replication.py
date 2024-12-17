@@ -162,7 +162,7 @@ class ReplicationMiddleware(object):
             tags = (_tagging_obj_to_dict(xmltodict.parse(xml_tags))
                     if xml_tags else {})
 
-        dest_buckets = None
+        destinations = None
         ruleset = configuration.get("rules", {})
         for destination, rules in rules_per_destination.items():
             for rule_name in rules:
@@ -175,13 +175,18 @@ class ReplicationMiddleware(object):
                     # Remove 'arn:aws:s3:::' prefix from bucket name
                     if destination.startswith(DEST_BUCKET_PREFIX):
                         destination = destination[len(DEST_BUCKET_PREFIX):]
-                    if not dest_buckets:
-                        dest_buckets = destination  # first element of the list
+                    # Add storage class to the destination
+                    storage_class = rule["Destination"].get("StorageClass")
+                    if storage_class:
+                        destination = f"{destination}:{storage_class}"
+
+                    if not destinations:
+                        destinations = destination  # first element of the list
                     else:
-                        dest_buckets = f"{dest_buckets};{destination}"
+                        destinations = f"{destinations};{destination}"
                 if not r_continue:
                     break
-        return dest_buckets, configuration.get("role")
+        return destinations, configuration.get("role")
 
 
 def filter_factory(global_conf, **local_config):

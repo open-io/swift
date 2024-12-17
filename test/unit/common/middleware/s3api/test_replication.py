@@ -49,6 +49,25 @@ EXPECTED = (
     b'</Filter><ID>2dfdcf571182407293d35b52959876e3</ID><Priority>0</Priority>'
     b'<Status>Enabled</Status></Rule></ReplicationConfiguration>'
 )
+EXPECTED_WITH_STORAGE_CLASS = (
+    b'<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<ReplicationConfiguration'
+    b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+    b'<Role>arn:aws:iam::012345678942:role/s3-replication</Role>'
+    b'<Rule><DeleteMarkerReplication><Status>Disabled</Status>'
+    b'</DeleteMarkerReplication><Destination>'
+    b'<Bucket>arn:aws:s3:::replication-dst</Bucket>'
+    b'<StorageClass>STANDARD_IA</StorageClass></Destination>'
+    b'<Filter><Tag><Key>string</Key><Value>string</Value></Tag></Filter>'
+    b'<ID>d4e1ba32c7fe49f0bb6062838ae48bb2</ID><Priority>0</Priority>'
+    b'<Status>Enabled</Status></Rule><Rule><DeleteMarkerReplication>'
+    b'<Status>Disabled</Status></DeleteMarkerReplication><Destination>'
+    b'<Bucket>arn:aws:s3:::replication-dst</Bucket></Destination><Filter>'
+    b'<And><Prefix>string</Prefix><Tag><Key>string</Key><Value>string</Value>'
+    b'</Tag><Tag><Key>string</Key><Value>string</Value></Tag></And>'
+    b'<Prefix>string</Prefix><Tag><Key>key</Key><Value>value</Value></Tag>'
+    b'</Filter><ID>2dfdcf571182407293d35b52959876e3</ID><Priority>0</Priority>'
+    b'<Status>Enabled</Status></Rule></ReplicationConfiguration>'
+)
 REPLICATION_CONF_XML = (
     b'<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<ReplicationConfiguration'
     b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
@@ -179,6 +198,47 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertIn("ID", dict_conf["Rules"][0])
         self.assertEqual(dict_conf["Rules"][0]["ID"],
                          "1383c063a20046eb85fcd483b7262911")
+        self.assertNotIn("StorageClass", dict_conf["Rules"][0]["Destination"])
+
+    def test_xml_conf_to_dict_with_storage_class(self):
+        """
+        Test xml conf conversion with storage classto dict conf.
+        Beside it is also testing if ID is generated if not specified in
+        replication configuration.
+        """
+        xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::012345678942:role/s3-replication</Role>
+                <Rule>
+                    <DeleteMarkerReplication>
+                        <Status>Disabled</Status>
+                    </DeleteMarkerReplication>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                        <StorageClass>STANDARD_IA</StorageClass>
+                    </Destination>
+                    <Filter>
+                        <Tag>
+                            <Key>string</Key>
+                            <Value>string</Value>
+                        </Tag>
+                    </Filter>
+                    <Priority>0</Priority>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+        with patch("uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = UUID(
+                '1383c063-a200-46eb-85fc-d483b7262911')
+            dict_conf = replication_xml_conf_to_dict(xml_conf)
+        print(f"dict_conf={dict_conf}")
+        self.assertIn("ID", dict_conf["Rules"][0])
+        self.assertEqual(dict_conf["Rules"][0]["ID"],
+                         "1383c063a20046eb85fcd483b7262911")
+        self.assertEqual("STANDARD_IA",
+                         dict_conf["Rules"][0]["Destination"]["StorageClass"])
 
     def test_dict_conf_to_xml(self):
         conf_dict_test = {
@@ -217,6 +277,48 @@ class TestS3ApiReplication(S3ApiTestCase):
         }
         xml_conf = dict_conf_to_xml(conf_dict_test)
         self.assertEqual(tostring(fromstring(EXPECTED)), xml_conf)
+
+    def test_dict_conf_to_xml_with_storage_class(self):
+        conf_dict_test = {
+            "role": "arn:aws:iam::012345678942:role/s3-replication",
+            "rules": {
+                "d4e1ba32c7fe49f0bb6062838ae48bb2": {
+                    "ID": 'd4e1ba32c7fe49f0bb6062838ae48bb2',
+                    "Priority": 0,
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {"Tag": {"Key": "string", "Value": "string"}},
+                    "Destination": {
+                        "Bucket": "arn:aws:s3:::replication-dst",
+                        "StorageClass": "STANDARD_IA",
+                    },
+                },
+                "2dfdcf571182407293d35b52959876e3": {
+                    "ID": '2dfdcf571182407293d35b52959876e3',
+                    "Priority": 0,
+                    "Status": "Enabled",
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                    "Filter": {
+                        "Prefix": "string",
+                        "Tag": {"Key": "key", "Value": "value"},
+                        "And": {
+                            "Prefix": "string",
+                            "Tags": [
+                                {"Key": "string", "Value": "string"},
+                                {"Key": "string", "Value": "string"},
+                            ],
+                        },
+                    },
+                    "Destination": {"Bucket": "arn:aws:s3:::replication-dst"},
+                },
+            },
+            "replications": [],
+            "deletions": [],
+            "use_tags": False
+        }
+        xml_conf = dict_conf_to_xml(conf_dict_test)
+        self.assertEqual(tostring(fromstring(EXPECTED_WITH_STORAGE_CLASS)),
+                         xml_conf)
 
     def test_optimize_configuration(self):
         conf = {
@@ -384,7 +486,6 @@ class TestS3ApiReplication(S3ApiTestCase):
                             })
         status, _, body = self.call_s3api(req)
 
-        print(body)
         self.assertEqual("200 OK", status)
         self.assertFalse(body)  # empty -> False
 
@@ -1482,6 +1583,44 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("501 Not Implemented", status)
         self.assertEqual("NotImplemented", self._get_error_code(body))
 
+    def test_PUT_supported_storage_class(self):
+        config = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::test:role/s3-replication</Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <StorageClass>STANDARD</StorageClass>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+        """
+
+        self.swift.register('POST', '/v1/AUTH_test/test-replication',
+                            HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
+
+        req = Request.blank('/test-replication?replication',
+                            environ={"REQUEST_METHOD": "PUT"},
+                            body=config,
+                            headers={
+                                "Authorization": "AWS test:tester:hmac",
+                                "Date": self.get_date_header(),
+                            })
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
+
     def test_PUT_unsupported_storage_class(self):
         config = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
@@ -1496,7 +1635,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                         <Prefix>Tax</Prefix>
                     </Filter>
                     <Destination>
-                        <StorageClass>DEEP_ARCHIVE</StorageClass>
+                        <StorageClass>FOOBAR</StorageClass>
                         <Bucket>arn:aws:s3:::dest</Bucket>
                     </Destination>
                     <Status>Enabled</Status>
@@ -1506,6 +1645,8 @@ class TestS3ApiReplication(S3ApiTestCase):
 
         self.swift.register('POST', '/v1/AUTH_test/test-replication',
                             HTTPNoContent, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest',
+                            HTTPOk, {SYSMETA_VERSIONS_ENABLED: True}, None)
 
         req = Request.blank('/test-replication?replication',
                             environ={"REQUEST_METHOD": "PUT"},
@@ -1515,8 +1656,8 @@ class TestS3ApiReplication(S3ApiTestCase):
                                 "Date": self.get_date_header(),
                             })
         status, _, body = self.call_s3api(req)
-        self.assertEqual("501 Not Implemented", status)
-        self.assertEqual("NotImplemented", self._get_error_code(body))
+        self.assertEqual("400 Bad Request", status)
+        self.assertEqual("MalformedXML", self._get_error_code(body))
 
     def test_PUT_object_lock_enabled(self):
 

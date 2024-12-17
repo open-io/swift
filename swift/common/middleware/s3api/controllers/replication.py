@@ -193,32 +193,35 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
         "Rules": [],
     }
     IDs = set()
-    for rule in replication_conf.findall("Rule"):
-        id_marker = rule.find("ID")
+    for rule_xml in replication_conf.findall("Rule"):
+        id_marker = rule_xml.find("ID")
         id_text = id_marker.text if id_marker is not None and \
             id_marker.text else uuid.uuid4().hex
         if id_text in IDs:
             raise InvalidArgument("ID", id_text, "Rule Id must be unique.")
 
         IDs.add(id_text)
-        priority = rule.find("Priority")
-        deleteMarkerReplication = rule.find("DeleteMarkerReplication")
-        out["Rules"].append(
-            {
-                "ID": id_text,
-                "Priority": int(priority.text) if priority is not None else 1,
-                "Status": rule.find("Status").text,
-                "DeleteMarkerReplication": {
-                    "Status": deleteMarkerReplication.find("Status").text
-                    if deleteMarkerReplication is not None
-                    else "Disabled",
-                },
-                "Filter": get_filters(rule.find("Filter")),
-                "Destination": {
-                    "Bucket": rule.find("Destination").find("Bucket").text,
-                },
-            }
-        )
+        priority = rule_xml.find("Priority")
+        deleteMarkerReplication = rule_xml.find("DeleteMarkerReplication")
+        rule_dict = {
+            "ID": id_text,
+            "Priority": int(priority.text) if priority is not None else 1,
+            "Status": rule_xml.find("Status").text,
+            "DeleteMarkerReplication": {
+                "Status": deleteMarkerReplication.find("Status").text
+                if deleteMarkerReplication is not None
+                else "Disabled",
+            },
+            "Filter": get_filters(rule_xml.find("Filter")),
+            "Destination": {
+                "Bucket": rule_xml.find("Destination").find("Bucket").text,
+            },
+        }
+        # Append storage class if specified
+        storage_class = rule_xml.find("Destination").find("StorageClass")
+        if storage_class is not None:
+            rule_dict["Destination"]["StorageClass"] = storage_class.text
+        out["Rules"].append(rule_dict)
     return out
 
 
@@ -317,7 +320,7 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
         if metadata is None:
             raise InternalError("Missing metadata in replication callback")
 
-        destination_buckets, role = replication_cb(
+        destinations, role = replication_cb(
             configuration=configuration,
             key=req.key,
             metadata=metadata,
@@ -326,13 +329,13 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
             ensure_replicated=ensure_replicated
         )
 
-        if not destination_buckets or not role:
+        if not destinations or not role:
             return
         match = replication_role_re.fullmatch(role)
         if match is None:
             return
 
-        req.headers["X-Replication-Destinations"] = destination_buckets
+        req.headers["X-Replication-Destinations"] = destinations
         role_project_id = match.group(1)
         req.headers["X-Replication-Role-Project-Id"] = role_project_id
         replicator_id = match.group(2)
@@ -388,14 +391,12 @@ class ReplicationController(Controller):
                 destination, feature, children
             )
         storage_class = destination.find("./StorageClass")
-        if (
-            storage_class is not None
-            and storage_class not in S3_STORAGE_CLASSES
-        ):
-            raise S3NotImplemented(
-                "Storage class to use when replicating objects "
-                "is not supported"
-            )
+        if storage_class is not None:
+            storage_class = storage_class.text
+            if storage_class not in S3_STORAGE_CLASSES:
+                raise InvalidArgument(name="StorageClass",
+                                      value=storage_class,
+                                      msg="Invalid Storage Class.")
 
         bucket = destination.find("./Bucket")
         if bucket is None:

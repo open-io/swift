@@ -267,3 +267,4 @@ account_autocreate = True
 
 [filter:replication]
 use = egg:swift#replication
+replicator_user_agent = s3-replicator
