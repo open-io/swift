@@ -1139,7 +1139,7 @@ class S3Request(swob.Request):
             raise InvalidAccessKeyId(access)
         return access, sig
 
-    def _get_storage_class(self, from_internal_tool=False):
+    def _get_storage_class(self, from_replicator=False):
         """
         Get the default storage class of the requested storage domain
         (endpoint), or the storage class requested by the client
@@ -1155,9 +1155,12 @@ class S3Request(swob.Request):
             storage_domain = self.storage_domain
             if storage_domain not in self.conf.storage_classes_mappings_write:
                 storage_domain = ""
-            if from_internal_tool:
-                # Ignore the storage class imposed on the domain
-                storage_domain += "#internal"
+            if from_replicator:
+                if self.get_container_info(self.app).get('sysmeta', {}).get(
+                    's3api-bucket-backup'
+                ):
+                    # Use the storage classes allowed on the backup bucket
+                    storage_domain += "#backup"
             storage_class_header = self.headers.get('x-amz-storage-class')
             storage_class = self.conf.storage_classes_mappings_write[
                 storage_domain
@@ -2559,9 +2562,6 @@ class S3Request(swob.Request):
         return is_from_replicator(
             self.environ.get('reseller_request', False), self.user_agent)
 
-    def from_internal_tool(self):
-        return self.from_log_deliverer() or self.from_replicator()
-
 
 class S3AclRequest(S3Request):
     """
@@ -2698,9 +2698,7 @@ class S3AclRequest(S3Request):
         by the client if it is supported, otherwise use 'STANDARD' by default.
         For other requests, keep the same behavior as before authentication.
         """
-        return self._get_storage_class(
-            from_internal_tool=self.from_internal_tool()
-        )
+        return self._get_storage_class(from_replicator=self.from_replicator())
 
 
 class SigV4Request(SigV4Mixin, S3Request):

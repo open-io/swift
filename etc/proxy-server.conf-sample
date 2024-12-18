@@ -738,6 +738,10 @@ use = egg:swift#s3api
 # Specify a (comma-separated) list of storage classes for your Swift cluster.
 # storage_classes =
 #
+# Specify a (comma-separated) list of storage classes allowed on the backup
+# bucket from the replicator.
+# backup_storage_classes =
+#
 # Specify a (comma-separated) list of host names for your Swift cluster.
 # This enables virtual-hosted style requests.
 # It is possible to change the default storage class and consider it as

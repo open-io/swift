@@ -246,7 +246,7 @@ class Config(dict):
                 'GLACIER': 'STANDARD',
                 'DEEP_ARCHIVE': 'STANDARD',
             },
-            '#internal': {
+            '#backup': {
                 '': 'STANDARD',
                 'EXPRESS_ONEZONE': 'STANDARD',
                 'STANDARD': 'STANDARD',

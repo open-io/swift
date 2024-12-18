@@ -480,7 +480,7 @@ class PartController(Controller):
             slo_resp.headers['x-amz-server-side-encryption'] = \
                 encryption_header
 
-        if req.from_internal_tool():
+        if req.from_replicator():
             # X-Amz-Part-ETag
             # This header is not part of the S3 API.
             # This header is added to help verify data integrity.

@@ -407,12 +407,23 @@ class S3ApiMiddleware(object):
             f"Storage classes mappings read: {mappings_read_log}"
         )
 
-    def _get_storage_classes(self, wsgi_conf):
-        storage_classes = set()
-        storage_classes_conf = list_from_csv(wsgi_conf.get(
-            'storage_classes', 'STANDARD'))
-        if not storage_classes_conf:
+    def _get_storage_classes_list(
+        self, wsgi_conf, conf_key, mandatory, preloading=None
+    ):
+        """
+        Normalize and sort a storage class list from the conf.
+        """
+        if mandatory:
+            default = STANDARD_STORAGE_CLASS
+        else:
+            default = ''
+        storage_classes_conf = list_from_csv(wsgi_conf.get(conf_key, default))
+        if mandatory and not storage_classes_conf:
             raise ValueError('Missing storage classes list')
+        if preloading is None:
+            storage_classes = set()
+        else:
+            storage_classes = set(preloading)
         for storage_class in storage_classes_conf:
             storage_class = storage_class.upper()
             if storage_class not in S3_STORAGE_CLASSES:
@@ -424,21 +435,28 @@ class S3ApiMiddleware(object):
             list(storage_classes), key=lambda sc: S3_STORAGE_CLASSES.index(sc)
         )
 
-    def _get_storage_classes_mapping(
-        self, wsgi_conf, storage_domain_storage_class=None
-    ):
-        default = storage_domain_storage_class or STANDARD_STORAGE_CLASS
-        storage_classes = self._get_storage_classes(wsgi_conf)
-
-        # Calculate the default storage class shift from STANDARD
-        shift = (
-            S3_STORAGE_CLASSES.index(STANDARD_STORAGE_CLASS)
-            - S3_STORAGE_CLASSES.index(default)
+    def _get_storage_classes(self, wsgi_conf):
+        """
+        Return normalized and sorted storage classes for the custumers
+        and the backup storage classes for the replicator on the backup bucket.
+        """
+        storage_classes = self._get_storage_classes_list(
+            wsgi_conf, 'storage_classes', True
         )
+        backup_storage_classes = self._get_storage_classes_list(
+            wsgi_conf, 'backup_storage_classes', False,
+            preloading=storage_classes
+        )
+        return storage_classes, backup_storage_classes
 
-        # WRITE
+    def _get_storage_classes_mapping_write(
+            self, storage_classes, default, shift,
+    ):
+        """
+        Return a mapping with all S3 storage classes associated
+        with managed storage classes.
+        """
         mapping_write = {"": default}
-        mapping_write_internal = {"": default}
         # When writing, certain shifts cannot manage all the storage classes
         # offered
         storage_class_index = 0
@@ -488,15 +506,46 @@ class S3ApiMiddleware(object):
             # Assign the S3 storage class to the storage class offered
             storage_class = storage_classes[storage_class_index]
             mapping_write[s3_storage_class] = storage_class
-            # Internal tools are not affected by forcing the storage domain's
-            # storage class
-            mapping_write_internal[s3_storage_class] = storage_class
+        return mapping_write
+
+    def _get_storage_classes_mapping(
+        self, wsgi_conf, storage_domain_storage_class=None
+    ):
+        """
+        Return mappings with all S3 storage classes associated
+        with managed storage classes:
+        - 1 mapping for the write request from the customers
+        - 1 mapping for the write request from the replicator
+          on the backup bucket
+        - 1 mapping for the read request (from the customers
+          and the replicator on the backup bucket)
+        """
+        default = storage_domain_storage_class or STANDARD_STORAGE_CLASS
+        storage_classes, backup_storage_classes = self._get_storage_classes(
+            wsgi_conf
+        )
+
+        # Calculate the default storage class shift from STANDARD
+        shift = (
+            S3_STORAGE_CLASSES.index(STANDARD_STORAGE_CLASS)
+            - S3_STORAGE_CLASSES.index(default)
+        )
+
+        # WRITE
+        mapping_write = self._get_storage_classes_mapping_write(
+            storage_classes, default, shift
+        )
+        mapping_write_backup = self._get_storage_classes_mapping_write(
+            backup_storage_classes, default, shift
+        )
 
         # READ
         mapping_read = {
             "": STANDARD_STORAGE_CLASS,
         }
-        for storage_class in storage_classes:
+        # If the replicator are able to use different storage classes,
+        # when reading, these storage classes must be visible to the client
+        for storage_class in backup_storage_classes:
             # When reading, these unmanaged storage classes will be displayed
             # as EXPRESS_ONEZONE or DEEP_ARCHIVE, even if other storage classes
             # already use these values
@@ -511,14 +560,22 @@ class S3ApiMiddleware(object):
             ]
             mapping_read[storage_class] = storage_class_shifted
 
-        return mapping_write, mapping_write_internal, mapping_read
+        return mapping_write, mapping_write_backup, mapping_read
 
     def _get_storage_classes_mappings(self, wsgi_conf):
+        """
+        Return mappings with all S3 storage classes associated
+        with managed storage classes for each storage domain:
+        - 1 mapping for the write request
+        - 1 mapping for the read request
+        And return the storage domains.
+        """
         mappings_write = {}
         mappings_read = {}
         storage_domains = []
 
-        used_storage_classes = self._get_storage_classes(wsgi_conf)
+        # The default storage class cannot be an backup storage class
+        used_storage_classes, _ = self._get_storage_classes(wsgi_conf)
         storage_domains_conf = [""] + list_from_csv(
             wsgi_conf.get("storage_domain", "")
         )
@@ -547,15 +604,15 @@ class S3ApiMiddleware(object):
             # from its default storage class
             (
                 mapping_write,
-                mapping_write_internal,
+                mapping_write_backup,
                 mapping_read,
             ) = self._get_storage_classes_mapping(
                 wsgi_conf,
                 storage_domain_storage_class=storage_domain_storage_class,
             )
             mappings_write[storage_domain] = mapping_write
-            mappings_write[f"{storage_domain}#internal"] = \
-                mapping_write_internal
+            mappings_write[f"{storage_domain}#backup"] = \
+                mapping_write_backup
             mappings_read[storage_domain] = mapping_read
             if storage_domain and storage_domain not in storage_domains:
                 storage_domains.append(storage_domain)
@@ -563,10 +620,19 @@ class S3ApiMiddleware(object):
         return mappings_write, mappings_read, storage_domains
 
     def _get_storage_policies_conf(self, wsgi_conf):
+        """
+        Return 2 mappings:
+        - 1 mapping for the storage classes associated
+          to their storage policies
+        - 1 mapping for the storage policies associated
+          to their storage class
+        """
         auto_storage_policies = {}
         storage_class_by_policy = {}
 
-        storage_classes = self._get_storage_classes(wsgi_conf)
+        # If the replicator are able to use different storage classes,
+        # these storage classes must have associated storage policies
+        _, storage_classes = self._get_storage_classes(wsgi_conf)
         for storage_class in storage_classes:
             auto_storage_policies_conf = parse_auto_storage_policies(
                 wsgi_conf.get('auto_storage_policies_%s' % storage_class))

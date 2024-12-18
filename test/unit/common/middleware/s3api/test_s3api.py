@@ -152,7 +152,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         conf = {
             'account_enabled_key': 'is-enabled',
             'storage_classes': 'STANDARD,EXPRESS_ONEZONE,GLACIER',
+            'backup_storage_classes': 'STANDARD_IA',
             'auto_storage_policies_STANDARD': 'EC',
+            'auto_storage_policies_STANDARD_IA': 'THREECOPIES',
             'auto_storage_policies_EXPRESS_ONEZONE': 'SINGLE',
             'auto_storage_policies_GLACIER': 'TWOCOPIES',
             'storage_domain':
@@ -201,6 +203,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         conf['cors_preflight_allow_origin'] = \
             conf['cors_preflight_allow_origin'].split(',')
         conf.pop('storage_classes')
+        conf.pop('backup_storage_classes')
         conf['storage_classes_mappings_write'] = {
             '': {
                 '': 'STANDARD',
@@ -213,14 +216,14 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                 'GLACIER': 'GLACIER',
                 'DEEP_ARCHIVE': 'GLACIER',
             },
-            '#internal': {
+            '#backup': {
                 '': 'STANDARD',
                 'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
                 'STANDARD': 'STANDARD',
-                'STANDARD_IA': 'STANDARD',
-                'INTELLIGENT_TIERING': 'STANDARD',
-                'ONEZONE_IA': 'STANDARD',
-                'GLACIER_IR': 'STANDARD',
+                'STANDARD_IA': 'STANDARD_IA',
+                'INTELLIGENT_TIERING': 'STANDARD_IA',
+                'ONEZONE_IA': 'STANDARD_IA',
+                'GLACIER_IR': 'STANDARD_IA',
                 'GLACIER': 'GLACIER',
                 'DEEP_ARCHIVE': 'GLACIER',
             },
@@ -235,15 +238,15 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                 'GLACIER': 'STANDARD',
                 'DEEP_ARCHIVE': 'GLACIER',
             },
-            'somewhere#internal': {
+            'somewhere#backup': {
                 '': 'EXPRESS_ONEZONE',
                 'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
                 'STANDARD': 'EXPRESS_ONEZONE',
                 'STANDARD_IA': 'STANDARD',
-                'INTELLIGENT_TIERING': 'STANDARD',
-                'ONEZONE_IA': 'STANDARD',
-                'GLACIER_IR': 'STANDARD',
-                'GLACIER': 'STANDARD',
+                'INTELLIGENT_TIERING': 'STANDARD_IA',
+                'ONEZONE_IA': 'STANDARD_IA',
+                'GLACIER_IR': 'STANDARD_IA',
+                'GLACIER': 'STANDARD_IA',
                 'DEEP_ARCHIVE': 'GLACIER',
             },
             'some.other.where': {
@@ -257,9 +260,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                 'GLACIER': 'GLACIER',
                 'DEEP_ARCHIVE': 'GLACIER',
             },
-            'some.other.where#internal': {
+            'some.other.where#backup': {
                 '': 'GLACIER',
-                'EXPRESS_ONEZONE': 'STANDARD',
+                'EXPRESS_ONEZONE': 'STANDARD_IA',
                 'STANDARD': 'GLACIER',
                 'STANDARD_IA': 'GLACIER',
                 'INTELLIGENT_TIERING': 'GLACIER',
@@ -274,31 +277,37 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                 '': 'STANDARD',
                 'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
                 'STANDARD': 'STANDARD',
+                'STANDARD_IA': 'STANDARD_IA',
                 'GLACIER': 'GLACIER',
             },
             'somewhere': {
                 '': 'STANDARD',
                 'EXPRESS_ONEZONE': 'STANDARD',
                 'STANDARD': 'STANDARD_IA',
+                'STANDARD_IA': 'INTELLIGENT_TIERING',
                 'GLACIER': 'DEEP_ARCHIVE',
             },
             'some.other.where': {
                 '': 'STANDARD',
                 'EXPRESS_ONEZONE': 'EXPRESS_ONEZONE',
                 'STANDARD': 'EXPRESS_ONEZONE',
+                'STANDARD_IA': 'EXPRESS_ONEZONE',
                 'GLACIER': 'STANDARD',
             },
         }
         conf.pop('auto_storage_policies_STANDARD')
+        conf.pop('auto_storage_policies_STANDARD_IA')
         conf.pop('auto_storage_policies_EXPRESS_ONEZONE')
         conf.pop('auto_storage_policies_GLACIER')
         conf['auto_storage_policies'] = {
             'STANDARD': [('EC', -1)],
+            'STANDARD_IA': [('THREECOPIES', -1)],
             'EXPRESS_ONEZONE': [('SINGLE', -1)],
             'GLACIER': [('TWOCOPIES', -1)]
         }
         conf['storage_class_by_policy'] = {
             'EC': 'STANDARD',
+            'THREECOPIES': 'STANDARD_IA',
             'SINGLE': 'EXPRESS_ONEZONE',
             'TWOCOPIES': 'GLACIER',
         }
