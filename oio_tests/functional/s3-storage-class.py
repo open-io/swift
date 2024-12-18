@@ -25,7 +25,6 @@ from oio_tests.functional.common import (
     OIO_ACCOUNT,
     OIO_NS,
     PERF_ENDPOINT_URL,
-    IA_ENDPOINT_URL,
     get_boto3_client,
     random_str,
 )
@@ -89,7 +88,6 @@ class _TestS3StorageClassMixin(object):
         url_to_test_class = {
             ENDPOINT_URL: TestS3StorageClassStandard,
             PERF_ENDPOINT_URL: TestS3StorageClassPerf,
-            IA_ENDPOINT_URL: TestS3StorageClassIA,
         }
         endpoint_url2 = random.choice(
             [url for url in url_to_test_class.keys() if url != cls.endpoint_url]
@@ -459,33 +457,6 @@ class TestS3StorageClassPerf(_TestS3StorageClassMixin, unittest.TestCase):
         }
 
 
-class TestS3StorageClassIA(_TestS3StorageClassMixin, unittest.TestCase):
-
-    endpoint_url = IA_ENDPOINT_URL
-    default_storage_class = "STANDARD_IA"
-    use_storage_domain_storage_class = True
-
-    @classmethod
-    def _complete_mappings(cls):
-        # - has storage domain storage class
-        cls._storage_classes_mappings_write[True] = {
-            "": cls.default_storage_class,
-            "EXPRESS_ONEZONE": "STANDARD",
-            "STANDARD": "STANDARD_IA",
-            "STANDARD_IA": "STANDARD_IA",
-            "INTELLIGENT_TIERING": "STANDARD_IA",
-            "ONEZONE_IA": "STANDARD_IA",
-            "GLACIER_IR": "STANDARD_IA",
-            "GLACIER": "STANDARD_IA",
-            "DEEP_ARCHIVE": "STANDARD_IA",
-        }
-        cls._storage_classes_mappings_read = {
-            "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
-            "STANDARD": "EXPRESS_ONEZONE",
-            "STANDARD_IA": "STANDARD",
-        }
-
-
 class TestMultipleStorageDomains(unittest.TestCase):
 
     @classmethod
@@ -493,7 +464,6 @@ class TestMultipleStorageDomains(unittest.TestCase):
         super(TestMultipleStorageDomains, cls).setUpClass()
         cls.standard_client = get_boto3_client()
         cls.perf_client = get_boto3_client(endpoint_url=PERF_ENDPOINT_URL)
-        cls.ia_client = get_boto3_client(endpoint_url=IA_ENDPOINT_URL)
 
     def setUp(self):
         self.bucket = f"storage-class-{random_str(6)}"
