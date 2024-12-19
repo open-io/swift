@@ -1840,6 +1840,17 @@ class S3Request(swob.Request):
             self.storage_class = storage_class
         return storage_class, storage_class_domain
 
+    def is_standard_endpoint(self):
+        """
+        Returns True if the endpoint used is mapped to the standard storage
+        class.
+        """
+        storage_domain = self.storage_domain
+        if storage_domain not in self.conf.storage_classes_mappings_read:
+            storage_domain = ""
+        return self.conf.storage_classes_mappings_read[
+            storage_domain][STANDARD_STORAGE_CLASS] == STANDARD_STORAGE_CLASS
+
     def _swift_success_codes(self, method, container, obj):
         """
         Returns a list of expected success codes from Swift.

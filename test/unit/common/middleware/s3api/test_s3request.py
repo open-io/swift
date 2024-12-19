@@ -1296,14 +1296,6 @@ class TestRequest(S3ApiTestCase):
         req = Request.blank('/', environ=environ, headers=headers)
         s3_req = S3Request(
             req.environ, conf=Config({
-                'storage_domains': [
-                    'alternate.domain',
-                    's3.sbg.perf.cloud.ovh.net',
-                ]
-            })
-        )
-        s3_req = S3Request(
-            req.environ, conf=Config({
                 'storage_domains': {'alternate.domain': None,
                                     's3.sbg.perf.cloud.ovh.net': None}}))
 
