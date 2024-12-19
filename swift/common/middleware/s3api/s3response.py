@@ -381,7 +381,7 @@ class BadRequest(ErrorResponse):
 
 class BadEndpoint(ErrorResponse):
     _status = '403 Forbidden'
-    _msg = 'This bucket is not accessible through this endpoint.'
+    _msg = 'This operation is not accessible through this endpoint.'
 
 
 class BucketAlreadyExists(ErrorResponse):

@@ -374,7 +374,8 @@ class TestS3ApiReplication(S3ApiTestCase):
                     },
                     "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
                 },
-            ]
+            ],
+            "UseStorageClass": False,
         }
         optimized = _optimize_replication_conf(conf)
         self.assertIn("role", optimized)
@@ -388,6 +389,7 @@ class TestS3ApiReplication(S3ApiTestCase):
                          {"arn:aws:s3:::bucket1": ["rule4", "rule2"]})
         self.assertIn("use_tags", optimized)
         self.assertEqual(optimized["use_tags"], True)
+        self.assertEqual(optimized["use_storage_class"], False)
 
     def test_GET_no_configuration(self):
         req = Request.blank('/test-replication-no-conf?replication',

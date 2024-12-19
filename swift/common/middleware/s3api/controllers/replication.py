@@ -29,7 +29,7 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
     MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
     S3NotImplemented, ServiceUnavailable, AccessDenied, InvalidTagKey, \
-    InvalidTagValue
+    InvalidTagValue, BadEndpoint
 from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
     convert_response, sysmeta_header, is_valid_token, validate_tag_key, \
     validate_tag_value
@@ -191,6 +191,7 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
     out = {
         "Role": replication_conf.find("Role").text,
         "Rules": [],
+        "UseStorageClass": False,
     }
     IDs = set()
     for rule_xml in replication_conf.findall("Rule"):
@@ -221,6 +222,7 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
         storage_class = rule_xml.find("Destination").find("StorageClass")
         if storage_class is not None:
             rule_dict["Destination"]["StorageClass"] = storage_class.text
+            out["UseStorageClass"] = True
         out["Rules"].append(rule_dict)
     return out
 
@@ -284,6 +286,7 @@ def _optimize_replication_conf(configuration):
         "replications": replications,
         "deletions": deletions,
         "use_tags": use_tags_all_rules,
+        "use_storage_class": configuration["UseStorageClass"],
     }
 
     return optimized
@@ -604,6 +607,17 @@ class ReplicationController(Controller):
         self._validate_configuration(config, req)
         dict_conf = replication_xml_conf_to_dict(config)
         self._validate_role(dict_conf.get("Role"), req)
+        # If endpoint is not standard, specifying a storage class is not yet
+        # accepted. To be accepted, it requires to update the customer doc
+        # for an explicit an clear mapping between both endpoints and all
+        # storage classes
+        if dict_conf["UseStorageClass"] and not req.is_standard_endpoint():
+            # This log is only helpful to see if customer are trying to do it.
+            self.logger.info(
+                "Refuse PUT replication conf (non standard endpoint and "
+                "storage class specified)"
+            )
+            raise BadEndpoint
         dict_conf = _optimize_replication_conf(dict_conf)
         json_conf = json.dumps(dict_conf, separators=(',', ':'))
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
@@ -628,6 +642,16 @@ class ReplicationController(Controller):
         if not body:
             raise ReplicationConfigurationNotFoundError
         body = json.loads(body)
+
+        # See comment in PUT method.
+        if body.get("use_storage_class") and not req.is_standard_endpoint():
+            # This log is only helpful to see if customer are trying to do it.
+            self.logger.info(
+                "Refuse GET replication conf (non standard endpoint and "
+                "storage class specified)"
+            )
+            raise BadEndpoint
+
         generated_body = dict_conf_to_xml(body)
         return HTTPOk(body=generated_body, content_type="application/xml")
 
