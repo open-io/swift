@@ -341,7 +341,9 @@ class ObjectController(BaseObjectController):
         else:
             resp.headers['Content-Type'] = metadata.get(
                 'mime_type', 'application/octet-stream')
-        storage_policy = metadata.get('policy')
+        storage_policy = metadata.get('target_policy')
+        if not storage_policy:
+            storage_policy = metadata.get('policy')
         if storage_policy:
             resp.headers['x-object-sysmeta-storage-policy'] = storage_policy
         properties = metadata.get('properties')
