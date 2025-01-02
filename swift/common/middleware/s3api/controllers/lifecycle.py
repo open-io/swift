@@ -230,6 +230,12 @@ def int_to_iso8601(when):
     return datetime.utcfromtimestamp(when).isoformat()
 
 
+def _format_field(field):
+    if field == "Tag":
+        return "Tags"
+    return field
+
+
 def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
     """
     Convert configuration dict to XML.
@@ -624,7 +630,7 @@ def _validate_limited_action_filter(actions, rule):
                 action_type = name or action_type
                 raise InvalidRequest(
                     msg=f"{action_type} cannot be specified with "
-                    f"{forbidden_field}."
+                    f"{_format_field(forbidden_field)}."
                 )
 
 
