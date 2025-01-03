@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Copyright (c) 2020 OpenStack Foundation
-# Copyright (c) 2023-2024 OVH SAS
+# Copyright (c) 2023-2025 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 # limitations under the License.
 
 from datetime import datetime, timedelta
+import io
 import json
 import os
 import queue
@@ -30,6 +31,10 @@ from urllib.parse import quote
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
     run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client, \
     STORAGE_DOMAIN, run_openiocli
+
+from s3transfer.futures import TransferCoordinator
+from s3transfer.bandwidth import BandwidthLimiter, LeakyBucket
+from s3transfer.utils import signal_not_transferring, signal_transferring
 
 
 ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
@@ -685,74 +690,84 @@ class TestS3Mpu(unittest.TestCase):
         )
 
     def test_reupload_part_before_complete_but_finish_after(self):
-        raise unittest.SkipTest(
-            "Skip this test because it relies on a sleep and the size of the "
-            "re-uploaded part to reproduce the bug (put_part starts first, "
-            "then completeMPU before end of put_part). "
-            "This test should work in local."
-        )
         path = "inconsistent-part-size-mpu" + random_str(4)
-        upload_file = "/etc/magic"
+
+        # Initialize the S3 client
+        boto_client = get_boto3_client()
+
+        # Rate limit: register events
+        event_name = "request-created.s3"
+        boto_client.meta.events.register_first(
+            event_name,
+            signal_not_transferring,
+            unique_id="s3upload-not-transferring",
+        )
+        boto_client.meta.events.register_last(
+            event_name, signal_transferring, unique_id="s3upload-transferring"
+        )
 
         # Create a legitimate multipart upload
-        data = self._create_multipart_upload(self.bucket, path)
-        self.assertEqual(path, data['Key'])
-        upload_id = data["UploadId"]
+        response = boto_client.create_multipart_upload(
+            Bucket=self.bucket, Key=path, Metadata={"meta": "value"}
+        )
+        self.assertEqual(path, response['Key'])
+        upload_id = response["UploadId"]
+
         mpu_parts = []
 
         def upload_part(part_number, data, fail_expected, output_queue):
             try:
-                resp = run_awscli_s3api(
-                    "upload-part",
-                    "--part-number", "1",
-                    "--upload-id", upload_id,
-                    "--body", data,
-                    bucket=self.bucket,
-                    key=path
+                resp = boto_client.upload_part(
+                    Bucket=self.bucket,
+                    Key=path,
+                    PartNumber=part_number,
+                    UploadId=upload_id,
+                    Body=data,
                 )
                 mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
-                print(f"Part {part_number} with body={data} is uploaded")
                 output_queue.put(None)
             except Exception as err:
                 output_queue.put(err)
 
         result_queue = queue.Queue()
         # Upload the part 1
-        upload_part(1, upload_file, False, result_queue)
+        upload_file = "/etc/magic"
+        with open(upload_file, "r") as file:
+            upload_part(1, file.read(), False, result_queue)
         err = result_queue.get()
         if err:
             raise err
 
         # Re-upload the part 1
-        bigger_part = b"*" * 100000000
-        reupload_file = tempfile.NamedTemporaryFile()
-        reupload_file.write(bigger_part)
-        reupload_file.flush()
+        bigger_part = io.BytesIO(b'*' * 100 * 1024 * 1024)
+
+        upload_rate = 10 * 1024 * 1024
+
+        # Limit bandwidth so that the 100MB part takes 10s to upload
+        stream = BandwidthLimiter(LeakyBucket(upload_rate)).get_bandwith_limited_stream(
+            bigger_part, TransferCoordinator(), enabled=True
+        )
 
         thread = threading.Thread(
-            target=upload_part, args=(1, reupload_file.name, True, result_queue)
+            target=upload_part, args=(1, stream, True, result_queue)
         )
         thread.start()
 
-        sleep(1)
+        sleep(13)
         # Complete MPU (before re-upload of part 1 is finish)
-        final = run_awscli_s3api(
-            "complete-multipart-upload",
-            "--upload-id", upload_id,
-            "--multipart-upload",
-            json.dumps({"Parts": mpu_parts}),
-            bucket=self.bucket, key=path)
+        final = boto_client.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=path,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": mpu_parts},
+        )
         self.assertEqual(final['Key'], path)
 
-        print("Multipart upload completed successfully.")
-
         thread.join()
-        reupload_file.close()
 
         err = result_queue.get()
         if err:
             raise err
-        print("The re-upload of the part didn't return an error.")
 
         # Check if the object is the legitimate file we uploaded the first time
         with tempfile.NamedTemporaryFile() as file:
