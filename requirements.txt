@@ -26,7 +26,7 @@ blake3<1.0.0  # dependency problem with Cargo 1.75 and blake3 1.0.1
 botocore<1.36.0  # To be removed when CRC32 checksum algorithm is supported
 boto3
 dict2xml
-oio
+oio>7.2
 pika
 xmltodict
 importlib-metadata<5.0.0  # To be removed when we are up to date on the upstream and/or when we use Python>=3.8

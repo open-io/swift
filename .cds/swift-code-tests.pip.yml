@@ -21,8 +21,8 @@ jobs:
           sed -i '/tox/d' .cds/deps-ubuntu-focal.txt
           apt update
 
-          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE} cargo
-          echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:$PATH" > $HOME/swift-env.sh
+          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE} cargo-${RUST_VERSION}
+          echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:/usr/lib/rust-${RUST_VERSION}/bin:$PATH" > $HOME/swift-env.sh
           source $HOME/swift-env.sh
           /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
           . $HOME/swiftenv/bin/activate
