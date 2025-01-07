@@ -24,6 +24,8 @@ import uuid
 from hashlib import sha256
 from swift.common import utils
 
+S3_DEFAULT_REGION = "us-east-1"
+
 S3_STORAGE_CLASSES = [
     "EXPRESS_ONEZONE",
     "STANDARD",
@@ -267,7 +269,7 @@ class Config(dict):
         'storage_domains': [],
         'auto_storage_policies': {},
         'storage_class_by_policy': {},
-        'location': 'us-east-1',
+        'location': S3_DEFAULT_REGION,
         'force_swift_request_proxy_log': False,
         'dns_compliant_bucket_names': True,
         'allow_multipart_uploads': True,

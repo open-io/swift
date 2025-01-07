@@ -71,8 +71,8 @@ from swift.common.middleware.s3api.s3response import AccessDenied, \
     KeyTooLongError, MethodNotAllowed
 from swift.common.middleware.s3api.exception import NotS3Request
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    STANDARD_STORAGE_CLASS, Config, S3Timestamp, utf8encode, mktime, \
-    sysmeta_header, validate_bucket_name, is_not_ascii
+    S3_DEFAULT_REGION, STANDARD_STORAGE_CLASS, Config, S3Timestamp, \
+    utf8encode, mktime, sysmeta_header, validate_bucket_name, is_not_ascii
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
     decode_acl, encode_acl
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
@@ -455,6 +455,11 @@ class SigV4Mixin(object):
                             cred_param[key] == self.scope[key].lower():
                         self.location = self.location.lower()
                         continue
+                    # Allow default AWS region
+                    # for some tools that do not configure region
+                    if cred_param[key] == S3_DEFAULT_REGION:
+                        self.location = S3_DEFAULT_REGION
+                        continue
                     kwargs = {'region': self.scope['region']}
                 raise AuthorizationQueryParametersError(
                     invalid_messages[key] % (cred_param[key], self.scope[key]),
@@ -502,6 +507,11 @@ class SigV4Mixin(object):
                     if not self.scope[key].islower() and \
                             cred_param[key] == self.scope[key].lower():
                         self.location = self.location.lower()
+                        continue
+                    # Allow default AWS region
+                    # for some tools that do not configure region
+                    if cred_param[key] == S3_DEFAULT_REGION:
+                        self.location = S3_DEFAULT_REGION
                         continue
                     kwargs = {'region': self.scope['region']}
                 raise AuthorizationHeaderMalformed(

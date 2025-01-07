@@ -22,51 +22,52 @@ import unittest
 
 from botocore.exceptions import ClientError
 from swift.common.utils import MD5_OF_EMPTY_STRING
-from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api, get_boto3_client, ENDPOINT_URL, STORAGE_DOMAIN
+from oio_tests.functional.common import random_str, get_boto3_client, \
+    ENDPOINT_URL, STORAGE_DOMAIN
 
 
-def parse_iso8601(val):
-    return datetime.strptime(val, "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()
+class _TestS3BasicTestMixin:
 
-
-def parse_rfc822(val):
-    return datetime.strptime(val, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
-
-
-class TestS3BasicTest(unittest.TestCase):
+    region = None
 
     @classmethod
     def setUpClass(cls):
-        super(TestS3BasicTest, cls).setUpClass()
-        cls.boto_client = get_boto3_client()
+        super(_TestS3BasicTestMixin, cls).setUpClass()
+        cls.boto_client = get_boto3_client(region_name=cls.region)
 
     def setUp(self):
-        super(TestS3BasicTest, self).setUp()
+        super(_TestS3BasicTestMixin, self).setUp()
 
         self.bucket = f'test-s3-basic-{random_str(8)}'
-        run_awscli_s3('mb', bucket=self.bucket)
+        self.boto_client.create_bucket(Bucket=self.bucket)
 
     def tearDown(self):
         try:
-            run_awscli_s3('rb', '--force', bucket=self.bucket)
-        except CliError as exc:
-            if 'NoSuchBucket' not in str(exc):
+            for obj in self.boto_client.list_objects(Bucket=self.bucket).get(
+                "Contents", []
+            ):
+                self.boto_client.delete_object(
+                    Bucket=self.bucket, Key=obj["Key"]
+                )
+            self.boto_client.delete_bucket(Bucket=self.bucket)
+        except ClientError as exc:
+            err_code = exc.response.get("Error", {}).get("Code")
+            if err_code != "NoSuchBucket":
                 raise
-        super(TestS3BasicTest, self).tearDown()
+        super(_TestS3BasicTestMixin, self).tearDown()
 
     def test_last_modified(self):
         key = "file"
-        run_awscli_s3api("put-object", bucket=self.bucket, key=key)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
 
         # retrieve LastModified from header (RFC822)
-        data = run_awscli_s3api("head-object", bucket=self.bucket, key=key)
-        create_from_hdr = parse_rfc822(data['LastModified'])
+        meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
+        create_from_hdr = meta['LastModified']
 
-        self.assertNotIn('ServerSideEncryption', data)
+        self.assertNotIn('ServerSideEncryption', meta)
         # retrieve LastModifier from listing
-        data = run_awscli_s3api("list-objects", bucket=self.bucket)
-        create_from_lst = parse_iso8601(data['Contents'][0]['LastModified'])
+        data = self.boto_client.list_objects(Bucket=self.bucket)
+        create_from_lst = data['Contents'][0]['LastModified']
 
         self.assertEqual(
             create_from_hdr, create_from_lst,
@@ -77,15 +78,15 @@ class TestS3BasicTest(unittest.TestCase):
         time.sleep(1)
 
         # update object
-        run_awscli_s3api("put-object", bucket=self.bucket, key=key)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
 
         # retrieve LastModified from header (RFC822)
-        data = run_awscli_s3api("head-object", bucket=self.bucket, key=key)
-        update_from_hdr = parse_rfc822(data['LastModified'])
+        meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
+        update_from_hdr = meta['LastModified']
 
         # retrieve LastModifier from listing
-        data = run_awscli_s3api("list-objects", bucket=self.bucket)
-        update_from_lst = parse_iso8601(data['Contents'][0]['LastModified'])
+        data = self.boto_client.list_objects(Bucket=self.bucket)
+        update_from_lst = data['Contents'][0]['LastModified']
 
         self.assertGreater(
             update_from_lst, create_from_lst,
@@ -108,12 +109,12 @@ class TestS3BasicTest(unittest.TestCase):
     def test_list_delimiter(self):
         keys = {"file", "file/", "ville", "test"}
         for key in keys:
-            run_awscli_s3api("put-object", bucket=self.bucket, key=key)
+            self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
 
         # list with string delimiter
-        params = ('--delimiter', 'le')
-        data = run_awscli_s3api("list-objects", *params, bucket=self.bucket)
-
+        data = self.boto_client.list_objects(
+            Bucket=self.bucket, Delimiter="le"
+        )
         self.assertEqual(data['CommonPrefixes'],
                          [{'Prefix': 'file'}, {'Prefix': 'ville'}])
         self.assertEqual(data['Contents'][0]['Key'], 'test')
@@ -234,80 +235,61 @@ class TestS3BasicTest(unittest.TestCase):
 
     def test_object_tag_count(self):
         key = "obj-tagged"
-        with tempfile.NamedTemporaryFile() as file:
-            file.write(b' ' * 111)
-            file.flush()
-            run_awscli_s3api('put-object', '--body', file.name,
-                             bucket=self.bucket, key=key)
-        run_awscli_s3api(
-            'put-object-tagging',
-            '--tagging', 'TagSet=[{Key=k1,Value=v1}]',
-            bucket=self.bucket, key=key)
+        self.boto_client.put_object(
+            Bucket=self.bucket, Key=key, Body=b' ' * 111
+        )
 
-        data = run_awscli_s3api(
-            "get-object", '/dev/null',
-            bucket=self.bucket, key=key)
+        self.boto_client.put_object_tagging(
+            Bucket=self.bucket, Key=key,
+            Tagging={'TagSet': [{'Key': 'k1', 'Value': 'v1'}]},
+        )
+        data = self.boto_client.get_object(Bucket=self.bucket, Key=key)
         self.assertEqual(1, data['TagCount'])
 
-        run_awscli_s3api(
-            'put-object-tagging',
-            '--tagging',
-            'TagSet=[{Key=k1,Value=v1}, {Key=k2,Value=v2}, {Key=k3,Value=v3}]',
-            bucket=self.bucket, key=key)
-
-        data = run_awscli_s3api(
-            "get-object", '/dev/null',
-            bucket=self.bucket, key=key)
+        self.boto_client.put_object_tagging(
+            Bucket=self.bucket, Key=key,
+            Tagging={'TagSet': [
+                {'Key': 'k1', 'Value': 'v1'},
+                {'Key': 'k2', 'Value': 'v2'},
+                {'Key': 'k3', 'Value': 'v3'},
+            ]},
+        )
+        data = self.boto_client.get_object(Bucket=self.bucket, Key=key)
         self.assertEqual(3, data['TagCount'])
 
-        run_awscli_s3api(
-            'put-object-tagging',
-            '--tagging',
-            'TagSet=[]',
-            bucket=self.bucket, key=key)
-
-        data = run_awscli_s3api(
-            "head-object",
-            bucket=self.bucket, key=key)
+        self.boto_client.put_object_tagging(
+            Bucket=self.bucket, Key=key,
+            Tagging={'TagSet': []},
+        )
+        data = self.boto_client.get_object(Bucket=self.bucket, Key=key)
         self.assertNotIn('TagCount', data)
 
-        run_awscli_s3api(
-            'delete-object-tagging',
-            bucket=self.bucket, key=key)
-
-        data = run_awscli_s3api(
-            "get-object", '/dev/null',
-            bucket=self.bucket, key=key)
-        self.assertNotIn('TagCount', data)
-
-        data = run_awscli_s3api(
-            "head-object",
-            bucket=self.bucket, key=key)
+        self.boto_client.delete_object_tagging(Bucket=self.bucket, Key=key)
+        data = self.boto_client.get_object(Bucket=self.bucket, Key=key)
         self.assertNotIn('TagCount', data)
 
     def test_get_object_with_range(self):
         key = "file"
-        with tempfile.NamedTemporaryFile() as file:
-            file.write(b' ' * 111)
-            file.flush()
-            run_awscli_s3api('put-object', '--body', file.name,
-                             bucket=self.bucket, key=key)
-        data = run_awscli_s3api(
-            "get-object", '--range', 'bytes=0-10', '/dev/null',
-            bucket=self.bucket, key=key)
+        self.boto_client.put_object(
+            Bucket=self.bucket, Key=key, Body=b' ' * 111
+        )
+
+        data = self.boto_client.get_object(
+            Bucket=self.bucket, Key=key, Range='bytes=0-10'
+        )
         self.assertEqual(11, data['ContentLength'])
         self.assertEqual("bytes", data['AcceptRanges'])
         # When the Range header is malformed, it is ignored
-        data = run_awscli_s3api(
-            "get-object", '--range', 'bytes: 1-10', '/dev/null',
-            bucket=self.bucket, key=key)
+        data = self.boto_client.get_object(
+            Bucket=self.bucket, Key=key, Range='bytes: 1-10'
+        )
         self.assertEqual(111, data['ContentLength'])
         self.assertEqual("bytes", data['AcceptRanges'])
         # When there are multiple ranges, they are ignored
         # S3 compliance: multiple range not supported by AWS
-        data = run_awscli_s3api(
-            "get-object", '--range', 'bytes=0-5, 7-10', '/dev/null',
-            bucket=self.bucket, key=key)
+        data = self.boto_client.get_object(
+            Bucket=self.bucket, Key=key, Range='bytes=0-5, 7-10'
+        )
         self.assertEqual(111, data['ContentLength'])
         self.assertEqual("bytes", data['AcceptRanges'])
 
@@ -328,11 +310,11 @@ class TestS3BasicTest(unittest.TestCase):
     def test_non_ascii_access_key_in_presigned_url(self):
         # Create object
         key = random_str(20)
-        run_awscli_s3api(
-            "put-object", profile="default", bucket=self.bucket, key=key)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
 
-        url = run_awscli_s3(
-            'presign', profile="default", bucket=self.bucket, key=key)
+        url = self.boto_client.generate_presigned_url(
+            "get_object", {"Bucket": self.bucket, "Key": key}
+        )
         url = url.strip()  # remove trailing \n
         # Add the non ascii character
         url = url.replace("demo%3Ademo", "\xc3\x83")
@@ -358,17 +340,17 @@ class TestS3BasicTest(unittest.TestCase):
         self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'test')
 
         meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
-        self.assertEquals(
+        self.assertEqual(
             '4', meta['ResponseMetadata']['HTTPHeaders']['content-length']
         )
-        self.assertEquals(4, meta['ContentLength'])
+        self.assertEqual(4, meta['ContentLength'])
 
     def test_head_object_zero_bytes(self):
         key = "head_zero_bytes-" + random_str(6)
         self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
         meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
-        self.assertEquals(0, meta['ContentLength'])
-        self.assertEquals(f'"{MD5_OF_EMPTY_STRING}"', meta['ETag'])
+        self.assertEqual(0, meta['ContentLength'])
+        self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', meta['ETag'])
 
     def test_head_bucket(self):
         resp = self.boto_client.head_bucket(Bucket=self.bucket)
@@ -381,6 +363,31 @@ class TestS3BasicTest(unittest.TestCase):
         ]
         for header in mandatory_headers:
             self.assertIn(header, resp["ResponseMetadata"]["HTTPHeaders"])
+
+    def test_bad_region(self):
+        boto_client = get_boto3_client(region_name='test')
+        try:
+            boto_client.list_buckets()
+            self.fail(
+                "Using an incorrect region should trigger "
+                "an AuthorizationHeaderMalformed error"
+            )
+        except ClientError as exc:
+            err_code = exc.response.get("Error", {}).get("Code")
+            self.assertEqual("AuthorizationHeaderMalformed", err_code)
+            print(exc.response)
+            region = exc.response.get("Error", {}).get("Region")
+            self.assertEqual("RegionOne", region)
+
+
+class TestS3BasicTestMixinRegionOne(_TestS3BasicTestMixin, unittest.TestCase):
+
+    region = 'RegionOne'
+
+
+class TestS3BasicTestMixinUsEast1(_TestS3BasicTestMixin, unittest.TestCase):
+
+    region = 'us-east-1'
 
 
 if __name__ == "__main__":

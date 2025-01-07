@@ -166,8 +166,8 @@ from swift.common.middleware.s3api.s3response import ErrorResponse, \
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
-from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
-    STANDARD_STORAGE_CLASS, Config
+from swift.common.middleware.s3api.utils import S3_DEFAULT_REGION, \
+    S3_STORAGE_CLASSES, STANDARD_STORAGE_CLASS, Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.registry import register_swift_info, \
     register_sensitive_header, register_sensitive_param
@@ -264,7 +264,7 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('account_enabled_key', 'enabled').lower()
         self.conf.allow_no_owner = config_true_value(
             wsgi_conf.get('allow_no_owner', False))
-        self.conf.location = wsgi_conf.get('location', 'us-east-1')
+        self.conf.location = wsgi_conf.get('location', S3_DEFAULT_REGION)
         self.conf.dns_compliant_bucket_names = config_true_value(
             wsgi_conf.get('dns_compliant_bucket_names', True))
         self.conf.max_bucket_listing = config_positive_int_value(
