@@ -72,6 +72,8 @@ class RateLimitMiddleware(object):
             GLOBAL_RATELIMIT_GROUP: int(conf.get("ratelimit", 0))
         }
         self._load_group_ratelimit()
+        self.backup_ratelimit_by_verb = {}
+        self._load_backup_verbs_ratelimit()
 
         self.sampling_period = int(conf.get("sampling_period", 1))
         if self.sampling_period < 1:
@@ -106,6 +108,7 @@ class RateLimitMiddleware(object):
 
         :raises ValueError: operation appearing into two different groups
         :raises ValueError: missing ratelimit value for an operation group
+        :raises ValueError: ratelimit value is not an integer
         """
         groups = set()
         for param in self.conf.keys():
@@ -155,6 +158,21 @@ class RateLimitMiddleware(object):
                     "configuration"
                 ) from exc
             self.ratelimit_by_group[group] = ratelimit
+
+    def _load_backup_verbs_ratelimit(self):
+        """
+        Each HTTP verb may have a ratelimit (specific for backup buckets).
+        Load those ratelimits in a dict.
+
+        :raises ValueError: ratelimit value is not an integer
+        """
+        for param, value in self.conf.items():
+            if param.startswith("backup_ratelimit."):
+                verb = param[17:]
+                try:
+                    self.backup_ratelimit_by_verb[verb] = int(value)
+                except ValueError as exc:
+                    raise ValueError(f"{param} value must be an int") from exc
 
     def _increment_periods(self, destination, server_key, current_keys,
                            next_period):
@@ -318,6 +336,11 @@ class RateLimitMiddleware(object):
                 # This request can still be ratelimited,
                 # the next request will try to cache the ratelimit
 
+        backup_bucket = specific_ratelimit.pop("backup_bucket", None)
+        backup_ratelimit = None
+        # Replicator has no limits on bucket backup
+        if backup_bucket and not req.from_replicator():
+            backup_ratelimit = self.backup_ratelimit_by_verb.get(req.method)
         # Override the config ratelimit with the specific ratelimit
         ratelimit_by_group.update(specific_ratelimit)
         if current_counter is None:
@@ -340,6 +363,19 @@ class RateLimitMiddleware(object):
             # If the request doesn't belong to any group,
             # use the global ratelimit
             ratelimit = ratelimit_by_group[GLOBAL_RATELIMIT_GROUP]
+        if backup_ratelimit is not None:
+            if backup_ratelimit == 0 or ratelimit == 0:
+                # At least one ratelimit = 0 -> it prevails.
+                ratelimit = 0
+            elif backup_ratelimit == -1 and ratelimit == -1:
+                # Both ratelimit disabled -> remains disabled
+                pass
+            else:
+                # At least one ratelimit is not 0 nor -1, keep the minimal
+                # positive value.
+                ratelimit = min(
+                    n for n in [backup_ratelimit, ratelimit] if n > 0
+                )
         if ratelimit < 0:
             # Ratelimit is disabled (no limit)
             return None
@@ -369,7 +405,7 @@ class RateLimitMiddleware(object):
                 ratelimit,
             )
             # When the period is full, it is no longer useful to increment
-            # the counter, otherwise the next preriod may not also access
+            # the counter, otherwise the next period may not also access
             # the bucket
             req.environ.setdefault('s3api.info', {})['ratelimit'] = True
             if self.log_only_on_global_ratelimiting and not specific_ratelimit:

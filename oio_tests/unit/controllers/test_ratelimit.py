@@ -45,7 +45,8 @@ RATELIMIT_MIDDLEWARE = "swift.common.middleware.s3api.ratelimit_utils." \
 
 
 class FakeReq():
-    pass
+    def from_replicator(self):
+        return False
 
 
 class TestObjectController(unittest.TestCase):
@@ -104,15 +105,33 @@ class TestObjectController(unittest.TestCase):
         }
         self.assertRaises(ValueError, middleware._load_group_ratelimit)
 
+    def test_load_backup_verbs_ratelimit_ok(self):
+        # Conf without verbs
+        middleware = RateLimitMiddleware(None, conf={})
+        middleware._load_backup_verbs_ratelimit()
+        self.assertDictEqual(middleware.backup_ratelimit_by_verb, {})
+
+        # Conf with verbs
+        middleware = RateLimitMiddleware(None, conf={})
+        middleware.conf = {"backup_ratelimit.FOO": 42}
+        middleware._load_backup_verbs_ratelimit()
+        self.assertDictEqual(middleware.backup_ratelimit_by_verb, {"FOO": 42})
+
+    def test_load_backup_verbs_ratelimit_ko(self):
+        # Ratelimit no integer
+        middleware = RateLimitMiddleware(None, conf={})
+        middleware.conf = {
+            "backup_ratelimit.FOO": "6 hundreds",
+        }
+        self.assertRaises(ValueError, middleware._load_backup_verbs_ratelimit)
+
     @patch(f"{RATELIMIT_MIDDLEWARE}._ignore_request")
     @patch(f"{RATELIMIT_MIDDLEWARE}._get_destination_name")
     @patch(f"{RATELIMIT_MIDDLEWARE}._compute_key_prefix")
-    @patch(f"{RATELIMIT_MIDDLEWARE}._load_specific_ratelimit")
     @patch(f"{RATELIMIT_MIDDLEWARE}._time_ns")
     def test_ratelimit_callback(
         self,
         mock_time_ns,
-        mock_load_specific_ratelimit,
         mock_compute_key_prefix,
         mock_get_destination_name,
         mock_ignore_request
@@ -120,13 +139,13 @@ class TestObjectController(unittest.TestCase):
         mock_ignore_request.return_value = False
         mock_get_destination_name.return_value = "unit_test"
         mock_compute_key_prefix.return_value = "unit_test:"
-        mock_load_specific_ratelimit.return_value = {}
 
         mock_memcache = Mock()
 
         conf = {
             "group.READ": "REST.HEAD.BUCKET,CUSTOM.TEST",
             "ratelimit.READ": "600",
+            "backup_ratelimit.HEAD": 100,
         }
         middleware = RateLimitMiddleware(None, conf=conf)
         middleware.memcache_client = mock_memcache
@@ -134,12 +153,31 @@ class TestObjectController(unittest.TestCase):
         fake_req = FakeReq()
         fake_req.bucket = "mybucket"
         fake_req.environ = {}
+        fake_req.method = "HEAD"
 
         # "mock_memcache.get_multi.return_value" is defined as follow
         # [{specific_ratelimit}, b"current_counter", b"previous_counter"]
 
         # Mock START OF A SECOND
         mock_time_ns.return_value = START_OF_A_SECOND_NS
+
+        # backup bucket max-1 req in last period
+        mock_memcache.get_multi.return_value = [
+            {"backup_bucket": "foo"}, b"0", b"99"
+        ]
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
+        # Check +1 -> SlowDown
+        mock_memcache.get_multi.return_value = [
+            {"backup_bucket": "foo"}, b"0", b"100"
+        ]
+        with self.assertRaises(SlowDown):
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
+        # On a specific ratelimit at 0 -> SlowDown
+        mock_memcache.get_multi.return_value = [
+            {"backup_bucket": "foo", "READ": 0}, b"0", b"99"
+        ]
+        with self.assertRaises(SlowDown):
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # max-1 req in last period
         mock_memcache.get_multi.return_value = [{}, b"0", b"599"]
@@ -149,6 +187,16 @@ class TestObjectController(unittest.TestCase):
         with self.assertRaises(SlowDown):
             middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"1", b"599"]
+        with self.assertRaises(SlowDown):
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
+        # On a backup bucket -> SlowDown
+        mock_memcache.get_multi.return_value = [
+            {"backup_bucket": "foo"}, b"0", b"599"
+        ]
+        with self.assertRaises(SlowDown):
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
+        # On a specific ratelimit at 0 -> SlowDown
+        mock_memcache.get_multi.return_value = [{"READ": 0}, b"0", b"599"]
         with self.assertRaises(SlowDown):
             middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
