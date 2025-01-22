@@ -14,6 +14,7 @@ ChangeLog
 .tox
 pycscope.*
 .idea
+.venv
 MANIFEST
 
 .testrepository/*
@@ -24,3 +25,10 @@ test/probe/.noseids
 RELEASENOTES.rst
 releasenotes/notes/reno.cache
 /tools/playbooks/**/*.retry
+
+
+# IDE
+.idea
+.vscode/
+.envrc
+tags
