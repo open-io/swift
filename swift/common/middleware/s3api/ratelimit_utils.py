@@ -338,8 +338,12 @@ class RateLimitMiddleware(object):
 
         backup_bucket = specific_ratelimit.pop("backup_bucket", None)
         backup_ratelimit = None
-        # Replicator has no limits on bucket backup
-        if backup_bucket and not req.from_replicator():
+        # Bucket and replicator requests have no limits on bucket backup
+        if (
+            backup_bucket
+            and req.is_object_request
+            and not req.from_replicator()
+        ):
             backup_ratelimit = self.backup_ratelimit_by_verb.get(req.method)
         # Override the config ratelimit with the specific ratelimit
         ratelimit_by_group.update(specific_ratelimit)
