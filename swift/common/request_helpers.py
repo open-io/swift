@@ -34,9 +34,10 @@ from swift.common.constraints import AUTO_CREATE_ACCOUNT_PREFIX, \
 from swift.common.storage_policy import POLICIES
 from swift.common.exceptions import ListingIterError, SegmentError
 from swift.common.http import is_success, is_server_error
-from swift.common.swob import HTTPBadRequest, HTTPForbidden,\
-    HTTPServiceUnavailable, Range, is_chunked, multi_range_iterator, \
-    HTTPPreconditionFailed, wsgi_to_bytes, wsgi_unquote, wsgi_to_str
+from swift.common.swob import HTTPBadRequest, HTTPForbidden, \
+    HTTPNotFound, HTTPPartNotFound, HTTPServiceUnavailable, \
+    Range, is_chunked, multi_range_iterator, HTTPPreconditionFailed, \
+    wsgi_to_bytes, wsgi_unquote, wsgi_to_str
 from swift.common.utils import split_path, validate_device_partition, \
     close_if_possible, maybe_multipart_byteranges_to_document_iters, \
     multipart_byteranges_to_document_iters, parse_content_type, \
@@ -789,6 +790,7 @@ class SafeSegmentedIterable(SegmentedIterable):
                              re.IGNORECASE)
     _BadCryptoReq = re.compile(r'got 400 \(.*Encrypt.*\) while retrieving',
                                re.IGNORECASE)
+    _NotFound = re.compile(r'got 404 \(.*Not Found.*\) while retrieving')
 
     def validate_first_segment(self):
         try:
@@ -798,6 +800,18 @@ class SafeSegmentedIterable(SegmentedIterable):
                 raise HTTPForbidden(request=self.req)
             elif self.__class__._BadCryptoReq.search(err.args[0]):
                 raise HTTPBadRequest(request=self.req)
+            elif self.__class__._NotFound.search(err.args[0]):
+                # Check if manifest is still there
+                sub_req = make_subrequest(
+                    self.req.environ, path=self.req.path, method='HEAD',
+                    headers={'x-auth-token': self.req.headers.get(
+                        'x-auth-token')},
+                    agent=('%(orig)s ' + self.ua_suffix),
+                    swift_source=self.swift_source)
+                sub_req_resp = sub_req.get_response(self.app)
+                if not sub_req_resp.is_success:
+                    raise HTTPNotFound(request=self.req)
+                raise HTTPPartNotFound(request=self.req)
             else:
                 raise
 

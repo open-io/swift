@@ -1284,7 +1284,7 @@ class TestS3ApiMultiUploadSigV4(TestS3ApiMultiUpload):
             # or https://github.com/boto/boto/pull/3824
             self.skipTest('This stuff got the issue of boto<=2.x')
 
-    def test_delete_bucket_multi_upload_object_exisiting(self):
+    def test_delete_bucket_multi_upload_object_existing(self):
         bucket = 'bucket'
         keys = ['obj1']
         uploads = []

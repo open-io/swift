@@ -32,8 +32,9 @@ from swift.common.utils import compute_md5, split_path, json, \
 from swift.common.registry import get_swift_info
 from swift.common import constraints, swob
 from swift.common.http import HTTP_OK, HTTP_CREATED, HTTP_ACCEPTED, \
-    HTTP_NO_CONTENT, HTTP_UNAUTHORIZED, HTTP_FORBIDDEN, HTTP_NOT_FOUND, \
-    HTTP_CONFLICT, HTTP_UNPROCESSABLE_ENTITY, HTTP_REQUEST_ENTITY_TOO_LARGE, \
+    HTTP_NO_CONTENT, HTTP_PART_NOT_FOUND, HTTP_UNAUTHORIZED, HTTP_FORBIDDEN, \
+    HTTP_NOT_FOUND, HTTP_CONFLICT, HTTP_UNPROCESSABLE_ENTITY, \
+    HTTP_REQUEST_ENTITY_TOO_LARGE, \
     HTTP_PARTIAL_CONTENT, HTTP_NOT_MODIFIED, HTTP_PRECONDITION_FAILED, \
     HTTP_REQUESTED_RANGE_NOT_SATISFIABLE, HTTP_LENGTH_REQUIRED, \
     HTTP_BAD_REQUEST, HTTP_REQUEST_TIMEOUT, HTTP_SERVICE_UNAVAILABLE, \
@@ -2186,6 +2187,8 @@ class S3Request(swob.Request):
         if status == HTTP_CONFLICT:
             # TODO: validate that this actually came up out of SLO
             raise BrokenMPU()
+        if status == HTTP_PART_NOT_FOUND:
+            raise ServiceUnavailable(backend_error=err_msg.decode('utf8'))
         if status == HTTP_METHOD_NOT_ALLOWED:
             is_del_marker = resp.sw_headers.get('Content-Type') == \
                 DELETE_MARKER_CONTENT_TYPE

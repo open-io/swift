@@ -25,7 +25,7 @@ from urllib.parse import quote
 
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
     run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client, \
-    STORAGE_DOMAIN
+    STORAGE_DOMAIN, run_openiocli
 
 
 ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
@@ -693,6 +693,44 @@ class TestS3Mpu(unittest.TestCase):
             "--prefix=list-upload-",
             "--page-size=1", bucket=self.bucket)
         self.assertEqual(len(listing['Uploads']), 5)
+
+    def test_get_mpu_part_missing(self):
+        path = random_str(10)
+        data = self._create_multipart_upload(self.bucket, path)
+        upload_id = data['UploadId']
+        mpu_parts = []
+        # Upload part
+        part = run_awscli_s3api(
+            "upload-part",
+            "--part-number", "1",
+            "--upload-id", upload_id,
+            "--body", "/etc/magic",
+            bucket=self.bucket, key=path)
+        mpu_parts.append({"ETag": part['ETag'], "PartNumber": 1})
+        # Complete MPU
+        data = run_awscli_s3api(
+            "complete-multipart-upload",
+            "--upload-id", upload_id,
+            "--multipart-upload", json.dumps({"Parts": mpu_parts}),
+            bucket=self.bucket, key=path)
+        # Delete the first part
+        run_openiocli(
+            'object',
+            'delete',
+            f"{self.bucket}+segments",
+            f"{path}/{upload_id}/1",
+            account="AUTH_demo"
+        )
+        # Get MPU
+        self.assertRaisesRegex(
+            CliError,
+            "Service is unable to handle request.",
+            run_awscli_s3api,
+            "get-object",
+            "/tmp/magic",
+            bucket=self.bucket,
+            key=path,
+        )
 
 
 if __name__ == "__main__":

@@ -103,6 +103,7 @@ RESPONSE_REASONS = {
     422: ('Unprocessable Entity', 'Unable to process the contained '
           'instructions'),
     429: ('Too Many Requests', 'Please reduce your request rate'),
+    434: ('Part Not Found', 'The resource segment could not be found.'),
     499: ('Client Disconnect', 'The client was disconnected during request.'),
     500: ('Internal Error', 'The server has either erred or is incapable of '
           'performing the requested operation.'),
@@ -1606,6 +1607,7 @@ HTTPUnauthorized = status_map[401]
 HTTPForbidden = status_map[403]
 HTTPMethodNotAllowed = status_map[405]
 HTTPNotFound = status_map[404]
+HTTPPartNotFound = status_map[434]
 HTTPNotAcceptable = status_map[406]
 HTTPRequestTimeout = status_map[408]
 HTTPConflict = status_map[409]
