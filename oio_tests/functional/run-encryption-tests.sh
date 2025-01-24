@@ -41,6 +41,7 @@ sed \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-sses3-encryption.cfg
 run_functional_test etc/s3-sses3-encryption.cfg \
+  s3-basic-test.py \
   test-sses3-kms.py
 
 echo "############################################################"

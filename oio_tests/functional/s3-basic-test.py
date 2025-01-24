@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # Copyright (c) 2020 OpenStack Foundation
+# Copyright (c) 2025 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -64,7 +65,6 @@ class _TestS3BasicTestMixin:
         meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
         create_from_hdr = meta['LastModified']
 
-        self.assertNotIn('ServerSideEncryption', meta)
         # retrieve LastModifier from listing
         data = self.boto_client.list_objects(Bucket=self.bucket)
         create_from_lst = data['Contents'][0]['LastModified']
@@ -307,6 +307,18 @@ class _TestS3BasicTestMixin:
         self.assertEqual('bytes=200-300',
                          ctx.exception.response['Error']['RangeRequested'])
 
+    def test_get_object_zero_bytes(self):
+        key = "get_zero_bytes-" + random_str(6)
+        self.boto_client.put_object(
+            Bucket=self.bucket, Key=key, Body=b"", Metadata={"empty": "yes"}
+        )
+        resp = self.boto_client.get_object(Bucket=self.bucket, Key=key)
+        body = b"".join(resp["Body"])
+        self.assertEqual(0, resp["ContentLength"])
+        self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', resp["ETag"])
+        self.assertEqual(b"", body)
+        self.assertFalse(resp.get("DeleteMarker", False))
+
     def test_non_ascii_access_key_in_presigned_url(self):
         # Create object
         key = random_str(20)
@@ -347,7 +359,9 @@ class _TestS3BasicTestMixin:
 
     def test_head_object_zero_bytes(self):
         key = "head_zero_bytes-" + random_str(6)
-        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
+        self.boto_client.put_object(
+            Bucket=self.bucket, Key=key, Body=b"", Metadata={"empty": "yes"}
+        )
         meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
         self.assertEqual(0, meta['ContentLength'])
         self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', meta['ETag'])
@@ -380,12 +394,12 @@ class _TestS3BasicTestMixin:
             self.assertEqual("RegionOne", region)
 
 
-class TestS3BasicTestMixinRegionOne(_TestS3BasicTestMixin, unittest.TestCase):
+class TestS3BasicTestRegionOne(_TestS3BasicTestMixin, unittest.TestCase):
 
     region = 'RegionOne'
 
 
-class TestS3BasicTestMixinUsEast1(_TestS3BasicTestMixin, unittest.TestCase):
+class TestS3BasicTestUsEast1(_TestS3BasicTestMixin, unittest.TestCase):
 
     region = 'us-east-1'
 
