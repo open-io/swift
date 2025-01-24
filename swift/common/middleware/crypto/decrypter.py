@@ -332,10 +332,9 @@ class DecrypterObjContext(BaseDecrypterContext):
             info = get_object_info(req.environ, self.app,
                                    swift_source='DCRYPT')
             if (
-                'crypto-etag' not in info['sysmeta'] and
-                not info["transient_sysmeta"]
+                'crypto-etag' not in info['sysmeta']
             ):
-                # object is not cyphered and has not customer metadata
+                # object is not cyphered
                 return None
 
         key_id = crypto_meta.get('key_id') if crypto_meta else None
@@ -370,7 +369,7 @@ class DecrypterObjContext(BaseDecrypterContext):
                 body='Error decrypting object',
                 content_type='text/plain')
 
-        if put_keys is None and post_keys is None and req.method != 'HEAD':
+        if put_keys is None and post_keys is None:
             # When encryption is enabled, but object is zero-length, no
             # encryption is performed and therefore no ETag is saved
             # by swift. Ensure we return the right ETag (MD5) in case the
@@ -378,10 +377,12 @@ class DecrypterObjContext(BaseDecrypterContext):
             clen = self._response_header_value('Content-Length')
             if clen is not None and int(clen) == 0:
                 self.update_etag(MD5_OF_EMPTY_STRING)
-            # skip decryption
-            start_response(self._response_status, self._response_headers,
-                           self._response_exc_info)
-            return app_resp
+
+            if req.method != 'HEAD':
+                # skip decryption
+                start_response(self._response_status, self._response_headers,
+                               self._response_exc_info)
+                return app_resp
 
         mod_resp_headers = self.decrypt_resp_headers(put_keys, post_keys)
         # Some middlewares need to know the object is encrypted with a
