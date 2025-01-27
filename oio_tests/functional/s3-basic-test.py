@@ -309,6 +309,16 @@ class _TestS3BasicTestMixin:
 
     def test_get_object_zero_bytes(self):
         key = "get_zero_bytes-" + random_str(6)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b"")
+        resp = self.boto_client.get_object(Bucket=self.bucket, Key=key)
+        body = b"".join(resp["Body"])
+        self.assertEqual(0, resp["ContentLength"])
+        self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', resp["ETag"])
+        self.assertEqual(b"", body)
+        self.assertFalse(resp.get("DeleteMarker", False))
+
+    def test_get_object_zero_bytes_with_metadata(self):
+        key = "get_zero_bytes-" + random_str(6)
         self.boto_client.put_object(
             Bucket=self.bucket, Key=key, Body=b"", Metadata={"empty": "yes"}
         )
@@ -318,6 +328,7 @@ class _TestS3BasicTestMixin:
         self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', resp["ETag"])
         self.assertEqual(b"", body)
         self.assertFalse(resp.get("DeleteMarker", False))
+        self.assertDictEqual({"empty": "yes"}, resp['Metadata'])
 
     def test_non_ascii_access_key_in_presigned_url(self):
         # Create object
@@ -359,12 +370,20 @@ class _TestS3BasicTestMixin:
 
     def test_head_object_zero_bytes(self):
         key = "head_zero_bytes-" + random_str(6)
+        self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b"")
+        meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
+        self.assertEqual(0, meta['ContentLength'])
+        self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', meta['ETag'])
+
+    def test_head_object_zero_bytes_with_metadata(self):
+        key = "head_zero_bytes-" + random_str(6)
         self.boto_client.put_object(
             Bucket=self.bucket, Key=key, Body=b"", Metadata={"empty": "yes"}
         )
         meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
         self.assertEqual(0, meta['ContentLength'])
         self.assertEqual(f'"{MD5_OF_EMPTY_STRING}"', meta['ETag'])
+        self.assertDictEqual({"empty": "yes"}, meta['Metadata'])
 
     def test_head_bucket(self):
         resp = self.boto_client.head_bucket(Bucket=self.bucket)
