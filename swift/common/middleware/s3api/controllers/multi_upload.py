@@ -962,6 +962,8 @@ class UploadController(Controller):
                 previous_number = part_number
 
                 etag = normalize_etag(part_elem.find('./ETag').text)
+                if not etag:
+                    raise MalformedXML()
                 if len(etag) != 32 or any(c not in '0123456789abcdef'
                                           for c in etag):
                     raise InvalidPart(upload_id=upload_id,

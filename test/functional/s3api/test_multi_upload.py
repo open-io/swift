@@ -56,12 +56,13 @@ class TestS3ApiMultiUpload(S3ApiBase):
         self.min_segment_size = int(tf.cluster_info['s3api'].get(
             'min_segment_size', 5242880))
 
-    def _gen_comp_xml(self, etags, step=1):
+    def _gen_comp_xml(self, etags, step=1, without_etags=False):
         elem = Element('CompleteMultipartUpload')
         for i, etag in enumerate(etags):
             elem_part = SubElement(elem, 'Part')
             SubElement(elem_part, 'PartNumber').text = str(i * step + 1)
-            SubElement(elem_part, 'ETag').text = etag
+            if not without_etags:
+                SubElement(elem_part, 'ETag').text = etag
         return tostring(elem)
 
     def _initiate_multi_uploads_result_generator(self, bucket, keys,
@@ -724,6 +725,13 @@ class TestS3ApiMultiUpload(S3ApiBase):
             self.conn.make_request('POST', bucket, keys[0], body=xml,
                                    query=query)
         self.assertEqual(get_error_code(body), 'InvalidPart')
+
+        # without etag in xml
+        xml = self._gen_comp_xml([etags[0]], without_etags=True)
+        status, headers, body = \
+            self.conn.make_request('POST', bucket, keys[0], body=xml,
+                                   query=query)
+        self.assertEqual(get_error_code(body), 'MalformedXML')
 
         # without part in Swift
         query = 'uploads'
