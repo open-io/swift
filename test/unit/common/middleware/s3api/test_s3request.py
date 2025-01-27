@@ -25,6 +25,7 @@ from swift.common.middleware.s3api import s3response, controllers
 from swift.common.middleware.s3api import s3request
 from swift.common.middleware.s3api.bucket_db import BucketDbWrapper,\
     get_bucket_db
+from swift.common.middleware.s3api.exception import S3InputSHA256Mismatch
 from swift.common.swob import Request, HTTPNoContent
 from swift.common.middleware.s3api.utils import mktime, Config
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
@@ -36,9 +37,8 @@ from swift.common.middleware.s3api.s3request import S3Request, \
     StreamingInput
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     NoSuchBucket, InternalError, AccessDenied, SignatureDoesNotMatch, \
-    RequestTimeTooSkewed, XAmzContentSHA256Mismatch, \
-    AuthorizationHeaderMalformed
-from swift.common.utils import md5, FileLikeIter
+    RequestTimeTooSkewed, XAmzContentSHA256Mismatch
+from swift.common.utils import md5
 
 from test.debug_logger import debug_logger
 
@@ -324,7 +324,7 @@ class TestRequest(S3ApiTestCase):
                 'Signature=X' % (
                     scope_date,
                     ';'.join(sorted(['host', included_header]))),
-            'X-Amz-Content-SHA256': '0123456789'}
+            'X-Amz-Content-SHA256': '0' * 64}
 
         headers.update(date_header)
         req = Request.blank('/', environ=environ, headers=headers)
@@ -488,7 +488,7 @@ class TestRequest(S3ApiTestCase):
                 'Signature=X' % (
                     scope_date,
                     ';'.join(sorted(['host', included_header]))),
-            'X-Amz-Content-SHA256': '0123456789'}
+            'X-Amz-Content-SHA256': '0' * 64}
 
         headers.update(date_header)
         req = Request.blank('/', environ=environ, headers=headers)
@@ -670,7 +670,7 @@ class TestRequest(S3ApiTestCase):
                 'Credential=test/%s/us-east-1/s3/aws4_request, '
                 'SignedHeaders=host;x-amz-content-sha256;x-amz-date,'
                 'Signature=X' % self.get_v4_amz_date_header().split('T', 1)[0],
-            'X-Amz-Content-SHA256': '0123456789',
+            'X-Amz-Content-SHA256': '0' * 64,
             'Date': self.get_date_header(),
             'X-Amz-Date': x_amz_date}
 
@@ -680,7 +680,7 @@ class TestRequest(S3ApiTestCase):
         headers_to_sign = sigv4_req._headers_to_sign()
         self.assertEqual(headers_to_sign, [
             ('host', 'localhost:80'),
-            ('x-amz-content-sha256', '0123456789'),
+            ('x-amz-content-sha256', '0' * 64),
             ('x-amz-date', x_amz_date)])
 
         # no x-amz-date
@@ -690,7 +690,7 @@ class TestRequest(S3ApiTestCase):
                 'Credential=test/%s/us-east-1/s3/aws4_request, '
                 'SignedHeaders=host;x-amz-content-sha256,'
                 'Signature=X' % self.get_v4_amz_date_header().split('T', 1)[0],
-            'X-Amz-Content-SHA256': '0123456789',
+            'X-Amz-Content-SHA256': '1' * 64,
             'Date': self.get_date_header()}
 
         req = Request.blank('/', environ=environ, headers=headers)
@@ -699,7 +699,7 @@ class TestRequest(S3ApiTestCase):
         headers_to_sign = sigv4_req._headers_to_sign()
         self.assertEqual(headers_to_sign, [
             ('host', 'localhost:80'),
-            ('x-amz-content-sha256', '0123456789')])
+            ('x-amz-content-sha256', '1' * 64)])
 
         # SignedHeaders says, host and x-amz-date included but there is not
         # X-Amz-Date header
@@ -709,7 +709,7 @@ class TestRequest(S3ApiTestCase):
                 'Credential=test/%s/us-east-1/s3/aws4_request, '
                 'SignedHeaders=host;x-amz-content-sha256;x-amz-date,'
                 'Signature=X' % self.get_v4_amz_date_header().split('T', 1)[0],
-            'X-Amz-Content-SHA256': '0123456789',
+            'X-Amz-Content-SHA256': '2' * 64,
             'Date': self.get_date_header()}
 
         req = Request.blank('/', environ=environ, headers=headers)
@@ -818,7 +818,7 @@ class TestRequest(S3ApiTestCase):
                 'Credential=test/%s/us-east-1/s3/aws4_request, '
                 'SignedHeaders=host;x-amz-content-sha256;x-amz-date,'
                 'Signature=X' % self.get_v4_amz_date_header().split('T', 1)[0],
-            'X-Amz-Content-SHA256': '0123456789',
+            'X-Amz-Content-SHA256': '0' * 64,
             'Date': self.get_date_header(),
             'X-Amz-Date': x_amz_date}
 
@@ -967,7 +967,7 @@ class TestRequest(S3ApiTestCase):
                 'Credential=test/%s/us-east-1/s3/aws4_request, '
                 'SignedHeaders=host;x-amz-content-sha256;x-amz-date,'
                 'Signature=X' % amz_date_header.split('T', 1)[0],
-            'X-Amz-Content-SHA256': '0123456789',
+            'X-Amz-Content-SHA256': '0' * 64,
             'X-Amz-Date': amz_date_header
         })
         sigv4_req = SigV4Request(
@@ -1018,7 +1018,7 @@ class TestRequest(S3ApiTestCase):
                 'SignedHeaders=host;x-amz-content-sha256;x-amz-date,'
                 'Signature=f721a7941d5b7710344bc62cc45f87e66f4bb1dd00d9075ee61'
                 '5b1a5c72b0f8c',
-            'X-Amz-Content-SHA256': 'bad',
+            'X-Amz-Content-SHA256': '0' * 64,  # bad
             'Date': 'Mon, 04 Jan 2021 10:26:23 -0000',
             'X-Amz-Date': '20210104T102623Z',
             'Content-Length': 0,
@@ -1195,13 +1195,8 @@ class TestRequest(S3ApiTestCase):
         self.assertTrue(sigv4_req.check_signature('secret'))
 
         self.assertEqual(b'abcdefghij', req.environ['wsgi.input'].read(10))
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(s3request.S3InputChunkSignatureMismatch):
             req.environ['wsgi.input'].read(10)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
-        error, sig = raised.exception.body.decode('utf8').split('\n')
-        self.assertEqual(error, s3request.SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH)
-        self.assertEqual(sig, '49177768ee3e9b77c6353ab0f3b9747d188adc11d45b38b'
-                         'e94a130616e6d64dc')
 
     @patch.object(S3Request, '_validate_dates', lambda *a: None)
     def test_check_signature_sigv4_chunk_wrong_size(self):
@@ -1239,13 +1234,8 @@ class TestRequest(S3ApiTestCase):
         self.assertTrue(sigv4_req.check_signature('secret'))
 
         self.assertEqual(b'abcdefghij', req.environ['wsgi.input'].read(10))
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(s3request.S3InputChunkSignatureMismatch):
             req.environ['wsgi.input'].read(10)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
-        error, sig = raised.exception.body.decode('utf8').split('\n')
-        self.assertEqual(error, s3request.SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH)
-        self.assertEqual(sig, '49177768ee3e9b77c6353ab0f3b9747d188adc11d45b38b'
-                         'e94a130616e6d64dc')
 
     @patch.object(S3Request, '_validate_dates', lambda *a: None)
     def test_check_signature_sigv4_chunk_no_last_chunk(self):
@@ -1281,11 +1271,8 @@ class TestRequest(S3ApiTestCase):
         self.assertTrue(sigv4_req.check_signature('secret'))
         self.assertEqual(b'abcdefghij', req.environ['wsgi.input'].read(10))
         self.assertEqual(b'klmnopqrst', req.environ['wsgi.input'].read(10))
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(s3request.S3InputIncomplete):
             req.environ['wsgi.input'].read(5)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
-        error = raised.exception.body.decode('utf8')
-        self.assertEqual(error, s3request.SIGV4_ERROR_INCOMPLETE_BODY)
 
     def test_parse_host(self):
         headers = {'Authorization': 'AWS test:tester:hmac',
@@ -1386,7 +1373,7 @@ class TestSigV4Request(S3ApiTestCase):
             x_amz_date = self.get_v4_amz_date_header()
             headers = {
                 'Authorization': auth,
-                'X-Amz-Content-SHA256': '0123456789',
+                'X-Amz-Content-SHA256': '0' * 64,
                 'Date': self.get_date_header(),
                 'X-Amz-Date': x_amz_date}
             req = Request.blank('/', environ=environ, headers=headers)
@@ -1417,7 +1404,7 @@ class TestSigV4Request(S3ApiTestCase):
             x_amz_date = self.get_v4_amz_date_header()
             headers = {
                 'Authorization': auth,
-                'X-Amz-Content-SHA256': '0123456789',
+                'X-Amz-Content-SHA256': '0' * 64,
                 'Date': self.get_date_header(),
                 'X-Amz-Date': x_amz_date}
             req = Request.blank('/', environ=environ, headers=headers)
@@ -1475,7 +1462,7 @@ class TestSigV4Request(S3ApiTestCase):
             x_amz_date = self.get_v4_amz_date_header()
             params['X-Amz-Date'] = x_amz_date
             signed_headers = {
-                'X-Amz-Content-SHA256': '0123456789',
+                'X-Amz-Content-SHA256': '0' * 64,
                 'Date': self.get_date_header(),
                 'X-Amz-Date': x_amz_date}
             req = Request.blank('/', environ=environ, headers=signed_headers,
@@ -1510,7 +1497,7 @@ class TestSigV4Request(S3ApiTestCase):
             x_amz_date = self.get_v4_amz_date_header()
             params['X-Amz-Date'] = x_amz_date
             signed_headers = {
-                'X-Amz-Content-SHA256': '0123456789',
+                'X-Amz-Content-SHA256': '0' * 64,
                 'Date': self.get_date_header(),
                 'X-Amz-Date': x_amz_date}
             req = Request.blank('/', environ=environ, headers=signed_headers,
@@ -1567,7 +1554,7 @@ class TestSigV4Request(S3ApiTestCase):
                 'Signature=X' % self.get_v4_amz_date_header().split('T', 1)[0])
         headers = {
             'Authorization': auth,
-            'X-Amz-Content-SHA256': '0123456789',
+            'X-Amz-Content-SHA256': '0' * 64,
             'Date': self.get_date_header(),
             'X-Amz-Date': x_amz_date}
 
@@ -1613,8 +1600,8 @@ class TestHashingInput(S3ApiTestCase):
     def test_good(self):
         raw = b'123456789'
         wrapped = HashingInput(
-            BytesIO(raw), 9, lambda: md5(usedforsecurity=False),
-            md5(raw, usedforsecurity=False).hexdigest())
+            BytesIO(raw), 9,
+            hashlib.sha256(raw).hexdigest())
         self.assertEqual(b'1234', wrapped.read(4))
         self.assertEqual(b'56', wrapped.read(2))
         # trying to read past the end gets us whatever's left
@@ -1627,7 +1614,7 @@ class TestHashingInput(S3ApiTestCase):
         self.assertTrue(wrapped._input.closed)
 
     def test_empty(self):
-        wrapped = HashingInput(BytesIO(b''), 0, hashlib.sha256,
+        wrapped = HashingInput(BytesIO(b''), 0,
                                hashlib.sha256(b'').hexdigest())
         self.assertEqual(b'', wrapped.read(4))
         self.assertEqual(b'', wrapped.read(2))
@@ -1639,49 +1626,49 @@ class TestHashingInput(S3ApiTestCase):
     def test_too_long(self):
         raw = b'123456789'
         wrapped = HashingInput(
-            BytesIO(raw), 8, lambda: md5(usedforsecurity=False),
-            md5(raw, usedforsecurity=False).hexdigest())
+            BytesIO(raw), 8,
+            hashlib.sha256(raw).hexdigest())
         self.assertEqual(b'1234', wrapped.read(4))
         self.assertEqual(b'56', wrapped.read(2))
         # even though the hash matches, there was more data than we expected
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(S3InputSHA256Mismatch) as raised:
             wrapped.read(3)
-        self.assertEqual(raised.exception.status, '422 Unprocessable Entity')
+        self.assertIsInstance(raised.exception, BaseException)
+        # won't get caught by most things in a pipeline
+        self.assertNotIsInstance(raised.exception, Exception)
         # the error causes us to close the input
         self.assertTrue(wrapped._input.closed)
 
     def test_too_short(self):
         raw = b'123456789'
         wrapped = HashingInput(
-            BytesIO(raw), 10, lambda: md5(usedforsecurity=False),
-            md5(raw, usedforsecurity=False).hexdigest())
+            BytesIO(raw), 10,
+            hashlib.sha256(raw).hexdigest())
         self.assertEqual(b'1234', wrapped.read(4))
         self.assertEqual(b'56', wrapped.read(2))
         # even though the hash matches, there was more data than we expected
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(S3InputSHA256Mismatch):
             wrapped.read(4)
-        self.assertEqual(raised.exception.status, '422 Unprocessable Entity')
         self.assertTrue(wrapped._input.closed)
 
     def test_bad_hash(self):
         raw = b'123456789'
         wrapped = HashingInput(
-            BytesIO(raw), 9, hashlib.sha256,
+            BytesIO(raw), 9,
             md5(raw, usedforsecurity=False).hexdigest())
         self.assertEqual(b'1234', wrapped.read(4))
         self.assertEqual(b'5678', wrapped.read(4))
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(S3InputSHA256Mismatch):
             wrapped.read(4)
-        self.assertEqual(raised.exception.status, '422 Unprocessable Entity')
         self.assertTrue(wrapped._input.closed)
 
     def test_empty_bad_hash(self):
-        wrapped = HashingInput(BytesIO(b''), 0, hashlib.sha256, 'nope')
-        with self.assertRaises(swob.HTTPException) as raised:
-            wrapped.read(3)
-        self.assertEqual(raised.exception.status, '422 Unprocessable Entity')
-        # the error causes us to close the input
-        self.assertTrue(wrapped._input.closed)
+        _input = BytesIO(b'')
+        self.assertFalse(_input.closed)
+        with self.assertRaises(XAmzContentSHA256Mismatch):
+            # Don't even get a chance to try to read it
+            HashingInput(_input, 0, 'nope')
+        self.assertTrue(_input.closed)
 
 
 class TestStreamingInput(S3ApiTestCase):
@@ -1694,14 +1681,17 @@ class TestStreamingInput(S3ApiTestCase):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        # The first 3 bytes are non-UTF-8, on purpose (not required to be text)
-        raw = b'9;chunk-signature=ok\r\n\xdf\xee\xf1456789\r\n' \
-              b'0;chunk-signature=ok\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), len(raw), 9, chunk_validator)
-        self.assertEqual(b'\xdf\xee\xf14', wrapped.read(4))
+        raw = '9;chunk-signature=ok\r\n123456789\r\n' \
+              '2;chunk-signature=ok\r\n12\r\n' \
+              '4;chunk-signature=ok\r\n1234\r\n' \
+              '0;chunk-signature=ok\r\n\r\n'.encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), 15, set(), chunk_validator)
+        self.assertEqual(b'1234', wrapped.read(4))
         self.assertEqual(b'56', wrapped.read(2))
         # trying to read past the end gets us whatever's left
-        self.assertEqual(b'789', wrapped.read(4))
+        self.assertEqual(b'7891', wrapped.read(4))
+        self.assertEqual(b'2123', wrapped.read(4))
+        self.assertEqual(b'4', wrapped.read(2))
         # can continue trying to read -- but it'll be empty
         self.assertEqual(b'', wrapped.read(2))
 
@@ -1709,166 +1699,97 @@ class TestStreamingInput(S3ApiTestCase):
         wrapped.close()
         self.assertTrue(wrapped._input.closed)
 
-    def test_bad_chunk_header(self):
-        """
-        Check that a non-decodable chunk header triggers the appropriate error
-        """
+    def test_good_with_trailers(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        raw = b'9;chunk-signature=\xa9\xae\xc5\xb6\r\n123456789\r\n' \
-              b'0;chunk-signature=ok\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), None, 9, chunk_validator)
-        self.assertRaises(
-            AuthorizationHeaderMalformed,
-            wrapped.read,
-            4
-        )
-        self.assertTrue(wrapped._input.closed)
-
-    def test_good_no_content_length(self):
-        def chunk_validator(chunk, signature):
-            return signature == 'ok'
-
-        raw = b'9;chunk-signature=ok\r\n\xdf\xee\xf1456789\r\n' \
-              b'0;chunk-signature=ok\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), None, 9, chunk_validator)
-        self.assertEqual(b'\xdf\xee\xf14', wrapped.read(4))
+        raw = '9;chunk-signature=ok\r\n123456789\r\n' \
+              '0;chunk-signature=ok\r\n' \
+              'x-amz-checksum-crc32: AAAAAA==\r\n'.encode('utf8')
+        wrapped = StreamingInput(
+            BytesIO(raw), 9, {'x-amz-checksum-crc32'}, chunk_validator)
+        self.assertEqual(b'1234', wrapped.read(4))
         self.assertEqual(b'56', wrapped.read(2))
-        # trying to read past the end gets us whatever's left
-        self.assertEqual(b'789', wrapped.read(4))
+        # not at end, trailers haven't been read
+        self.assertEqual({}, wrapped.trailers)
+        # if we get exactly to the end, we go ahead and read the trailers
+        self.assertEqual(b'789', wrapped.read(3))
+        self.assertEqual({'x-amz-checksum-crc32': 'AAAAAA=='},
+                         wrapped.trailers)
         # can continue trying to read -- but it'll be empty
         self.assertEqual(b'', wrapped.read(2))
+        self.assertEqual({'x-amz-checksum-crc32': 'AAAAAA=='},
+                         wrapped.trailers)
 
         self.assertFalse(wrapped._input.closed)
         wrapped.close()
         self.assertTrue(wrapped._input.closed)
 
-    def test_incomplete_read(self):
+    def test_too_big_chunk_header(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        raw = (
-            # First chunk is valid,
-            b'9;chunk-signature=ok\r\n\xdf\xee\xf1456789\r\n',
-            # but there is no end chunk.
-            b"", b"", b"", b"", b"", b"", b"", b"", b"", b"",
-            # Raise an exception to avoid any infinite loop.
-            EOFError("Reading continues indefinitely"),
-        )
-        reader = FileLikeIter(raw)
-        with patch.object(reader, "read", side_effect=raw) as mocked_read:
-            wrapped = StreamingInput(reader, None, 9, chunk_validator)
-            with self.assertRaises(swob.HTTPException) as raised:
-                wrapped.read(1024)
-            self.assertEqual(raised.exception.status, '403 Forbidden')
-            self.assertTrue(wrapped._input.closed)
-            self.assertEqual(mocked_read.call_count, 2)
-
-    def test_incomplete_read_after_header(self):
-        def chunk_validator(chunk, signature):
-            return signature == 'ok'
-
-        raw = (
-            # First chunk is valid,
-            b'2;chunk-signature=ok\r\n12\r\n',
-            # second buffer in trucated,
-            b'2;chunk-signature=ok\r\n',
-            # and there is no end chunk.
-            b"", b"", b"", b"", b"", b"", b"", b"", b"", b"",
-            # Raise an exception to avoid any infinite loop.
-            EOFError("Reading continues indefinitely"),
-        )
-        reader = FileLikeIter(raw)
-        with patch.object(reader, "read", side_effect=raw) as mocked_read:
-            wrapped = StreamingInput(reader, None, 9, chunk_validator)
-            with self.assertRaises(swob.HTTPException) as raised:
-                wrapped.read(1024)
-            self.assertEqual(raised.exception.status, '403 Forbidden')
-            self.assertTrue(wrapped._input.closed)
-            self.assertEqual(mocked_read.call_count, 3)
-
-    def test_incomplete_read_mid_header(self):
-        def chunk_validator(chunk, signature):
-            return signature == 'ok'
-
-        raw = (
-            # First chunk is valid,
-            b'2;chunk-signature=ok\r\n12\r\n',
-            # second buffer in trucated,
-            b'2;chunk-signat',
-            # and there is no end chunk.
-            b"", b"", b"", b"", b"", b"", b"", b"", b"", b"",
-            # Raise an exception to avoid any infinite loop.
-            EOFError("Reading continues indefinitely"),
-        )
-        reader = FileLikeIter(raw)
-        with patch.object(reader, "read", side_effect=raw) as mocked_read:
-            wrapped = StreamingInput(reader, None, 9, chunk_validator)
-            with self.assertRaises(swob.HTTPException) as raised:
-                wrapped.read(1024)
-            self.assertEqual(raised.exception.status, '403 Forbidden')
-            self.assertTrue(wrapped._input.closed)
-            self.assertEqual(mocked_read.call_count, 3)
+        raw = ('9;chunk-signature=ok\r\n123456789\r\n'
+               + 'a' * 1025).encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), 9, set(), chunk_validator)
+        with self.assertRaises(s3request.S3InputIncomplete):
+            wrapped.read(16)
+        self.assertTrue(wrapped._input.closed)
 
     def test_wrong_signature_first_chunk(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        raw = b'9;chunk-signature=ko\r\n123456789\r\n' \
-              b'0;chunk-signature=ok\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), len(raw), 9, chunk_validator)
-        with self.assertRaises(swob.HTTPException) as raised:
+        raw = '9;chunk-signature=ko\r\n123456789\r\n' \
+              '0;chunk-signature=ok\r\n\r\n'.encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), 9, set(), chunk_validator)
+        # Can read while in the chunk...
+        self.assertEqual(b'1234', wrapped.read(4))
+        self.assertEqual(b'5678', wrapped.read(4))
+        # But once we hit the end, bomb out
+        with self.assertRaises(s3request.S3InputChunkSignatureMismatch):
             wrapped.read(4)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
         self.assertTrue(wrapped._input.closed)
 
     def test_wrong_signature_middle_chunk(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        raw = b'2;chunk-signature=ok\r\n12\r\n' \
-              b'2;chunk-signature=ok\r\n34\r\n' \
-              b'2;chunk-signature=ko\r\n56\r\n' \
-              b'2;chunk-signature=ok\r\n78\r\n' \
-              b'0;chunk-signature=ok\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), len(raw), 9, chunk_validator)
+        raw = '2;chunk-signature=ok\r\n12\r\n' \
+              '2;chunk-signature=ok\r\n34\r\n' \
+              '2;chunk-signature=ko\r\n56\r\n' \
+              '2;chunk-signature=ok\r\n78\r\n' \
+              '0;chunk-signature=ok\r\n\r\n'.encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), 9, set(), chunk_validator)
         self.assertEqual(b'1234', wrapped.read(4))
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(s3request.S3InputChunkSignatureMismatch):
             wrapped.read(4)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
-        error, sig = raised.exception.body.decode('utf8').split('\n')
-        self.assertEqual(error, s3request.SIGV4_ERROR_SIGNATURE_DOES_NOT_MATCH)
-        self.assertEqual(sig, 'ko')
         self.assertTrue(wrapped._input.closed)
 
     def test_wrong_signature_last_chunk(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        raw = b'2;chunk-signature=ok\r\n12\r\n' \
-              b'2;chunk-signature=ok\r\n34\r\n' \
-              b'2;chunk-signature=ok\r\n56\r\n' \
-              b'2;chunk-signature=ok\r\n78\r\n' \
-              b'0;chunk-signature=ko\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), len(raw), 9, chunk_validator)
+        raw = '2;chunk-signature=ok\r\n12\r\n' \
+              '2;chunk-signature=ok\r\n34\r\n' \
+              '2;chunk-signature=ok\r\n56\r\n' \
+              '2;chunk-signature=ok\r\n78\r\n' \
+              '0;chunk-signature=ko\r\n\r\n'.encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), 9, set(), chunk_validator)
         self.assertEqual(b'12345678', wrapped.read(8))
-        with self.assertRaises(swob.HTTPException) as raised:
+        with self.assertRaises(s3request.S3InputChunkSignatureMismatch):
             wrapped.read(4)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
         self.assertTrue(wrapped._input.closed)
 
     def test_wrong_chunk_size(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'
 
-        raw = b'a;chunk-signature=ok\r\n123456789\r\n' \
-            b'0;chunk-signature=ok\r\n\r\n'
-        wrapped = StreamingInput(BytesIO(raw), len(raw), 9, chunk_validator)
-        with self.assertRaises(swob.HTTPException) as raised:
+        raw = 'a;chunk-signature=ok\r\n123456789\r\n' \
+            '0;chunk-signature=ok\r\n\r\n'.encode('utf8')
+        wrapped = StreamingInput(BytesIO(raw), 9, set(), chunk_validator)
+        with self.assertRaises(s3request.S3InputSizeError):
             wrapped.read(4)
-        self.assertEqual(raised.exception.status, '403 Forbidden')
-        self.assertTrue(wrapped._input.closed)
 
 
 if __name__ == '__main__':

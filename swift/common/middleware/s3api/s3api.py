@@ -167,7 +167,8 @@ from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
     list_from_csv, parse_auto_storage_policies
 from swift.common.middleware.s3api.utils import S3_DEFAULT_REGION, \
-    S3_STORAGE_CLASSES, STANDARD_STORAGE_CLASS, Config
+    S3_STORAGE_CLASSES, STANDARD_STORAGE_CLASS, Config, \
+    CHECKSUMS
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.registry import register_swift_info, \
     register_sensitive_header, register_sensitive_param
@@ -231,8 +232,17 @@ class ListingEtagMiddleware(object):
                 if 'subdir' in item:
                     continue
                 value, params = parse_header(item['hash'])
-                if 's3_etag' in params:
-                    item['s3_etag'] = '"%s"' % params.pop('s3_etag')
+                changed = False
+                name = 's3_etag'
+                if name in params:
+                    item[name] = '"%s"' % params.pop(name)
+                    changed = True
+                for info in CHECKSUMS:
+                    if info.listing_param_name in params:
+                        item[info.listing_param_name] = \
+                            params.pop(info.listing_param_name)
+                        changed = True
+                if changed:
                     item['hash'] = value + ''.join(
                         '; %s=%s' % kv for kv in params.items())
         except (TypeError, KeyError, ValueError):

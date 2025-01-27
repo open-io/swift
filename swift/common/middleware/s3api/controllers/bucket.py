@@ -41,7 +41,8 @@ from swift.common.middleware.s3api.s3response import \
     MalformedXML, InvalidLocationConstraint, NoSuchBucket, \
     BucketNotEmpty, InternalError, ServiceUnavailable, NoSuchKey, \
     VersionedBucketNotEmpty
-from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
+from swift.common.middleware.s3api.utils import CHECKSUMS, \
+    CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT, MULTIUPLOAD_SUFFIX, \
     OBJECT_LOCK_ENABLED_HEADER, truncate_excess_characters
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
@@ -394,6 +395,19 @@ class BucketController(Controller):
                 # quote-wrap.
             SubElement(contents, 'ETag').text = etag
             SubElement(contents, 'Size').text = str(o['bytes'])
+            checksum_type = None
+            for info in CHECKSUMS:
+                b64digest = o.get(info.listing_param_name)
+                if b64digest is not None:
+                    SubElement(contents, 'ChecksumAlgorithm').text = \
+                        info.name.upper()
+                    if checksum_type is None:
+                        checksum_type = (
+                            CHECKSUM_COMPOSITE if '-' in b64digest
+                            else CHECKSUM_FULL_OBJECT
+                        )
+            if checksum_type:
+                SubElement(contents, 'ChecksumType').text = checksum_type
         if fetch_owner or listing_type != 'version-2':
             owner = SubElement(contents, 'Owner')
             SubElement(owner, 'ID').text = req.user_id
@@ -467,8 +481,7 @@ class BucketController(Controller):
 
         body = finalize_xml_texts(tostring(elem))
 
-        resp = HTTPOk(body=body, content_type='application/xml')
-        return resp
+        return HTTPOk(request=req, body=body, content_type='application/xml')
 
     @set_s3_operation_rest('BUCKET')
     @ratelimit

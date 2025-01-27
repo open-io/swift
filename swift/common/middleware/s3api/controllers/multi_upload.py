@@ -72,7 +72,7 @@ from swift.common.middleware.s3api.controllers.obj import version_id_param
 from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, \
     str_to_wsgi, wsgi_to_str
 from swift.common.utils import json, public, reiterate, md5, list_from_csv, \
-    close_if_possible
+    close_if_possible, strict_b64decode
 from swift.common.request_helpers import get_container_update_override_key, \
     get_param, update_etag_is_at_header
 
@@ -90,18 +90,21 @@ from swift.common.middleware.s3api.controllers.replication import \
     replication_drop_rules, replication_resolve_rules
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
+from swift.common.middleware.s3api.exception import S3InputChecksumMismatch
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     ErrorResponse, MalformedXML, BadDigest, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
-    NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber
+    NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
+    S3NotImplemented
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
-from swift.common.middleware.s3api.utils import unique_id, \
-    MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, \
-    sysmeta_header, update_response_header_with_response_params
+from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, \
+    CHECKSUM_TYPES, CHECKSUMS, CHECKSUMS_BY_NAME, MULTIUPLOAD_SUFFIX, \
+    DEFAULT_CONTENT_TYPE, S3Timestamp, unique_id, sysmeta_header, \
+    update_response_header_with_response_params
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
@@ -152,7 +155,8 @@ def _get_upload_info(req, app, upload_id):
             req.headers['X-Amz-Copy-Source'] = copy_source
 
 
-def _make_complete_body(req, s3_etag, yielded_anything):
+def _make_complete_body(req, s3_etag, yielded_anything,
+                        client_checkum_name=None, checksum=None):
     escape_xml_text, finalize_xml_texts = init_xml_texts()
 
     result_elem = Element('CompleteMultipartUploadResult')
@@ -184,6 +188,8 @@ def _make_complete_body(req, s3_etag, yielded_anything):
     SubElement(result_elem, 'Key').text = escape_xml_text(
         wsgi_to_str(req.object_name))
     SubElement(result_elem, 'ETag').text = '"%s"' % s3_etag
+    if client_checkum_name and checksum:
+        SubElement(result_elem, client_checkum_name).text = checksum
     body = finalize_xml_texts(tostring(
         result_elem, xml_declaration=not yielded_anything))
     if yielded_anything:
@@ -278,6 +284,20 @@ class PartController(Controller):
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
+        algo = resp.sysmeta_headers.get(sysmeta_header(
+            'object', 'checksum-algorithm'))
+        request_algo = req.get_checksum_name()
+        if algo and algo != request_algo:
+            # Read a byte to ensure we've sent a 100 Continue if needed.
+            # Otherwise, some clients (boto3, at least) will try to re-use
+            # the connection without sending the body, resulting in a deadlock
+            # until one side times out and closes the connection.
+            req.environ['wsgi.input'].read(1)
+            raise InvalidRequest(
+                'Checksum Type mismatch occurred, expected checksum Type: '
+                '%s, actual checksum Type: %s' % (
+                    algo or 'null', request_algo or 'null'))
+
         # We cannot add a part to an already completed MPU
         if resp.sw_headers.get('X-Static-Large-Object'):
             raise NoSuchUpload(upload_id=upload_id)
@@ -349,6 +369,11 @@ class PartController(Controller):
                                 container=seg_container_name,
                                 obj=seg_object_name,
                                 query=query)
+
+        checksum_algo = req.get_checksum_name()
+        if checksum_algo:
+            resp.headers['x-amz-checksum-' + checksum_algo] = \
+                req.get_checksum_b64digest()
 
         if is_server_side_copy:
             etag = resp.etag
@@ -656,6 +681,51 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             req.headers[sysmeta_header('object', 'has-content-type')] = 'no'
         req.headers['Content-Type'] = 'application/directory'
 
+        algo = req.headers.get('x-amz-checksum-algorithm', '').lower()
+        checksum_type = req.headers.get('x-amz-checksum-type', '').upper()
+        if checksum_type:
+            if not algo:
+                raise InvalidRequest(
+                    "The x-amz-checksum-type header can only be used "
+                    "with the x-amz-checksum-algorithm header."
+                )
+            if checksum_type not in CHECKSUM_TYPES:
+                raise InvalidRequest(
+                    "Value for x-amz-checksum-type header is invalid.")
+        elif algo:
+            checksum_type = CHECKSUM_COMPOSITE
+        if algo:
+            if ',' in algo:
+                raise InvalidRequest(
+                    'Invalid types are specified in '
+                    'x-amz-checksum-algorithm header.')
+            if algo not in CHECKSUMS_BY_NAME:
+                allowed_algo = sorted([
+                    name.upper()
+                    for name, info in CHECKSUMS_BY_NAME.items()
+                    if checksum_type in info.allowed_types_for_mpu
+                ])
+                raise InvalidRequest(
+                    'Checksum algorithm provided is unsupported. Please '
+                    'try again with any of the valid types: '
+                    f'[{", ".join(allowed_algo)}]')
+            req.headers[sysmeta_header('object', 'checksum-algorithm')] = algo
+        if checksum_type:
+            if checksum_type == CHECKSUM_COMPOSITE:
+                checksum_info = CHECKSUMS_BY_NAME[algo]
+                if checksum_type not in checksum_info.allowed_types_for_mpu:
+                    raise InvalidRequest(
+                        f"The {checksum_type} checksum type cannot be used "
+                        f"with the {checksum_info.name} checksum algorithm."
+                    )
+            else:
+                # TODO(adu): For FULL_OBJECT, validate the object integrity
+                # server-side
+                raise S3NotImplemented(
+                    f"Only {CHECKSUM_COMPOSITE} checksum type is supported",
+                    checksum_type=checksum_type,
+                )
+
         # TODO(FVE): disable encryption only if there is a SSE-C key
         # Do not encrypt metadata we put on this (empty) temporary object.
         # Later we will read it, possibly without access to the encryption key.
@@ -727,11 +797,15 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
 
         body = finalize_xml_texts(tostring(result_elem))
 
-        return HTTPOk(
+        resp = HTTPOk(
             body=body,
             content_type='application/xml',
             headers=headers
         )
+        if algo:
+            resp.headers['x-amz-checksum-algorithm'] = algo.upper()
+            resp.headers['x-amz-checksum-type'] = CHECKSUM_COMPOSITE
+        return resp
 
 
 class UploadController(Controller, LifecycleAbortDateMixin):
@@ -863,6 +937,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 i['last_modified'][:-3] + 'Z'
             SubElement(part_elem, 'ETag').text = '"%s"' % i['hash']
             SubElement(part_elem, 'Size').text = str(i['bytes'])
+            for checksum_info in CHECKSUMS:
+                key = checksum_info.listing_param_name
+                if key in i:
+                    SubElement(
+                        part_elem, checksum_info.client_listing_name
+                    ).text = i[key]
 
         body = finalize_xml_texts(tostring(result_elem))
 
@@ -997,9 +1077,19 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             # Use the default to not use the Content-Type of this request
             headers['Content-Type'] = DEFAULT_CONTENT_TYPE
 
+        algo = resp.sysmeta_headers.get(sysmeta_header(
+            'object', 'checksum-algorithm'))
+        if not algo:
+            chksum = client_name = None
+        else:
+            checksum_info = CHECKSUMS_BY_NAME[algo]
+            chksum = checksum_info.new_hasher()
+            client_name = checksum_info.client_listing_name
+
         container = req.container_name + MULTIUPLOAD_SUFFIX
         s3_etag_hasher = md5(usedforsecurity=False)
         manifest = []
+        checksums = []
         previous_number = 0
         try:
             xml = req.xml(MAX_COMPLETE_UPLOAD_BODY_SIZE)
@@ -1032,15 +1122,65 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                                           for c in etag):
                     raise InvalidPart(upload_id=upload_id,
                                       part_number=part_number)
+
+                part_chksums = {
+                    e.tag[8:].lower(): e.text.strip()
+                    for e in part_elem.iterchildren()
+                    if e.tag.startswith('Checksum')
+                }
+                try:
+                    if len(part_chksums) > 1:
+                        raise ValueError
+                    for a, x in part_chksums.items():
+                        digest = strict_b64decode(x)
+                        reencoded = base64.b64encode(digest).decode('ascii')
+                        if reencoded != x:
+                            raise ValueError
+                        checksum_info = CHECKSUMS_BY_NAME[a]
+                        if len(digest) != checksum_info.digest_size:
+                            raise ValueError
+                except ValueError:
+                    raise InvalidArgument(
+                        'Checksum',
+                        ''.join('%s:%s;' % (a.upper(), v)
+                                for a, v in sorted(part_chksums.items())),
+                        'Invalid Base64 or multiple checksums present in '
+                        'request')
+
+                if chksum:
+                    if not part_chksums:
+                        raise InvalidRequest(
+                            'The upload was created using a %s checksum. '
+                            'The complete request must include the '
+                            'checksum for each part. It was missing for '
+                            'part %s in the request.'
+                            % (algo, part_number))
+                    if algo not in part_chksums:
+                        raise BadDigest(
+                            'The %s you specified for part %d did not '
+                            'match what we received.'
+                            % (list(part_chksums)[0], part_number))
+
+                    checksums.append(
+                        (part_number, etag, algo, part_chksums[algo]))
+                    chksum.update(strict_b64decode(part_chksums[algo]))
+                elif part_chksums:
+                    # No checksum was specified during initialization,
+                    # but the part has one
+                    part_algo, part_chksum = next(iter(part_chksums.items()))
+                    checksums.append(
+                        (part_number, etag, part_algo, part_chksum))
+                else:
+                    # Neither chksum from initiate nor checksums from part
+                    checksums.append(
+                        (part_number, etag, None, None))
+
                 manifest.append({
                     'path': '/%s/%s/%s/%d' % (
                         wsgi_to_str(container), wsgi_to_str(req.object_name),
                         upload_id, part_number),
                     'etag': etag})
                 s3_etag_hasher.update(binascii.a2b_hex(etag))
-
-                # TODO(ADU): Handle the ChecksumCRC32, ChecksumCRC32C,
-                #            ChecksumSHA1 and ChecksumSHA256 tags
         except (XMLSyntaxError, DocumentInvalid):
             # NB: our schema definitions catch uploads with no parts here
             raise MalformedXML()
@@ -1063,6 +1203,26 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         headers[s3_etag_header] = s3_etag
         # Leave base header value blank; SLO will populate
         c_etag = '; s3_etag=%s' % s3_etag
+        if chksum:
+            s3_chksum = '%s-%d' % (
+                base64.b64encode(chksum.digest()).decode('ascii'),
+                len(manifest))
+            s3_etag_header = sysmeta_header('object', 'checksum-' + algo)
+            headers[s3_etag_header] = s3_chksum
+            c_etag += '; s3_%s=%s' % (algo, s3_chksum)
+
+        def checksum_checker(index, _seg_dict, resp):
+            part_number, etag, part_algo, expected = checksums[index]
+            if not part_algo:
+                return
+            part_s3_etag_header = sysmeta_header(
+                'object', 'checksum-' + part_algo)
+            if resp.headers.get(part_s3_etag_header) != expected:
+                raise S3InputChecksumMismatch(
+                    part_algo.upper(), part_number, etag)
+
+        req.environ['swift.callback.slo_segment_hook'] = checksum_checker
+
         headers[get_container_update_override_key('etag')] = c_etag
 
         too_small_message = ('s3api requires that each segment be at least '
@@ -1161,6 +1321,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                                 status=body['Response Status'],
                                 msg='\n'.join(': '.join(err)
                                               for err in body['Errors']))
+                except S3InputChecksumMismatch as e:
+                    raise InvalidPart(
+                        upload_id=upload_id,
+                        part_number=e.args[1],
+                        e_tag=e.args[2],
+                    )
                 except ErrorResponse as e:
                     msg = str(e._msg)
                     if too_small_message in msg:
@@ -1187,7 +1353,9 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     # complete), so much the better.
                     pass
 
-                yield _make_complete_body(req, s3_etag, yielded_anything)
+                yield _make_complete_body(
+                    req, s3_etag, yielded_anything,
+                    client_name, s3_chksum if chksum else None)
             except ErrorResponse as err_resp:
                 if yielded_anything:
                     err_resp.xml_declaration = False

@@ -27,7 +27,7 @@ from swift.common.utils import config_true_value
 from swift.common.request_helpers import is_sys_meta
 
 from swift.common.middleware.s3api.utils import STANDARD_STORAGE_CLASS, \
-    snake_to_camel, sysmeta_prefix, sysmeta_header
+    snake_to_camel, sysmeta_prefix, sysmeta_header, CHECKSUMS
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, init_xml_texts
 from swift.common.middleware.versioned_writes.object_versioning import \
@@ -209,6 +209,15 @@ class S3Response(S3ResponseBase, swob.Response):
             # didn't store the AWS-style header, tack on a '-N'. (Use 'N'
             # because we don't actually know how many parts there are.)
             headers['etag'] += '-N'
+
+        if self.request and self.request.headers.get(
+                'x-amz-checksum-mode') == 'ENABLED':
+            # Client requested checksums; see if we stored any
+            for info in CHECKSUMS:
+                checksum = s3_sysmeta_headers.get(
+                    sysmeta_header('object', 'checksum-' + info.name))
+                if checksum:
+                    headers['x-amz-checksum-' + info.name] = checksum
 
         self.headers = headers
 
@@ -565,7 +574,7 @@ class InvalidChunkSizeError(ErrorResponse):
 
 class InvalidDigest(ErrorResponse):
     _status = '400 Bad Request'
-    _msg = 'The Content-MD5 you specified was an invalid.'
+    _msg = 'The Content-MD5 you specified was invalid.'
 
 
 class InvalidLocationConstraint(ErrorResponse):
@@ -580,9 +589,9 @@ class InvalidObjectState(ErrorResponse):
 
 class InvalidPart(ErrorResponse):
     _status = '400 Bad Request'
-    _msg = 'One or more of the specified parts could not be found. The part ' \
-           'might not have been uploaded, or the specified entity tag might ' \
-           'not have matched the part\'s entity tag.'
+    _msg = 'One or more of the specified parts could not be found.  The ' \
+           'part may not have been uploaded, or the specified entity tag ' \
+           'may not match the part\'s entity tag.'
 
 
 class InvalidPartOrder(ErrorResponse):
@@ -711,6 +720,12 @@ class MalformedPOSTRequest(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'The body of your POST request is not well-formed ' \
            'multipart/form-data.'
+
+
+class MalformedTrailerError(ErrorResponse):
+    _status = '400 Bad Request'
+    _msg = 'The request contained trailing data that was not well-formed ' \
+           'or did not conform to our published schema.'
 
 
 class MalformedXML(ErrorResponse):

@@ -1422,7 +1422,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             body=XML)
         status, headers, body = self.call_s3api(req)
         self.assertEqual('400 Bad Request', status)
-        self.assertEqual(self._get_error_code(body), 'BadDigest')
+        self.assertEqual(self._get_error_code(body),
+                         'XAmzContentSHA256Mismatch')
 
     def test_object_multipart_upload_upper_sha256(self):
         upper_sha = hashlib.sha256(

@@ -16,13 +16,16 @@
 import base64
 import calendar
 import email.utils
+import hashlib
 import re
 import regex
 import six
 import time
 import uuid
-from hashlib import sha256
+import zlib
+
 from swift.common import utils
+from swift.common import checksum
 
 S3_DEFAULT_REGION = "us-east-1"
 
@@ -48,6 +51,10 @@ DEFAULT_CONTENT_TYPE = 'binary/octet-stream'
 MPU_PART_RE = re.compile('/[0-9]+$')
 TAG_KEY_VALUE_RE = regex.compile(r"^([\p{L}\p{Z}\p{N}_.:/=+\-@]*)$")
 RESERVED_PREFIXES = ('ovh:', 'aws:')
+
+CHECKSUM_FULL_OBJECT = 'FULL_OBJECT'
+CHECKSUM_COMPOSITE = 'COMPOSITE'
+CHECKSUM_TYPES = [CHECKSUM_FULL_OBJECT, CHECKSUM_COMPOSITE]
 
 
 def sysmeta_prefix(resource):
@@ -186,7 +193,7 @@ def is_valid_token(token, token_prefix, account, container):
     :rtype: bool
     """
     secret = '/'.join((token_prefix, account, container))
-    valid_token = base64.b64encode(sha256(secret.encode()).digest())
+    valid_token = base64.b64encode(hashlib.sha256(secret.encode()).digest())
     return valid_token == token.encode('ascii')
 
 
@@ -232,6 +239,87 @@ def mktime(timestamp_str, time_format='%Y-%m-%dT%H:%M:%S'):
     epoch_time = calendar.timegm(time_tuple) - time_tuple[9]
 
     return epoch_time
+
+
+class ChecksumInfo(object):
+    digest_size: int
+    name: str
+    allowed_types_for_mpu: list
+
+    @property
+    def listing_param_name(self):
+        return f's3_{self.name}'
+
+    @property
+    def client_listing_name(self):
+        return f'Checksum{self.name.upper()}'
+
+    @property
+    def client_header(self):
+        return f'x-amz-checksum-{self.name}'
+
+    @property
+    def sysmeta_header(self):
+        return sysmeta_header('object', f'checksum-{self.name}')
+
+    def new_hasher(self):
+        raise NotImplementedError
+
+
+class CRC32Info(ChecksumInfo):
+    digest_size = 4
+    name = 'crc32'
+    allowed_types_for_mpu = [CHECKSUM_FULL_OBJECT, CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return checksum.CRCHasher(zlib.crc32)
+
+
+class CRC32CInfo(ChecksumInfo):
+    digest_size = 4
+    name = 'crc32c'
+    allowed_types_for_mpu = [CHECKSUM_FULL_OBJECT, CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return checksum.CRCHasher(checksum.crc32c)
+
+
+class CRC64NVMEInfo(ChecksumInfo):
+    digest_size = 8
+    name = 'crc64nvme'
+    allowed_types_for_mpu = [CHECKSUM_FULL_OBJECT]
+
+    def new_hasher(self):
+        return checksum.CRCHasher(checksum.crc64nvme, width=64)
+
+
+class SHA1Info(ChecksumInfo):
+    digest_size = 20
+    name = 'sha1'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return hashlib.sha1()  # nosec B303
+
+
+class SHA256Info(ChecksumInfo):
+    digest_size = 32
+    name = 'sha256'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return hashlib.sha256()
+
+
+CHECKSUMS = [
+    CRC32Info(),
+    CRC32CInfo(),
+    CRC64NVMEInfo(),
+    SHA1Info(),
+    SHA256Info(),
+]
+CHECKSUMS_BY_NAME = {info.name: info for info in CHECKSUMS}
+CHECKSUMS_BY_HEADER = {info.client_header: info for info in CHECKSUMS}
 
 
 class Config(dict):

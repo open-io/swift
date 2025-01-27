@@ -661,8 +661,10 @@ class TestS3ApiObj(S3ApiTestCase):
         code = self._test_method_error('PUT', '/bucket/object',
                                        swob.HTTPServerError)
         self.assertEqual(code, 'InternalError')
-        code = self._test_method_error('PUT', '/bucket/object',
-                                       swob.HTTPUnprocessableEntity)
+        code = self._test_method_error(
+            'PUT', '/bucket/object',
+            swob.HTTPUnprocessableEntity,
+            headers={'Content-MD5': '1B2M2Y8AsgTpgAmY7PhCfg=='})
         self.assertEqual(code, 'BadDigest')
         code = self._test_method_error('PUT', '/bucket/object',
                                        swob.HTTPConflict)
@@ -855,7 +857,7 @@ class TestS3ApiObj(S3ApiTestCase):
                         self.get_v4_amz_date_header().split('T', 1)[0]),
                 'x-amz-date': self.get_v4_amz_date_header(),
                 'x-amz-storage-class': 'STANDARD',
-                'x-amz-content-sha256': 'not the hash',
+                'x-amz-content-sha256': '0' * 64,  # not the hash
                 'Date': self.get_date_header()},
             body=self.object_body)
         req.date = datetime.now()

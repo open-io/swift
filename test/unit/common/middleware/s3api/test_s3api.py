@@ -1014,8 +1014,40 @@ class TestS3ApiMiddleware(S3ApiTestCase):
     def test_website_redirect_location(self):
         self._test_unsupported_header('x-amz-website-redirect-location')
 
-    def test_aws_chunked(self):
+    def test_aws_chunked_with_zero_bytes(self):
+        req = Request.blank('/bucket/object',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     'HTTP_AUTHORIZATION': 'AWS X:Y:Z'},
+                            headers={'content-encoding': 'aws-chunked',
+                                     'x-amz-content-sha256':
+                                     'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
+                                     'Content-Length': '0',
+                                     'x-amz-decoded-content-length': '0',
+                                     'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
 
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status, '400 Bad Request')
+        self.assertEqual(self._get_error_code(body),
+                         'XAmzContentSHA256Mismatch')
+
+        req = Request.blank('/bucket/object',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     'HTTP_AUTHORIZATION': 'AWS X:Y:Z'},
+                            headers={'content-encoding': 'aws-chunked',
+                                     'x-amz-content-sha256':
+                                     'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
+                                     'Content-Length': '0',
+                                     'x-amz-decoded-content-length': '0',
+                                     'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status, '400 Bad Request')
+        self.assertEqual(self._get_error_code(body),
+                         'XAmzContentSHA256Mismatch')
+
+    def test_aws_chunked_bad_request(self):
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT'},
                             headers={'content-encoding': 'aws-chunked',
@@ -1023,7 +1055,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                                      'Date': self.get_date_header()})
 
         status, _, body = self.call_s3api(req)
-        self.assertEqual(status, '400 Bad Request')
+        self.assertEqual(status, '200 OK')
 
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT',
@@ -1031,11 +1063,27 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                             headers={'content-encoding': 'aws-chunked',
                                      'x-amz-content-sha256':
                                      'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
+                                     'x-amz-decoded-content-length': '0',
                                      'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()})
-
         status, _, body = self.call_s3api(req)
         self.assertEqual(status, '400 Bad Request')
+        self.assertEqual(self._get_error_code(body),
+                         'XAmzContentSHA256Mismatch')
+
+        req = Request.blank('/bucket/object',
+                            environ={'REQUEST_METHOD': 'PUT',
+                                     'HTTP_AUTHORIZATION': 'AWS X:Y:Z'},
+                            headers={'content-encoding': 'aws-chunked',
+                                     'x-amz-content-sha256':
+                                     'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
+                                     'x-amz-decoded-content-length': '0',
+                                     'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        status, _, body = self.call_s3api(req)
+        self.assertEqual(status, '400 Bad Request')
+        self.assertEqual(self._get_error_code(body),
+                         'XAmzContentSHA256Mismatch')
 
     def _test_unsupported_resource(self, resource):
         req = Request.blank('/error?' + resource,
@@ -1221,7 +1269,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         headers = {
             'Authorization': authz_header,
             'X-Amz-Date': self.get_v4_amz_date_header(),
-            'X-Amz-Content-SHA256': '0123456789'}
+            'X-Amz-Content-SHA256': '0' * 64}
         req = Request.blank('/bucket/object', environ=environ, headers=headers)
         req.content_type = 'text/plain'
         status, headers, body = self.call_s3api(req)

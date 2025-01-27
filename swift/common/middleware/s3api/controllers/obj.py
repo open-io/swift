@@ -31,8 +31,9 @@ from swift.common.middleware.crypto.crypto_utils import \
     check_md5, decode_secret
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
-from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
-    S3Timestamp, sysmeta_header, update_response_header_with_response_params
+from swift.common.middleware.s3api.utils import CHECKSUM_FULL_OBJECT, \
+    DEFAULT_CONTENT_TYPE, S3Timestamp, sysmeta_header, \
+    update_response_header_with_response_params
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -384,6 +385,12 @@ class ObjectController(Controller):
             # can't setdefault because it can be None for some reason
             req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
         resp = req.get_response(self.app, query=query)
+
+        checksum_algo = req.get_checksum_name()
+        if checksum_algo:
+            resp.headers['x-amz-checksum-' + checksum_algo] = \
+                req.get_checksum_b64digest()
+            resp.headers['x-amz-checksum-type'] = CHECKSUM_FULL_OBJECT
 
         # Add expiration header if lifecycle configuration is present
         if (self.conf.enable_lifecycle or

@@ -1316,6 +1316,9 @@ class StaticLargeObject(object):
             if heartbeat:
                 yield b' '
             last_yield_time = time.time()
+            # Middleware left of SLO can add a callback to the WSGI
+            # environment to perform additional per-segment validation.
+            hook = req.environ.get('swift.callback.slo_segment_hook')
             with StreamingPile(self.concurrency) as pile:
                 for obj_name, resp in pile.asyncstarmap(do_head, (
                         (path, ) for path in path2indices)):
@@ -1330,6 +1333,8 @@ class StaticLargeObject(object):
                         segment_length, seg_data = validate_seg_dict(
                             parsed_data[i], resp,
                             allow_empty_segment=(i == len(parsed_data) - 1))
+                        if hook:
+                            hook(i, seg_data, resp)
                         data_for_storage[i] = seg_data
                         total_size += segment_length
 

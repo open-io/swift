@@ -36,5 +36,61 @@ class InvalidSubresource(S3Exception):
         self.cause = cause
 
 
+class S3InputError(BaseException):
+    """
+    There was an error with the client input detected on read()
+
+    Inherit from BaseException (rather than Exception) so it cuts from the
+    proxy-server app (which will presumably be the one reading the input)
+    through all the layers of the pipeline back to us. It should never escape
+    the s3api middleware.
+    """
+
+
+class S3InputIncomplete(S3InputError):
+    pass
+
+
+class S3InputSizeError(S3InputError):
+    pass
+
+
+class S3InputChunkTooSmall(S3InputError):
+    pass
+
+
+class S3InputMalformedTrailer(S3InputError):
+    pass
+
+
+class S3InputChunkSignatureMismatch(S3InputError):
+    """
+    Client provided a chunk-signature, but it doesn't match the data.
+
+    This should result in a 403 going back to the client.
+    """
+
+
+class S3InputSHA256Mismatch(S3InputError):
+    """
+    Client provided a X-Amz-Content-SHA256, but it doesn't match the data.
+
+    This should result in a BadDigest going back to the client.
+    """
+    def __init__(self, expected, computed):
+        self.expected = expected
+        self.computed = computed
+
+
+class S3InputChecksumMismatch(S3InputError):
+    """
+    Client provided a X-Amz-Checksum-* header, but it doesn't match the data.
+
+    This should result in a InvalidRequest going back to the client.
+    Note that we cheat a little and re-use this in our SLO per-segment hook
+    (even though wsgi.input is no longer involved)
+    """
+
+
 class IAMException(S3Exception):
     pass
