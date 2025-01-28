@@ -217,7 +217,6 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual([
             ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ], self.swift.calls)
 
     @s3acl
@@ -1983,41 +1982,6 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '204')
 
-    @patch('swift.common.middleware.s3api.s3request.get_container_info',
-           lambda env, app, swift_source, read_caches=None:
-           {'status': 204})
-    def test_object_upload_part_finishes_after_abort(self):
-        req = Request.blank(
-            '/bucket/object?partNumber=1&uploadId=VXBsb2FkIElE',
-            environ={'REQUEST_METHOD': 'PUT'},
-            headers={'Authorization': 'AWS test:tester:hmac',
-                     'Date': self.get_date_header()},
-            body='part object')
-        self.swift.register_responses(
-            'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE',
-            [(swob.HTTPOk,
-              {'x-object-meta-foo': 'bar',
-               'content-type': 'application/directory',
-               'x-object-sysmeta-s3api-has-content-type': 'yes',
-               'x-object-sysmeta-s3api-content-type':
-               'baz/quux'},
-              None),
-             (swob.HTTPNotFound, {}, None)]
-        )
-        status, headers, body = self.call_s3api(req)
-        self.assertEqual(status.split()[0], '404')
-        self.assertEqual(self._get_error_code(body), 'NoSuchUpload')
-        self.assertEqual(self.swift.calls, [
-            # Check the MPU exists
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
-            # Upload the part
-            ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'),
-            # Check the MPU has not been aborted
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
-            # Check the MPU has not been completed
-            ('HEAD', '/v1/AUTH_test/bucket/object'),
-        ])
-
     @s3acl
     @patch('swift.common.middleware.s3api.s3request.get_container_info',
            lambda env, app, swift_source, read_caches=None:
@@ -2597,8 +2561,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual(elem.find('LastModified').text, last_modified)
         self.assertEqual(elem.find('ETag').text, '"%s"' % self.etag)
 
-        _, _, headers = self.swift.calls_with_headers[
-            -3 if self.swift.s3_acl else -2]
+        _, _, headers = self.swift.calls_with_headers[-1]
+
         self.assertEqual(headers['X-Copy-From'], '/src_bucket/src_obj')
         self.assertEqual(headers['Content-Length'], '0')
         # Some headers *need* to get cleared in case we're copying from
@@ -2714,12 +2678,11 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
             ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'
                     '?heartbeat=on'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ])
-        _, _, headers = self.swift.calls_with_headers[-3]
+        _, _, headers = self.swift.calls_with_headers[-2]
         self.assertEqual(headers['If-Match'], etag)
         self.assertEqual(headers['If-Modified-Since'], last_modified_since)
-        _, _, headers = self.swift.calls_with_headers[-2]
+        _, _, headers = self.swift.calls_with_headers[-1]
         self.assertTrue(headers.get('If-Match') is None)
         self.assertTrue(headers.get('If-Modified-Since') is None)
         _, _, headers = self.swift.calls_with_headers[0]
@@ -2738,17 +2701,17 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             self._test_copy_for_s3acl(account, put_header=header)
 
         self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 6)
+        self.assertEqual(len(self.swift.calls_with_headers), 4)
         # Before the check of the copy source in the case of s3acl is valid,
         # s3api check the bucket write permissions and the object existence
         # of the destination.
-        _, _, headers = self.swift.calls_with_headers[-5]
+        _, _, headers = self.swift.calls_with_headers[-3]
         self.assertTrue(headers.get('If-Match') is None)
         self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[-4]
+        _, _, headers = self.swift.calls_with_headers[-2]
         self.assertEqual(headers['If-Match'], etag)
         self.assertEqual(headers['If-Modified-Since'], last_modified_since)
-        _, _, headers = self.swift.calls_with_headers[-3]
+        _, _, headers = self.swift.calls_with_headers[-1]
         self.assertTrue(headers.get('If-Match') is None)
         self.assertTrue(headers.get('If-Modified-Since') is None)
         _, _, headers = self.swift.calls_with_headers[0]
@@ -2773,12 +2736,11 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
             ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'
                     '?heartbeat=on'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ])
-        _, _, headers = self.swift.calls_with_headers[-3]
+        _, _, headers = self.swift.calls_with_headers[-2]
         self.assertEqual(headers['If-None-Match'], etag)
         self.assertEqual(headers['If-Unmodified-Since'], last_modified_since)
-        _, _, headers = self.swift.calls_with_headers[-2]
+        _, _, headers = self.swift.calls_with_headers[-1]
         self.assertTrue(headers.get('If-None-Match') is None)
         self.assertTrue(headers.get('If-Unmodified-Since') is None)
         _, _, headers = self.swift.calls_with_headers[0]
@@ -2797,19 +2759,19 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             self._test_copy_for_s3acl(account, put_header=header)
 
         self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 6)
+        self.assertEqual(len(self.swift.calls_with_headers), 4)
         # Before the check of the copy source in the case of s3acl is valid,
         # s3api check the bucket write permissions and the object existence
         # of the destination.
-        _, _, headers = self.swift.calls_with_headers[-5]
+        _, _, headers = self.swift.calls_with_headers[-3]
         self.assertTrue(headers.get('If-Match') is None)
         self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[-4]
+        _, _, headers = self.swift.calls_with_headers[-2]
         self.assertEqual(headers['If-None-Match'], etag)
         self.assertEqual(headers['If-Unmodified-Since'], last_modified_since)
         self.assertTrue(headers.get('If-Match') is None)
         self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[-3]
+        _, _, headers = self.swift.calls_with_headers[-1]
         self.assertTrue(headers.get('If-None-Match') is None)
         self.assertTrue(headers.get('If-Unmodified-Since') is None)
         _, _, headers = self.swift.calls_with_headers[0]
@@ -2863,9 +2825,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             ('HEAD', '/v1/AUTH_test/src_bucket/src_obj'),
             ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1'
                     '?heartbeat=on'),
-            ('HEAD', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
         ], self.swift.calls)
-        put_headers = self.swift.calls_with_headers[-2][2]
+        put_headers = self.swift.calls_with_headers[-1][2]
         self.assertEqual('bytes=0-9', put_headers['Range'])
         self.assertEqual('/src_bucket/src_obj', put_headers['X-Copy-From'])
 

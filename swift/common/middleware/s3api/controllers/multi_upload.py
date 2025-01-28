@@ -239,6 +239,11 @@ class LifecycleAbortDateMixin(object):
         return headers
 
 
+class MpuAborted(exceptions.ClientPreconditionFailed):
+    def __init__(self, http_status=412, status=None, message=None):
+        super(MpuAborted, self).__init__(http_status, status, message)
+
+
 class MpuAlreadyCompleted(exceptions.ClientPreconditionFailed):
     def __init__(self, http_status=412, status=None, message=None):
         super(MpuAlreadyCompleted, self).__init__(http_status, status, message)
@@ -386,7 +391,11 @@ class PartController(Controller):
                     obj=obj,
                 )
             except NoSuchKey:
-                raise MpuAlreadyCompleted()
+                try:
+                    req.get_response(self.app, "HEAD")
+                    raise MpuAlreadyCompleted()
+                except NoSuchKey:
+                    raise MpuAborted()
             finally:
                 if copy_source is not None:
                     req.headers['X-Amz-Copy-Source'] = copy_source
@@ -409,23 +418,6 @@ class PartController(Controller):
             resp.etag = None
 
         def _on_success(full_resp):
-            # We want THIS request to be logged/billed,
-            # not the HEAD we do right after.
-            put_backend_path = resp.environ['PATH_INFO']
-            try:
-                _get_upload_info(req, self.app, upload_id)
-            except NoSuchUpload:
-                self.logger.warning(
-                    "Finished uploading part %d%s, "
-                    "but MPU aborted in the meantime",
-                    part_number,
-                    " (copy)" if is_server_side_copy else "",
-                )
-                # TODO(FVE): delete the part
-                raise
-            finally:
-                req.environ['s3api.backend_path'] = put_backend_path
-
             if is_server_side_copy:
                 return make_copy_resp_xml(
                     req.controller_name, req_timestamp.s3xmlformat,

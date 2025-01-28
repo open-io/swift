@@ -784,6 +784,76 @@ class TestS3Mpu(unittest.TestCase):
                 os.stat(file.name).st_size, os.stat(upload_file).st_size
             )
 
+    def test_abort_while_upload_part(self):
+        path = "part" + random_str(4)
+
+        # Initialize the S3 client
+        boto_client = get_boto3_client()
+
+        # Rate limit: register events
+        event_name = "request-created.s3"
+        boto_client.meta.events.register_first(
+            event_name,
+            signal_not_transferring,
+            unique_id="s3upload-not-transferring",
+        )
+        boto_client.meta.events.register_last(
+            event_name, signal_transferring, unique_id="s3upload-transferring"
+        )
+
+        # Create a legitimate multipart upload
+        response = boto_client.create_multipart_upload(
+            Bucket=self.bucket, Key=path, Metadata={"meta": "value"}
+        )
+        self.assertEqual(path, response['Key'])
+        upload_id = response["UploadId"]
+
+        mpu_parts = []
+
+        def upload_part(part_number, data, output_queue):
+            try:
+                resp = boto_client.upload_part(
+                    Bucket=self.bucket,
+                    Key=path,
+                    PartNumber=part_number,
+                    UploadId=upload_id,
+                    Body=data,
+                )
+                mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
+                output_queue.put(None)
+            except Exception as err:
+                output_queue.put(err)
+
+        result_queue = queue.Queue()
+
+        # Upload the part 1
+        big_part = io.BytesIO(b'*' * 100 * 1024 * 1024)
+
+        upload_rate = 10 * 1024 * 1024
+
+        # Limit bandwidth so that the 100MB part takes 10s to upload
+        stream = BandwidthLimiter(LeakyBucket(upload_rate)).get_bandwith_limited_stream(
+            big_part, TransferCoordinator(), enabled=True
+        )
+
+        thread = threading.Thread(
+            target=upload_part, args=(1, stream, result_queue)
+        )
+        thread.start()
+
+        sleep(13)
+        # Complete MPU (before re-upload of part 1 is finish)
+        response = boto_client.abort_multipart_upload(
+            Bucket=self.bucket, Key=path, UploadId=upload_id
+        )
+        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 204)
+
+        thread.join()
+
+        err = result_queue.get()
+        if err:
+            raise err
+
     def test_list_multipart_uploads(self):
         name = "list-upload-" + random_str(4)
         datas = []
