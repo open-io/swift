@@ -18,7 +18,7 @@ RULES_FILE="$PWD/etc/iam-rules-sample.json"
 RET=0
 
 echo "############################################################"
-echo "# Data at rest encryption tests, with root secret"
+echo "# 1: Data at rest encryption tests, with root secret"
 echo "############################################################"
 echo ""
 run_functional_test s3-encryption.cfg.in \
@@ -27,7 +27,7 @@ run_functional_test s3-encryption.cfg.in \
   s3-mpu.py
 
 echo "############################################################"
-echo "# Data at rest encryption tests, with bucket-specific keys"
+echo "# 2: Data at rest encryption tests, with bucket-specific keys"
 echo "############################################################"
 echo ""
 export DEFAULT_SSE_CONF="AES256"
@@ -45,7 +45,7 @@ run_functional_test etc/s3-sses3-encryption.cfg \
   test-sses3-kms.py
 
 echo "############################################################"
-echo "# Data at rest encryption tests, account whitelisted"
+echo "# 3: Data at rest encryption tests, account whitelisted"
 echo "############################################################"
 echo ""
 export ACCOUNT_WHITELIST=$OIO_ACCOUNT
@@ -63,7 +63,7 @@ run_functional_test etc/s3-sses3-encryption.cfg \
   test-sses3-kms.py
 
 echo "############################################################"
-echo "# Data at rest encryption tests, account not whitelisted"
+echo "# 4: Data at rest encryption tests, account not whitelisted"
 echo "############################################################"
 echo ""
 export ACCOUNT_WHITELIST="AUTH_account1,AUTH_account3"
@@ -84,7 +84,7 @@ run_functional_test etc/s3-sses3-encryption.cfg \
 unset BOTO_PROFILE OIO_ACCOUNT
 
 echo "############################################################"
-echo "# Data at rest encryption tests, with customer-provided keys"
+echo "# 5: Data at rest encryption tests, with customer-provided keys, account whitelisted"
 echo "############################################################"
 echo ""
 unset DEFAULT_SSE_CONF
@@ -98,16 +98,17 @@ sed \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-custom-encryption.cfg
 run_functional_test s3-custom-encryption.cfg \
+  s3-basic-test.py \
   custom-encryption-tests.sh \
   s3-multipart.sh \
   s3-versioning.sh
+unset BOTO_PROFILE
 
 echo "############################################################"
-echo "# Data at rest encryption tests, only if enabled explicitly"
+echo "# 6: Data at rest encryption tests, only if enabled explicitly"
 echo "############################################################"
 echo ""
 unset ACCOUNT_WHITELIST
-unset BOTO_PROFILE
 unset DEFAULT_SSE_CONF
 export FALLBACK_ON_ROOT_SECRET="False"
 export OIO_ACCOUNT="AUTH_demo"
@@ -120,8 +121,9 @@ sed \
   etc/s3-custom-encryption.cfg.in \
   > etc/s3-sses3-encryption.cfg
 run_functional_test etc/s3-sses3-encryption.cfg \
+  s3-basic-test.py \
   test-sses3-kms.py
-unset BOTO_PROFILE OIO_ACCOUNT
+unset OIO_ACCOUNT
 
 
 exit $RET
