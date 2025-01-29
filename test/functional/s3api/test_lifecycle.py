@@ -37,9 +37,69 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
                 },
                 "ID": "myfirstrule",
                 "Filter": {
-                    "Prefix": "garbage/",
+                    "And": {
+                        "Prefix": "my-prefix",
+                        "Tags": [
+                            {
+                                "Key": "k1",
+                                "Value": "v1"
+                            },
+                            {
+                                "Key": "k2",
+                                "Value": "v2"
+                            }
+                        ]
+                    }
                 },
                 "Status": "Enabled",
+            },
+            {
+                "Expiration": {
+                    "ExpiredObjectDeleteMarker": True
+                },
+                "ID": "rule-2",
+                "Filter": {
+                    "Prefix": "foo"
+                },
+                "Status": "Enabled"
+            },
+            {
+                "Expiration": {
+                    "ExpiredObjectDeleteMarker": True
+                },
+                "ID": "rule-3",
+                "Filter": {
+                    "Prefix": "doc",
+                },
+                "Status": "Disabled",
+            },
+            {
+                "ID": "rule-4",
+                "Status": "Enabled",
+                "Filter": {
+                    "Prefix": "doc",
+                },
+                "NoncurrentVersionExpiration": {
+                    "NoncurrentDays": 100
+                },
+                "NoncurrentVersionTransitions": [
+                    {
+                        "NoncurrentDays": 70,
+                        "StorageClass": "STANDARD_IA"
+                    }, {
+                        "NoncurrentDays": 71,
+                        "StorageClass": "GLACIER"
+                    }
+                ]
+            },
+            {
+                "AbortIncompleteMultipartUpload": {
+                    "DaysAfterInitiation": 2
+                },
+                "ID": "rule-5",
+                "Filter": {
+                },
+                "Status": "Enabled"
             }
         ]
     }

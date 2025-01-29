@@ -35,6 +35,8 @@ from swift.common.utils import public
 from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidRequest
 
+from oio.common.schema import SchemaRegistry
+
 LIFECYCLE_HEADER = sysmeta_header('container', 'lifecycle')
 MAX_LIFECYCLE_BODY_SIZE = 64 * 1024  # Arbitrary
 XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
@@ -279,6 +281,8 @@ def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
                         _to_xml(data[key], element=subelement)
         else:
             subelement = SubElement(element, p)
+            if isinstance(data, bool):
+                data = "true" if data else "false"
             subelement.text = str(data)
 
     root_elem = Element(root)
@@ -355,7 +359,7 @@ def _populate_accelerators(rule_name, json_rule, conf):
         for idx, action in _iter_skip_internal(json_rule.get(tag, {})):
             # Handle specific case of delete marker expiration
             if tag == "Expiration" and "ExpiredObjectDeleteMarker" in action:
-                if action.get("ExpiredObjectDeleteMarker", "") == "true":
+                if action.get("ExpiredObjectDeleteMarker", False):
                     _register_accelerator(("_delete_marker_rules",), idx, 0)
                 continue
             index, action_type = _action_to_int(action)
@@ -445,6 +449,13 @@ def _get_integer(field, elem):
     e = elem.find(field)
     if e is not None:
         return int(e.text)
+    return None
+
+
+def _get_boolean(field, elem):
+    e = elem.find(field)
+    if e is not None:
+        return e.text.lower() == ('true')
     return None
 
 
@@ -733,7 +744,7 @@ def _build_actions(rule_xml, rule, index=0):
             (
                 ("Days", _get_integer, _validate_positive_integer),
                 ("Date", None, _validate_date),
-                ("ExpiredObjectDeleteMarker", None, None),
+                ("ExpiredObjectDeleteMarker", _get_boolean, None),
             ),
         ),
         (
@@ -912,6 +923,11 @@ def lifecycle_xml_conf_to_dict(lifecycle_conf):
 
     # Resolve actions order
     _sort_accelerators(out)
+
+    # Validate against internal schema
+    registry = SchemaRegistry()
+    registry.validate("lifecycle", out)
+
     return out
 
 
