@@ -38,7 +38,8 @@ from swift.common.swob import HTTPBadRequest, HTTPForbidden, \
     HTTPNotFound, HTTPPartNotFound, HTTPServiceUnavailable, \
     Range, is_chunked, multi_range_iterator, HTTPPreconditionFailed, \
     wsgi_to_bytes, wsgi_unquote, wsgi_to_str
-from swift.common.utils import split_path, validate_device_partition, \
+from swift.common.utils import drain_and_close, split_path, \
+    validate_device_partition, \
     close_if_possible, maybe_multipart_byteranges_to_document_iters, \
     multipart_byteranges_to_document_iters, parse_content_type, \
     parse_content_range, csv_append, list_from_csv, Spliterator, quote, \
@@ -608,6 +609,28 @@ class SegmentedIterable(object):
                     self.logger.error(msg)
                     raise HTTPServiceUnavailable(
                         request=seg_req, content_type='text/plain')
+                if seg_resp.status_int == 404:
+                    # Extract oio_cache and remove it from req if exists
+                    oio_cache = self.req.environ.pop('oio.cache', None)
+                    try:
+                        # Check if manifest is still there
+                        sub_req = make_subrequest(
+                            self.req.environ, path=self.req.path,
+                            method='HEAD',
+                            headers={'x-auth-token': self.req.headers.get(
+                                'x-auth-token')},
+                            agent=('%(orig)s ' + self.ua_suffix),
+                            swift_source=self.swift_source)
+                        sub_req_resp = sub_req.get_response(self.app)
+                    finally:
+                        # Put oio_cache again if exists (further request may
+                        # benefit of the cache)
+                        if oio_cache is not None:
+                            self.req.environ['oio.cache'] = oio_cache
+                    drain_and_close(sub_req_resp.app_iter)
+                    if not sub_req_resp.is_success:
+                        raise HTTPNotFound(request=self.req)
+                    raise HTTPPartNotFound(request=self.req)
                 raise SegmentError(msg)
             elif ((seg_etag and (seg_resp.etag != seg_etag)) or
                     (seg_size and (seg_resp.content_length != seg_size) and
@@ -790,7 +813,6 @@ class SafeSegmentedIterable(SegmentedIterable):
                              re.IGNORECASE)
     _BadCryptoReq = re.compile(r'got 400 \(.*Encrypt.*\) while retrieving',
                                re.IGNORECASE)
-    _NotFound = re.compile(r'got 404 \(.*Not Found.*\) while retrieving')
 
     def validate_first_segment(self):
         try:
@@ -800,18 +822,6 @@ class SafeSegmentedIterable(SegmentedIterable):
                 raise HTTPForbidden(request=self.req)
             elif self.__class__._BadCryptoReq.search(err.args[0]):
                 raise HTTPBadRequest(request=self.req)
-            elif self.__class__._NotFound.search(err.args[0]):
-                # Check if manifest is still there
-                sub_req = make_subrequest(
-                    self.req.environ, path=self.req.path, method='HEAD',
-                    headers={'x-auth-token': self.req.headers.get(
-                        'x-auth-token')},
-                    agent=('%(orig)s ' + self.ua_suffix),
-                    swift_source=self.swift_source)
-                sub_req_resp = sub_req.get_response(self.app)
-                if not sub_req_resp.is_success:
-                    raise HTTPNotFound(request=self.req)
-                raise HTTPPartNotFound(request=self.req)
             else:
                 raise
 

@@ -80,7 +80,7 @@ import time
 from collections import defaultdict
 
 from swift.common.middleware.catch_errors import enforce_byte_count
-from swift.common.swob import Request
+from swift.common.swob import HTTPException, Request
 from swift.common.utils import (flat_dict_from_dict,
                                 get_logger, get_remote_client,
                                 config_true_value, reiterate,
@@ -544,8 +544,16 @@ class ProxyLoggingMiddleware(object):
             except GeneratorExit:  # generator was closed before we finished
                 client_disconnect = True
                 raise
-            except Exception:
+            except Exception as err:
                 start_status = 500
+                if isinstance(err, HTTPException):
+                    if err.status_int == 434:
+                        # SLO Part is missing and we want to
+                        # throw a 503 error code
+                        start_status = 503
+                    elif err.status_int == 404:
+                        # Resource was not found
+                        start_status = 404
                 raise
             finally:
                 status_int = status_int_for_logging(

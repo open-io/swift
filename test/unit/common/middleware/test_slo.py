@@ -3901,14 +3901,8 @@ class TestSloGetManifest(SloTestCase):
                             environ={'REQUEST_METHOD': 'GET'})
         status, headers, body = self.call_slo(req)
 
-        self.assertEqual('409 Conflict', status)
+        self.assertEqual('434 Part Not Found', status)
         self.assertEqual(self.app.unread_requests, {})
-        self.assertEqual(self.slo.logger.get_lines_for_level('error'), [
-            'While processing manifest /v1/AUTH_test/gettest/'
-            'manifest-not-exists, got 404 (<html><h1>Not Found</h1><p>The '
-            'resource could not be foun...) while retrieving /v1/AUTH_test/'
-            'gettest/not_exists_obj'
-        ])
 
     def test_first_segment_not_available(self):
         self.app.register('GET', '/v1/AUTH_test/gettest/not_avail_obj',
