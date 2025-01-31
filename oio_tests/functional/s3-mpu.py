@@ -726,7 +726,8 @@ class TestS3Mpu(unittest.TestCase):
                 )
                 mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
                 output_queue.put(None)
-            except Exception as err:
+            except Exception as exc:
+                err = exc.response["Error"]
                 output_queue.put(err)
 
         result_queue = queue.Queue()
@@ -766,8 +767,14 @@ class TestS3Mpu(unittest.TestCase):
         thread.join()
 
         err = result_queue.get()
-        if err:
-            raise err
+        self.assertEqual('NoSuchUpload', err['Code'])
+        self.assertEqual(
+            "The specified multipart upload does not exist. The upload ID "
+            "might be invalid, or the multipart upload might have been "
+            "aborted or completed.",
+            err["Message"],
+        )
+        self.assertEqual(upload_id, err['UploadId'])
 
         # Check if the object is the legitimate file we uploaded the first time
         with tempfile.NamedTemporaryFile() as file:
@@ -821,7 +828,8 @@ class TestS3Mpu(unittest.TestCase):
                 )
                 mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
                 output_queue.put(None)
-            except Exception as err:
+            except Exception as exc:
+                err = exc.response["Error"]
                 output_queue.put(err)
 
         result_queue = queue.Queue()
@@ -851,8 +859,14 @@ class TestS3Mpu(unittest.TestCase):
         thread.join()
 
         err = result_queue.get()
-        if err:
-            raise err
+        self.assertEqual('NoSuchUpload', err['Code'])
+        self.assertEqual(
+            "The specified multipart upload does not exist. The upload ID "
+            "might be invalid, or the multipart upload might have been "
+            "aborted or completed.",
+            err["Message"],
+        )
+        self.assertEqual(upload_id, err['UploadId'])
 
     def test_list_multipart_uploads(self):
         name = "list-upload-" + random_str(4)

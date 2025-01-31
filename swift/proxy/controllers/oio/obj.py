@@ -870,17 +870,9 @@ class ObjectController(BaseObjectController):
         except exceptions.NoSuchContainer:
             raise HTTPNotFound(request=req)
         except (MpuAlreadyCompleted, MpuAborted) as err:
-            last_modified = int(err.info.get("mtime"))
-            version_id = oio_versionid_to_swift_versionid(
-                err.info.get("version")
+            return HTTPPreconditionFailed(
+                request=req, body=type(err).__name__.encode()
             )
-            resp = HTTPCreated(
-                request=req, etag=err.info.get("obj_checksum"),
-                last_modified=last_modified,
-                headers={
-                    'x-object-sysmeta-version-id': version_id
-                })
-            return resp
         except exceptions.ClientException as err:
             # 481 = CODE_POLICY_NOT_SATISFIABLE
             if err.status == 481:

@@ -96,7 +96,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
-    S3NotImplemented
+    PreconditionFailed, S3NotImplemented
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
@@ -393,8 +393,20 @@ class PartController(Controller):
             except NoSuchKey:
                 try:
                     req.get_response(self.app, "HEAD")
+                    self.logger.warning(
+                        "Finished uploading part %d%s, "
+                        "but MPU has been completed in the meantime",
+                        part_number,
+                        " (copy)" if is_server_side_copy else "",
+                    )
                     raise MpuAlreadyCompleted()
                 except NoSuchKey:
+                    self.logger.warning(
+                        "Finished uploading part %d%s, "
+                        "but MPU aborted in the meantime",
+                        part_number,
+                        " (copy)" if is_server_side_copy else "",
+                    )
                     raise MpuAborted()
             finally:
                 if copy_source is not None:
@@ -403,10 +415,18 @@ class PartController(Controller):
 
         req.environ['swift.callback.pre_commit_hook'] = check_upload_marker
 
-        resp = req.get_response(self.app,
-                                container=seg_container_name,
-                                obj=seg_object_name,
-                                query=query)
+        try:
+            resp = req.get_response(
+                self.app,
+                container=seg_container_name,
+                obj=seg_object_name,
+                query=query,
+            )
+        except PreconditionFailed as err:
+            if b"MpuAborted" in err.body or b"MpuAlreadyCompleted" in err.body:
+                raise NoSuchUpload(upload_id=upload_id)
+            else:
+                raise err
 
         checksum_algo = req.get_checksum_name()
         if checksum_algo:

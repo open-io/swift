@@ -2538,6 +2538,8 @@ class S3Request(swob.Request):
                 raise err_resp[0](*err_resp[1:])
             elif b'quota' in err_msg:
                 raise err_resp(err_msg)
+            elif b'MpuAborted' in err_msg or b'MpuAlreadyCompleted' in err_msg:
+                raise err_resp(err_msg)
             else:
                 raise err_resp()
 
