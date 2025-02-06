@@ -394,6 +394,12 @@ class OioContainerContext(ContainerContext):
         else:
             return versions_resp(versions_req.environ, start_response)
 
+        # The first request in handle_request has been modified
+        # to perform a HEAD instead of a GET.
+        # So the Content-Type header does not match that of an object listing.
+        # Since this Content-Type header is checked in other middlewares,
+        # it is important to update it.
+        self.update_content_type(versions_resp.headers["Content-Type"])
         start_response(self._response_status,
                        self._response_headers,
                        self._response_exc_info)

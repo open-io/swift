@@ -1339,6 +1339,12 @@ class WSGIContext(object):
                 return val
         return None
 
+    def update_content_type(self, new_content_type):
+        self._response_headers = [
+            (h, v) for h, v in self._response_headers
+            if h.lower() != 'content-type']
+        self._response_headers.append(('Content-Type', new_content_type))
+
     def update_content_length(self, new_total_len):
         self._response_headers = [
             (h, v) for h, v in self._response_headers
