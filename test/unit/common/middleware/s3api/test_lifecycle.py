@@ -16,6 +16,7 @@
 from swift.common.middleware.s3api.controllers.lifecycle import \
     _action_to_int, lifecycle_xml_conf_to_dict
 from test.unit.common.middleware.s3api import S3ApiTestCase
+from swift.common.middleware.s3api.s3response import S3NotImplemented
 
 from swift.common.middleware.s3api.etree import fromstring
 
@@ -159,3 +160,92 @@ class TestS3ApiLifecycle(S3ApiTestCase):
         self.assertListEqual([], conf["_non_current_transition_rules"])
         self.assertIn("_non_current_expiration_rules", conf)
         self.assertListEqual([], conf["_non_current_expiration_rules"])
+
+    def test_transition_feature_disable_with_transition_rule_enabled(self):
+        xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <LifecycleConfiguration>
+                <Rule>
+                    <ID>r2</ID>
+                    <Filter>
+                        <Prefix>bar</Prefix>
+                    </Filter>
+                    <Status>Enabled</Status>
+                    <Transition>
+                        <Days>70</Days>
+                        <StorageClass>STANDARD_IA</StorageClass>
+                    </Transition>
+                </Rule>
+            </LifecycleConfiguration>
+        """
+        data = fromstring(xml_conf, "LifecycleConfiguration")
+        self.assertRaises(
+            S3NotImplemented,
+            lifecycle_xml_conf_to_dict,
+            data,
+            allow_transitions=False
+        )
+
+    def test_transition_feature_disable_with_transition_rule_disable(self):
+        xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <LifecycleConfiguration>
+                <Rule>
+                    <ID>r2</ID>
+                    <Filter>
+                        <Prefix>bar</Prefix>
+                    </Filter>
+                    <Status>Disabled</Status>
+                    <Transition>
+                        <Days>70</Days>
+                        <StorageClass>STANDARD_IA</StorageClass>
+                    </Transition>
+                </Rule>
+            </LifecycleConfiguration>
+        """
+        data = fromstring(xml_conf, "LifecycleConfiguration")
+        conf = lifecycle_xml_conf_to_dict(data, allow_transitions=False)
+        self.assertListEqual([], conf["_transition_rules"]["date"])
+        self.assertListEqual([], conf["_transition_rules"]["days"])
+
+    def test_transition_feature_disable_with_nc_transition_rule_enabled(self):
+        xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <LifecycleConfiguration>
+                <Rule>
+                    <ID>r2</ID>
+                    <Filter>
+                        <Prefix>bar</Prefix>
+                    </Filter>
+                    <Status>Enabled</Status>
+                    <NoncurrentVersionTransition>
+                        <NoncurrentDays>70</NoncurrentDays>
+                        <StorageClass>STANDARD_IA</StorageClass>
+                    </NoncurrentVersionTransition>
+                </Rule>
+            </LifecycleConfiguration>
+        """
+        data = fromstring(xml_conf, "LifecycleConfiguration")
+        self.assertRaises(
+            S3NotImplemented,
+            lifecycle_xml_conf_to_dict,
+            data,
+            allow_transitions=False
+        )
+
+    def test_transition_feature_disable_with_nc_transition_rule_disable(self):
+        xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <LifecycleConfiguration>
+                <Rule>
+                    <ID>r2</ID>
+                    <Filter>
+                        <Prefix>bar</Prefix>
+                    </Filter>
+                    <Status>Disabled</Status>
+                    <NoncurrentVersionTransition>
+                        <NoncurrentDays>70</NoncurrentDays>
+                        <StorageClass>STANDARD_IA</StorageClass>
+                    </NoncurrentVersionTransition>
+                </Rule>
+            </LifecycleConfiguration>
+        """
+        data = fromstring(xml_conf, "LifecycleConfiguration")
+        conf = lifecycle_xml_conf_to_dict(data, allow_transitions=False)
+        self.assertListEqual([], conf["_non_current_transition_rules"])

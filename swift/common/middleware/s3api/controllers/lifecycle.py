@@ -418,6 +418,21 @@ def _validate_rules_version_consistency(rules):
                              "V2, prefixes are only supported in the Filter.")
 
 
+def _validate_no_transitions(conf):
+    fields = (
+        ("_transition_rules", "days"),
+        ("_transition_rules", "date"),
+        ("_non_current_transition_rules", None),
+    )
+
+    for accelerator, sub in fields:
+        data = conf[accelerator]
+        if sub is not None:
+            data = data[sub]
+        if data:
+            raise S3NotImplemented()
+
+
 def _build_rule(rule_xml, index):
     rule = {
         "ID": _get_rule_id(rule_xml),
@@ -861,7 +876,7 @@ def _build_filter(rule_xml, rule):
     _validate_object_size_consistency(rule_filter)
 
 
-def lifecycle_xml_conf_to_dict(lifecycle_conf):
+def lifecycle_xml_conf_to_dict(lifecycle_conf, allow_transitions=True):
     """
     Convert the XML lifecycle configuration into a more pythonic
     dictionary.
@@ -918,6 +933,9 @@ def lifecycle_xml_conf_to_dict(lifecycle_conf):
             _populate_accelerators(rule_index, rule, out)
 
         rule_index += 1
+
+    if not allow_transitions:
+        _validate_no_transitions(out)
 
     _validate_rules_version_consistency(out["Rules"])
 
@@ -1001,7 +1019,12 @@ class LifecycleController(Controller):
         except XMLSyntaxError as exc:
             raise MalformedXML(str(exc))
 
-        config = lifecycle_xml_conf_to_dict(data)
+        allow_transition = (
+            self.conf.enable_lifecycle_transition
+            or self.bypass_feature_disabled(req, "lifecycle_transition")
+        )
+
+        config = lifecycle_xml_conf_to_dict(data, allow_transitions=allow_transition)
         req.headers[LIFECYCLE_HEADER] = json.dumps(
             config, separators=(',', ':'))
         resp = req.get_response(self.app, method='POST')

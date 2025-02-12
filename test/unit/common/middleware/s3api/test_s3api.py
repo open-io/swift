@@ -142,6 +142,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_object_lock': True,
             'enable_website': True,
             'enable_lifecycle': True,
+            'enable_lifecycle_transition': True,
             'token_prefix': "",
             'backup_pepper': None,
         })
@@ -195,6 +196,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_object_lock': False,
             'enable_website': False,
             'enable_lifecycle': False,
+            'enable_lifecycle_transition': False,
             'enable_encryption': True,
             'token_prefix': '',
             'backup_pepper': True,
