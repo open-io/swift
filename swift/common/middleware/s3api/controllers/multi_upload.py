@@ -111,7 +111,8 @@ from swift.common.middleware.s3api.controllers.object_lock import \
 from swift.common.middleware.s3api.multi_upload_utils import \
     list_bucket_multipart_uploads
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
-
+from swift.common.middleware.s3api.controllers.lifecycle import \
+    get_mpu_abortion
 # 10000 parts about 200 bytes each, plus envelope
 MAX_COMPLETE_UPLOAD_BODY_SIZE = 3 * 1024 * 1024
 
@@ -205,6 +206,28 @@ def set_s3_operation_rest_for_put_part(func):
         return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
 
     return _set_s3_operation
+
+
+class LifecycleAbortDateMixin(object):
+    def get_lifecycle_headers(
+            self, req, container_sysmeta, obj_name, initial_date):
+        headers = {}
+        # Handle lifecycle expiration
+        if (self.conf.enable_lifecycle or
+                self.bypass_feature_disabled(req, "lifecycle")):
+            if container_sysmeta is None:
+                container_info = req.get_container_info(self.app)
+                container_sysmeta = container_info.get("sysmeta", {})
+            abortion_date, abortion_rule = get_mpu_abortion(
+                container_sysmeta.get("s3api-lifecycle"),
+                obj_name,
+                initial_date,
+            )
+            if abortion_date is not None and abortion_rule is not None:
+                headers["x-amz-abort-date"] = abortion_date.strftime(
+                    "%a, %d %b %Y %H:%M:%S GMT")
+                headers["x-amz-abort-rule-id"] = abortion_rule
+        return headers
 
 
 class PartController(Controller):
@@ -509,7 +532,7 @@ class PartController(Controller):
         return resp
 
 
-class UploadsController(Controller):
+class UploadsController(Controller, LifecycleAbortDateMixin):
     """
     Handles the following APIs:
 
@@ -659,11 +682,14 @@ class UploadsController(Controller):
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
         object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
-        req.get_response(self.app, 'PUT', seg_container, obj, body='')
+        resp = req.get_response(self.app, 'PUT', seg_container, obj, body='')
 
         encryption_set_env_variable(req, self.conf, sysmeta_info)
 
         escape_xml_text, finalize_xml_texts = init_xml_texts()
+
+        headers = self.get_lifecycle_headers(
+            req, sysmeta_info, req.object_name, resp.last_modified)
 
         result_elem = Element('InitiateMultipartUploadResult')
         SubElement(result_elem, 'Bucket').text = req.container_name
@@ -674,10 +700,14 @@ class UploadsController(Controller):
 
         body = finalize_xml_texts(tostring(result_elem))
 
-        return HTTPOk(body=body, content_type='application/xml')
+        return HTTPOk(
+            body=body,
+            content_type='application/xml',
+            headers=headers
+        )
 
 
-class UploadController(Controller):
+class UploadController(Controller, LifecycleAbortDateMixin):
     """
     Handles the following APIs:
 
@@ -733,6 +763,9 @@ class UploadController(Controller):
             'delimiter': '/',
             'marker': '',
         }
+
+        headers = self.get_lifecycle_headers(
+            req, None, req.object_name, resp.last_modified)
 
         container = req.container_name + MULTIUPLOAD_SUFFIX
         # Because the parts are out of order in Swift, we list up to the
@@ -806,7 +839,11 @@ class UploadController(Controller):
 
         body = finalize_xml_texts(tostring(result_elem))
 
-        return HTTPOk(body=body, content_type='application/xml')
+        return HTTPOk(
+            body=body,
+            content_type='application/xml',
+            headers=headers
+        )
 
     @set_s3_operation_rest('UPLOAD')
     @ratelimit

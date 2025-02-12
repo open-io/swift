@@ -211,12 +211,36 @@ def get_expiration(conf, key, size, last_modified, tags=None):
                 or expiration_candidate < expiration_date
             ):
                 # The match does improve the expiration date
-                expiration_date = expiration_candidate
+                expiration_date = expiration_candidate.replace(
+                    hour=0, minute=0, second=0)
                 expiration_rule = rule["ID"]
             # No need to test next rules as we already matched the best
             # candidate
             break
     return expiration_date, expiration_rule
+
+
+def get_mpu_abortion(conf, key, initial_date):
+    if conf is None:
+        return None, None
+    conf = json.loads(conf)
+    abortion_date = None
+    abortion_rule = None
+    for rule_action_id in conf.get("_abort_mpu_rules", []):
+        rule_id, action_id = rule_action_id.split("-", 1)
+        rule = conf["Rules"][rule_id]
+        days = (rule["AbortIncompleteMultipartUpload"]
+                [action_id]["DaysAfterInitiation"] + 1)
+        filters = rule.get("Filter", {})
+        if _match_rule(filters, key, 0, []):
+            abortion_date = initial_date + timedelta(days=days)
+            abortion_date = abortion_date.replace(hour=0, minute=0, second=0)
+            abortion_rule = rule["ID"]
+            # No need to test next rules as we already matched the best
+            # candidate
+            break
+
+    return abortion_date, abortion_rule
 
 
 def iso8601_to_int(when):
@@ -1024,7 +1048,8 @@ class LifecycleController(Controller):
             or self.bypass_feature_disabled(req, "lifecycle_transition")
         )
 
-        config = lifecycle_xml_conf_to_dict(data, allow_transitions=allow_transition)
+        config = lifecycle_xml_conf_to_dict(
+            data, allow_transitions=allow_transition)
         req.headers[LIFECYCLE_HEADER] = json.dumps(
             config, separators=(',', ':'))
         resp = req.get_response(self.app, method='POST')
