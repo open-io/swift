@@ -149,12 +149,16 @@ def _match_object_size_greater(threshold, _key, size, _tags):
 def _match_tags(filter_tags, _key, _size, tags):
     if tags is None:
         return False
-    tags = tags.get('Tagging', {}).get('TagSet', {}).get('Tag', [])
-    tags = {t['Key']: t['Value'] for t in tags}
+    tagging = tags.get('Tagging') or {}
+    tagset = tagging.get('TagSet') or {}
+    tags = tagset.get('Tag') or []
+    if not isinstance(tags, list):
+        tags = [tags]
+    tags = {t['Key']: t['Value'] or '' for t in tags}
     for filter_tag in filter_tags:
         key = filter_tag['Key']
         value = filter_tag['Value']
-        if key not in tags or value != tags[key]:
+        if key not in tags or value != (tags[key]):
             return False
     return True
 
@@ -189,7 +193,7 @@ def get_expiration(conf, key, size, last_modified, tags=None):
         rule_id, action_id = rule_action_id.split("-", 1)
         rule = conf["Rules"][rule_id]
         filters = rule.get("Filter", {})
-        expiration_candidate = datetime.fromtimestamp(
+        expiration_candidate = datetime.utcfromtimestamp(
             iso8601_to_int(rule["Expiration"][action_id]["Date"]))
         if _match_rule(filters, key, size, tags):
             expiration_date = expiration_candidate

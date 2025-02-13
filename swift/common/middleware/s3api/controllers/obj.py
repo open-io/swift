@@ -387,12 +387,14 @@ class ObjectController(Controller):
         # Add expiration header if lifecycle configuration is present
         if (self.conf.enable_lifecycle or
                 self.bypass_feature_disabled(req, "lifecycle")):
+            xml_tags = req.headers.get(OBJECT_TAGGING_HEADER)
+            tags_json = xmltodict.parse(xml_tags) if xml_tags else None
             expiration, rule_id = get_expiration(
                 sysmeta_info.get("s3api-lifecycle"),
                 req.object_name,
                 req.content_length,
                 resp.last_modified,
-                None,
+                tags_json,
             )
             if expiration is not None:
                 expiration = expiration.strftime("%a, %d %b %Y %H:%M:%S GMT")

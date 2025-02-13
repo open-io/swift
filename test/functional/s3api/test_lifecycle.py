@@ -1556,7 +1556,69 @@ class TestS3ApiLifecycle(S3ApiBaseBoto3):
         resp = self.conn.put_object(Bucket='bucket', Key='foo/bar', Body=b'')
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(
-            'expiry-date="Thu, 10 Oct 2030 02:00:00 GMT", '
+            'expiry-date="Thu, 10 Oct 2030 00:00:00 GMT", '
+            'rule-id="lifecycle-s3"',
+            resp['Expiration']
+        )
+        resp = self.conn.head_object(Bucket='bucket', Key='foo/bar')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(
+            'expiry-date="Thu, 10 Oct 2030 00:00:00 GMT", '
+            'rule-id="lifecycle-s3"',
+            resp['Expiration']
+        )
+
+    def test_expiration_header_with_empty_tag_value(self):
+        resp = self.conn.create_bucket(Bucket='bucket')
+        self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+
+        resp = self.conn.put_bucket_lifecycle_configuration(
+            Bucket='bucket',
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "lifecycle-s3",
+                        "Filter": {
+                            "And": {
+                                "Prefix": "foo/",
+                                "Tags": [
+                                    {
+                                        "Key": "foo",
+                                        "Value": "bar"
+                                    },
+                                    {
+                                        "Key": "foo2",
+                                        "Value": ""
+                                    }
+                                ]
+                            }
+                        },
+                        "Status": "Enabled",
+                        "Expiration": {
+                            "Date": "2030-10-10T00:00:00"
+                        }
+                    }]
+            }
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+
+        resp = self.conn.put_object(
+            Bucket='bucket',
+            Key='foo/bar',
+            Body=b'',
+            Tagging='foo=bar&foo2=&foo3=baz',
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(
+            'expiry-date="Thu, 10 Oct 2030 00:00:00 GMT", '
+            'rule-id="lifecycle-s3"',
+            resp['Expiration']
+        )
+
+        resp = self.conn.head_object(Bucket='bucket', Key='foo/bar')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(
+            'expiry-date="Thu, 10 Oct 2030 00:00:00 GMT", '
             'rule-id="lifecycle-s3"',
             resp['Expiration']
         )
