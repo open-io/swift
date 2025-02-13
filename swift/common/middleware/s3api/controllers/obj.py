@@ -354,7 +354,8 @@ class ObjectController(Controller):
         if HTTP_HEADER_TAGGING_KEY in req.headers:
             tagging = tagging_header_to_xml(
                 req.headers.pop(HTTP_HEADER_TAGGING_KEY))
-            req.headers[OBJECT_TAGGING_HEADER] = tagging
+            if tagging:
+                req.headers[OBJECT_TAGGING_HEADER] = tagging
 
         # Object lock
         object_lock_validate_headers(req.headers)

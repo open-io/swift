@@ -674,7 +674,8 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         if HTTP_HEADER_TAGGING_KEY in req.headers:
             tagging = tagging_header_to_xml(
                 req.headers.get(HTTP_HEADER_TAGGING_KEY))
-            req.headers[OBJECT_TAGGING_HEADER] = tagging
+            if tagging:
+                req.headers[OBJECT_TAGGING_HEADER] = tagging
 
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)

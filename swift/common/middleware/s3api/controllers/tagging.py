@@ -107,6 +107,10 @@ def tagging_header_to_xml(header_val):
     root, tagset = _create_tagging_xml_document()
     # AWS supports keys with empty values like key1=&key2=
     items = parse_qs(header_val, keep_blank_values=True)
+    if not items:
+        # We should not generate an empty xml document if no keys/values are
+        # present
+        return None
     for key, val in items.items():
         if len(val) != 1:
             raise InvalidArgument(HTTP_HEADER_TAGGING_KEY,
