@@ -75,22 +75,26 @@ GET_BUCKET_STATE_OUTPUT = {
 }
 
 
-def get_intelligent_tiering_info(app, req):
+def get_intelligent_tiering_info(app, req, read_caches=False):
     """
     Return a dict with intelligent tiering info.
     Keys are:
     - status (always available)
     - restoration_end_timestamp (only in Restored state)
+    Cache is not used by default to make sure that transitions are still
+    verified with the up-to-date status.
     """
     intelligent_tiering_info = {"status": BUCKET_STATE_NONE}
+    oio_cache = None
     try:
-        # Extract oio_cache and remove it from req if exists
-        oio_cache = req.environ.pop('oio.cache', None)
+        if not read_caches:
+            # If cache is not desired, remove it from req if if exists
+            oio_cache = req.environ.pop('oio.cache', None)
         try:
-            info = req.get_container_info(app, read_caches=False)
+            info = req.get_container_info(app, read_caches=read_caches)
         finally:
-            # Put oio_cache again if exists (further request may benefit
-            # of the cache)
+            # Put oio_cache again if exists and cache was used
+            # (further request may benefit of the cache)
             if oio_cache is not None:
                 req.environ['oio.cache'] = oio_cache
     except NoSuchBucket:

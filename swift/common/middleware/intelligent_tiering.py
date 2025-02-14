@@ -312,7 +312,7 @@ class IntelligentTieringMiddleware(object):
         resp = sub_req.get_response(self.app)
         if resp.status_int != 204:
             if resp.status_int == 404 and ignore_container_not_found:
-                # The container does not exist, but this is explicitely allowed
+                # The container does not exist, but this is explicitly allowed
                 return
             raise ServiceUnavailable('Failed to set property, status=%s' %
                                      resp.status)
@@ -637,7 +637,7 @@ class IntelligentTieringMiddleware(object):
         Then call the IAM callback from IAM middleware and add those generated
         rules.
         """
-        info = get_intelligent_tiering_info(self.app, req)
+        info = get_intelligent_tiering_info(self.app, req, read_caches=True)
         bucket_status = info["status"]
         it_rules = self._iam_generate_rules(bucket_status, req.container_name)
 
