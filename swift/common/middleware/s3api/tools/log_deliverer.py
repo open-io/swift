@@ -65,6 +65,7 @@ class LogDeliverer(object):
     DEFAULT_S3_LOG_PREFIX = 's3access-'
     DEFAULT_MAXSIZE = '100M'
     DEFAULT_ROTATE = 4
+    DEFAULT_LOGROTATE_COMMAND = "/usr/sbin/logrotate"
 
     def __init__(self, conf, logger=None):
         self.conf = conf
@@ -124,10 +125,17 @@ class LogDeliverer(object):
         self.log_delivery_id = self.s3_client.list_buckets()['Owner']['ID']
 
         # Generate config file for logrotate
+        self.logrotate_command = self.conf.get(
+            'logrotate_command', self.DEFAULT_LOGROTATE_COMMAND
+        )
+        postrotate_command = self.conf.get('postrotate_command')
         fd, self.logrotate_conf = tempfile.mkstemp(
             prefix='s3logrotate-', suffix='.conf')
         self.logger.info(
             'Generate config file for logrotate: %s', self.logrotate_conf)
+        # TODO: this conf should not be generated here but managed as
+        # the swift conf (with a parameter to the logrotate conf path in
+        # the bucket-log-deliverer conf)
         with os.fdopen(fd, 'w') as f:
             f.write(f"""{self.log_directory}/{self.log_prefix}*.log {{
     dateext
@@ -135,9 +143,12 @@ class LogDeliverer(object):
     hourly
     maxsize {self.conf.get('maxsize') or self.DEFAULT_MAXSIZE}
     nocompress
-    nocreate
     notifempty
     rotate {int_value(self.conf.get('rotate'), self.DEFAULT_ROTATE)}
+    {"sharedscripts" if postrotate_command else ""}
+    {"postrotate" if postrotate_command else ""}
+        {postrotate_command if postrotate_command else ""}
+    {"endscript" if postrotate_command else ""}
 }}
 """)
 
@@ -230,7 +241,7 @@ class LogDeliverer(object):
     def logrotate(self):
         try:
             self.logger.info('Execute logrotate to create the archives')
-            command = ('/usr/sbin/logrotate',)
+            command = (self.logrotate_command,)
             if self.user != 'root':
                 command += ('--state', f'{str(Path.home())}/.logrotate.status')
             command += (self.logrotate_conf,)
@@ -512,7 +523,7 @@ class LogDeliverer(object):
                         delete_log_file = True
                 except Exception as exc:
                     self.logger.warning(
-                        '[%s] Failed to fetch the modication time: %s',
+                        '[%s] Failed to fetch the mtime: %s',
                         log_file, exc)
             else:
                 self.logger.warning(

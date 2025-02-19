@@ -33,3 +33,5 @@ s3_secret_access_key = LOG_DELIVERY
 # Logrotate
 maxsize = 100M
 rotate = 4
+logrotate_command = /usr/sbin/logrotate
+postrotate_command = /usr/bin/sudo /usr/sbin/syslog-ng-ctl reopen
