@@ -189,6 +189,29 @@ class ObjectChecksumMixin(object):
             obj_name,
         )
 
+    def test_set_metadata_after(self):
+        obj_name = self.create_name(self.ALGORITHM + 'set-metadata-after')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name)
+
+        # Check that the object's checksum is not modified
+        # when metadata changes
+        self.client.put_object_acl(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            ACL='public-read',
+            ChecksumAlgorithm=self.ALGORITHM,
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name, check_listing=True)
+
     def test_batch_delete_with_checksum(self):
         # Verify that sending the request checksum does not cause
         # the deletion to fail

@@ -1627,8 +1627,6 @@ class S3Request(swob.Request):
                                              self.content_length)),
                         header,
                         b64digest)
-                if b64digest:
-                    self.headers[checksum_info.sysmeta_header] = b64digest
 
                 # Also get this into the container listing. Since it's a
                 # property of the body itself, hang it off the etag in the
@@ -1662,9 +1660,8 @@ class S3Request(swob.Request):
                     footers[override_hdr] = base + '; %s=%s' % (
                         checksum_info.listing_param_name,
                         self._checksum_input._expected_b64)
-                    if not b64digest:
-                        footers[storage_hdr] = \
-                            self._checksum_input._expected_b64
+                    footers[storage_hdr] = \
+                        self._checksum_input._expected_b64
 
                 self.environ['swift.callback.update_footers'] = \
                     update_for_checksum
