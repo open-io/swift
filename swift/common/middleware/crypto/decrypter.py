@@ -232,6 +232,10 @@ class DecrypterObjContext(BaseDecrypterContext):
             if encrypted_etag and 'container' in put_keys:
                 decrypted_etag_ct = self._decrypt_header(
                     etag_header, encrypted_etag, put_keys['container'])
+
+                # Remove any field used for Checksum Algorithm (like s3_crc32c)
+                decrypted_etag_ct = decrypted_etag_ct.split(";", 1)[0]
+
                 if decrypted_etag and decrypted_etag_ct != decrypted_etag:
                     self.app.logger.debug(
                         'Failed ETag verification: obj=%s ct=%s',
