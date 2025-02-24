@@ -112,7 +112,7 @@ class MultiObjectDeleteController(Controller):
             if not xml:
                 raise MissingRequestBodyError()
 
-            req.check_md5(xml)
+            req.check_md5(xml, mandatory=req.get_checksum_info() is None)
             elem = fromstring(xml, 'Delete', self.logger)
 
             quiet = elem.find('./Quiet')

@@ -213,6 +213,7 @@ class ChecksummingInput(object):
         self._to_read = content_length
         self._checksum_header = checksum_header
         self._checksum_name = checksum_header[len('x-amz-checksum-'):].lower()
+        self.check_mismatch = True
 
         self.checksum_info = CHECKSUMS_BY_HEADER.get(checksum_header)
         if self.checksum_info is None:
@@ -268,7 +269,7 @@ class ChecksummingInput(object):
             if self._expected is None:
                 self.expect(self._input.trailers.get(self._checksum_header))
 
-            if self._hasher.digest() != self._expected:
+            if self.check_mismatch and self._hasher.digest() != self._expected:
                 self.close()
                 # Since we don't return the last chunk, the PUT never completes
                 raise S3InputChecksumMismatch(
@@ -1590,7 +1591,7 @@ class S3Request(swob.Request):
             if len(self.headers['ETag']) != 32:
                 raise InvalidDigest(content_md5=value)
 
-        if self.method == 'PUT':
+        if self.method in ('PUT', 'POST'):
             checksum_headers = {
                 h.lower(): v
                 for h, v in self.headers.items()
@@ -1713,8 +1714,10 @@ class S3Request(swob.Request):
 
         return body
 
-    def check_md5(self, body):
+    def check_md5(self, body, mandatory=True):
         if 'HTTP_CONTENT_MD5' not in self.environ:
+            if not mandatory:
+                return
             raise InvalidRequest('Missing required header for this request: '
                                  'Content-MD5')
 
@@ -2672,6 +2675,11 @@ class S3Request(swob.Request):
         if self._checksum_input is None:
             return None
         return self._checksum_input.get_b64digest()
+
+    def check_checksum_mismatch(self, check):
+        if self._checksum_input is None:
+            return None
+        self._checksum_input.check_mismatch = check
 
     def get_response(self, app, method=None, container=None, obj=None,
                      headers=None, body=None, query=None):

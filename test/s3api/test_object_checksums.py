@@ -189,6 +189,15 @@ class ObjectChecksumMixin(object):
             obj_name,
         )
 
+    def test_batch_delete_with_checksum(self):
+        # Verify that sending the request checksum does not cause
+        # the deletion to fail
+        self.client.delete_objects(
+            Bucket=self.bucket_name,
+            Delete={'Objects': [{'Key': 'test'}]},
+            ChecksumAlgorithm=self.ALGORITHM,
+        )
+
     def test_mpu_upload_part_requires_checksum(self):
         obj_name = self.create_name(
             self.ALGORITHM + '-mpu-upload-part-missing-checksum')

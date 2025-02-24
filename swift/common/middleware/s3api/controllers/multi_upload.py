@@ -713,6 +713,9 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         """
         Handles Initiate Multipart Upload.
         """
+        # This request has no body and does not expect to receive a checksum
+        req.check_checksum_mismatch(False)
+
         # Create a unique S3 upload id from UUID to avoid duplicates.
         upload_id = unique_id()
         object_lock_validate_headers(req.headers)
@@ -1069,6 +1072,10 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         """
         Handles Complete Multipart Upload.
         """
+        # The checksum is not used to verify the body,
+        # but to verify the MPU checksum
+        req.check_checksum_mismatch(False)
+
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
 
