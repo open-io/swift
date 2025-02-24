@@ -16,7 +16,7 @@ jobs:
           apt-get -q install -y jq lcov python3-virtualenv virtualenv
           virtualenv -p /usr/bin/python3 --download $HOME/oiovenv
           . $HOME/oiovenv/bin/activate
-          # botocore<1.36.0 to be removed when CRC32 checksum algorithm is supported
+          # botocore<1.36.0 to be removed when CRC32 checksum algorithm is supported on prod
           pip install --progress-bar off --upgrade \
             "botocore<1.36.0" \
             awscli awscli-plugin-endpoint \
