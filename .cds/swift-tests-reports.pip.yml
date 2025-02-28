@@ -2,19 +2,26 @@ version: v1.0
 name: swift-tests-reports
 jobs:
   - job: Collect coverage
+    requirements:
+      - model: ubuntu-focal
     steps:
 
       - name: Checkout application
         checkout: '{{.cds.workspace}}'
 
       - name: Install dependencies
-        script:
-          - apt update
-          - apt install -y jq lcov python3-virtualenv virtualenv
-          - virtualenv -p /usr/bin/python3 $HOME/oiovenv
-          - . $HOME/oiovenv/bin/activate
-          - pip install --progress-bar off --upgrade pip
-          - pip install --progress-bar off --upgrade "botocore<1.36.0" awscli awscli-plugin-endpoint coverage virtualenv git+https://github.com/boyska/xq.git  # To be removed (botocore<1.36.0) when CRC32 checksum algorithm is supported
+        script: |+
+          #!/bin/bash
+          apt-get -q update
+          apt-get -q install -y jq lcov python3-virtualenv virtualenv
+          virtualenv -p /usr/bin/python3 --download $HOME/oiovenv
+          . $HOME/oiovenv/bin/activate
+          # botocore<1.36.0 to be removed when CRC32 checksum algorithm is supported
+          pip install --progress-bar off --upgrade \
+            "botocore<1.36.0" \
+            awscli awscli-plugin-endpoint \
+            coverage virtualenv \
+            git+https://github.com/boyska/xq.git
 
       - artifactDownload:
           path: '{{.cds.workspace}}'
@@ -22,13 +29,18 @@ jobs:
           tag: '{{.cds.version}}'
 
       - name: Aggregate coverage statistics
-        script:
-          - . $HOME/oiovenv/bin/activate
-          - cd {{.cds.workspace}}
-          - coverage combine
-          - coverage html --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" --show-contexts --skip-empty --ignore-errors -d coverage-report-py
-          - coverage json --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" --ignore-errors -o coverage-report-py-full.json
-          - jq -f .cds/python-coverage-filter.jq coverage-report-py-full.json > coverage-report-py.json
+        script: |+
+          #!/bin/bash
+          . $HOME/oiovenv/bin/activate
+          cd {{.cds.workspace}}
+          coverage combine
+          coverage html \
+            --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" \
+            --show-contexts --skip-empty --ignore-errors -d coverage-report-py
+          coverage json \
+            --omit="/usr/lib/python3*,swift/account/*,swift/cli/*,swift/container/*,swift/obj/*" \
+            --ignore-errors -o coverage-report-py-full.json
+          jq -f .cds/python-coverage-filter.jq coverage-report-py-full.json > coverage-report-py.json
 
       - name: Download test result artifacts
         artifactDownload:
@@ -47,12 +59,14 @@ jobs:
           shopt -s nullglob
           for TEST_RESULT in tests_report.*.xml
           do
-            count=$(xq -r "/testsuite/@tests" $TEST_RESULT)
+            count=$(xq -r "//testsuite/@tests" $TEST_RESULT)
             if [[ "$TEST_RESULT" =~ .+unit.* ]]
             then
               ((TEST_UNIT+=$count))
+              echo "$count unit tests found in $TEST_RESULT"
             else
               ((TEST_FUNC+=$count))
+              echo "$count functional tests found in $TEST_RESULT"
             fi
             ((TEST_COUNT+=$count))
           done

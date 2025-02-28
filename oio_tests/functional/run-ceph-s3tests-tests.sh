@@ -17,9 +17,7 @@ rm -rf third_party/ceph-s3tests-reports/ceph-tests
 ln -s ../../third_party/ceph-s3tests third_party/ceph-s3tests-reports/ceph-tests
 cd third_party/ceph-s3tests-reports
 pip install -r requirements.txt
-./bin/get_ceph_test_attributes.py
 cd ../..
-mv third_party/ceph-s3tests-reports/output/ceph-s3.out.yaml ceph-s3tests-attributes.yaml
 
 # IAM, with rules in a fdb database
 RULES_FILE="$PWD/etc/iam-rules-sample.json"

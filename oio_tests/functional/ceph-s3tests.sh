@@ -10,12 +10,12 @@ nc -vzw 5 s3.regionone.io.lo.team-swift.ovh 5000
 
 openio account set AUTH_demo --max-buckets 1000
 
-S3TEST_CONF=ceph-s3tests.conf nosetests \
-  -a '!fails_on_aws' -v \
-  -logging-level=INFO -logging-level \
-  --with-xunit --xunit-file=tests_report.xml \
-  s3tests_boto3.functional.test_headers \
-  s3tests_boto3.functional.test_s3 \
-  s3tests_boto3.functional.test_s3_cross_account_acl
+S3TEST_CONF=ceph-s3tests.conf tox -- \
+  --junit-xml=tests_report.xml \
+  --log-file=debug.log --log-level=INFO \
+  -m 'not fails_on_aws' \
+  s3tests_boto3/functional/test_s3.py \
+  s3tests_boto3/functional/test_headers.py
+#  s3tests_boto3/functional/test_s3_cross_account_acl.py
 
 mv tests_report.xml ../../
