@@ -15,7 +15,7 @@ S3TEST_CONF=ceph-s3tests.conf tox -- \
   --log-file=debug.log --log-level=INFO \
   -m 'not fails_on_aws' \
   s3tests_boto3/functional/test_s3.py \
-  s3tests_boto3/functional/test_headers.py
-#  s3tests_boto3/functional/test_s3_cross_account_acl.py
+  s3tests_boto3/functional/test_headers.py \
+  s3tests_boto3/functional/test_s3_cross_account_acl.py
 
 mv tests_report.xml ../../
