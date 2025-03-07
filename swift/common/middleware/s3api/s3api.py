@@ -242,6 +242,7 @@ class ListingEtagMiddleware(object):
                         item[info.listing_param_name] = \
                             params.pop(info.listing_param_name)
                         changed = True
+                        break
                 if changed:
                     item['hash'] = value + ''.join(
                         '; %s=%s' % kv for kv in params.items())

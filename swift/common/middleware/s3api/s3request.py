@@ -2663,10 +2663,10 @@ class S3Request(swob.Request):
         else:
             raise BadRequest(err_msg.decode('utf8'))
 
-    def get_checksum_name(self):
+    def get_checksum_info(self):
         if self._checksum_input is None:
             return None
-        return self._checksum_input.checksum_info.name
+        return self._checksum_input.checksum_info
 
     def get_checksum_b64digest(self):
         if self._checksum_input is None:

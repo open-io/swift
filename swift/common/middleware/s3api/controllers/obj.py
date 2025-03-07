@@ -386,9 +386,9 @@ class ObjectController(Controller):
             req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
         resp = req.get_response(self.app, query=query)
 
-        checksum_algo = req.get_checksum_name()
-        if checksum_algo:
-            resp.headers['x-amz-checksum-' + checksum_algo] = \
+        checksum_info = req.get_checksum_info()
+        if checksum_info:
+            resp.headers[checksum_info.client_header] = \
                 req.get_checksum_b64digest()
             resp.headers['x-amz-checksum-type'] = CHECKSUM_FULL_OBJECT
 

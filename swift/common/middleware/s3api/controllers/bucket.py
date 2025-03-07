@@ -395,19 +395,17 @@ class BucketController(Controller):
                 # quote-wrap.
             SubElement(contents, 'ETag').text = etag
             SubElement(contents, 'Size').text = str(o['bytes'])
-            checksum_type = None
             for info in CHECKSUMS:
                 b64digest = o.get(info.listing_param_name)
                 if b64digest is not None:
                     SubElement(contents, 'ChecksumAlgorithm').text = \
                         info.name.upper()
-                    if checksum_type is None:
-                        checksum_type = (
-                            CHECKSUM_COMPOSITE if '-' in b64digest
-                            else CHECKSUM_FULL_OBJECT
-                        )
-            if checksum_type:
-                SubElement(contents, 'ChecksumType').text = checksum_type
+                    checksum_type = (
+                        CHECKSUM_COMPOSITE if '-' in b64digest
+                        else CHECKSUM_FULL_OBJECT
+                    )
+                    SubElement(contents, 'ChecksumType').text = checksum_type
+                    break
         if fetch_owner or listing_type != 'version-2':
             owner = SubElement(contents, 'Owner')
             SubElement(owner, 'ID').text = req.user_id

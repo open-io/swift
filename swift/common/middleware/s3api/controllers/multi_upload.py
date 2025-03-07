@@ -299,17 +299,22 @@ class PartController(Controller):
 
         algo = resp.sysmeta_headers.get(sysmeta_header(
             'object', 'checksum-algorithm'))
-        request_algo = req.get_checksum_name()
-        if algo and algo != request_algo:
-            # Read a byte to ensure we've sent a 100 Continue if needed.
-            # Otherwise, some clients (boto3, at least) will try to re-use
-            # the connection without sending the body, resulting in a deadlock
-            # until one side times out and closes the connection.
-            req.environ['wsgi.input'].read(1)
-            raise InvalidRequest(
-                'Checksum Type mismatch occurred, expected checksum Type: '
-                '%s, actual checksum Type: %s' % (
-                    algo or 'null', request_algo or 'null'))
+        if algo:
+            request_checksum_info = req.get_checksum_info()
+            if request_checksum_info is None:
+                request_algo = 'null'
+            else:
+                request_algo = request_checksum_info.name
+            if algo != request_algo:
+                # Read a byte to ensure we've sent a 100 Continue if needed.
+                # Otherwise, some clients (boto3, at least) will try to re-use
+                # the connection without sending the body, resulting in a
+                # deadlock until one side times out and closes the connection.
+                req.environ['wsgi.input'].read(1)
+                raise InvalidRequest(
+                    'Checksum Type mismatch occurred, expected checksum Type: '
+                    '%s, actual checksum Type: %s' % (
+                        algo, request_algo))
 
         # We cannot add a part to an already completed MPU
         if resp.sw_headers.get('X-Static-Large-Object'):
@@ -428,9 +433,9 @@ class PartController(Controller):
             else:
                 raise err
 
-        checksum_algo = req.get_checksum_name()
-        if checksum_algo:
-            resp.headers['x-amz-checksum-' + checksum_algo] = \
+        checksum_info = req.get_checksum_info()
+        if checksum_info:
+            resp.headers[checksum_info.client_header] = \
                 req.get_checksum_b64digest()
 
         if is_server_side_copy:
@@ -984,6 +989,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     SubElement(
                         part_elem, checksum_info.client_listing_name
                     ).text = i[key]
+                    break
 
         body = finalize_xml_texts(tostring(result_elem))
 
