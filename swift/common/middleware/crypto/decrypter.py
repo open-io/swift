@@ -32,8 +32,7 @@ from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     HTTPForbidden, HTTPInternalServerError, wsgi_to_bytes, bytes_to_wsgi
 from swift.common.utils import get_logger, config_true_value, \
     parse_content_range, closing_if_possible, parse_content_type, \
-    FileLikeIter, multipart_byteranges_to_document_iters, \
-    MD5_OF_EMPTY_STRING
+    FileLikeIter, multipart_byteranges_to_document_iters
 from swift.proxy.controllers.base import get_object_info
 
 DECRYPT_CHUNK_SIZE = 65536
@@ -400,14 +399,6 @@ class DecrypterObjContext(BaseDecrypterContext):
                 body='Error decrypting object',
                 content_type='text/plain')
 
-        # When encryption is enabled, but object is zero-length, no
-        # encryption is performed and therefore no ETag is saved
-        # by swift. Ensure we return the right ETag (MD5) in case the
-        # backend uses another checksum algorithm.
-        content_length = self._response_header_value('Content-Length')
-        if content_length is not None and int(content_length) == 0:
-            self.update_etag(MD5_OF_EMPTY_STRING)
-
         mod_resp_headers = self.decrypt_resp_headers(
             put_keys, post_keys, req.environ,
         )
@@ -544,8 +535,6 @@ class DecrypterContContext(BaseDecrypterContext):
                     if isinstance(err, UnknownSecretIdError):
                         bad_keys.add(err.args[0])
                     obj_dict['hash'] = '<unknown>'
-            elif obj_dict.get('bytes') == 0:
-                obj_dict['hash'] = MD5_OF_EMPTY_STRING
         return obj_dict
 
 

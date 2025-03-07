@@ -33,7 +33,7 @@ from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.middleware.s3api.controllers.multi_upload import (
     MpuAlreadyCompleted, MpuAborted
 )
-from swift.common.oio_utils import check_if_none_match, \
+from swift.common.oio_utils import check_if_none_match, get_object_etag, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
     header_mapping, BUCKET_NAME_PROP, MULTIUPLOAD_SUFFIX, \
     obj_version_from_env, oio_versionid_to_swift_versionid, \
@@ -369,10 +369,7 @@ class ObjectController(BaseObjectController):
                         is_object_transient_sysmeta(k) or \
                         k.lower() in self.allowed_headers:
                     resp.headers[str(k)] = v
-        hash_ = metadata.get('hash')
-        if hash_ is not None:
-            hash_ = hash_.lower()
-        resp.headers['etag'] = hash_
+        resp.headers['etag'] = get_object_etag(metadata, self.app.logger)
         resp.headers['x-object-sysmeta-version-id'] = \
             oio_versionid_to_swift_versionid(metadata.get('version'))
         resp.last_modified = int(metadata['mtime'])

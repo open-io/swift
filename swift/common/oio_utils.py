@@ -15,7 +15,8 @@
 
 from functools import wraps
 from swift.common.request_helpers import split_reserved_name
-from swift.common.utils import Timestamp, config_true_value
+from swift.common.utils import Timestamp, config_true_value, \
+    MD5_OF_EMPTY_STRING
 
 from swift.common.swob import HTTPMethodNotAllowed, \
     HTTPForbidden, HTTPNotFound, \
@@ -27,6 +28,7 @@ from oio.common.constants import REQID_HEADER, \
 from oio.common.exceptions import MethodNotAllowed, NoSuchContainer, \
     NoSuchObject, OioNetworkException, ServiceBusy, ServiceUnavailable, \
     DeadlineReached
+from oio.common.storage_method import parse_chunk_method
 
 
 # As it is difficult to pass custom header with most S3 SDKs. The only way is
@@ -208,18 +210,57 @@ def extract_oio_headers(fnc):
                 query['new_version'] = req.headers[FORCED_VERSION_HEADER]
             # ... however it's now best to use AWS_OIO_PREFIX for S3 SDKs
             # compatibilities.
-            for key, val in list(req.environ["headers_raw"]):
+            for key, val in list(req.environ['headers_raw']):
                 lowered = key.lower()
                 if lowered.startswith(AWS_OIO_PREFIX):
                     suffix = lowered[AWS_OIO_PREFIX_LEN:]
                     if suffix in header_mapping:
                         query_key, convert_query_val = header_mapping[
-                            suffix]["query"]
+                            suffix]['query']
                         query[query_key] = convert_query_val(val)
                     else:
                         self.logger.debug(
-                            "%s is not mapped to any OpenIO param", key)
+                            '%s is not mapped to any OpenIO param', key)
         return fnc(self, req, *args, **kwargs)
     return _extract_oio_headers
 
 
+def get_object_etag(metadata, logger):
+    chunk_method = metadata.get('chunk_method')
+    obj_checksum_algo = None
+    if chunk_method:
+        # Before adding other object checksum algorithm,
+        # checksum was always MD5
+        obj_checksum_algo = parse_chunk_method(chunk_method)[1].get(
+            'oca', 'md5')
+    else:
+        logger.warning('The chunk method is missing')
+    if obj_checksum_algo == 'md5':
+        # The object checksum can be used for the ETag
+        etag = metadata.get('hash')
+    else:
+        size = metadata.get('size')
+        if size is not None:
+            size = int(size)
+        properties = metadata.get('properties', {})
+        if size == 0:
+            # It is an empty object, so the MD5 value is known
+            etag = MD5_OF_EMPTY_STRING
+        elif (
+            'x-object-sysmeta-container-update-override-etag' not in
+            properties
+        ):
+            logger.warning(
+                'The object checksum is not MD5 '
+                'and there is no override for the Etag')
+            # The ETag will not be correct, it is better to return no value
+            etag = None
+        else:
+            # The object checksum algorithm doesn't matter here,
+            # the Etag is overridden
+            etag = metadata.get('hash')
+    if etag is None:
+        logger.warning('The object checksum is missing')
+    else:
+        etag = etag.lower()
+    return etag

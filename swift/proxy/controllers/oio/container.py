@@ -16,7 +16,7 @@
 import json
 
 from swift.common.oio_utils import \
-    handle_oio_no_such_container, handle_oio_timeout, \
+    get_object_etag, handle_oio_no_such_container, handle_oio_timeout, \
     handle_service_busy, BUCKET_NAME_PROP, \
     BUCKET_OBJECT_LOCK_PROP, oio_versionid_to_swift_versionid, \
     split_oio_version_from_name
@@ -229,9 +229,7 @@ class ContainerController(SwiftContainerController):
         if 'x-object-sysmeta-container-update-override-etag' in props:
             hash_ = props['x-object-sysmeta-container-update-override-etag']
         else:
-            hash_ = record.get('hash')
-            if hash_ is not None:
-                hash_ = hash_.lower()
+            hash_ = get_object_etag(record, self.app.logger)
 
         response = {'name': record['name'],
                     'bytes': record['size'],
