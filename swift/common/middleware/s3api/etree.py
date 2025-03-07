@@ -193,7 +193,11 @@ def _finalize_xml_texts(to_be_escaped_later, body):
 
 def _replace_fake_text(to_be_escaped_later, m):
     i = int(m.group(1))
-    escaped_name = saxutils.escape(to_be_escaped_later[i])
+    if isinstance(to_be_escaped_later[i], bytes):
+        value = to_be_escaped_later[i].decode("utf-8")
+    else:
+        value = str(to_be_escaped_later[i])
+    escaped_name = saxutils.escape(value)
     return re.sub(_VALID_XML_CHAR_REGEXP, _char_to_char_reference,
                   escaped_name).encode('utf-8')
 
