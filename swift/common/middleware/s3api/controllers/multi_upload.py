@@ -902,12 +902,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             raise InvalidArgument('encoding-type', encoding_type, err_msg)
 
         upload_id = _get_upload_id(req)
-        resp = _get_upload_info(req, self.app, upload_id)
+        slo_resp = _get_upload_info(req, self.app, upload_id)
 
         # We cannot list parts on an already completed MPU
-        if resp.sw_headers.get('X-Static-Large-Object'):
+        if slo_resp.sw_headers.get('X-Static-Large-Object'):
             raise NoSuchUpload(upload_id=upload_id)
-        storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
+        storage_class = slo_resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
 
         maxparts = req.get_validated_param(
             'max-parts', DEFAULT_MAX_PARTS_LISTING,
@@ -924,7 +924,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         }
 
         headers = self.get_lifecycle_headers(
-            req, None, req.object_name, resp.last_modified)
+            req, None, req.object_name, slo_resp.last_modified)
 
         container = req.container_name + MULTIUPLOAD_SUFFIX
         # Because the parts are out of order in Swift, we list up to the
@@ -988,6 +988,14 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         SubElement(result_elem, 'IsTruncated').text = \
             'true' if truncated else 'false'
 
+        algo = slo_resp.sysmeta_headers.get(sysmeta_header(
+            'object', 'checksum-algorithm'))
+        if algo:
+            SubElement(result_elem, 'ChecksumAlgorithm').text = \
+                algo.upper()
+            # CHECKSUM_FULL_OBJECT is not yet implemented
+            SubElement(result_elem, 'ChecksumType').text = CHECKSUM_COMPOSITE
+
         for i in objList:
             part_elem = SubElement(result_elem, 'Part')
             SubElement(part_elem, 'PartNumber').text = i['name'].split('/')[-1]
@@ -995,13 +1003,11 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 i['last_modified'][:-3] + 'Z'
             SubElement(part_elem, 'ETag').text = '"%s"' % i['hash']
             SubElement(part_elem, 'Size').text = str(i['bytes'])
-            for checksum_info in CHECKSUMS:
-                key = checksum_info.listing_param_name
-                if key in i:
-                    SubElement(
-                        part_elem, checksum_info.client_listing_name
-                    ).text = i[key]
-                    break
+            if algo:
+                checksum_info = CHECKSUMS_BY_NAME[algo]
+                SubElement(
+                    part_elem, checksum_info.client_listing_name
+                ).text = i[checksum_info.listing_param_name]
 
         body = finalize_xml_texts(tostring(result_elem))
 

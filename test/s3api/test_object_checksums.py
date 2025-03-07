@@ -1230,6 +1230,9 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             {k: v for k, v in p.items() if k != 'LastModified'}
             for p in list_parts_resp['Parts']
         ])
+        self.assertEqual('CRC32C', list_parts_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', list_parts_resp['ChecksumType'])
 
     def test_mpu_complete_mixed_checksums(self):
         obj_name, upload_id, part_etag = self._upload_parts(
