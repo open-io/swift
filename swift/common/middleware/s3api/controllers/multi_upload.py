@@ -1273,9 +1273,33 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         # Leave base header value blank; SLO will populate
         c_etag = '; s3_etag=%s' % s3_etag
         if chksum:
-            s3_chksum = '%s-%d' % (
-                base64.b64encode(chksum.digest()).decode('ascii'),
-                len(manifest))
+            b64digest = base64.b64encode(chksum.digest()).decode('ascii')
+            s3_chksum = '%s-%d' % (b64digest, len(manifest))
+            # Check the checksum
+            checksum_headers = req.get_checksum_headers()
+            if checksum_headers:
+                checksum_header, expected_b64digest = list(
+                    checksum_headers.items())[0]
+                expected_b64digest_split = expected_b64digest.rsplit('-', 1)
+                if len(expected_b64digest_split) == 2:
+                    try:
+                        expected_parts_number = int(
+                            expected_b64digest_split[1])
+                    except ValueError:
+                        raise InvalidRequest(
+                            'Value for %s header is invalid.' % checksum_header
+                        )
+                    expected_b64digest = expected_b64digest_split[0]
+                else:
+                    expected_parts_number = len(manifest)
+                expected_s3_chksum = '%s-%d' % (
+                    expected_b64digest, expected_parts_number)
+                if (
+                    expected_s3_chksum != s3_chksum
+                ):
+                    raise BadDigest(
+                        'The %s you specified did not '
+                        'match the calculated checksum.' % algo)
             s3_etag_header = sysmeta_header('object', 'checksum-' + algo)
             headers[s3_etag_header] = s3_chksum
             c_etag += '; s3_%s=%s' % (algo, s3_chksum)

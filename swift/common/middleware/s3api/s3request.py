@@ -234,6 +234,9 @@ class ChecksummingInput(object):
     def get_b64digest(self):
         return base64.b64encode(self._hasher.digest()).decode('ascii')
 
+    def get_expected_b64digest(self):
+        return self._expected_b64
+
     def expect(self, expected_checksum):
         if expected_checksum is None:
             self._expected = None
@@ -1479,6 +1482,14 @@ class S3Request(swob.Request):
 
         return aws_sha256, None
 
+    def get_checksum_headers(self):
+        return {
+            h.lower(): v
+            for h, v in self.headers.items()
+            if h.lower().startswith('x-amz-checksum-')
+            and h.lower() != 'x-amz-checksum-algorithm'
+        }
+
     def _validate_headers(self):
         if 'CONTENT_LENGTH' in self.environ:
             try:
@@ -1593,11 +1604,7 @@ class S3Request(swob.Request):
                 raise InvalidDigest(content_md5=value)
 
         if self.method in ('PUT', 'POST'):
-            checksum_headers = {
-                h.lower(): v
-                for h, v in self.headers.items()
-                if h.lower().startswith('x-amz-checksum-')
-                and h.lower() != 'x-amz-checksum-algorithm'}
+            checksum_headers = self.get_checksum_headers()
 
             if not checksum_headers:
                 checksum_headers = {
@@ -1620,6 +1627,11 @@ class S3Request(swob.Request):
                         checksum_info.name).lower() != checksum_info.name:
                     raise InvalidRequest('Value for x-amz-sdk-checksum-'
                                          'algorithm header is invalid.')
+
+                if self.method == 'POST' and b64digest is not None:
+                    # Ignore the number of parts on a complete MPU,
+                    # it will be checked later
+                    b64digest = b64digest.rsplit('-', 1)[0]
 
                 self.environ['wsgi.input'] = self._checksum_input = \
                     ChecksummingInput(
@@ -2675,9 +2687,14 @@ class S3Request(swob.Request):
             return None
         return self._checksum_input.get_b64digest()
 
-    def check_checksum_mismatch(self, check):
+    def get_checksum_expected_b64digest(self):
         if self._checksum_input is None:
             return None
+        return self._checksum_input.get_expected_b64digest()
+
+    def check_checksum_mismatch(self, check):
+        if self._checksum_input is None:
+            return
         self._checksum_input.check_mismatch = check
 
     def get_response(self, app, method=None, container=None, obj=None,

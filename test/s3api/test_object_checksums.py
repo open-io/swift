@@ -21,6 +21,8 @@ import hashlib
 import struct
 from unittest import SkipTest
 
+from packaging.version import Version
+
 from swift.common.checksum import crc32c
 from test.s3api import BaseS3TestCaseWithBucket
 
@@ -375,6 +377,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -401,6 +406,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -426,6 +434,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -451,6 +462,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -463,7 +477,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, part_resp[
             'ResponseMetadata']['HTTPStatusCode'])
 
-    def test_mpu_complete_requires_checksum(self):
+    def test_mpu_complete_requires_part_checksum(self):
         obj_name = self.create_name(
             self.ALGORITHM + '-mpu-complete-requires-checksum')
         create_mpu_resp = self.client.create_multipart_upload(
@@ -471,6 +485,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -505,7 +522,7 @@ class ObjectChecksumMixin(object):
             obj_name,
         )
 
-    def test_mpu_complete_invalid_checksum(self):
+    def test_mpu_complete_invalid_part_checksum(self):
         obj_name = self.create_name(
             self.ALGORITHM + '-mpu-complete-invalid-checksum')
         create_mpu_resp = self.client.create_multipart_upload(
@@ -513,6 +530,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -547,7 +567,7 @@ class ObjectChecksumMixin(object):
             ArgumentValue=self.ALGORITHM + ':' + self.INVALID + ';',
         )
 
-    def test_mpu_complete_bad_checksum(self):
+    def test_mpu_complete_bad_part_checksum(self):
         obj_name = self.create_name(
             self.ALGORITHM + '-mpu-complete-bad-checksum')
         create_mpu_resp = self.client.create_multipart_upload(
@@ -555,6 +575,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -601,6 +624,9 @@ class ObjectChecksumMixin(object):
             ChecksumAlgorithm=self.ALGORITHM)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -635,6 +661,8 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, complete_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
+        self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
+                         complete_mpu_resp['Checksum' + self.ALGORITHM])
 
         head_resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name)
@@ -694,10 +722,123 @@ class ObjectChecksumMixin(object):
             resp['ResponseMetadata']['HTTPHeaders']
         )
 
+    def test_mpu_complete_invalid_checksum(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-complete-good')
+
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                MultipartUpload=parts,
+                UploadId=upload_id,
+                **{'Checksum' + self.ALGORITHM: self.INVALID},
+            )
+        resp = caught.exception.response
+        code = resp['ResponseMetadata']['HTTPStatusCode']
+        self.assertEqual(400, code)
+        self.assertEqual('InvalidRequest', resp['Error']['Code'])
+        self.assertEqual(
+            resp['Error']['Message'],
+            f'Value for {self.CHECKSUM_HDR} header is invalid.')
+
+    def test_mpu_complete_bad_checksum(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-complete-good')
+
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                MultipartUpload=parts,
+                UploadId=upload_id,
+                **{'Checksum' + self.ALGORITHM: self.BAD},
+            )
+        resp = caught.exception.response
+        code = resp['ResponseMetadata']['HTTPStatusCode']
+        self.assertEqual(400, code)
+        self.assertEqual('BadDigest', resp['Error']['Code'])
+        self.assertEqual(
+            resp['Error']['Message'],
+            f'The {self.ALGORITHM.lower()} you specified did not match '
+            'the calculated checksum.')
+
+    def test_mpu_complete_good_checksum(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-complete-good')
+
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            MultipartUpload=parts,
+            UploadId=upload_id,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED_COMPOSITE_1},
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
+        self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
+                         complete_mpu_resp['Checksum' + self.ALGORITHM])
+
+    def test_mpu_complete_good_checksum_with_invalid_part_number(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-complete-good')
+
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                MultipartUpload=parts,
+                UploadId=upload_id,
+                **{'Checksum' + self.ALGORITHM:
+                   self.EXPECTED_COMPOSITE_1 + '-a'},
+            )
+        resp = caught.exception.response
+        code = resp['ResponseMetadata']['HTTPStatusCode']
+        self.assertEqual(400, code)
+        self.assertEqual('InvalidRequest', resp['Error']['Code'])
+        self.assertEqual(
+            resp['Error']['Message'],
+            f'Value for {self.CHECKSUM_HDR} header is invalid.')
+
+    def test_mpu_complete_good_checksum_with_bad_part_number(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-complete-good')
+
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                MultipartUpload=parts,
+                UploadId=upload_id,
+                **{'Checksum' + self.ALGORITHM:
+                   self.EXPECTED_COMPOSITE_1 + '-2'},
+            )
+        resp = caught.exception.response
+        code = resp['ResponseMetadata']['HTTPStatusCode']
+        self.assertEqual(400, code)
+        self.assertEqual('BadDigest', resp['Error']['Code'])
+        self.assertEqual(
+            resp['Error']['Message'],
+            f'The {self.ALGORITHM.lower()} you specified did not match '
+            'the calculated checksum.')
+
+    def test_mpu_complete_good_checksum_with_good_part_number(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-complete-good')
+
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            MultipartUpload=parts,
+            UploadId=upload_id,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED_COMPOSITE_1 + '-1'},
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
+        self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
+                         complete_mpu_resp['Checksum' + self.ALGORITHM])
+
 
 class TestObjectChecksumCRC32(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC32'
     EXPECTED = 'y/Q5Jg=='
+    EXPECTED_COMPOSITE_1 = '7kxlUA=='
     INVALID = 'y/Q5Jh=='
     BAD = 'z/Q5Jg=='
 
@@ -705,6 +846,7 @@ class TestObjectChecksumCRC32(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
 class TestObjectChecksumCRC32C(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC32C'
     EXPECTED = '4waSgw=='
+    EXPECTED_COMPOSITE_1 = 'pzJFoA=='
     INVALID = '4waSgx=='
     BAD = '5waSgw=='
 
@@ -732,6 +874,7 @@ class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
 class TestObjectChecksumSHA1(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'SHA1'
     EXPECTED = '98O8HYCOBHMq32eZZczDTKeuNEE='
+    EXPECTED_COMPOSITE_1 = 'zGcEPHvP9e6lVmvZsfPHT9mlz10='
     INVALID = '98O8HYCOBHMq32eZZczDTKeuNEF='
     BAD = '+8O8HYCOBHMq32eZZczDTKeuNEE='
 
@@ -739,6 +882,7 @@ class TestObjectChecksumSHA1(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
 class TestObjectChecksumSHA256(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'SHA256'
     EXPECTED = 'FeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiU='
+    EXPECTED_COMPOSITE_1 = 'KSsNAHVmgy25S/rmic1w0at3KBH9RLn0nYVQ7p6mpJQ='
     INVALID = 'FeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiV='
     BAD = 'GeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiU='
 
@@ -1136,6 +1280,9 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             ChecksumAlgorithm='CRC32C')
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -1162,6 +1309,9 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             ChecksumAlgorithm='CRC32C')
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -1190,6 +1340,9 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             ChecksumAlgorithm='CRC32C')
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         for part_num in part_numbers:
             upload_part_resp = self.client.upload_part(
@@ -1353,6 +1506,9 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             ChecksumAlgorithm='CRC32C')
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        if Version(botocore.__version__) >= Version('1.36.0'):
+            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_body = b'\x00' * 5 * 1024 * 1024
         part_crc32c = base64.b64encode(struct.pack("!I", crc32c(
