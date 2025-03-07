@@ -26,7 +26,8 @@ from swift.common import swob
 from swift.common.utils import config_true_value
 from swift.common.request_helpers import is_sys_meta
 
-from swift.common.middleware.s3api.utils import STANDARD_STORAGE_CLASS, \
+from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, \
+    CHECKSUM_FULL_OBJECT, STANDARD_STORAGE_CLASS, \
     snake_to_camel, sysmeta_prefix, sysmeta_header, CHECKSUMS
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     tostring, init_xml_texts
@@ -210,15 +211,6 @@ class S3Response(S3ResponseBase, swob.Response):
             # because we don't actually know how many parts there are.)
             headers['etag'] += '-N'
 
-        if self.request and self.request.headers.get(
-                'x-amz-checksum-mode') == 'ENABLED':
-            # Client requested checksums; see if we stored any
-            for info in CHECKSUMS:
-                checksum = s3_sysmeta_headers.get(
-                    sysmeta_header('object', 'checksum-' + info.name))
-                if checksum:
-                    headers['x-amz-checksum-' + info.name] = checksum
-
         self.headers = headers
 
         if self.etag:
@@ -229,6 +221,19 @@ class S3Response(S3ResponseBase, swob.Response):
         # Used for pure swift header handling at the request layer
         self.sw_headers = sw_headers
         self.sysmeta_headers = s3_sysmeta_headers
+
+        if self._can_add_checksum_headers():
+            # Client requested checksums; see if we stored any
+            for info in CHECKSUMS:
+                checksum = s3_sysmeta_headers.get(info.sysmeta_header)
+                if checksum:
+                    headers[info.client_header] = checksum
+                    headers['x-amz-checksum-type'] = (
+                        CHECKSUM_COMPOSITE
+                        if '-' in checksum
+                        else CHECKSUM_FULL_OBJECT
+                    )
+                    break
 
     @classmethod
     def from_swift_resp(cls, sw_resp, storage_policy_to_class=None):
@@ -250,6 +255,15 @@ class S3Response(S3ResponseBase, swob.Response):
         resp.environ.update(sw_resp.environ)
 
         return resp
+
+    def _can_add_checksum_headers(self):
+        if self.status_int == 304:
+            # The if-none-match or if-modified-since option was used,
+            # no checksum information is returned
+            return False
+        if not self.request:
+            return False
+        return self.request.headers.get('x-amz-checksum-mode') == 'ENABLED'
 
 
 HTTPOk = partial(S3Response, status=200)

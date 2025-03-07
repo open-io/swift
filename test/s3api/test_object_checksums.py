@@ -52,6 +52,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         headers = resp['ResponseMetadata']['HTTPHeaders']
         self.assertNotIn(self.CHECKSUM_HDR, headers)  # Not there by default!
+        self.assertNotIn('x-amz-checksum-type', headers)
 
         # Need to request it
         resp = self.client.head_object(
@@ -60,6 +61,7 @@ class ObjectChecksumMixin(object):
         headers = resp['ResponseMetadata']['HTTPHeaders']
         self.assertIn(self.CHECKSUM_HDR, headers)
         self.assertEqual(headers[self.CHECKSUM_HDR], self.EXPECTED)
+        self.assertIn('x-amz-checksum-type', headers)
 
         if not check_listing:
             # there are a lot of listing formats to check; since this can get
@@ -219,6 +221,56 @@ class ObjectChecksumMixin(object):
             Bucket=self.bucket_name,
             Delete={'Objects': [{'Key': 'test'}]},
             ChecksumAlgorithm=self.ALGORITHM,
+        )
+
+    def test_if_none_match_on_object_with_checksum(self):
+        obj_name = self.create_name(self.ALGORITHM + 'if-none-match')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name)
+        etag = resp['ETag']
+
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.head_object(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                IfNoneMatch=etag,
+                ChecksumMode='ENABLED',
+            )
+        resp = caught.exception.response
+        self.assertEqual(304, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.get_object(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                IfNoneMatch=etag,
+                ChecksumMode='ENABLED',
+            )
+        resp = caught.exception.response
+        self.assertEqual(304, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('304', resp['Error']['Code'])
+        self.assertEqual('Not Modified', resp['Error']['Message'])
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders'],
         )
 
     def test_mpu_upload_part_requires_checksum(self):
