@@ -1006,6 +1006,7 @@ class S3Request(swob.Request):
         self._chunk_signature_valid = True
         self._checksum_input = None
         self.app = app
+        self.callback_resp = None
 
         # Reset S3 information for this new S3 request
         self.environ['s3api.info'] = {}
@@ -2529,7 +2530,8 @@ class S3Request(swob.Request):
         _, _, container, obj = path_info
 
         resp = S3Response.from_swift_resp(
-            sw_resp, storage_policy_to_class=self.storage_policy_to_class)
+            sw_resp, storage_policy_to_class=self.storage_policy_to_class,
+            callback=self.callback_resp)
         status = resp.status_int  # pylint: disable-msg=E1101
 
         if not self.user_id:

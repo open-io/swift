@@ -273,6 +273,100 @@ class ObjectChecksumMixin(object):
             resp['ResponseMetadata']['HTTPHeaders'],
         )
 
+    def test_full_content_range(self):
+        obj_name = self.create_name(self.ALGORITHM + 'full-content-range')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name)
+
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Range=f'bytes=0-{len(TEST_BODY)-1}',
+            ChecksumMode='ENABLED',
+        )
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertEqual(
+            resp['ResponseMetadata']['HTTPHeaders'][self.CHECKSUM_HDR],
+            self.EXPECTED
+        )
+        self.assertIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Range=f'bytes=0-{len(TEST_BODY)-1}',
+            ChecksumMode='ENABLED',
+        )
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertEqual(
+            resp['ResponseMetadata']['HTTPHeaders'][self.CHECKSUM_HDR],
+            self.EXPECTED
+        )
+        self.assertIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+
+    def test_partial_content_range(self):
+        obj_name = self.create_name(self.ALGORITHM + 'partial-content-range')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name)
+
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Range=f'bytes=0-{len(TEST_BODY)-2}',
+            ChecksumMode='ENABLED',
+        )
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Range=f'bytes=1-{len(TEST_BODY)-1}',
+            ChecksumMode='ENABLED',
+        )
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+
     def test_mpu_upload_part_requires_checksum(self):
         obj_name = self.create_name(
             self.ALGORITHM + '-mpu-upload-part-missing-checksum')

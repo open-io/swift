@@ -297,11 +297,12 @@ class ObjectController(Controller):
         """
         Handle HEAD Object request
         """
-        resp = self.GETorHEAD(req)
-
         if 'range' in req.headers:
             req_range = req.headers['range']
-            resp = self._gen_head_range_resp(req_range, resp)
+            req.callback_resp = functools.partial(
+                self._gen_head_range_resp, req_range)
+
+        resp = self.GETorHEAD(req)
 
         return resp
 

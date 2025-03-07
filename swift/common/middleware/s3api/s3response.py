@@ -137,7 +137,7 @@ class S3Response(S3ResponseBase, swob.Response):
     specific headers to S3 headers.
     """
     def __init__(self, *args, sw_resp=None, storage_policy_to_class=None,
-                 **kwargs):
+                 callback=None, **kwargs):
         swob.Response.__init__(self, *args, **kwargs)
 
         s3_sysmeta_headers = swob.HeaderKeyDict()
@@ -222,6 +222,9 @@ class S3Response(S3ResponseBase, swob.Response):
         self.sw_headers = sw_headers
         self.sysmeta_headers = s3_sysmeta_headers
 
+        if callback is not None:
+            callback(self)
+
         if self._can_add_checksum_headers():
             # Client requested checksums; see if we stored any
             for info in CHECKSUMS:
@@ -236,7 +239,8 @@ class S3Response(S3ResponseBase, swob.Response):
                     break
 
     @classmethod
-    def from_swift_resp(cls, sw_resp, storage_policy_to_class=None):
+    def from_swift_resp(cls, sw_resp, storage_policy_to_class=None,
+                        callback=None):
         """
         Create a new S3 response object based on the given Swift response.
         """
@@ -251,7 +255,7 @@ class S3Response(S3ResponseBase, swob.Response):
                    request=sw_resp.request, body=body, app_iter=app_iter,
                    conditional_response=sw_resp.conditional_response,
                    storage_policy_to_class=storage_policy_to_class,
-                   sw_resp=sw_resp)
+                   sw_resp=sw_resp, callback=callback)
         resp.environ.update(sw_resp.environ)
 
         return resp
@@ -263,7 +267,12 @@ class S3Response(S3ResponseBase, swob.Response):
             return False
         if not self.request:
             return False
-        return self.request.headers.get('x-amz-checksum-mode') == 'ENABLED'
+        if self.request.headers.get('x-amz-checksum-mode') != 'ENABLED':
+            return False
+        content_range = self.content_range
+        if content_range is None:
+            return True
+        return self.content_length == int(content_range.rsplit("/", 1)[-1])
 
 
 HTTPOk = partial(S3Response, status=200)
