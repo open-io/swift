@@ -2162,7 +2162,6 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
                 len(chunk), chunk_sig.encode('ascii'), chunk))
             prev_sig = chunk_sig
         resp = self.conn.send_request(req, b''.join(body_parts))
-        print(resp.content)
         self.assertOK(resp)
 
     def test_no_md5_streaming_signed_no_zero_chunk(self):
