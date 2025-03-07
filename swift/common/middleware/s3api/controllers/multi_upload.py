@@ -586,6 +586,15 @@ class PartController(Controller):
                 slo_resp.headers[
                     'x-amz-server-side-encryption-customer-key-MD5'] = \
                     md5_secret
+        if (
+                slo_resp.headers.get('x-amz-checksum-type') or
+                resp.headers.get('x-amz-checksum-type')
+        ):
+            for info in CHECKSUMS:
+                b64digest = resp.headers.get(info.client_header)
+                if b64digest is not None:
+                    slo_resp.headers[info.client_header] = b64digest
+                    break
 
         if req.from_replicator():
             # X-Amz-Part-ETag

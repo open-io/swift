@@ -594,8 +594,8 @@ class ObjectChecksumMixin(object):
             # No reference to checksums!?
         )
 
-    def test_mpu_complete_good_checksum(self):
-        obj_name = self.create_name(self.ALGORITHM + '-mpu-complete-good')
+    def _prepare_mpu_with_one_good_part(self, obj_suffix='test'):
+        obj_name = self.create_name(self.ALGORITHM + '-' + obj_suffix)
         create_mpu_resp = self.client.create_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name,
             ChecksumAlgorithm=self.ALGORITHM)
@@ -612,24 +612,29 @@ class ObjectChecksumMixin(object):
         )
         self.assertEqual(200, part_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+
+        parts = {
+            'Parts': [
+                {
+                    'ETag': part_resp['ETag'],
+                    'PartNumber': 1,
+                    'Checksum' + self.ALGORITHM: self.EXPECTED,
+                },
+            ],
+        }
+        return obj_name, upload_id, parts
+
+    def _test_mpu_complete_good_part_checksum(self, **kwargs):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            **kwargs)
         complete_mpu_resp = self.client.complete_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name,
-            MultipartUpload={
-                'Parts': [
-                    {
-                        'ETag': part_resp['ETag'],
-                        'PartNumber': 1,
-                        'Checksum' + self.ALGORITHM: self.EXPECTED,
-                    },
-                ],
-            },
+            MultipartUpload=parts,
             UploadId=upload_id,
         )
         self.assertEqual(200, complete_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
-        self.assertEqual(complete_mpu_resp['Checksum' + self.ALGORITHM][-2:],
-                         '-1')
 
         head_resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name)
@@ -639,6 +644,55 @@ class ObjectChecksumMixin(object):
         self.assertIn('Checksum' + self.ALGORITHM, head_resp)
         self.assertEqual(head_resp['Checksum' + self.ALGORITHM],
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
+
+        return obj_name
+
+    def test_mpu_complete_good_part_checksum(self):
+        self._test_mpu_complete_good_part_checksum(
+            obj_suffix='mpu-complete-good')
+
+    def test_get_part(self):
+        obj_name = self._test_mpu_complete_good_part_checksum(
+            obj_suffix='get-part')
+
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            PartNumber=1,
+            ChecksumMode='ENABLED',
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertEqual(
+            resp['ResponseMetadata']['HTTPHeaders'][self.CHECKSUM_HDR],
+            self.EXPECTED
+        )
+        self.assertIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            PartNumber=1,
+            ChecksumMode='ENABLED',
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertEqual(
+            resp['ResponseMetadata']['HTTPHeaders'][self.CHECKSUM_HDR],
+            self.EXPECTED
+        )
+        self.assertIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
 
 
 class TestObjectChecksumCRC32(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
