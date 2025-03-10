@@ -1280,16 +1280,20 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 metadata=headers,
             )
 
-        def get_part_info(app, req, upload_id):
+        def get_1st_part_info(app, req, upload_id):
             container = req.container_name + MULTIUPLOAD_SUFFIX
-            obj = '%s/%s/1' % (req.object_name, upload_id)
+            obj = f"{req.object_name}/{upload_id}/1"
             try:
+                # We are only interested in some unencrypted headers
+                req.environ["swift.crypto.override"] = True
                 return req.get_response(
                     app, 'HEAD', container=container, obj=obj)
             except NoSuchKey:
                 return None
+            finally:
+                del req.environ["swift.crypto.override"]
 
-        resp_part = get_part_info(self.app, req, upload_id)
+        resp_part = get_1st_part_info(self.app, req, upload_id)
         if resp_part:
             encryption_sse_s3_header = resp_part.headers.get(
                 'x-amz-server-side-encryption')

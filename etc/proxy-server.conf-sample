@@ -1653,6 +1653,10 @@ use = egg:swift#kmip_keymaster
 
 [filter:encryption]
 use = egg:swift#encryption
+# When true, do not require an encryption key for the CompleteMultipartUpload
+# operation, even when parts were uploaded with SSE-C.
+#complete_without_key = True
+
 # Use a different checksum algorithm for the cyphered object data. We need to
 # keep computing the plaintext's md5 to comply with the protocol, but the
 # ciphertext's checksum can be anything else supported by the backend.

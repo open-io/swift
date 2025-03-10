@@ -19,8 +19,8 @@ INVALID_MD5_VALUE="The MD5 hash of the secret key was improperly encoded. The MD
 WRONG_MD5_VALUE="The calculated MD5 hash of the key did not match the hash that was provided."
 
 GENERATED_SECRET=$(openssl rand 32)
-ENCKEY=$(echo -n $GENERATED_SECRET | base64)
-MD5KEY=$(echo -n $GENERATED_SECRET | openssl dgst -md5 -binary | base64)
+ENCKEY=$(echo -n "$GENERATED_SECRET" | base64)
+MD5KEY=$(echo -n "$GENERATED_SECRET" | openssl dgst -md5 -binary | base64)
 
 PORT=${PORT:-5000}
 AWS="aws --endpoint-url http://${STORAGE_DOMAIN}:${PORT} --no-verify-ssl"

@@ -76,6 +76,10 @@ class Crypto(object):
         self.backend = default_backend()
         self.ciphertext_hash_algo = (conf.get('ciphertext_hash_algo', 'md5')
                                      if conf else 'md5')
+        # Allow SSE-C CompleteMultipartUpload without encryption key
+        self.complete_without_key = config_true_value(
+            conf.get('complete_without_key', 'true') if conf else False
+        )
         self.ssec_mode = config_true_value(conf.get('ssec_mode', 'false')
                                            if conf else False)
 

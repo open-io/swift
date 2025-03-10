@@ -162,6 +162,15 @@ class DecrypterObjContext(BaseDecrypterContext):
     def __init__(self, decrypter, logger):
         super(DecrypterObjContext, self).__init__(decrypter, 'object', logger)
 
+    def fail_if_no_key(self, environ):
+        """
+        Tell if the request should fail if there is no SSE-C key in it.
+        """
+        operation = environ.get("s3api.info", {}).get("operation")
+        if operation == "REST.POST.UPLOAD":
+            return not self.crypto.complete_without_key
+        return True
+
     def _decrypt_header(self, header, value, key, required=False):
         """
         Attempt to decrypt a header value that may be encrypted.
@@ -202,7 +211,7 @@ class DecrypterObjContext(BaseDecrypterContext):
                 result.append((new_prefix + short_name, decrypted_value))
         return result
 
-    def decrypt_resp_headers(self, put_keys, post_keys):
+    def decrypt_resp_headers(self, put_keys, post_keys, environ):
         """
         Find encrypted headers and replace with the decrypted versions.
 
@@ -214,6 +223,13 @@ class DecrypterObjContext(BaseDecrypterContext):
                                          headers
         """
         mod_hdr_pairs = []
+        crypto_body_meta_hdr = self._response_header_value(
+            'X-Object-Sysmeta-Crypto-Body-Meta'
+        )
+        crypto_body_meta = (
+            load_crypto_meta(crypto_body_meta_hdr)
+            if crypto_body_meta_hdr else {}
+        )
 
         if put_keys:
             # Decrypt plaintext etag and place in Etag header for client
@@ -222,10 +238,17 @@ class DecrypterObjContext(BaseDecrypterContext):
             encrypted_etag = self._response_header_value(etag_header)
             decrypted_etag = None
             if encrypted_etag and 'object' in put_keys:
-                decrypted_etag = self._decrypt_header(
-                    etag_header, encrypted_etag, put_keys['object'],
-                    required=True)
-                mod_hdr_pairs.append(('Etag', decrypted_etag))
+                if (requires_customer_provided_key(crypto_body_meta)
+                        and not is_customer_provided_key(put_keys.get('id'))
+                        and not self.fail_if_no_key(environ)):
+                    self.logger.warning(
+                        "SSE-C object but no key in request: not checking ETag"
+                    )
+                else:
+                    decrypted_etag = self._decrypt_header(
+                        etag_header, encrypted_etag, put_keys['object'],
+                        required=True)
+                    mod_hdr_pairs.append(('Etag', decrypted_etag))
 
             etag_header = get_container_update_override_key('etag')
             encrypted_etag = self._response_header_value(etag_header)
@@ -237,12 +260,15 @@ class DecrypterObjContext(BaseDecrypterContext):
                 decrypted_etag_ct = decrypted_etag_ct.split(";", 1)[0]
 
                 if decrypted_etag and decrypted_etag_ct != decrypted_etag:
-                    self.app.logger.debug(
-                        'Failed ETag verification: obj=%s ct=%s',
+                    sses3_key = put_keys.get('id', {}).get('sses3')
+                    # FIXME(FVE): call debug() when error is logged properly
+                    self.logger.warning(
+                        'Failed ETag verification%s: obj=%s ct=%s',
+                        " (no SSE-C key)" if sses3_key else " (invalid key?)",
                         quote(decrypted_etag),
                         quote(decrypted_etag_ct)
                     )
-                    if put_keys.get('id', {}).get('sses3'):
+                    if sses3_key:
                         # The key we have here was provided by the bucket,
                         # whereas it should have been provided by the client.
                         raise HTTPBadRequest(MISSING_KEY_MSG)
@@ -382,7 +408,9 @@ class DecrypterObjContext(BaseDecrypterContext):
         if content_length is not None and int(content_length) == 0:
             self.update_etag(MD5_OF_EMPTY_STRING)
 
-        mod_resp_headers = self.decrypt_resp_headers(put_keys, post_keys)
+        mod_resp_headers = self.decrypt_resp_headers(
+            put_keys, post_keys, req.environ,
+        )
         # Some middlewares need to know the object is encrypted with a
         # customer-provided key but there is no key in the request.
         if self.crypto.ssec_mode and \

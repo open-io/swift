@@ -252,6 +252,11 @@ active_root_secret_id = 0
 # However, all encryption middleware should remain in the pipeline in order for existing encrypted data to be read.
 [filter:encryption]
 use = egg:swift#encryption
+
+# When true, do not require an encryption key for CompleteMultipartUpload
+# operation, even when parts were uploaded with SSE-C.
+complete_without_key = True
+
 disable_encryption = False
 # Use a different checksum algorithm for the cyphered object data. We need to
 # keep computing the plaintext's md5 to comply with the protocol, but the
