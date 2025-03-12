@@ -173,8 +173,33 @@ s3 =
 EOF
 }
 
+function configure_rclone() {
+  mkdir -p "$HOME/.config/rclone"
+  cat <<EOF >"$HOME/.config/rclone/rclone.conf"
+[default]
+type = s3
+provider = Other
+access_key_id = demo:demo
+secret_access_key = DEMO_PASS
+region = RegionOne
+endpoint = ${ENDPOINT_URL}
+acl = private
+bucket_acl = private
+upload_cutoff = 50Mi
+chunk_size = 5Mi
+copy_cutoff = 15Mi
+profile = default
+force_path_style = false
+list_version = 2
+list_url_encode = true
+disable_http2 = true
+sdk_log_mode = Request,Response
+description = Localhost (RegionOne)
+EOF
+}
+
 function configure_s3cmd() {
-    cat <<EOF >"$HOME/.s3cfg"
+  cat <<EOF >"$HOME/.s3cfg"
 [default]
 access_key = demo:demo
 bucket_location = us-east-1

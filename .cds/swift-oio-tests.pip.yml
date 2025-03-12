@@ -12,6 +12,8 @@ jobs:
           #!/bin/bash
           set -x
           . .cds/versions
+
+          # --- Packages ---
           export DEBIAN_FRONTEND=noninteractive
           echo "deb [trusted=yes] http://read:{{.cds.proj.private_ovh_objectstorage_openio_read_password}}@last-private-ovh-objectstorage-openio.snap-priv.mirrors.ovh.net/ubuntu focal/main main" >> /etc/apt/sources.list.d/obsto.list
           echo "deb [trusted=yes] http://last-public-ovh-pcs.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/obsto.list
@@ -28,6 +30,12 @@ jobs:
           apt-get install -y rabbitmq-server $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${GO_PACKAGE} ${PYTHON_PACKAGE} ${ZOOKEEPER_PACKAGE}
           systemctl stop redis.service
           systemctl disable redis.service
+
+          # --- External packages ---
+          worker cache pull rclone-$(date +%Yw%V)
+          dpkg -i rclone-current-linux-amd64.deb
+
+          # --- Python virtual environment ---
           echo "export PATH=/opt/${GO_PACKAGE}/bin:/opt/${PYTHON_PACKAGE}/bin:/opt/${ZOOKEEPER_PACKAGE}/bin:$PATH" > $HOME/swift-env.sh
           echo "export ZOOBINDIR=/opt/${ZOOKEEPER_PACKAGE}/bin"  >> $HOME/swift-env.sh
           echo "export ZOOLIBDIR=/opt/${ZOOKEEPER_PACKAGE}/lib"  >> $HOME/swift-env.sh
@@ -44,6 +52,8 @@ jobs:
           index-url = https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
           extra_index_url = https://pypi.org/simple
           EOF
+
+          # --- Python dependencies ---
           . $HOME/swiftenv/bin/activate
           pip install --progress-bar off --upgrade pip setuptools virtualenv "tox<4.0.0" -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
@@ -56,6 +66,7 @@ jobs:
           install_foundationdb "${FDB_VERSION}"
           rabbitmq-plugins enable rabbitmq_management
 
+          # --- Redpanda ---
           docker login -u {{ .cds.proj.artifactory_user }} -p {{ .cds.proj.artifactory_token }} pu-objectstorage-default-docker.artifactory.ovhcloud.tools
           # Start Redpanda (kafka)
           docker-compose -f ./third_party/oio-sds/docker/redpanda.docker-compose.yml up -d
@@ -65,6 +76,7 @@ jobs:
           done
           sleep 1
 
+          # --- Reconfigure logging ---
           echo "RateLimitBurst=0" >> /etc/systemd/journald.conf
           echo '$SystemLogRateLimitInterval 0' >> /etc/rsyslog.conf
           systemctl restart systemd-journald.service

@@ -8,17 +8,16 @@ install_deps || exit 1
 compile_sds || exit 1
 run_sds || exit 1
 configure_aws
+configure_rclone
 configure_s3cmd
 
 RET=0
-
-# TODO(FVE): import oioswift's "fastcopy" middleware
-# run_functional_test s3-fastcopy.cfg s3-acl-metadata.sh s3-marker.sh
 
 # Run all suites in the same environment.
 # They do not share buckets so this should be OK.
 cp etc/s3-default.cfg.in etc/s3-default.cfg
 run_functional_test s3-default.cfg \
+    tool-rclone.py \
     s3-acl-metadata.sh \
     buckets-listing.sh \
     s3-marker.sh \

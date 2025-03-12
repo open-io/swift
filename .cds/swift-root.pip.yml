@@ -10,3 +10,20 @@ jobs:
           then
             worker tag send_webex_notif=true
           fi
+
+  - job: Download external tools
+    requirements:
+      - model: ubuntu-focal
+    steps:
+      - name: Download rclone
+        script: |+
+          #!/bin/bash
+          set -ex
+          # Force new download each week (in case there is a new version)
+          tag="rclone-$(date +%Yw%V)"
+          if ! worker cache pull $tag
+          then
+            curl -s -S -L --output rclone-current-linux-amd64.deb \
+              https://downloads.rclone.org/rclone-current-linux-amd64.deb
+            worker cache push $tag rclone-current-linux-amd64.deb
+          fi

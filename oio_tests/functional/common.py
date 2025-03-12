@@ -114,5 +114,27 @@ def run_openiocli(*params, namespace=None, account=None, json_format=True):
     return json.loads(data) if data else data
 
 
+def run_rclone(*params, log_level="INFO", retries=0):
+    cmd = ('rclone',)
+    cmd += params
+    cmd += (f"--retries={retries}", "--use-json-log")
+    # Default log-level of Rclone is NOTICE
+    if log_level != "NOTICE":
+        cmd += (f"--log-level={log_level}",)
+    print(*cmd)
+    try:
+        out = subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise CliError(exc.stderr.decode('utf-8')) from exc
+    data = out.stdout.decode("utf-8")
+    log = json.loads(f"[{','.join(out.stderr.decode('utf-8').splitlines())}]")
+    return data, log
+
+
 class CliError(Exception):
     pass
