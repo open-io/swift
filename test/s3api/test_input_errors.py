@@ -554,7 +554,7 @@ class InputErrorsMixin(object):
             self.assertNotIn(b'<NumberBytesProvided>', resp.content)
         else:
             self.assertIn(b'<Message>You did not provide the number of bytes '
-                          b'specified by the Content-Length HTTP header.'
+                          b'specified by the Content-Length HTTP header'
                           b'</Message>',
                           resp.content)
             self.assertIn(b'<NumberBytesExpected>%d</NumberBytesExpected>'

@@ -514,7 +514,7 @@ class IllegalVersioningConfigurationException(ErrorResponse):
 class IncompleteBody(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'You did not provide the number of bytes specified by the ' \
-           'Content-Length HTTP header.'
+           'Content-Length HTTP header'
 
 
 class IncorrectNumberOfFilesInPostRequest(ErrorResponse):
