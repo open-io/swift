@@ -1474,11 +1474,24 @@ class S3Request(swob.Request):
                     number_bytes_expected=decoded_content,
                     number_bytes_provided=self.content_length,
                 )
-            raise XAmzContentSHA256Mismatch(
-                client_computed_content_s_h_a256=aws_sha256,
-                s3_computed_content_s_h_a256=sha256(
-                    self.body_file.read()).hexdigest(),
-            )
+
+            if aws_sha256 != 'STREAMING-UNSIGNED-PAYLOAD-TRAILER':
+                raise XAmzContentSHA256Mismatch(
+                    client_computed_content_s_h_a256=aws_sha256,
+                    s3_computed_content_s_h_a256=sha256(
+                        self.body_file.read()).hexdigest(),
+                )
+
+            if (
+                not self.get_checksum_headers()
+                and not self.get_checksum_trailers()
+                and _header_strip(self.headers.get('Content-MD5')) is None
+            ):
+                raise XAmzContentSHA256Mismatch(
+                    client_computed_content_s_h_a256=aws_sha256,
+                    s3_computed_content_s_h_a256=sha256(
+                        self.body_file.read()).hexdigest(),
+                )
 
         return aws_sha256, None
 
@@ -1489,6 +1502,14 @@ class S3Request(swob.Request):
             if h.lower().startswith('x-amz-checksum-')
             and h.lower() != 'x-amz-checksum-algorithm'
         }
+
+    def get_checksum_trailers(self):
+        return [
+            t.lower()
+            for t in self.trailers
+            if t.lower().startswith('x-amz-checksum-')
+            and t.lower() != 'x-amz-checksum-algorithm'
+        ]
 
     def _validate_headers(self):
         if 'CONTENT_LENGTH' in self.environ:
@@ -1568,7 +1589,7 @@ class S3Request(swob.Request):
                 self.environ['wsgi.input'] = StreamingInput(
                     self.environ['wsgi.input'],
                     int(decoded_content),
-                    set(list_from_csv(self.headers.get('x-amz-trailer')))
+                    set(self.trailers)
                     if aws_sha256.endswith('-TRAILER') else set(),
                     chunk_validator)
             elif aws_sha256 in (
