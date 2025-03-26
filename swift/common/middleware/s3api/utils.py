@@ -280,7 +280,7 @@ class ChecksumInfo(object):
 class CRC32Info(ChecksumInfo):
     digest_size = 4
     name = 'crc32'
-    allowed_types_for_mpu = [CHECKSUM_FULL_OBJECT, CHECKSUM_COMPOSITE]
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT]
 
     def new_hasher(self):
         return checksum.CRCHasher(zlib.crc32)
@@ -289,7 +289,7 @@ class CRC32Info(ChecksumInfo):
 class CRC32CInfo(ChecksumInfo):
     digest_size = 4
     name = 'crc32c'
-    allowed_types_for_mpu = [CHECKSUM_FULL_OBJECT, CHECKSUM_COMPOSITE]
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT]
 
     def new_hasher(self):
         return checksum.CRCHasher(checksum.crc32c)

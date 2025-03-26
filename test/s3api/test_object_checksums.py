@@ -867,8 +867,68 @@ class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
     @classmethod
     def setUpClass(cls):
         if not botocore.httpchecksum.HAS_CRT:
-            raise SkipTest('botocore cannot crc32c (run `pip install awscrt`)')
+            raise SkipTest(
+                'botocore cannot crc64nvme (run `pip install awscrt`)')
         super().setUpClass()
+
+    def test_mpu_with_CRC64NVME(self):
+        obj_name = self.create_name(self.ALGORITHM + '-mpu-upload-part-good')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm=self.ALGORITHM)
+        resp = caught.exception.response
+        self.assertEqual(501, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'NotImplemented',
+            'Message': 'Only COMPOSITE checksum type is supported',
+            'ChecksumType': 'FULL_OBJECT',
+        })
+
+    def test_mpu_upload_part_requires_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_invalid_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_bad_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_good_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum is not supporeted')
+
+    def test_mpu_complete_requires_part_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_invalid_part_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_bad_part_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_part_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_get_part(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_invalid_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_bad_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_checksum_with_invalid_part_number(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_checksum_with_bad_part_number(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_checksum_with_good_part_number(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
 
 
 class TestObjectChecksumSHA1(ObjectChecksumMixin, BaseS3TestCaseWithBucket):

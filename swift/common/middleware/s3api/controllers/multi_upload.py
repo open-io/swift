@@ -750,8 +750,6 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             if checksum_type not in CHECKSUM_TYPES:
                 raise InvalidRequest(
                     "Value for x-amz-checksum-type header is invalid.")
-        elif algo:
-            checksum_type = CHECKSUM_COMPOSITE
         if algo:
             if ',' in algo:
                 raise InvalidRequest(
@@ -761,13 +759,20 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
                 allowed_algo = sorted([
                     name.upper()
                     for name, info in CHECKSUMS_BY_NAME.items()
-                    if checksum_type in info.allowed_types_for_mpu
+                    if (
+                        not checksum_type
+                        or checksum_type in info.allowed_types_for_mpu
+                    )
                 ])
                 raise InvalidRequest(
                     'Checksum algorithm provided is unsupported. Please '
                     'try again with any of the valid types: '
                     f'[{", ".join(allowed_algo)}]')
             req.headers[sysmeta_header('object', 'checksum-algorithm')] = algo
+            if not checksum_type:
+                # Use the default type of the algorithm
+                checksum_type = \
+                    CHECKSUMS_BY_NAME[algo].allowed_types_for_mpu[0]
         if checksum_type:
             if checksum_type == CHECKSUM_COMPOSITE:
                 checksum_info = CHECKSUMS_BY_NAME[algo]
