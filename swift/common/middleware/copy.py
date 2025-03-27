@@ -114,6 +114,7 @@ greater than 5GB.
 
 """
 
+from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.utils import DEFAULT_YIELD_FREQUENCY, get_logger, \
     config_true_value, FileLikeIter, close_if_possible, HeartbeatMixin
 from swift.common.swob import Request, HTTPPreconditionFailed, \
@@ -323,7 +324,7 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
                                                              start_response)
 
         # Form the path of source object to be fetched
-        ver, acct, _rest = req.split_path(2, 3, True)
+        ver, acct, bucket, _ = req.split_path(2, 4, True)
         src_account_name = req.headers.get('X-Copy-From-Account')
         if src_account_name:
             src_account_name = check_account_format(
@@ -357,8 +358,19 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
         # This will preserve original request environ including headers.
         sink_req = Request.blank(req.path_info, environ=req.environ)
 
+        _checksum_headers = {
+            'x-object-sysmeta-s3api-checksum-crc32',
+            'x-object-sysmeta-s3api-checksum-crc32c',
+            'x-object-sysmeta-s3api-checksum-crc64nvme',
+            'x-object-sysmeta-s3api-checksum-sha1',
+            'x-object-sysmeta-s3api-checksum-sha256',
+        }
+
         def is_object_sysmeta(k):
-            return is_sys_meta('object', k)
+            return (
+                is_sys_meta('object', k)
+                and k.lower() not in _checksum_headers
+            )
 
         if config_true_value(req.headers.get('x-fresh-metadata', 'false')):
             # x-fresh-metadata only applies to copy, not post-as-copy: ignore
@@ -369,7 +381,11 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
             # First copy existing sysmeta, user meta and other headers from the
             # source to the sink, apart from headers that are conditionally
             # copied below and timestamps.
-            exclude_headers = ('x-static-large-object', 'x-object-manifest',
+            checksum_headers = {}
+            # Do not exclude checksum header in case of upload part copy
+            if not bucket.endswith(MULTIUPLOAD_SUFFIX):
+                checksum_headers = _checksum_headers
+            exclude_headers = {'x-static-large-object', 'x-object-manifest',
                                'etag', 'content-type', 'x-timestamp',
                                'x-backend-timestamp',
                                'x-object-sysmeta-slo-etag',
@@ -377,9 +393,10 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
                                'x-object-sysmeta-s3api-acl',
                                'x-object-sysmeta-s3api-etag',
                                'x-object-sysmeta-s3api-upload-id',
+                               'x-amz-server-side-encryption',
                                'x-amz-server-side-encryption-customer-'
-                               'algorithm',
-                               'x-amz-server-side-encryption',)
+                               'algorithm', *checksum_headers,
+                               }
             copy_header_subset(source_resp, sink_req,
                                lambda k: k.lower() not in exclude_headers)
             # now update with original req headers

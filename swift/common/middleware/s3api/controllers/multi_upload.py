@@ -296,26 +296,6 @@ class PartController(Controller):
 
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
-
-        algo = resp.sysmeta_headers.get(sysmeta_header(
-            'object', 'checksum-algorithm'))
-        if algo:
-            request_checksum_info = req.get_checksum_info()
-            if request_checksum_info is None:
-                request_algo = 'null'
-            else:
-                request_algo = request_checksum_info.name
-            if algo != request_algo:
-                # Read a byte to ensure we've sent a 100 Continue if needed.
-                # Otherwise, some clients (boto3, at least) will try to re-use
-                # the connection without sending the body, resulting in a
-                # deadlock until one side times out and closes the connection.
-                req.environ['wsgi.input'].read(1)
-                raise InvalidRequest(
-                    'Checksum Type mismatch occurred, expected checksum Type: '
-                    '%s, actual checksum Type: %s' % (
-                        algo, request_algo))
-
         # We cannot add a part to an already completed MPU
         if resp.sw_headers.get('X-Static-Large-Object'):
             raise NoSuchUpload(upload_id=upload_id)
@@ -379,6 +359,35 @@ class PartController(Controller):
                     )
                 req.headers['Range'] = rng
                 del req.headers['X-Amz-Copy-Source-Range']
+
+        algo = resp.sysmeta_headers.get(sysmeta_header(
+            'object', 'checksum-algorithm'))
+        if algo:
+            request_checksum_info = req.get_checksum_info()
+            if request_checksum_info is None:
+                request_algo = 'null'
+                if source_resp:
+                    # In case of upload part copy, checksum algo
+                    # is not supported. Lets validate checksum with
+                    # the source checksum info
+                    for header in source_resp.sysmeta_headers:
+                        if header.lower().startswith(
+                            sysmeta_header('object', 'checksum')
+                        ):
+                            request_algo = header.lower().rsplit("-", 1)[1]
+                            break
+            else:
+                request_algo = request_checksum_info.name
+            if algo != request_algo:
+                # Read a byte to ensure we've sent a 100 Continue if needed.
+                # Otherwise, some clients (boto3, at least) will try to re-use
+                # the connection without sending the body, resulting in a
+                # deadlock until one side times out and closes the connection.
+                req.environ['wsgi.input'].read(1)
+                raise InvalidRequest(
+                    'Checksum Type mismatch occurred, expected checksum Type: '
+                    '%s, actual checksum Type: %s' % (
+                        algo, request_algo))
         if req.from_replicator():  # Upload part from replicator
             # Set replication status on destination side
             req.headers[OBJECT_REPLICATION_STATUS] = OBJECT_REPLICATION_REPLICA
@@ -444,9 +453,16 @@ class PartController(Controller):
 
         def _on_success(full_resp):
             if is_server_side_copy:
+                extra = {}
+                if algo:
+                    # Add the checksum from source object
+                    extra = {
+                        f"Checksum{algo.upper()}":
+                            source_resp.sysmeta_headers.get(
+                                sysmeta_header('object', f'checksum-{algo}'))}
                 return make_copy_resp_xml(
                     req.controller_name, req_timestamp.s3xmlformat,
-                    full_resp.etag or etag), None
+                    full_resp.etag or etag, **extra), None
             else:
                 return None, None
 

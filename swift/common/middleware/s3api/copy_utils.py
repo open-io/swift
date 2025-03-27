@@ -16,8 +16,10 @@
 from swift.common.middleware.s3api.etree import Element, SubElement
 
 
-def make_copy_resp_xml(controller_name, last_modified, etag):
+def make_copy_resp_xml(controller_name, last_modified, etag, **extra):
     elem = Element('Copy%sResult' % controller_name)
     SubElement(elem, 'LastModified').text = last_modified
     SubElement(elem, 'ETag').text = '"%s"' % etag
+    for key, value in extra.items():
+        SubElement(elem, f'{key}').text = value
     return elem
