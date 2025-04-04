@@ -101,10 +101,10 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
-from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT, \
-    CHECKSUM_TYPES, CHECKSUMS, CHECKSUMS_BY_NAME, MULTIUPLOAD_SUFFIX, \
-    DEFAULT_CONTENT_TYPE, S3Timestamp, unique_id, sysmeta_header, \
-    update_response_header_with_response_params
+from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, \
+    CHECKSUM_FULL_OBJECT, CHECKSUM_TYPES, CHECKSUMS, CHECKSUMS_BY_NAME, \
+    MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, unique_id, \
+    sysmeta_header, update_response_header_with_response_params
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
@@ -193,6 +193,9 @@ def _make_complete_body(req, s3_etag, yielded_anything,
     SubElement(result_elem, 'ETag').text = '"%s"' % s3_etag
     if client_checkum_name and checksum:
         SubElement(result_elem, client_checkum_name).text = checksum
+        SubElement(result_elem, 'ChecksumType').text = (
+            CHECKSUM_COMPOSITE if '-' in checksum else CHECKSUM_FULL_OBJECT
+        )
     body = finalize_xml_texts(tostring(
         result_elem, xml_declaration=not yielded_anything))
     if yielded_anything:
@@ -772,13 +775,12 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
                     'Invalid types are specified in '
                     'x-amz-checksum-algorithm header.')
             if algo not in CHECKSUMS_BY_NAME:
+                if not checksum_type:
+                    checksum_type = CHECKSUM_COMPOSITE
                 allowed_algo = sorted([
                     name.upper()
                     for name, info in CHECKSUMS_BY_NAME.items()
-                    if (
-                        not checksum_type
-                        or checksum_type in info.allowed_types_for_mpu
-                    )
+                    if checksum_type in info.allowed_types_for_mpu
                 ])
                 raise InvalidRequest(
                     'Checksum algorithm provided is unsupported. Please '
@@ -790,14 +792,13 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
                 checksum_type = \
                     CHECKSUMS_BY_NAME[algo].allowed_types_for_mpu[0]
         if checksum_type:
-            if checksum_type == CHECKSUM_COMPOSITE:
-                checksum_info = CHECKSUMS_BY_NAME[algo]
-                if checksum_type not in checksum_info.allowed_types_for_mpu:
-                    raise InvalidRequest(
-                        f"The {checksum_type} checksum type cannot be used "
-                        f"with the {checksum_info.name} checksum algorithm."
-                    )
-            else:
+            checksum_info = CHECKSUMS_BY_NAME[algo]
+            if checksum_type not in checksum_info.allowed_types_for_mpu:
+                raise InvalidRequest(
+                    f"The {checksum_type} checksum type cannot be used "
+                    f"with the {checksum_info.name} checksum algorithm."
+                )
+            if checksum_type == CHECKSUM_FULL_OBJECT:
                 # TODO(adu): For FULL_OBJECT, validate the object integrity
                 # server-side
                 raise S3NotImplemented(

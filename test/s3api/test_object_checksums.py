@@ -20,8 +20,6 @@ import hashlib
 import struct
 from unittest import SkipTest
 
-from packaging.version import Version
-
 from swift.common.checksum import crc32c
 from swift.common.utils import list_from_csv
 from test.s3api import BaseS3TestCaseWithBucket
@@ -648,11 +646,15 @@ class ObjectChecksumMixin(object):
             # No reference to checksums!?
         )
 
-    def _prepare_mpu_with_one_good_part(self, obj_suffix='test'):
+    def _prepare_mpu_with_one_good_part(self, obj_suffix='test',
+                                        checksum_type=None):
         obj_name = self.create_name(self.ALGORITHM + '-' + obj_suffix)
+        create_kwargs = {}
+        if checksum_type:
+            create_kwargs = {"ChecksumType": checksum_type}
         create_mpu_resp = self.client.create_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name,
-            ChecksumAlgorithm=self.ALGORITHM)
+            ChecksumAlgorithm=self.ALGORITHM, **create_kwargs)
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
@@ -875,9 +877,45 @@ class ObjectChecksumMixin(object):
         self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
 
+    def test_mpu_complete_good_checksum_with_default_checksum_type(self):
+        obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
+            obj_suffix='mpu-default-checksum-type', checksum_type=self.TYPE)
+
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            MultipartUpload=parts,
+            UploadId=upload_id,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED_COMPOSITE_1},
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('ChecksumType', complete_mpu_resp)
+        self.assertEqual(self.TYPE, complete_mpu_resp['ChecksumType'])
+        self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
+        self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
+                         complete_mpu_resp['Checksum' + self.ALGORITHM])
+
+    def test_mpu_create_full_object_checksum_type(self):
+        if self.is_aws:
+            self.skipTest(
+                "The test verifies that the feature is not yet implemented")
+        obj_name = self.create_name('mpu-full-object-checksum')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm=self.ALGORITHM, ChecksumType='FULL_OBJECT')
+        resp = caught.exception.response
+        self.assertEqual(501, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'NotImplemented',
+            'Message': 'Only COMPOSITE checksum type is supported',
+            'ChecksumType': 'FULL_OBJECT',
+        })
+
 
 class TestObjectChecksumCRC32(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC32'
+    TYPE = 'COMPOSITE'
     EXPECTED = 'y/Q5Jg=='
     EXPECTED_COMPOSITE_1 = '7kxlUA=='
     INVALID = 'y/Q5Jh=='
@@ -886,6 +924,7 @@ class TestObjectChecksumCRC32(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
 
 class TestObjectChecksumCRC32C(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC32C'
+    TYPE = 'COMPOSITE'
     EXPECTED = '4waSgw=='
     EXPECTED_COMPOSITE_1 = 'pzJFoA=='
     INVALID = '4waSgx=='
@@ -901,6 +940,7 @@ class TestObjectChecksumCRC32C(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
 class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
                                   BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC64NVME'
+    TYPE = 'FULL_OBJECT'
     EXPECTED = 'rosUhgp5mIg='
     INVALID = 'rosUhgp5mIh='
     BAD = 'sosUhgp5mIg='
@@ -974,21 +1014,61 @@ class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
     def test_mpu_complete_good_checksum_with_good_part_number(self):
         raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
 
+    def test_mpu_complete_good_checksum_with_default_checksum_type(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_create_full_object_checksum_type(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
 
 class TestObjectChecksumSHA1(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'SHA1'
+    TYPE = 'COMPOSITE'
     EXPECTED = '98O8HYCOBHMq32eZZczDTKeuNEE='
     EXPECTED_COMPOSITE_1 = 'zGcEPHvP9e6lVmvZsfPHT9mlz10='
     INVALID = '98O8HYCOBHMq32eZZczDTKeuNEF='
     BAD = '+8O8HYCOBHMq32eZZczDTKeuNEE='
 
+    def test_mpu_create_full_object_checksum_type(self):
+        obj_name = self.create_name('mpu-full-object-checksum')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm=self.ALGORITHM, ChecksumType='FULL_OBJECT')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'InvalidRequest',
+            'Message': (
+                "The FULL_OBJECT checksum type cannot be used "
+                f"with the {self.ALGORITHM.lower()} checksum algorithm."
+            ),
+        })
+
 
 class TestObjectChecksumSHA256(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'SHA256'
+    TYPE = 'COMPOSITE'
     EXPECTED = 'FeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiU='
     EXPECTED_COMPOSITE_1 = 'KSsNAHVmgy25S/rmic1w0at3KBH9RLn0nYVQ7p6mpJQ='
     INVALID = 'FeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiV='
     BAD = 'GeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiU='
+
+    def test_mpu_create_full_object_checksum_type(self):
+        obj_name = self.create_name('mpu-full-object-checksum')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm=self.ALGORITHM, ChecksumType='FULL_OBJECT')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'InvalidRequest',
+            'Message': (
+                "The FULL_OBJECT checksum type cannot be used "
+                f"with the {self.ALGORITHM.lower()} checksum algorithm."
+            ),
+        })
 
 
 class TestObjectChecksums(BaseS3TestCaseWithBucket):
@@ -1150,6 +1230,19 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             'Code': 'InvalidRequest',
             'Message': ('Invalid types are specified in '
                         'x-amz-checksum-algorithm header.'),
+        })
+
+    def test_mpu_create_bad_checksum_type(self):
+        obj_name = self.create_name('mpu-bad-checksum-type')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm='CRC32', ChecksumType='TEST')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'InvalidRequest',
+            'Message': 'Value for x-amz-checksum-type header is invalid.',
         })
 
     def test_mpu_no_checksum_upload_part_good_checksum(self):
