@@ -1501,15 +1501,15 @@ class S3Request(swob.Request):
             for h, v in self.headers.items()
             if h.lower().startswith('x-amz-checksum-')
             and h.lower() != 'x-amz-checksum-algorithm'
+            and h.lower() != 'x-amz-checksum-type'
         }
 
     def get_checksum_trailers(self):
-        return [
-            t.lower()
+        return {
+            t.lower(): None
             for t in self.trailers
             if t.lower().startswith('x-amz-checksum-')
-            and t.lower() != 'x-amz-checksum-algorithm'
-        ]
+        }
 
     def _validate_headers(self):
         if 'CONTENT_LENGTH' in self.environ:
@@ -1628,10 +1628,7 @@ class S3Request(swob.Request):
             checksum_headers = self.get_checksum_headers()
 
             if not checksum_headers:
-                checksum_headers = {
-                    h.lower(): None
-                    for h in self.trailers
-                    if h.lower().startswith('x-amz-checksum-')}
+                checksum_headers = self.get_checksum_trailers()
 
             if not checksum_headers:
                 if self.headers.get('x-amz-sdk-checksum-algorithm'):
@@ -1641,7 +1638,16 @@ class S3Request(swob.Request):
                         'headers were found.')
             elif len(checksum_headers) == 1:
                 header, b64digest = list(checksum_headers.items())[0]
-                checksum_info = CHECKSUMS_BY_HEADER[header]
+                checksum_info = CHECKSUMS_BY_HEADER.get(header)
+                if checksum_info is None:
+                    allowed_algo = sorted([
+                        name.upper()
+                        for name in CHECKSUMS_BY_NAME.keys()
+                    ])
+                    raise InvalidRequest(
+                        'Checksum algorithm provided is unsupported. Please '
+                        'try again with any of the valid types: '
+                        f'[{", ".join(allowed_algo)}]')
 
                 if self.headers.get(
                         'x-amz-sdk-checksum-algorithm',

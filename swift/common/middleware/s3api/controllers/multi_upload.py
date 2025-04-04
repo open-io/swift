@@ -101,7 +101,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
-from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, \
+from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT, \
     CHECKSUM_TYPES, CHECKSUMS, CHECKSUMS_BY_NAME, MULTIUPLOAD_SUFFIX, \
     DEFAULT_CONTENT_TYPE, S3Timestamp, unique_id, sysmeta_header, \
     update_response_header_with_response_params
