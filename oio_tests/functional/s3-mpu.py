@@ -26,6 +26,7 @@ import tempfile
 import threading
 from time import sleep
 import unittest
+from botocore.exceptions import ClientError
 from urllib.parse import quote
 
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
@@ -58,6 +59,15 @@ class TestS3Mpu(unittest.TestCase):
             '{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention":'
             ' { "Mode": "GOVERNANCE", "Days": 1 } } }',
             bucket=self.bucket_object_lock)
+        self.bucket_versioning = f"test-mpu-versioning-{random_str(4)}"
+        data = run_awscli_s3api(
+            "create-bucket",
+            bucket=self.bucket_versioning)
+        data = run_awscli_s3api(
+            "put-bucket-versioning",
+            '--versioning-configuration',
+            'Status=Enabled',
+            bucket=self.bucket_versioning)
 
     def tearDown(self):
         try:
@@ -918,6 +928,61 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket,
             key=path,
         )
+
+    def test_multi_delete_versioning_enabled(self):
+        path = f"mpu_object_{random_str(5)}"
+        # Initialize the S3 client
+        boto_client = get_boto3_client()
+        # Create a legitimate multipart upload
+        response = boto_client.create_multipart_upload(
+            Bucket=self.bucket_versioning, Key=path
+        )
+        self.assertEqual(path, response['Key'])
+        upload_id = response["UploadId"]
+        mpu_parts = []
+        upload_file = "/etc/magic"
+        with open(upload_file, "r") as file:
+            data = file.read()
+            resp = boto_client.upload_part(
+                Bucket=self.bucket_versioning,
+                Key=path,
+                PartNumber=1,
+                UploadId=upload_id,
+                Body=data,
+            )
+            mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
+        # Complete MPU
+        resp = boto_client.complete_multipart_upload(
+            Bucket=self.bucket_versioning,
+            Key=path,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": mpu_parts},
+        )
+        version_id = resp["VersionId"]
+        self.assertEqual(resp['Key'], path)
+        # Delete MPU with BATCH.DELETE
+        resp = boto_client.delete_objects(
+            Bucket=self.bucket_versioning,
+            Delete={"Objects": [{"Key": path}]}
+        )
+        self.assertEqual(resp["Deleted"][0]["Key"], path)
+        # check delete marker is created
+        resp = boto_client.list_object_versions(Bucket=self.bucket_versioning)
+        keys = [delete_marker["Key"] for delete_marker in resp["DeleteMarkers"]]
+        self.assertIn(path, keys)
+        self.assertRaises(
+            ClientError,
+            boto_client.get_object,
+            Bucket=self.bucket_versioning,
+            Key=path,
+        )
+        # Check mpu can be downloaded with version id
+        resp = boto_client.get_object(
+            Bucket=self.bucket_versioning,
+            Key=path,
+            VersionId=version_id,
+        )
+        self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
 
 
 if __name__ == "__main__":

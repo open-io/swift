@@ -184,6 +184,11 @@ class MultiObjectDeleteController(Controller):
                 if version:
                     query['version-id'] = version
                     query['symlink'] = 'get'
+                elif self.container_versioning_enabled(req):
+                    # Notice that this "pop" is important to not delete the
+                    # manifest and its parts.
+                    # Only a delete marker will be created.
+                    query.pop('multipart-manifest', None)
 
                 resp = req.get_response(self.app, method='DELETE', query=query,
                                         headers=req_headers)

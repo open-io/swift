@@ -457,14 +457,6 @@ class ObjectController(Controller):
             break
         return resp
 
-    def _versioning_enabled(self, req):
-        """
-        Tell if versioning is enabled for the container specified by req.
-        """
-        container_info = req.get_container_info(self.app)
-        return config_true_value(
-            container_info.get('sysmeta', {}).get('versions-enabled', False))
-
     @set_s3_operation_rest('OBJECT')
     @ratelimit
     @public
@@ -503,8 +495,7 @@ class ObjectController(Controller):
             if version_id is not None:
                 query['version-id'] = version_id
                 query['symlink'] = 'get'
-            # FIXME(FVE): only do this when allow_oio_versioning is true
-            elif self._versioning_enabled(req):
+            elif self.container_versioning_enabled(req):
                 # Notice that this "pop" is important to not delete the
                 # manifest and its parts.
                 # Only a delete marker will be created.

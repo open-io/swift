@@ -294,6 +294,14 @@ class Controller(object):
             in
             account_info.get("enabled_beta_features", []))
 
+    def container_versioning_enabled(self, req):
+        """
+        Tell if versioning is enabled for the container specified by req.
+        """
+        container_info = req.get_container_info(self.app)
+        return config_true_value(
+            container_info.get('sysmeta', {}).get('versions-enabled', False))
+
 
 class UnsupportedController(Controller):
     """
