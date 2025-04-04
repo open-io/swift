@@ -16,7 +16,6 @@
 import binascii
 import base64
 import botocore
-import functools
 import hashlib
 import struct
 from unittest import SkipTest
@@ -24,19 +23,10 @@ from unittest import SkipTest
 from packaging.version import Version
 
 from swift.common.checksum import crc32c
+from swift.common.utils import list_from_csv
 from test.s3api import BaseS3TestCaseWithBucket
 
 TEST_BODY = b'123456789'
-
-
-def https_switches_to_chunked(method):
-    @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
-        if self.use_tls:
-            raise SkipTest('Using TLS changes to not-yet-implemented '
-                           'aws-chunked protocol')
-        return method(self, *args, **kwargs)
-    return wrapper
 
 
 class ObjectChecksumMixin(object):
@@ -45,7 +35,7 @@ class ObjectChecksumMixin(object):
     def setUpClass(cls):
         super().setUpClass()
         cls.client = cls.get_s3_client(1)
-        cls.use_tls = cls.client._endpoint.host.startswith('https:')
+        cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
         cls.CHECKSUM_HDR = 'x-amz-checksum-' + cls.ALGORITHM.lower()
 
     def assert_checksum_stored(self, obj_name, check_listing=False):
@@ -123,7 +113,6 @@ class ObjectChecksumMixin(object):
         resp = caught.exception.response
         self.assertEqual(404, resp['ResponseMetadata']['HTTPStatusCode'])
 
-    @https_switches_to_chunked
     def test_let_sdk_compute(self):
         obj_name = self.create_name(self.ALGORITHM + '-sdk')
         resp = self.client.put_object(
@@ -205,12 +194,31 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         self.assert_checksum_stored(obj_name)
 
+        if self.is_aws:
+            self.client.put_bucket_ownership_controls(
+                Bucket=self.bucket_name,
+                OwnershipControls={
+                    "Rules": [
+                        {
+                            "ObjectOwnership": "ObjectWriter"
+                        }
+                    ]
+                }
+            )
+            self.client.put_public_access_block(
+                Bucket=self.bucket_name,
+                PublicAccessBlockConfiguration={
+                    "BlockPublicAcls": False,
+                    "IgnorePublicAcls": False,
+                }
+            )
+
         # Check that the object's checksum is not modified
         # when metadata changes
         self.client.put_object_acl(
             Bucket=self.bucket_name,
             Key=obj_name,
-            ACL='public-read',
+            ACL='authenticated-read',
             ChecksumAlgorithm=self.ALGORITHM,
         )
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
@@ -381,14 +389,37 @@ class ObjectChecksumMixin(object):
         if Version(botocore.__version__) >= Version('1.36.0'):
             self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
-        with self.assertRaises(botocore.exceptions.ClientError) as caught:
-            self.client.upload_part(
-                Bucket=self.bucket_name,
-                Key=obj_name,
-                UploadId=upload_id,
-                PartNumber=1,
-                Body=TEST_BODY,
-            )
+
+        def remove_crc32_headers(request, **_kwargs):
+            # Remove checksum headers automatically added by botocore
+            del request.headers["x-amz-sdk-checksum-algorithm"]
+            del request.headers["x-amz-checksum-crc32"]
+            trailer = request.headers.get("x-amz-trailer")
+            if trailer:
+                trailer_list = list_from_csv(trailer)
+                try:
+                    trailer_list.remove("x-amz-checksum-crc32")
+                except ValueError:
+                    pass
+                if trailer_list:
+                    request.headers["x-amz-trailer"] = ",".join(trailer_list)
+                else:
+                    del request.headers["x-amz-trailer"]
+
+        self.client.meta.events.register(
+            'before-sign.s3.*', remove_crc32_headers)
+        try:
+            with self.assertRaises(botocore.exceptions.ClientError) as caught:
+                self.client.upload_part(
+                    Bucket=self.bucket_name,
+                    Key=obj_name,
+                    UploadId=upload_id,
+                    PartNumber=1,
+                    Body=TEST_BODY,
+                )
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.*', remove_crc32_headers)
         self.assert_error(
             caught.exception.response,
             'InvalidRequest',
@@ -689,7 +720,9 @@ class ObjectChecksumMixin(object):
             PartNumber=1,
             ChecksumMode='ENABLED',
         )
-        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        # FIXME(adu): At AWS, 206 with Content-Range header
+        self.assertEqual(206 if self.is_aws else 200,
+                         resp['ResponseMetadata']['HTTPStatusCode'])
         self.assertIn(
             self.CHECKSUM_HDR,
             resp['ResponseMetadata']['HTTPHeaders'],
@@ -708,7 +741,9 @@ class ObjectChecksumMixin(object):
             PartNumber=1,
             ChecksumMode='ENABLED',
         )
-        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        # FIXME(adu): At AWS, 206 with Content-Range header
+        self.assertEqual(206 if self.is_aws else 200,
+                         resp['ResponseMetadata']['HTTPStatusCode'])
         self.assertIn(
             self.CHECKSUM_HDR,
             resp['ResponseMetadata']['HTTPHeaders'],
@@ -810,8 +845,14 @@ class ObjectChecksumMixin(object):
                    self.EXPECTED_COMPOSITE_1 + '-2'},
             )
         resp = caught.exception.response
-        code = resp['ResponseMetadata']['HTTPStatusCode']
-        self.assertEqual(400, code)
+        if self.is_aws:
+            # I don't know why, but sometimes AWS returns a 500 error
+            # with a BadDigest
+            expected_status_int = (400, 500)
+        else:
+            expected_status_int = (400,)
+        self.assertIn(resp['ResponseMetadata']['HTTPStatusCode'],
+                      expected_status_int, resp)
         self.assertEqual('BadDigest', resp['Error']['Code'])
         self.assertEqual(
             resp['Error']['Message'],
@@ -872,6 +913,9 @@ class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
         super().setUpClass()
 
     def test_mpu_with_CRC64NVME(self):
+        if self.is_aws:
+            self.skipTest(
+                "The test verifies that the feature is not yet implemented")
         obj_name = self.create_name(self.ALGORITHM + '-mpu-upload-part-good')
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.create_multipart_upload(
@@ -953,7 +997,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
     def setUpClass(cls):
         super().setUpClass()
         cls.client = cls.get_s3_client(1)
-        cls.use_tls = cls.client._endpoint.host.startswith('https:')
+        cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
 
     def test_multi_checksum(self):
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
@@ -975,25 +1019,43 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             'Multiple checksum Types are not allowed.')
 
     def test_different_checksum_requested(self):
-        with self.assertRaises(botocore.exceptions.ClientError) as caught:
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=self.create_name('different-checksum'),
-                Body=TEST_BODY,
-                ChecksumCRC32='y/Q5Jg==',
-                ChecksumAlgorithm='SHA1',
-            )
+
+        def replace_crc32_headers(request, **_kwargs):
+            # Remove checksum headers automatically added by botocore
+            del request.headers["x-amz-sdk-checksum-algorithm"]
+            del request.headers["x-amz-checksum-crc32"]
+            trailer = request.headers.get("x-amz-trailer")
+            if trailer:
+                trailer_list = list_from_csv(trailer)
+                try:
+                    trailer_list.remove("x-amz-checksum-crc32")
+                except ValueError:
+                    pass
+                if trailer_list:
+                    request.headers["x-amz-trailer"] = ",".join(trailer_list)
+                else:
+                    del request.headers["x-amz-trailer"]
+            # Add different checksum
+            request.headers["x-amz-sdk-checksum-algorithm"] = "SHA1"
+            request.headers["x-amz-checksum-crc32"] = "y/Q5Jg=="
+
+        self.client.meta.events.register(
+            'before-sign.s3.*', replace_crc32_headers)
+        try:
+            with self.assertRaises(botocore.exceptions.ClientError) as caught:
+                self.client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=self.create_name('different-checksum'),
+                    Body=TEST_BODY,
+                )
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.*', replace_crc32_headers)
         resp = caught.exception.response
         code = resp['ResponseMetadata']['HTTPStatusCode']
         self.assertEqual(400, code)
         self.assertEqual('InvalidRequest', resp['Error']['Code'])
-        if self.use_tls:
-            expected = 'Expecting a single x-amz-checksum- header'
-        else:
-            # if we're using an unsecured connection, the SDK pre-computes and
-            # sends a second header, with results like in test_multi_checksum
-            expected = 'Value for x-amz-sdk-checksum-' \
-                'algorithm header is invalid.'
+        expected = 'Value for x-amz-sdk-checksum-algorithm header is invalid.'
         self.assertEqual(resp['Error']['Message'], expected)
 
     def assert_invalid(self, resp):
@@ -1298,6 +1360,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             PartNumber=1,
             Body=TEST_BODY,
         )
+        self.assertEqual(200, part_resp['ResponseMetadata']['HTTPStatusCode'])
         complete_mpu_resp = self.client.complete_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name,
             MultipartUpload={
@@ -1312,8 +1375,14 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         )
         self.assertEqual(200, complete_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
-        self.assertFalse([k for k in complete_mpu_resp
-                          if k.startswith('Checksum')])
+        # FIXME(adu): AWS calculates a CRC64NVME checksum server-side
+        # in all cases
+        if self.is_aws:
+            assert_method = self.assertTrue
+        else:
+            assert_method = self.assertFalse
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
 
         head_resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name)
@@ -1322,8 +1391,8 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         head_resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
         # Still not there
-        self.assertFalse([k for k in head_resp
-                          if k.startswith('Checksum')])
+        assert_method([k for k in head_resp
+                       if k.startswith('Checksum')])
 
         list_objects_resp = self.client.list_objects(Bucket=self.bucket_name)
         self.assertEqual(200, list_objects_resp[
@@ -1331,7 +1400,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         items = [o for o in list_objects_resp['Contents']
                  if o['Key'] == obj_name]
         self.assertEqual(len(items), 1, items)
-        self.assertNotIn('ChecksumAlgorithm', items[0])
+        assert_method('ChecksumAlgorithm' in items[0])
 
     def test_mpu_upload_part_wrong_checksum(self):
         obj_name = self.create_name('wrong-checksum-mpu')
@@ -1471,8 +1540,14 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
                 UploadId=upload_id,
             )
         resp = caught.exception.response
-        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'],
-                         resp)
+        if self.is_aws:
+            # I don't know why, but sometimes AWS returns a 500 error
+            # with a BadDigest
+            expected_status_int = (400, 500)
+        else:
+            expected_status_int = (400,)
+        self.assertIn(resp['ResponseMetadata']['HTTPStatusCode'],
+                      expected_status_int, resp)
         self.assertEqual(resp['Error'], {
             'Code': 'BadDigest',
             'Message': ('The crc32 you specified for part 2 did not match '
