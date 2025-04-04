@@ -36,7 +36,7 @@ class ObjectChecksumMixin(object):
         cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
         cls.CHECKSUM_HDR = 'x-amz-checksum-' + cls.ALGORITHM.lower()
 
-    def assert_checksum_stored(self, obj_name, check_listing=False):
+    def assert_checksum_stored(self, obj_name, mpu=False, check_listing=False):
         resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name)
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
@@ -44,14 +44,46 @@ class ObjectChecksumMixin(object):
         self.assertNotIn(self.CHECKSUM_HDR, headers)  # Not there by default!
         self.assertNotIn('x-amz-checksum-type', headers)
 
+        def remove_checksum_mode(request, **_kwargs):
+            del request.headers["x-amz-checksum-mode"]
+
+        self.client.meta.events.register(
+            'before-sign.s3.*', remove_checksum_mode)
+        try:
+            resp = self.client.get_object(
+                Bucket=self.bucket_name, Key=obj_name)
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.*', remove_checksum_mode)
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        headers = resp['ResponseMetadata']['HTTPHeaders']
+        self.assertNotIn(self.CHECKSUM_HDR, headers)  # Not there by default!
+        self.assertNotIn('x-amz-checksum-type', headers)
+
         # Need to request it
+        if mpu:
+            expected_checksum = self.EXPECTED_COMPOSITE_1 + '-1'
+            # FULL_OBJECT for MPU object is not supported
+            expected_checksum_type = "COMPOSITE"
+        else:
+            expected_checksum = self.EXPECTED
+            expected_checksum_type = "FULL_OBJECT"
         resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         headers = resp['ResponseMetadata']['HTTPHeaders']
         self.assertIn(self.CHECKSUM_HDR, headers)
-        self.assertEqual(headers[self.CHECKSUM_HDR], self.EXPECTED)
-        self.assertIn('x-amz-checksum-type', headers)
+        self.assertEqual(headers[self.CHECKSUM_HDR], expected_checksum)
+        self.assertEqual(headers['x-amz-checksum-type'],
+                         expected_checksum_type)
+        resp = self.client.get_object(
+            Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        headers = resp['ResponseMetadata']['HTTPHeaders']
+        self.assertIn(self.CHECKSUM_HDR, headers)
+        self.assertEqual(headers[self.CHECKSUM_HDR], expected_checksum)
+        self.assertEqual(headers['x-amz-checksum-type'],
+                         expected_checksum_type)
 
         if not check_listing:
             # there are a lot of listing formats to check; since this can get
@@ -70,6 +102,8 @@ class ObjectChecksumMixin(object):
         item = list_objects_resp['Contents'][0]
         self.assertIn('ChecksumAlgorithm', item)
         self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
+        self.assertIn('ChecksumType', item)
+        self.assertEqual(item['ChecksumType'], expected_checksum_type)
         self.assertNotIn('VersionId', item)
 
         list_objects_resp = self.client.list_objects_v2(
@@ -83,6 +117,8 @@ class ObjectChecksumMixin(object):
         item = list_objects_resp['Contents'][0]
         self.assertIn('ChecksumAlgorithm', item)
         self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
+        self.assertIn('ChecksumType', item)
+        self.assertEqual(item['ChecksumType'], expected_checksum_type)
         self.assertNotIn('VersionId', item)
 
         list_objects_resp = self.client.list_object_versions(
@@ -97,6 +133,8 @@ class ObjectChecksumMixin(object):
         item = list_objects_resp['Versions'][0]
         self.assertIn('ChecksumAlgorithm', item)
         self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
+        self.assertIn('ChecksumType', item)
+        self.assertEqual(item['ChecksumType'], expected_checksum_type)
         self.assertIn('VersionId', item)
 
     def assert_error(self, resp, err_code, err_msg, obj_name, **extra):
@@ -384,8 +422,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
 
         def remove_crc32_headers(request, **_kwargs):
@@ -436,8 +473,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -464,8 +500,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -492,8 +527,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -515,8 +549,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -560,8 +593,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -605,8 +637,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -658,8 +689,7 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
@@ -696,15 +726,7 @@ class ObjectChecksumMixin(object):
         self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
         self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
-
-        head_resp = self.client.head_object(
-            Bucket=self.bucket_name, Key=obj_name)
-        self.assertNotIn('Checksum' + self.ALGORITHM, head_resp)
-        head_resp = self.client.head_object(
-            Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
-        self.assertIn('Checksum' + self.ALGORITHM, head_resp)
-        self.assertEqual(head_resp['Checksum' + self.ALGORITHM],
-                         complete_mpu_resp['Checksum' + self.ALGORITHM])
+        self.assert_checksum_stored(obj_name, mpu=True)
 
         return obj_name
 
@@ -716,6 +738,51 @@ class ObjectChecksumMixin(object):
         obj_name = self._test_mpu_complete_good_part_checksum(
             obj_suffix='get-part')
 
+        # No check mode
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            PartNumber=1,
+        )
+        # FIXME(adu): At AWS, 206 with Content-Range header
+        self.assertEqual(206 if self.is_aws else 200,
+                         resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+
+        def remove_checksum_mode(request, **_kwargs):
+            del request.headers["x-amz-checksum-mode"]
+
+        self.client.meta.events.register(
+            'before-sign.s3.*', remove_checksum_mode)
+        try:
+            resp = self.client.get_object(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                PartNumber=1,
+            )
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.*', remove_checksum_mode)
+        # FIXME(adu): At AWS, 206 with Content-Range header
+        self.assertEqual(206 if self.is_aws else 200,
+                         resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders']
+        )
+
+        # With check mode ENABLED
         resp = self.client.head_object(
             Bucket=self.bucket_name,
             Key=obj_name,
@@ -813,6 +880,7 @@ class ObjectChecksumMixin(object):
         self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
         self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
+        self.assert_checksum_stored(obj_name, mpu=True, check_listing=True)
 
     def test_mpu_complete_good_checksum_with_invalid_part_number(self):
         obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
@@ -876,6 +944,7 @@ class ObjectChecksumMixin(object):
         self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
         self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
+        self.assert_checksum_stored(obj_name, mpu=True, check_listing=True)
 
     def test_mpu_complete_good_checksum_with_default_checksum_type(self):
         obj_name, upload_id, parts = self._prepare_mpu_with_one_good_part(
@@ -894,6 +963,7 @@ class ObjectChecksumMixin(object):
         self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
         self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
+        self.assert_checksum_stored(obj_name, mpu=True, check_listing=True)
 
     def test_mpu_create_full_object_checksum_type(self):
         if self.is_aws:
@@ -1339,8 +1409,14 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
                 UploadId=upload_id,
             )
         bad_complete_resp = caught.exception.response
-        self.assertEqual(400, bad_complete_resp[
-            'ResponseMetadata']['HTTPStatusCode'])
+        if self.is_aws:
+            # I don't know why, but sometimes AWS returns a 500 error
+            # with a BadDigest
+            expected_status_int = (400, 500)
+        else:
+            expected_status_int = (400,)
+        self.assertIn(bad_complete_resp['ResponseMetadata']['HTTPStatusCode'],
+                      expected_status_int)
         self.assertEqual(bad_complete_resp['Error'], {
             'Code': 'InvalidPart',
             'Message': ("One or more of the specified parts could not be "
@@ -1503,8 +1579,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -1532,8 +1607,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.upload_part(
@@ -1563,8 +1637,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         for part_num in part_numbers:
             upload_part_resp = self.client.upload_part(
@@ -1606,8 +1679,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             for p in list_parts_resp['Parts']
         ])
         self.assertEqual('CRC32C', list_parts_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', list_parts_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', list_parts_resp['ChecksumType'])
 
     def test_mpu_complete_mixed_checksums(self):
         obj_name, upload_id, part_etag = self._upload_parts(
@@ -1735,8 +1807,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
-        if Version(botocore.__version__) >= Version('1.36.0'):
-            self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
         part_body = b'\x00' * 5 * 1024 * 1024
         part_crc32c = base64.b64encode(struct.pack("!I", crc32c(

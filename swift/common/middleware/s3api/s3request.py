@@ -1697,11 +1697,15 @@ class S3Request(swob.Request):
                         base = self.headers['etag']
                     else:
                         base = etag_input.hexdigest()
-                    footers[override_hdr] = base + '; %s=%s' % (
-                        checksum_info.listing_param_name,
-                        self._checksum_input._expected_b64)
-                    footers[storage_hdr] = \
-                        self._checksum_input._expected_b64
+                    if self.method == 'PUT':
+                        footers[override_hdr] = base + '; %s=%s' % (
+                            checksum_info.listing_param_name,
+                            self._checksum_input._expected_b64)
+                        footers[storage_hdr] = \
+                            self._checksum_input._expected_b64
+                    # else:  # POST
+                    # Adding the checksum to the metadata is handled
+                    # by the complete MPU
 
                 self.environ['swift.callback.update_footers'] = \
                     update_for_checksum
