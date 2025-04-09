@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime, timedelta
+
 import io
 import json
 import os
@@ -24,14 +24,15 @@ import re
 import requests
 import tempfile
 import threading
-from time import sleep
 import unittest
+from time import sleep
 from botocore.exceptions import ClientError
+from datetime import datetime, timedelta
+from logging import getLogger
 from urllib.parse import quote
-
-from oio_tests.functional.common import RANDOM_UTF8_CHARS, random_str, \
-    run_awscli_s3, run_awscli_s3api, CliError, get_boto3_client, \
-    STORAGE_DOMAIN, run_openiocli
+from oio_tests.functional.common import RANDOM_UTF8_CHARS, \
+    random_str, run_awscli_s3, run_awscli_s3api, CliError, \
+    get_boto3_client, STORAGE_DOMAIN, run_openiocli
 
 from s3transfer.futures import TransferCoordinator
 from s3transfer.bandwidth import BandwidthLimiter, LeakyBucket
@@ -44,10 +45,11 @@ ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
 class TestS3Mpu(unittest.TestCase):
 
     def setUp(self):
-        self.bucket = "test-mpu-" + random_str(4)
+        self._buckets_to_clean = []
+        self.bucket = self.create_bucket_name("test-mpu-")
         data = run_awscli_s3api("create-bucket", bucket=self.bucket)
         self.assertEqual('/%s' % self.bucket, data['Location'])
-        self.bucket_object_lock = "test-mpu-lock-" + random_str(4)
+        self.bucket_object_lock = self.create_bucket_name("test-mpu-lock-")
         data = run_awscli_s3api(
             "create-bucket",
             "--object-lock-enabled-for-bucket",
@@ -59,7 +61,8 @@ class TestS3Mpu(unittest.TestCase):
             '{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention":'
             ' { "Mode": "GOVERNANCE", "Days": 1 } } }',
             bucket=self.bucket_object_lock)
-        self.bucket_versioning = f"test-mpu-versioning-{random_str(4)}"
+        self.bucket_versioning = self.create_bucket_name(
+            "test-mpu-versioning-")
         data = run_awscli_s3api(
             "create-bucket",
             bucket=self.bucket_versioning)
@@ -68,10 +71,122 @@ class TestS3Mpu(unittest.TestCase):
             '--versioning-configuration',
             'Status=Enabled',
             bucket=self.bucket_versioning)
+        # Initialize the S3 client
+        self.boto_client = get_boto3_client()
+        self.logger = getLogger("TestS3Mpu")
+
+    def create_bucket_name(self, prefix=""):
+        bucket = prefix + random_str(4)
+        self._buckets_to_clean.append(bucket)
+        return bucket
+
+    def flush_bucket(self, bucket_name: str, bulk: bool = True) -> None:
+        """
+        Delete everything in a bucket.
+        Start by aborting all MPU in progress.
+        Then delete all versions and delete markers.
+        If bulk is True, objects will be deleted by batches, 1 by 1 otherwise.
+        """
+        # Flush all uploads in progress
+        is_truncated = True
+        while is_truncated:
+            listing = self.boto_client.list_multipart_uploads(
+                Bucket=bucket_name)
+            if "Uploads" in listing:
+                for upload in listing["Uploads"]:
+                    self.logger.debug(
+                        "Abort key=%s upload_id=%s",
+                        upload["Key"],
+                        upload["UploadId"]
+                    )
+                    self.boto_client.abort_multipart_upload(
+                        Bucket=bucket_name,
+                        Key=upload["Key"],
+                        UploadId=upload["UploadId"],
+                    )
+            is_truncated = listing["IsTruncated"]
+
+        # Flush all objects
+        is_truncated = True
+        while is_truncated:
+            listing = self.boto_client.list_object_versions(Bucket=bucket_name)
+            if "DeleteMarkers" in listing and listing["DeleteMarkers"]:
+                if bulk:
+                    objs = list(
+                        map(
+                            lambda x: {
+                                "Key": x["Key"], "VersionId": x["VersionId"]},
+                            listing["DeleteMarkers"],
+                        )
+                    )
+                    self.boto_client.delete_objects(
+                        Bucket=bucket_name,
+                        Delete={"Objects": objs},
+                        BypassGovernanceRetention=True,
+                    )
+                else:
+                    for delete_marker in listing["DeleteMarkers"]:
+                        self.logger.debug(
+                            "Delete delete_marker=%s", delete_marker["Key"]
+                        )
+                        self.boto_client.delete_object(
+                            Bucket=bucket_name,
+                            Key=delete_marker["Key"],
+                            VersionId=delete_marker["VersionId"],
+                            BypassGovernanceRetention=True,
+                        )
+            if "Versions" in listing and listing["Versions"]:
+                if bulk:
+                    objs = list(
+                        map(
+                            lambda x: {
+                                "Key": x["Key"], "VersionId": x["VersionId"]},
+                            listing["Versions"],
+                        )
+                    )
+                    self.boto_client.delete_objects(
+                        Bucket=bucket_name,
+                        Delete={"Objects": objs},
+                        BypassGovernanceRetention=True,
+                    )
+                else:
+                    for obj in listing["Versions"]:
+                        self.logger.debug("Delete key=%s", obj["Key"])
+                        self.boto_client.delete_object(
+                            Bucket=bucket_name,
+                            Key=obj["Key"],
+                            VersionId=obj["VersionId"],
+                            BypassGovernanceRetention=True,
+                        )
+            is_truncated = listing["IsTruncated"]
+
+    def delete_all_buckets(self, **kwargs) -> None:
+        """
+        Flush and delete all created buckets.
+        """
+        while self._buckets_to_clean:
+            bucket_name = self._buckets_to_clean.pop()
+            try:
+                try:
+                    self.logger.info(f"Flush bucket={bucket_name}")
+                    self.flush_bucket(bucket_name, **kwargs)
+                    self.logger.info(f"Delete bucket={bucket_name}")
+                    self.boto_client.delete_bucket(Bucket=bucket_name)
+                except ClientError as exc:
+                    self.logger.info(
+                        f"Delete or flush bucket={bucket_name} failed: {exc}. "
+                        "Try to force delete the bucket={bucket_name}"
+                    )
+                    run_awscli_s3('rb', '--force', bucket=self.bucket)
+            except ClientError as exc:
+                err_code = exc.response.get("Error", {}).get("Code")
+                # Bucket not existing, nothing more to do.
+                if err_code != "NoSuchBucket":
+                    raise
 
     def tearDown(self):
         try:
-            run_awscli_s3('rb', '--force', bucket=self.bucket)
+            self.delete_all_buckets()
         except CliError as exc:
             if 'NoSuchBucket' not in str(exc):
                 raise
@@ -138,11 +253,10 @@ class TestS3Mpu(unittest.TestCase):
         # Some tools specify the Content-Type on this operation,
         # and since the data sent is indeed XML, this should be allowed
         # without affecting the object Content-Type.
-        boto_client = get_boto3_client()
         try:
-            boto_client.meta.events.register(
+            self.boto_client.meta.events.register(
                 'before-sign.s3.*', self._add_content_type)
-            final = boto_client.complete_multipart_upload(
+            final = self.boto_client.complete_multipart_upload(
                 Bucket=self.bucket,
                 Key=path,
                 MultipartUpload={
@@ -150,7 +264,7 @@ class TestS3Mpu(unittest.TestCase):
                 },
                 UploadId=upload_id)
         finally:
-            boto_client.meta.events.unregister(
+            self.boto_client.meta.events.unregister(
                 'before-sign.s3.*', self._add_content_type)
         self.assertEqual(final['Key'], path)
 
@@ -308,11 +422,10 @@ class TestS3Mpu(unittest.TestCase):
         # Some tools specify the Content-Type on this operation,
         # and since the data sent is indeed XML, this should be allowed
         # without affecting the object Content-Type.
-        boto_client = get_boto3_client()
         try:
-            boto_client.meta.events.register(
+            self.boto_client.meta.events.register(
                 'before-sign.s3.*', self._add_content_type)
-            data = boto_client.complete_multipart_upload(
+            data = self.boto_client.complete_multipart_upload(
                 Bucket=self.bucket,
                 Key=path,
                 MultipartUpload={
@@ -320,7 +433,7 @@ class TestS3Mpu(unittest.TestCase):
                 },
                 UploadId=upload_id)
         finally:
-            boto_client.meta.events.unregister(
+            self.boto_client.meta.events.unregister(
                 'before-sign.s3.*', self._add_content_type)
         self.assertEqual(path, data['Key'])
         self.assertTrue(data['ETag'].endswith('-2"'))
@@ -406,7 +519,6 @@ class TestS3Mpu(unittest.TestCase):
         """
         Specific test case: CORS with presigned URLs when upload a part.
         """
-        boto_client = get_boto3_client()
         obj = random_str(10)
         headers = {
             "Access-Control-Request-Method": "PUT",
@@ -426,7 +538,7 @@ class TestS3Mpu(unittest.TestCase):
             'UploadId': upload_id,
             'PartNumber': 1,  # We only validate it works for 1 part
         }
-        presigned_url = boto_client.generate_presigned_url(
+        presigned_url = self.boto_client.generate_presigned_url(
             ClientMethod="upload_part",
             Params=params,
         )
@@ -570,8 +682,7 @@ class TestS3Mpu(unittest.TestCase):
         # Using invalid XML characters prevents us from using regular clients
         key = 'object\u001e\u001e<Test> name with\x02-\x0d-\x0f %-sign🙂\n/.md'
         urlencoded_key = quote(key)
-        client = get_boto3_client()
-        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
+        self.boto_client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
 
         # Initiate MPU
         resp = requests.post(
@@ -650,8 +761,7 @@ class TestS3Mpu(unittest.TestCase):
     def test_use_upload_id_with_invalid_xml_chars(self):
         upload_id = 'fake\u001eupload id 🙂'
         urlencoded_upload_id = quote(upload_id)
-        client = get_boto3_client()
-        client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
+        self.boto_client.put_bucket_acl(Bucket=self.bucket, ACL='public-read-write')
 
         resp = requests.get(
             f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/test?uploadId={urlencoded_upload_id}')
@@ -702,22 +812,19 @@ class TestS3Mpu(unittest.TestCase):
     def test_reupload_part_before_complete_but_finish_after(self):
         path = "inconsistent-part-size-mpu" + random_str(4)
 
-        # Initialize the S3 client
-        boto_client = get_boto3_client()
-
         # Rate limit: register events
         event_name = "request-created.s3"
-        boto_client.meta.events.register_first(
+        self.boto_client.meta.events.register_first(
             event_name,
             signal_not_transferring,
             unique_id="s3upload-not-transferring",
         )
-        boto_client.meta.events.register_last(
+        self.boto_client.meta.events.register_last(
             event_name, signal_transferring, unique_id="s3upload-transferring"
         )
 
         # Create a legitimate multipart upload
-        response = boto_client.create_multipart_upload(
+        response = self.boto_client.create_multipart_upload(
             Bucket=self.bucket, Key=path, Metadata={"meta": "value"}
         )
         self.assertEqual(path, response['Key'])
@@ -727,7 +834,7 @@ class TestS3Mpu(unittest.TestCase):
 
         def upload_part(part_number, data, fail_expected, output_queue):
             try:
-                resp = boto_client.upload_part(
+                resp = self.boto_client.upload_part(
                     Bucket=self.bucket,
                     Key=path,
                     PartNumber=part_number,
@@ -766,7 +873,7 @@ class TestS3Mpu(unittest.TestCase):
 
         sleep(13)
         # Complete MPU (before re-upload of part 1 is finish)
-        final = boto_client.complete_multipart_upload(
+        final = self.boto_client.complete_multipart_upload(
             Bucket=self.bucket,
             Key=path,
             UploadId=upload_id,
@@ -804,22 +911,19 @@ class TestS3Mpu(unittest.TestCase):
     def test_abort_while_upload_part(self):
         path = "part" + random_str(4)
 
-        # Initialize the S3 client
-        boto_client = get_boto3_client()
-
         # Rate limit: register events
         event_name = "request-created.s3"
-        boto_client.meta.events.register_first(
+        self.boto_client.meta.events.register_first(
             event_name,
             signal_not_transferring,
             unique_id="s3upload-not-transferring",
         )
-        boto_client.meta.events.register_last(
+        self.boto_client.meta.events.register_last(
             event_name, signal_transferring, unique_id="s3upload-transferring"
         )
 
         # Create a legitimate multipart upload
-        response = boto_client.create_multipart_upload(
+        response = self.boto_client.create_multipart_upload(
             Bucket=self.bucket, Key=path, Metadata={"meta": "value"}
         )
         self.assertEqual(path, response['Key'])
@@ -829,7 +933,7 @@ class TestS3Mpu(unittest.TestCase):
 
         def upload_part(part_number, data, output_queue):
             try:
-                resp = boto_client.upload_part(
+                resp = self.boto_client.upload_part(
                     Bucket=self.bucket,
                     Key=path,
                     PartNumber=part_number,
@@ -861,7 +965,7 @@ class TestS3Mpu(unittest.TestCase):
 
         sleep(13)
         # Complete MPU (before re-upload of part 1 is finish)
-        response = boto_client.abort_multipart_upload(
+        response = self.boto_client.abort_multipart_upload(
             Bucket=self.bucket, Key=path, UploadId=upload_id
         )
         self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 204)
@@ -931,10 +1035,8 @@ class TestS3Mpu(unittest.TestCase):
 
     def test_multi_delete_versioning_enabled(self):
         path = f"mpu_object_{random_str(5)}"
-        # Initialize the S3 client
-        boto_client = get_boto3_client()
         # Create a legitimate multipart upload
-        response = boto_client.create_multipart_upload(
+        response = self.boto_client.create_multipart_upload(
             Bucket=self.bucket_versioning, Key=path
         )
         self.assertEqual(path, response['Key'])
@@ -943,7 +1045,7 @@ class TestS3Mpu(unittest.TestCase):
         upload_file = "/etc/magic"
         with open(upload_file, "r") as file:
             data = file.read()
-            resp = boto_client.upload_part(
+            resp = self.boto_client.upload_part(
                 Bucket=self.bucket_versioning,
                 Key=path,
                 PartNumber=1,
@@ -952,7 +1054,7 @@ class TestS3Mpu(unittest.TestCase):
             )
             mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
         # Complete MPU
-        resp = boto_client.complete_multipart_upload(
+        resp = self.boto_client.complete_multipart_upload(
             Bucket=self.bucket_versioning,
             Key=path,
             UploadId=upload_id,
@@ -961,23 +1063,23 @@ class TestS3Mpu(unittest.TestCase):
         version_id = resp["VersionId"]
         self.assertEqual(resp['Key'], path)
         # Delete MPU with BATCH.DELETE
-        resp = boto_client.delete_objects(
+        resp = self.boto_client.delete_objects(
             Bucket=self.bucket_versioning,
             Delete={"Objects": [{"Key": path}]}
         )
         self.assertEqual(resp["Deleted"][0]["Key"], path)
         # check delete marker is created
-        resp = boto_client.list_object_versions(Bucket=self.bucket_versioning)
+        resp = self.boto_client.list_object_versions(Bucket=self.bucket_versioning)
         keys = [delete_marker["Key"] for delete_marker in resp["DeleteMarkers"]]
         self.assertIn(path, keys)
         self.assertRaises(
             ClientError,
-            boto_client.get_object,
+            self.boto_client.get_object,
             Bucket=self.bucket_versioning,
             Key=path,
         )
         # Check mpu can be downloaded with version id
-        resp = boto_client.get_object(
+        resp = self.boto_client.get_object(
             Bucket=self.bucket_versioning,
             Key=path,
             VersionId=version_id,
