@@ -35,13 +35,18 @@ class ObjectChecksumMixin(object):
         cls.client = cls.get_s3_client(1)
         cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
         cls.CHECKSUM_HDR = 'x-amz-checksum-' + cls.ALGORITHM.lower()
+        cls.GLOBAL_CHECKSUM_HDR = 'x-amz-checksum-' + TestObjectChecksumCRC64NVME.ALGORITHM.lower()
 
-    def assert_checksum_stored(self, obj_name, mpu=False, check_listing=False):
+    def assert_checksum_stored(self, obj_name, mpu=False, check_listing=False, global_checksum=False):
         resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name)
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         headers = resp['ResponseMetadata']['HTTPHeaders']
-        self.assertNotIn(self.CHECKSUM_HDR, headers)  # Not there by default!
+        if global_checksum:
+            # When global checksum is used with complete mpu, CRC64NVME is used in all cases
+            self.assertNotIn(self.GLOBAL_CHECKSUM_HDR, headers)
+        else:
+            self.assertNotIn(self.CHECKSUM_HDR, headers)  # Not there by default!
         self.assertNotIn('x-amz-checksum-type', headers)
 
         def remove_checksum_mode(request, **_kwargs):
@@ -65,6 +70,10 @@ class ObjectChecksumMixin(object):
             expected_checksum = self.EXPECTED_COMPOSITE_1 + '-1'
             # FULL_OBJECT for MPU object is not supported
             expected_checksum_type = "COMPOSITE"
+            if global_checksum and self.is_aws:
+                expected_checksum = TestObjectChecksumCRC64NVME.EXPECTED
+                expected_checksum_type = "FULL_OBJECT"
+
         else:
             expected_checksum = self.EXPECTED
             expected_checksum_type = "FULL_OBJECT"
@@ -72,18 +81,24 @@ class ObjectChecksumMixin(object):
             Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         headers = resp['ResponseMetadata']['HTTPHeaders']
-        self.assertIn(self.CHECKSUM_HDR, headers)
-        self.assertEqual(headers[self.CHECKSUM_HDR], expected_checksum)
-        self.assertEqual(headers['x-amz-checksum-type'],
-                         expected_checksum_type)
+        if global_checksum:
+            self.assertIn(self.GLOBAL_CHECKSUM_HDR, headers)
+            self.assertEqual(headers[self.GLOBAL_CHECKSUM_HDR], expected_checksum)
+        else:
+            self.assertIn(self.CHECKSUM_HDR, headers)
+            self.assertEqual(headers[self.CHECKSUM_HDR], expected_checksum)
+        self.assertEqual(headers['x-amz-checksum-type'], expected_checksum_type)
         resp = self.client.get_object(
             Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         headers = resp['ResponseMetadata']['HTTPHeaders']
-        self.assertIn(self.CHECKSUM_HDR, headers)
-        self.assertEqual(headers[self.CHECKSUM_HDR], expected_checksum)
-        self.assertEqual(headers['x-amz-checksum-type'],
-                         expected_checksum_type)
+        if global_checksum:
+            self.assertIn(self.GLOBAL_CHECKSUM_HDR, headers)
+            self.assertEqual(headers[self.GLOBAL_CHECKSUM_HDR], expected_checksum)
+        else:
+            self.assertIn(self.CHECKSUM_HDR, headers)
+            self.assertEqual(headers[self.CHECKSUM_HDR], expected_checksum)
+        self.assertEqual(headers['x-amz-checksum-type'], expected_checksum_type)
 
         if not check_listing:
             # there are a lot of listing formats to check; since this can get
@@ -101,8 +116,11 @@ class ObjectChecksumMixin(object):
 
         item = list_objects_resp['Contents'][0]
         self.assertIn('ChecksumAlgorithm', item)
-        self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
         self.assertIn('ChecksumType', item)
+        if global_checksum:
+            self.assertEqual(item['ChecksumAlgorithm'], [TestObjectChecksumCRC64NVME.ALGORITHM])
+        else:
+            self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
         self.assertEqual(item['ChecksumType'], expected_checksum_type)
         self.assertNotIn('VersionId', item)
 
@@ -116,8 +134,11 @@ class ObjectChecksumMixin(object):
 
         item = list_objects_resp['Contents'][0]
         self.assertIn('ChecksumAlgorithm', item)
-        self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
         self.assertIn('ChecksumType', item)
+        if global_checksum:
+            self.assertEqual(item['ChecksumAlgorithm'], [TestObjectChecksumCRC64NVME.ALGORITHM])
+        else:
+            self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
         self.assertEqual(item['ChecksumType'], expected_checksum_type)
         self.assertNotIn('VersionId', item)
 
@@ -132,8 +153,11 @@ class ObjectChecksumMixin(object):
 
         item = list_objects_resp['Versions'][0]
         self.assertIn('ChecksumAlgorithm', item)
-        self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
         self.assertIn('ChecksumType', item)
+        if global_checksum:
+            self.assertEqual(item['ChecksumAlgorithm'], [TestObjectChecksumCRC64NVME.ALGORITHM])
+        else:
+            self.assertEqual(item['ChecksumAlgorithm'], [self.ALGORITHM])
         self.assertEqual(item['ChecksumType'], expected_checksum_type)
         self.assertIn('VersionId', item)
 
@@ -182,6 +206,40 @@ class ObjectChecksumMixin(object):
         )
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         self.assert_checksum_stored(obj_name)
+
+    def test_good_checksum_different_algorithm_header(self):
+        obj_name = self.create_name(self.ALGORITHM + '-different-algo-header')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                Body=TEST_BODY,
+                ChecksumAlgorithm=self.DIFF_ALGORITHM,
+                **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+            )
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'Value for x-amz-sdk-checksum-algorithm header is invalid.',
+            obj_name,
+        )
+
+    def test_good_checksum_invalid_algorithm_header(self):
+        obj_name = self.create_name(self.ALGORITHM + '-invalid-algo-header')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                Body=TEST_BODY,
+                ChecksumAlgorithm=self.INVALID_ALGO,
+                **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+            )
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'Value for x-amz-sdk-checksum-algorithm header is invalid.',
+            obj_name,
+        )
 
     def test_invalid_checksum(self):
         obj_name = self.create_name(self.ALGORITHM + '-invalid')
@@ -260,14 +318,90 @@ class ObjectChecksumMixin(object):
         self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         self.assert_checksum_stored(obj_name, check_listing=True)
 
-    def test_batch_delete_with_checksum(self):
+    def test_batch_delete_no_checksum(self):
+        obj_name = self.create_name(self.ALGORITHM + 'batch-delete')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
         # Verify that sending the request checksum does not cause
         # the deletion to fail
-        self.client.delete_objects(
+        resp = self.client.delete_objects(
             Bucket=self.bucket_name,
-            Delete={'Objects': [{'Key': 'test'}]},
+            Delete={'Objects': [{'Key': obj_name}]},
+        )
+        keys = [
+            delete_marker["Key"] for delete_marker in resp["Deleted"]]
+        self.assertIn(obj_name, keys)
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+
+    def test_batch_delete_with_checksum(self):
+        obj_name = self.create_name(self.ALGORITHM + 'batch-delete')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name, check_listing=True)
+        # Verify that sending the request checksum does not cause
+        # the deletion to fail
+        resp = self.client.delete_objects(
+            Bucket=self.bucket_name,
+            Delete={'Objects': [{'Key': obj_name}]},
             ChecksumAlgorithm=self.ALGORITHM,
         )
+        keys = [
+            delete_marker["Key"] for delete_marker in resp["Deleted"]]
+        self.assertIn(obj_name, keys)
+        self.assertNotIn(
+            self.CHECKSUM_HDR,
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+
+    def test_batch_delete_with_invalid_checksum_algo(self):
+        obj_name = self.create_name(self.ALGORITHM + 'batch-delete')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name, check_listing=True)
+        # Verify that sending the request checksum does not cause
+        # the deletion to fail
+        with self.assertRaises(botocore.exceptions.FlexibleChecksumError) as caught:
+            self.client.delete_objects(
+                Bucket=self.bucket_name,
+                Delete={'Objects': [{'Key': obj_name}]},
+                ChecksumAlgorithm=self.INVALID_ALGO,
+            )
+        self.assertIn("Unsupported checksum algorithm: invalidalgo", str(caught.exception))
+        # Check object still exists
+        resp = self.client.head_object(
+            Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('ChecksumType', resp)
+        self.assertEqual('FULL_OBJECT', resp['ChecksumType'])
+        self.assertTrue('Checksum' + self.ALGORITHM in resp)
+        self.assertEqual(self.EXPECTED, resp['Checksum' + self.ALGORITHM])
 
     def test_if_none_match_on_object_with_checksum(self):
         obj_name = self.create_name(self.ALGORITHM + 'if-none-match')
@@ -318,6 +452,36 @@ class ObjectChecksumMixin(object):
             'x-amz-checksum-type',
             resp['ResponseMetadata']['HTTPHeaders'],
         )
+
+    def test_if_match_on_object_with_checksum(self):
+        obj_name = self.create_name(self.ALGORITHM + 'if-match')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name)
+        etag = resp['ETag']
+
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            IfMatch=etag,
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            IfMatch=etag,
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('ChecksumType', resp)
+        self.assertEqual('FULL_OBJECT', resp['ChecksumType'])
+        self.assertTrue('Checksum' + self.ALGORITHM in resp)
+        self.assertEqual(self.EXPECTED, resp['Checksum' + self.ALGORITHM])
 
     def test_full_content_range(self):
         obj_name = self.create_name(self.ALGORITHM + 'full-content-range')
@@ -370,6 +534,31 @@ class ObjectChecksumMixin(object):
             resp['ResponseMetadata']['HTTPHeaders']
         )
 
+    def test_full_content_with_part_number(self):
+        obj_name = self.create_name(self.ALGORITHM + 'full-content-with-part-number')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED}
+        )
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assert_checksum_stored(obj_name)
+
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            PartNumber=1,
+        )
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            PartNumber=1,
+        )
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+
     def test_partial_content_range(self):
         obj_name = self.create_name(self.ALGORITHM + 'partial-content-range')
         resp = self.client.put_object(
@@ -413,12 +602,33 @@ class ObjectChecksumMixin(object):
             resp['ResponseMetadata']['HTTPHeaders']
         )
 
+    def test_mpu_list_mpu_checksum_type_and_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-list-mpu')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        resp = self.client.list_multipart_uploads(Bucket=self.bucket_name)
+        self.assertEqual(
+            200, resp['ResponseMetadata']['HTTPStatusCode'])
+        resp_values = [
+            upload for upload in resp.get("Uploads", [])
+            if upload.get("Key") == obj_name
+        ]
+        self.assertTrue(resp_values)
+        self.assertEqual(self.ALGORITHM, resp_values[0]['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', resp_values[0]['ChecksumType'])
+
     def test_mpu_upload_part_requires_checksum(self):
         obj_name = self.create_name(
             self.ALGORITHM + '-mpu-upload-part-missing-checksum')
         create_mpu_resp = self.client.create_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name,
-            ChecksumAlgorithm=self.ALGORITHM)
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
         self.assertEqual(200, create_mpu_resp[
             'ResponseMetadata']['HTTPStatusCode'])
         self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
@@ -461,6 +671,161 @@ class ObjectChecksumMixin(object):
             'Checksum Type mismatch occurred, expected checksum '
             'Type: %s, actual checksum Type: null'
             % self.ALGORITHM.lower(),
+            obj_name,
+        )
+
+    def test_mpu_upload_part_good_checksum_trailer_and_no_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-checksum-trailer')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+
+        def replace_crc32_headers(request, **_kwargs):
+            # Remove checksum headers automatically added by botocore
+            del request.headers["x-amz-sdk-checksum-algorithm"]
+            del request.headers["x-amz-checksum-crc32"]
+            trailer = request.headers.get("x-amz-trailer")
+            trailer_list = list_from_csv(trailer)
+            algo = self.ALGORITHM.lower()
+            try:
+                trailer_list.remove("x-amz-checksum-crc32")
+                trailer_list.append(f"x-amz-checksum-{algo}")
+            except ValueError:
+                pass
+            if trailer_list:
+                request.headers["x-amz-trailer"] = ",".join(trailer_list)
+            else:
+                del request.headers["x-amz-trailer"]
+            request.headers[f"x-amz-checksum-{algo}"] = self.EXPECTED
+
+        self.client.meta.events.register(
+            'before-call.s3.UploadPart*', replace_crc32_headers)
+        try:
+            resp = self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=TEST_BODY,
+            )
+            self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+            self.assertIn('Checksum' + self.ALGORITHM, resp)
+            self.assertEqual(self.EXPECTED, resp['Checksum' + self.ALGORITHM])
+        except botocore.exceptions.ClientError as exc:
+            self.assert_error(
+                exc.response,
+                'InvalidRequest',
+                f'Checksum Type mismatch occurred, expected checksum Type: '
+                f'{self.ALGORITHM.lower()}, actual checksum Type: crc32',
+                obj_name,
+            )
+
+        finally:
+            self.client.meta.events.unregister(
+                'before-call.s3.UploadPart*', replace_crc32_headers)
+
+    def test_mpu_upload_part_good_checksum_trailer_and_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-checksum-trailer')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+
+        def replace_crc32_headers(request, **_kwargs):
+            # Remove checksum headers automatically added by botocore
+            del request.headers[f"x-amz-checksum-{self.ALGORITHM.lower()}"]
+            trailer = request.headers.get("x-amz-trailer")
+            trailer_list = list_from_csv(trailer)
+            algo = self.ALGORITHM.lower()
+            try:
+                trailer_list.remove("x-amz-checksum-crc32")
+                trailer_list.append(f"x-amz-checksum-{algo}")
+            except ValueError:
+                pass
+            if trailer_list:
+                request.headers["x-amz-trailer"] = ",".join(trailer_list)
+            else:
+                del request.headers["x-amz-trailer"]
+            request.headers[f"x-amz-checksum-{algo}"] = self.EXPECTED
+
+        self.client.meta.events.register(
+            'before-call.s3.UploadPart*', replace_crc32_headers)
+        try:
+            resp = self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=TEST_BODY,
+                ChecksumAlgorithm=self.ALGORITHM,
+            )
+        finally:
+            self.client.meta.events.unregister(
+                'before-call.s3.UploadPart*', replace_crc32_headers)
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('Checksum' + self.ALGORITHM, resp)
+        self.assertEqual(self.EXPECTED, resp['Checksum' + self.ALGORITHM])
+
+    def test_mpu_upload_part_good_checksum_trailer_and_diff_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-checksum-trailer')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+
+        def replace_crc32_headers(request, **_kwargs):
+            # Remove checksum headers automatically added by botocore
+            del request.headers[f"x-amz-checksum-{self.DIFF_ALGORITHM.lower()}"]
+            trailer = request.headers.get("x-amz-trailer")
+            trailer_list = list_from_csv(trailer)
+            algo = self.ALGORITHM.lower()
+            try:
+                trailer_list.remove("x-amz-checksum-crc32")
+                trailer_list.append(f"x-amz-checksum-{algo}")
+            except ValueError:
+                pass
+            if trailer_list:
+                request.headers["x-amz-trailer"] = ",".join(trailer_list)
+            else:
+                del request.headers["x-amz-trailer"]
+            request.headers[f"x-amz-checksum-{algo}"] = self.EXPECTED
+
+        self.client.meta.events.register(
+            'before-call.s3.UploadPart*', replace_crc32_headers)
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            try:
+                self.client.upload_part(
+                    Bucket=self.bucket_name,
+                    Key=obj_name,
+                    UploadId=upload_id,
+                    PartNumber=1,
+                    Body=TEST_BODY,
+                    ChecksumAlgorithm=self.DIFF_ALGORITHM,
+                )
+            finally:
+                self.client.meta.events.unregister(
+                    'before-call.s3.UploadPart*', replace_crc32_headers)
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            f'Checksum Type mismatch occurred, expected checksum Type: {self.ALGORITHM.lower()}, '
+            f'actual checksum Type: {self.DIFF_ALGORITHM.lower()}',
             obj_name,
         )
 
@@ -539,6 +904,141 @@ class ObjectChecksumMixin(object):
         )
         self.assertEqual(200, part_resp[
             'ResponseMetadata']['HTTPStatusCode'])
+
+    def test_mpu_upload_part_good_checksum_and_algo_specified(self):
+        obj_name = self.create_name(self.ALGORITHM + '-mpu-upload-part-good-with-algo')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        part_resp = self.client.upload_part(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED},
+        )
+        self.assertEqual(200, part_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+
+    def test_mpu_upload_part_good_checksum_and_different_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-good-checksum-with-different-algo')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=TEST_BODY,
+                ChecksumAlgorithm=self.DIFF_ALGORITHM,
+                **{'Checksum' + self.ALGORITHM: self.EXPECTED},
+            )
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'Value for x-amz-sdk-checksum-algorithm header is invalid.',
+            obj_name,
+        )
+
+    def test_mpu_upload_part_diff_good_checksum_and_no_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-diff-good-checksum-with-no-algo')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=TEST_BODY,
+                **{'Checksum' + self.DIFF_ALGORITHM: self.DIFFERENT},
+            )
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            f'Checksum Type mismatch occurred, expected checksum Type: {self.ALGORITHM.lower()}, '
+            f'actual checksum Type: {self.DIFF_ALGORITHM.lower()}',
+            obj_name,
+        )
+
+    def test_mpu_upload_part_diff_good_checksum_and_diff_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-diff-good-checksum-with-diff-algo')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=TEST_BODY,
+                ChecksumAlgorithm=self.DIFF_ALGORITHM,
+                **{'Checksum' + self.DIFF_ALGORITHM: self.DIFFERENT},
+            )
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            f'Checksum Type mismatch occurred, expected checksum Type: {self.ALGORITHM.lower()}, '
+            f'actual checksum Type: {self.DIFF_ALGORITHM.lower()}',
+            obj_name,
+        )
+
+    def test_mpu_upload_part_diff_good_checksum_and_good_algo_specified(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-mpu-upload-part-diff-good-checksum-with-good-algo')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=TEST_BODY,
+                ChecksumAlgorithm=self.ALGORITHM,
+                **{'Checksum' + self.DIFF_ALGORITHM: self.DIFFERENT},
+            )
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'Value for x-amz-sdk-checksum-algorithm header is invalid.',
+            obj_name,
+        )
 
     def test_mpu_complete_requires_part_checksum(self):
         obj_name = self.create_name(
@@ -675,6 +1175,106 @@ class ObjectChecksumMixin(object):
             PartNumber='1',
             ETag=part_resp['ETag'].strip('"'),
             # No reference to checksums!?
+        )
+
+    def test_mpu_complete_bad_part_checksum_good_global_checksum(self):
+        obj_name = self.create_name(
+            self.ALGORITHM + '-complete-bad-part-checksum-good-global-checksum')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        part_resp = self.client.upload_part(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=TEST_BODY,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED},
+        )
+        self.assertEqual(200, part_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                MultipartUpload={
+                    'Parts': [
+                        {
+                            'ETag': part_resp['ETag'],
+                            'PartNumber': 1,
+                            'Checksum' + self.ALGORITHM: self.BAD,
+                        },
+                    ],
+                },
+                UploadId=upload_id,
+                **{'Checksum' + self.ALGORITHM: self.EXPECTED_COMPOSITE_1},
+            )
+        self.assert_error(
+            caught.exception.response,
+            'BadDigest',
+            f"The {self.ALGORITHM.lower()} you specified did not match the calculated checksum.",
+            obj_name,
+        )
+
+    def _test_complete_good_part_checksum_global_checksum(self, name, global_checksum=True):
+        obj_name = self.create_name(self.ALGORITHM + name)
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=self.ALGORITHM, ChecksumType='COMPOSITE')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(self.ALGORITHM, create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        part_resp = self.client.upload_part(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=self.ALGORITHM,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED},
+        )
+        self.assertEqual(200, part_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        kwargs = {}
+        if global_checksum:
+            kwargs['Checksum' + self.ALGORITHM] = self.EXPECTED_COMPOSITE_1
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            MultipartUpload={
+                'Parts': [
+                    {
+                        'ETag': part_resp['ETag'],
+                        'PartNumber': 1,
+                        'Checksum' + self.ALGORITHM: self.EXPECTED,
+                    },
+                ],
+            },
+            UploadId=upload_id,
+            ChecksumType='COMPOSITE',
+            **kwargs,
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
+        self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
+                         complete_mpu_resp['Checksum' + self.ALGORITHM])
+        self.assert_checksum_stored(obj_name, mpu=True)
+
+    def test_mpu_complete_good_part_checksum_no_global_checksum(self):
+        self._test_complete_good_part_checksum_global_checksum(
+            name="-complete-good-part-checksum-no-global-checksum",
+            global_checksum=False
+        )
+
+    def test_mpu_complete_good_part_checksum_with_global_checksum(self):
+        self._test_complete_good_part_checksum_global_checksum(
+            name="-complete-good-part-checksum-global-checksum"
         )
 
     def _prepare_mpu_with_one_good_part(self, obj_suffix='test',
@@ -965,6 +1565,105 @@ class ObjectChecksumMixin(object):
                          complete_mpu_resp['Checksum' + self.ALGORITHM])
         self.assert_checksum_stored(obj_name, mpu=True, check_listing=True)
 
+    def _test_with_global_checksum(
+        self, name, algo=False, cs_type=None, is_global=True
+    ):
+        obj_name = self.create_name(name)
+        kwargs = {
+            "Bucket": self.bucket_name,
+            "Key": obj_name
+        }
+        if algo:
+            kwargs["ChecksumAlgorithm"] = self.ALGORITHM
+        if cs_type:
+            kwargs["ChecksumType"] = cs_type
+        create_mpu_resp = self.client.create_multipart_upload(**kwargs)
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        upload_id = create_mpu_resp['UploadId']
+        part_resp = self.client.upload_part(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=TEST_BODY,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED},
+        )
+        self.assertEqual(200, part_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        kwargs = {}
+        if is_global:
+            kwargs = {"Checksum" + self.ALGORITHM: self.EXPECTED_COMPOSITE_1}
+        if not is_global:  # global checksum not used
+            with self.assertRaises(botocore.exceptions.ClientError) as caught:
+                complete_mpu_resp = self.client.complete_multipart_upload(
+                    Bucket=self.bucket_name, Key=obj_name,
+                    MultipartUpload={
+                        'Parts': [
+                            {
+                                'ETag': part_resp['ETag'],
+                                'PartNumber': 1,
+                            },
+                        ],
+                    },
+                    UploadId=upload_id,
+                    **kwargs,
+                )
+            self.assert_error(
+                caught.exception.response,
+                'InvalidRequest',
+                f'The upload was created using a {self.ALGORITHM.lower()} '
+                'checksum. The complete request must include the '
+                'checksum for each part. '
+                'It was missing for part 1 in the request.',
+                obj_name,
+            )
+            return
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=obj_name,
+            MultipartUpload={
+                'Parts': [
+                    {
+                        'ETag': part_resp['ETag'],
+                        'PartNumber': 1,
+                    },
+                ],
+            },
+            UploadId=upload_id,
+            **kwargs,
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        if self.is_aws:
+            self.assertIn('ChecksumType', complete_mpu_resp)
+        if not cs_type:
+            if not self.is_aws:
+                # When global checksum is added on complete mpu,
+                # CRC64NVME is used in all cases on aws.
+                # But no checksum is performed on our side
+                return
+            self.assertEqual("FULL_OBJECT", complete_mpu_resp['ChecksumType'])
+            self.assertIn('Checksum' + TestObjectChecksumCRC64NVME.ALGORITHM, complete_mpu_resp)
+            self.assertEqual(TestObjectChecksumCRC64NVME.EXPECTED,
+                             complete_mpu_resp['Checksum' + TestObjectChecksumCRC64NVME.ALGORITHM])
+        else:
+            self.assertEqual(cs_type, complete_mpu_resp['ChecksumType'])
+            self.assertIn('Checksum' + self.ALGORITHM, complete_mpu_resp)
+            self.assertEqual(self.EXPECTED_COMPOSITE_1 + '-1',
+                             complete_mpu_resp['Checksum' + self.ALGORITHM])
+        self.assert_checksum_stored(
+            obj_name, mpu=True, check_listing=True, global_checksum=is_global)
+
+    def test_mpu_no_checksum_part_good_global_checksum(self):
+        self._test_with_global_checksum(
+            name='no-part-checksum-good-global-checksum')
+
+    def test_mpu_with_algo_type_no_checksum_part_no_global_checksum(self):
+        self._test_with_global_checksum(
+            name='mpu-with-algo-type-no-checksum-part-good-global',
+            algo=True, cs_type="COMPOSITE", is_global=False
+        )
+
     def test_mpu_create_full_object_checksum_type(self):
         if self.is_aws:
             self.skipTest(
@@ -982,21 +1681,106 @@ class ObjectChecksumMixin(object):
             'ChecksumType': 'FULL_OBJECT',
         })
 
+    def test_mpu_create_no_checksum_algo_and_full_object_checksum_type(self):
+        obj_name = self.create_name('mpu-no-checksum-algo-full-object-checksum-type')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumType='FULL_OBJECT')
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'The x-amz-checksum-type header can only be used with the x-amz-checksum-algorithm header.',
+            obj_name,
+        )
+
+    def test_mpu_create_no_checksum_algo_and_composite_checksum_type(self):
+        obj_name = self.create_name('mpu-no-checksum-algo-composite-checksum-type')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumType='COMPOSITE')
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'The x-amz-checksum-type header can only be used with the x-amz-checksum-algorithm header.',
+            obj_name,
+        )
+
+    def test_mpu_create_checksum_algo_and_invalid_checksum_type(self):
+        obj_name = self.create_name('mpu-checksum-algo-bad-checksum-type')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm=self.ALGORITHM,
+                ChecksumType='BADCHECKSUM')
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'Value for x-amz-checksum-type header is invalid.',
+            obj_name,
+        )
+
+    def test_mpu_create_invalid_checksum_algo_and_no_checksum_type(self):
+        obj_name = self.create_name('mpu-invalid-checksum-algo-no-checksum-type')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.create_multipart_upload(
+                Bucket=self.bucket_name, Key=obj_name,
+                ChecksumAlgorithm=self.INVALID_ALGO)
+        self.assert_error(
+            caught.exception.response,
+            'InvalidRequest',
+            'Checksum algorithm provided is unsupported. '
+            'Please try again with any of the valid types: '
+            '[CRC32, CRC32C, SHA1, SHA256]',
+            obj_name,
+        )
+
+    def test_full_content_with_checksum_checksum_mode_invalid(self):
+        obj_name = self.create_name('full-content-with-checksum-checksum-mode-invalid')
+        self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            **{'Checksum' + self.ALGORITHM: self.EXPECTED},
+        )
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.head_object(
+                Bucket=self.bucket_name, Key=obj_name, ChecksumMode='INVALID')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': '400', 'Message': 'Bad Request'})
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.get_object(
+                Bucket=self.bucket_name, Key=obj_name, ChecksumMode='INVALID')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'InvalidRequest',
+            'Message': 'Value for x-amz-checksum-mode header is invalid.'})
+
 
 class TestObjectChecksumCRC32(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC32'
+    DIFF_ALGORITHM = 'CRC32C'
+    INVALID_ALGO = 'INVALIDALGO'
     TYPE = 'COMPOSITE'
     EXPECTED = 'y/Q5Jg=='
     EXPECTED_COMPOSITE_1 = '7kxlUA=='
+    DIFFERENT = '4waSgw=='
     INVALID = 'y/Q5Jh=='
     BAD = 'z/Q5Jg=='
 
 
 class TestObjectChecksumCRC32C(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC32C'
+    DIFF_ALGORITHM = 'SHA1'
+    INVALID_ALGO = 'INVALIDALGO'
     TYPE = 'COMPOSITE'
     EXPECTED = '4waSgw=='
     EXPECTED_COMPOSITE_1 = 'pzJFoA=='
+    DIFFERENT = '98O8HYCOBHMq32eZZczDTKeuNEE='
     INVALID = '4waSgx=='
     BAD = '5waSgw=='
 
@@ -1010,8 +1794,11 @@ class TestObjectChecksumCRC32C(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
 class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
                                   BaseS3TestCaseWithBucket):
     ALGORITHM = 'CRC64NVME'
+    DIFF_ALGORITHM = 'CRC32C'
+    INVALID_ALGO = 'INVALIDALGO'
     TYPE = 'FULL_OBJECT'
     EXPECTED = 'rosUhgp5mIg='
+    DIFFERENT = '4waSgw=='
     INVALID = 'rosUhgp5mIh='
     BAD = 'sosUhgp5mIg='
 
@@ -1090,12 +1877,57 @@ class TestObjectChecksumCRC64NVME(ObjectChecksumMixin,
     def test_mpu_create_full_object_checksum_type(self):
         raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
 
+    def test_mpu_upload_part_good_checksum_trailer_and_no_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_good_checksum_trailer_and_diff_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_good_checksum_trailer_and_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_good_checksum_and_different_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_good_checksum_and_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_diff_good_checksum_and_no_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_diff_good_checksum_and_good_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_upload_part_diff_good_checksum_and_diff_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_list_mpu_checksum_type_and_algo_specified(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_part_checksum_with_global_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_good_part_checksum_no_global_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_complete_bad_part_checksum_good_global_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_no_checksum_part_good_global_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
+    def test_mpu_with_algo_type_no_checksum_part_no_global_checksum(self):
+        raise SkipTest('MPU with FULL_OBJECT checksum type is not supported')
+
 
 class TestObjectChecksumSHA1(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'SHA1'
+    DIFF_ALGORITHM = 'CRC32C'
+    INVALID_ALGO = 'INVALIDALGO'
     TYPE = 'COMPOSITE'
     EXPECTED = '98O8HYCOBHMq32eZZczDTKeuNEE='
     EXPECTED_COMPOSITE_1 = 'zGcEPHvP9e6lVmvZsfPHT9mlz10='
+    DIFFERENT = '4waSgw=='
     INVALID = '98O8HYCOBHMq32eZZczDTKeuNEF='
     BAD = '+8O8HYCOBHMq32eZZczDTKeuNEE='
 
@@ -1118,9 +1950,12 @@ class TestObjectChecksumSHA1(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
 
 class TestObjectChecksumSHA256(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
     ALGORITHM = 'SHA256'
+    DIFF_ALGORITHM = 'CRC32C'
+    INVALID_ALGO = 'INVALIDALGO'
     TYPE = 'COMPOSITE'
     EXPECTED = 'FeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiU='
     EXPECTED_COMPOSITE_1 = 'KSsNAHVmgy25S/rmic1w0at3KBH9RLn0nYVQ7p6mpJQ='
+    DIFFERENT = '4waSgw=='
     INVALID = 'FeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiV='
     BAD = 'GeKw08M4keuw8e9gnsQZQgwg4yDOlMZfvIwzEkSOsiU='
 
@@ -1270,6 +2105,52 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
             self.client.put_object(**put_kwargs)
         self.assert_invalid(caught.exception.response)
+
+    def test_full_content_no_checksum_checksum_mode_enabled(self):
+        obj_name = self.create_name('full-content-no-checksum-checksum-mode-enabled')
+        self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+        )
+        head_resp = self.client.head_object(
+            Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
+        self.assertIn('ChecksumType', head_resp)
+        self.assertEqual("FULL_OBJECT", head_resp['ChecksumType'])
+        self.assertTrue("ChecksumCRC32" in head_resp)
+        self.assertEqual(TestObjectChecksumCRC32.EXPECTED,
+                         head_resp["ChecksumCRC32"])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('ChecksumType', resp)
+        self.assertEqual("FULL_OBJECT", resp['ChecksumType'])
+        self.assertTrue("ChecksumCRC32" in resp)
+        self.assertEqual(TestObjectChecksumCRC32.EXPECTED,
+                         resp["ChecksumCRC32"])
+
+    def test_full_content_no_checksum_checksum_mode_invalid(self):
+        obj_name = self.create_name('full-content-no-checksum-checksum-mode-invalid')
+        self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+        )
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.head_object(
+                Bucket=self.bucket_name, Key=obj_name, ChecksumMode='INVALID')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': '400', 'Message': 'Bad Request'})
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.get_object(
+                Bucket=self.bucket_name, Key=obj_name, ChecksumMode='INVALID')
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual(resp['Error'], {
+            'Code': 'InvalidRequest',
+            'Message': 'Value for x-amz-checksum-mode header is invalid.'})
 
     def test_mpu_create_bad_checksum_algorithm(self):
         obj_name = self.create_name('mpu-bad-checksum')
@@ -1515,7 +2396,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             # Again, no reference to checksums!
         })
 
-    def test_mpu_has_no_checksum(self):
+    def _prepare_mpu_no_checksum(self):
         obj_name = self.create_name('no-checksum-mpu')
         create_mpu_resp = self.client.create_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name)
@@ -1550,6 +2431,15 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             assert_method = self.assertTrue
         else:
             assert_method = self.assertFalse
+        return obj_name, complete_mpu_resp, assert_method
+
+    def test_mpu_has_no_checksum(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+
         assert_method([k for k in complete_mpu_resp
                        if k.startswith('Checksum')])
 
@@ -1557,12 +2447,151 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             Bucket=self.bucket_name, Key=obj_name)
         self.assertFalse([k for k in head_resp
                           if k.startswith('Checksum')])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name, Key=obj_name,)
+        assert_method([k for k in resp
+                       if k.startswith('Checksum')])
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+
+    def test_mpu_has_no_checksum_with_partial_range(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
+        head_resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name, Range=f'bytes=0-{len(TEST_BODY)-2}',
+        )
+        self.assertFalse([k for k in head_resp
+                          if k.startswith('Checksum')])
+        self.assertEqual(206, head_resp['ResponseMetadata']['HTTPStatusCode'])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name, Range=f'bytes=0-{len(TEST_BODY)-2}',
+        )
+        self.assertFalse([k for k in resp
+                          if k.startswith('Checksum')])
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+
+    def test_mpu_has_no_checksum_full_content_range(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
+
+        head_resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name, Range=f'bytes=0-{len(TEST_BODY)-1}',
+        )
+        self.assertFalse([k for k in head_resp
+                          if k.startswith('Checksum')])
+        self.assertEqual(206, head_resp['ResponseMetadata']['HTTPStatusCode'])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name, Range=f'bytes=0-{len(TEST_BODY)-1}',
+        )
+        assert_method([k for k in resp
+                       if k.startswith('Checksum')])
+        self.assertEqual(206, resp['ResponseMetadata']['HTTPStatusCode'])
+
+    def test_mpu_has_no_checksum_ifNoneMatch(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+        etag = complete_mpu_resp['ETag']
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.head_object(
+                Bucket=self.bucket_name,
+                Key=obj_name, IfNoneMatch=etag,
+            )
+        resp = caught.exception.response
+        self.assertEqual(304, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('304', resp['Error']['Code'])
+        self.assertEqual('Not Modified', resp['Error']['Message'])
+        self.assertNotIn(
+            'x-amz-checksum-' + TestObjectChecksumCRC64NVME.ALGORITHM.lower(),
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        self.assertNotIn(
+            'x-amz-checksum-type',
+            resp['ResponseMetadata']['HTTPHeaders'],
+        )
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self.client.get_object(
+                Bucket=self.bucket_name,
+                Key=obj_name, IfNoneMatch=etag,
+            )
+        resp = caught.exception.response
+        self.assertEqual(304, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('304', resp['Error']['Code'])
+        self.assertEqual('Not Modified', resp['Error']['Message'])
+        self.assertFalse([k for k in resp
+                          if k.startswith('Checksum')])
+
+    def test_mpu_has_no_checksum_ifMatch(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+        etag = complete_mpu_resp['ETag']
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
+        resp = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=obj_name, IfMatch=etag)
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertFalse([k for k in resp
+                          if k.startswith('Checksum')])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+        )
+        assert_method([k for k in resp
+                       if k.startswith('Checksum')])
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+
+    def test_mpu_has_no_checksum_ChecksumMode(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
         head_resp = self.client.head_object(
             Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
         # Still not there
         assert_method([k for k in head_resp
                        if k.startswith('Checksum')])
+        resp = self.client.get_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            ChecksumMode='ENABLED',
+        )
+        assert_method([k for k in resp
+                       if k.startswith('Checksum')])
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
 
+    def test_mpu_has_no_checksum_list_object(self):
+        (
+            obj_name,
+            complete_mpu_resp,
+            assert_method
+        ) = self._prepare_mpu_no_checksum()
+        assert_method([k for k in complete_mpu_resp
+                       if k.startswith('Checksum')])
         list_objects_resp = self.client.list_objects(Bucket=self.bucket_name)
         self.assertEqual(200, list_objects_resp[
             'ResponseMetadata']['HTTPStatusCode'])
@@ -1892,3 +2921,137 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             {k: o.get(k) for k in ('Key', 'ETag', 'ChecksumAlgorithm')}
             for o in list_objects_resp['Contents']
         ])
+
+    def test_multipart_mpu_with_upload_part_copy(self):
+        obj_name = self.create_name('object-to-copy-mpu')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm='CRC32C',
+            ChecksumCRC32C=TestObjectChecksumCRC32C.EXPECTED,
+        )
+        self.assertEqual(200, resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('x-amz-checksum-crc32c',
+                      resp['ResponseMetadata']['HTTPHeaders'])
+        self.assertEqual(
+            resp['ResponseMetadata']['HTTPHeaders']['x-amz-checksum-crc32c'],
+            TestObjectChecksumCRC32C.EXPECTED)
+        # Initialize an MPU
+        mpu_obj_name = self.create_name('multipart-mpu-with-upload-part-copy')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            ChecksumAlgorithm='CRC32C', ChecksumType="COMPOSITE")
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+
+        # Upload part
+        copy_response = self.client.upload_part_copy(
+            Bucket=self.bucket_name,
+            Key=mpu_obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            CopySource={"Bucket": self.bucket_name, "Key": obj_name},
+        )
+        self.assertEqual(200, copy_response[
+            'ResponseMetadata']['HTTPStatusCode'])
+
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            MultipartUpload={
+                'Parts': [
+                    {
+                        'PartNumber': 1,
+                        'ETag': copy_response['CopyPartResult']['ETag'],
+                        'ChecksumCRC32C': copy_response[
+                            'CopyPartResult']["ChecksumCRC32C"],
+                    },
+                ],
+            },
+            UploadId=upload_id,
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+
+    def test_multipart_mpu_with_upload_part_copy_diff_checksum_algo(self):
+        obj_name = self.create_name('object-to-copy-mpu')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY,
+            ChecksumAlgorithm=TestObjectChecksumSHA256.ALGORITHM,
+            ChecksumSHA256=TestObjectChecksumSHA256.EXPECTED,
+        )
+        self.assertEqual(200, resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('x-amz-checksum-sha256',
+                      resp['ResponseMetadata']['HTTPHeaders'])
+        self.assertEqual(
+            resp['ResponseMetadata']['HTTPHeaders']['x-amz-checksum-sha256'],
+            TestObjectChecksumSHA256.EXPECTED)
+        # Initialize an MPU
+        mpu_obj_name = self.create_name('multipart-mpu-with-upload-part-copy')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            ChecksumAlgorithm='CRC32C', ChecksumType="COMPOSITE")
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        self.assertEqual('COMPOSITE', create_mpu_resp['ChecksumType'])
+        upload_id = create_mpu_resp['UploadId']
+        # On AWS upload part copy of an objet with different checksum algorithm
+        # is possible, the checksum is recomputed with the mpu checksum
+        # algorithm. We currently do not support this behavior.
+        if not self.is_aws:
+            with self.assertRaises(botocore.exceptions.ClientError) as caught:
+                # Upload part
+                self.client.upload_part_copy(
+                    Bucket=self.bucket_name,
+                    Key=mpu_obj_name,
+                    UploadId=upload_id,
+                    PartNumber=1,
+                    CopySource={"Bucket": self.bucket_name, "Key": obj_name},
+                )
+            resp = caught.exception.response
+            self.assertEqual(
+                400, resp['ResponseMetadata']['HTTPStatusCode'],
+                resp
+            )
+            self.assertEqual(resp['Error'], {
+                'Code': 'InvalidRequest',
+                'Message': 'Checksum Type mismatch occurred, '
+                'expected checksum Type: crc32c, actual checksum Type: sha256',
+            })
+            return
+
+        # Upload part
+        copy_response = self.client.upload_part_copy(
+            Bucket=self.bucket_name,
+            Key=mpu_obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            CopySource={"Bucket": self.bucket_name, "Key": obj_name},
+        )
+        self.assertEqual(200, copy_response[
+            'ResponseMetadata']['HTTPStatusCode'])
+
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            MultipartUpload={
+                'Parts': [
+                    {
+                        'PartNumber': 1,
+                        'ETag': copy_response['CopyPartResult']['ETag'],
+                        'ChecksumCRC32C': copy_response[
+                            'CopyPartResult']["ChecksumCRC32C"],
+                    },
+                ],
+            },
+            UploadId=upload_id,
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
