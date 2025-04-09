@@ -306,14 +306,23 @@ class BucketLockController(Controller):
 
     @staticmethod
     def _convert_to_days(conf_dict):
+        """
+        Convert DefaultRetention rule value to days (integer).
+        Returns None when there is no DefaultRetention rule.
+        """
         days = conf_dict.get("Rule", {}).get("DefaultRetention",
-                                             {}).get("Days", 0)
+                                             {}).get("Days")
         years = conf_dict.get("Rule", {}).get("DefaultRetention",
                                               {}).get("Years")
-        if days is not None:
-            return days
-        if years is not None:
-            return 365 * int(years)
+        try:
+            if days is not None:
+                return int(days)
+            if years is not None:
+                return 365 * int(years)
+        except ValueError as err:
+            # days or years not integer
+            raise InvalidRetentionPeriod() from err
+        return None
 
 
 class ObjectLockLegalHoldController(Controller):

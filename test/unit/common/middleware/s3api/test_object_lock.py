@@ -1,4 +1,5 @@
 # Copyright (c) 2022 OpenStack Foundation.
+# Copyright (c) 2025 OVH SAS.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +24,7 @@ from swift.common.middleware.s3api.bucket_db import get_bucket_db, \
     BucketDbWrapper
 from swift.common.middleware.s3api.controllers.object_lock import \
     BucketLockController
+from swift.common.middleware.s3api.s3response import InvalidRetentionPeriod
 
 OBJECTLOCK_ENABLED_XML = \
     b'<ObjectLockConfiguration>\n  <ObjectLockEnabled>' + \
@@ -105,6 +107,7 @@ class TestS3apiObjectLock(S3ApiTestCase):
         self.s3api.bucket_db.reserve('test-object-lock', 'AUTH_test')
 
     def test_no_object_lock(self):
+        """Put object lock configuration whereas not enabled on bucket"""
         req = Request.blank('/bucket-1?object-lock&id=myid',
                             environ={'REQUEST_METHOD': 'PUT'},
                             body=OBJECTLOCK_CONFIG_XML,
@@ -244,6 +247,37 @@ class TestS3apiObjectLock(S3ApiTestCase):
             status, _, body = self.call_s3api(req)
             self.assertEqual("501 Not Implemented", status)
             self.assertIn("NotImplemented", str(body))
+
+    def test_object_lock_defaultretention_convert_to_days(self):
+        xml_with_days = OBJECTLOCK_CONFIG_XML
+        xml_with_years = OBJECTLOCK_CONFIG_XML.replace(
+            b"<Days>1</Days>", b"<Years>1</Years>",
+        )
+        xml_with_nothing = OBJECTLOCK_MINIMAL_CONFIG_XML
+
+        from_xml = BucketLockController._xml_conf_to_dict(xml_with_days)
+        days = BucketLockController._convert_to_days(from_xml)
+        self.assertEqual(days, 1)
+
+        from_xml = BucketLockController._xml_conf_to_dict(xml_with_years)
+        days = BucketLockController._convert_to_days(from_xml)
+        self.assertEqual(days, 365)
+
+        from_xml = BucketLockController._xml_conf_to_dict(xml_with_nothing)
+        days = BucketLockController._convert_to_days(from_xml)
+        self.assertIsNone(days)
+
+        garbage = {
+            "ObjectLockEnabled": "Enabled",
+            "Rule": {
+                "DefaultRetention": {"Mode": "GOVERNANCE", "Years": "garbage"}
+            }
+        }
+        self.assertRaises(
+            InvalidRetentionPeriod,
+            BucketLockController._convert_to_days,
+            garbage,
+        )
 
 
 if __name__ == '__main__':
