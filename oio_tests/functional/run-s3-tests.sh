@@ -25,6 +25,7 @@ run_functional_test s3-default.cfg \
     s3-versioning.sh \
     s3-multipart.sh \
     s3-mpu.py \
+    s3-lifecycle.py \
     s3-s3cmd.sh \
     bucket-logging.py \
     bucket-log-deliverer.py \

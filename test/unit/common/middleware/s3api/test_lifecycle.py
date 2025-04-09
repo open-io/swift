@@ -284,6 +284,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             },
             "Transitions",
             {},
+            denormalize_func=lambda x: x,
             storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
         )
 
@@ -295,6 +296,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             },
             "Transitions",
             {},
+            denormalize_func=lambda x: x,
             storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
         )
 
@@ -306,6 +308,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             },
             "Transitions",
             {},
+            denormalize_func=lambda x: x,
             storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
         )
 
@@ -318,6 +321,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             },
             "Transitions",
             {},
+            denormalize_func=lambda x: x,
             storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
         )
 
@@ -336,5 +340,6 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             },
             "Transitions",
             {},
+            denormalize_func=lambda x: x,
             storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
         )

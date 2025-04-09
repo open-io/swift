@@ -29,7 +29,7 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
     MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
     S3NotImplemented, ServiceUnavailable, AccessDenied, InvalidTagKey, \
-    InvalidTagValue, BadEndpoint
+    InvalidTagValue
 from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
     convert_response, sysmeta_header, is_valid_token, validate_tag_key, \
     validate_tag_value
@@ -69,7 +69,12 @@ def is_ascii(content):
     return True
 
 
-def dict_conf_to_xml(conf, root="ReplicationConfiguration"):
+def dict_conf_to_xml(
+    conf,
+    root="ReplicationConfiguration",
+    denormalize_func=None,
+    **_kwargs
+):
     """
     Convert configuration dict to XML.
 
@@ -82,6 +87,8 @@ def dict_conf_to_xml(conf, root="ReplicationConfiguration"):
     def _to_xml(data, p=None, element=None):
         if not isinstance(data, (dict, list)):
             subelement = SubElement(element, p)
+            if p == "StorageClass" and denormalize_func:
+                data = denormalize_func(data)
             subelement.text = str(data)
         elif isinstance(data, list):
             for i in data:
@@ -176,7 +183,8 @@ def get_filters(filter_xml_item):
     return d_filters
 
 
-def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
+def replication_xml_conf_to_dict(
+        conf, root="ReplicationConfiguration", normalize_func=None):
 
     """
     Convert the XML replication configuration into a more pythonic
@@ -221,7 +229,10 @@ def replication_xml_conf_to_dict(conf, root="ReplicationConfiguration"):
         # Append storage class if specified
         storage_class = rule_xml.find("Destination").find("StorageClass")
         if storage_class is not None:
-            rule_dict["Destination"]["StorageClass"] = storage_class.text
+            storage_class = storage_class.text
+            if normalize_func:
+                storage_class = normalize_func(storage_class)
+            rule_dict["Destination"]["StorageClass"] = storage_class
             out["UseStorageClass"] = True
         out["Rules"].append(rule_dict)
     return out
@@ -605,19 +616,11 @@ class ReplicationController(Controller):
         config = req.xml(MAX_REPLICATION_BODY_SIZE)
         # Validation
         self._validate_configuration(config, req)
-        dict_conf = replication_xml_conf_to_dict(config)
+        dict_conf = replication_xml_conf_to_dict(
+            config, normalize_func=req.normalize_storage_class
+        )
         self._validate_role(dict_conf.get("Role"), req)
-        # If endpoint is not standard, specifying a storage class is not yet
-        # accepted. To be accepted, it requires to update the customer doc
-        # for an explicit an clear mapping between both endpoints and all
-        # storage classes
-        if dict_conf["UseStorageClass"] and not req.is_standard_endpoint():
-            # This log is only helpful to see if customer are trying to do it.
-            self.logger.info(
-                "Refuse PUT replication conf (non standard endpoint and "
-                "storage class specified)"
-            )
-            raise BadEndpoint
+
         dict_conf = _optimize_replication_conf(dict_conf)
         json_conf = json.dumps(dict_conf, separators=(',', ':'))
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
@@ -643,16 +646,8 @@ class ReplicationController(Controller):
             raise ReplicationConfigurationNotFoundError
         body = json.loads(body)
 
-        # See comment in PUT method.
-        if body.get("use_storage_class") and not req.is_standard_endpoint():
-            # This log is only helpful to see if customer are trying to do it.
-            self.logger.info(
-                "Refuse GET replication conf (non standard endpoint and "
-                "storage class specified)"
-            )
-            raise BadEndpoint
-
-        generated_body = dict_conf_to_xml(body)
+        generated_body = dict_conf_to_xml(
+            body, denormalize_func=req.denormalize_storage_class)
         return HTTPOk(body=generated_body, content_type="application/xml")
 
     @set_s3_operation_rest('REPLICATION')

@@ -285,7 +285,8 @@ def _format_field(field):
     return field
 
 
-def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
+def dict_conf_to_xml(
+        conf, root="LifecycleConfiguration", denormalize_func=None, **_kwargs):
     """
     Convert configuration dict to XML.
 
@@ -330,6 +331,8 @@ def dict_conf_to_xml(conf, root="LifecycleConfiguration"):
             subelement = SubElement(element, p)
             if isinstance(data, bool):
                 data = "true" if data else "false"
+            if p == "StorageClass" and denormalize_func:
+                data = denormalize_func(data)
             subelement.text = str(data)
 
     root_elem = Element(root)
@@ -527,6 +530,16 @@ def _get_tags(field, elem, **_kwargs):
         tags.append(
             {"Key": _get_field("Key", e), "Value": _get_field("Value", e)})
     return tags if tags else None
+
+
+def _get_storage_class(field, elem, normalize_func=None, **_kwargs):
+    e = elem.find(field)
+    if e is None:
+        return None
+    storage_class = e.text
+    if normalize_func:
+        storage_class = normalize_func(storage_class)
+    return storage_class
 
 
 def _get_forbidden_field(rule):
@@ -779,6 +792,7 @@ def _validate_transitions_different_times(
     transition_type,
     rule,
     storage_durations=None,
+    denormalize_func=None,
     **_kwargs
 ):
     if storage_durations is None:
@@ -805,7 +819,7 @@ def _validate_transitions_different_times(
                         f"'{days_type}' in {transition_type} action must be "
                         "greater than or equal to "
                         f"{next_allowed_days + class_minimal_duration} for "
-                        f"storageClass '{stg_class}'"
+                        f"storageClass '{denormalize_func(stg_class)}'"
                     ),
                 )
             else:
@@ -815,8 +829,8 @@ def _validate_transitions_different_times(
                     _get_days_or_date(previous)[0],
                     transition_type,
                     time_type,
-                    stg_class,
-                    previous.get("StorageClass"),
+                    denormalize_func(stg_class),
+                    denormalize_func(previous.get("StorageClass")),
                     rule,
                     min_days=class_minimal_duration,
                 )
@@ -827,7 +841,7 @@ def _validate_transitions_different_times(
 
 
 def _validate_transitions_consistency(
-        transitions, transition_type, rule, **_kwargs):
+        transitions, transition_type, rule, denormalize_func=None, **_kwargs):
     stg_sorted = sorted(
         [v for k, v in _iter_skip_internal(transitions)],
         key=lambda x: S3_STORAGE_CLASSES.index(x.get("StorageClass"))
@@ -845,8 +859,8 @@ def _validate_transitions_consistency(
                 _get_days_or_date(time_sorted_elem)[0],
                 transition_type,
                 transitions.get("__time_type"),
-                time_sorted_elem.get("StorageClass"),
-                stg_sorted_elem.get("StorageClass"),
+                denormalize_func(time_sorted_elem.get("StorageClass")),
+                denormalize_func(stg_sorted_elem.get("StorageClass")),
                 rule,
             )
     return None, None
@@ -870,7 +884,7 @@ def _build_actions(rule_xml, rule, index=0, **kwargs):
             (
                 ("Days", _get_integer, _validate_positive_integer),
                 ("Date", None, _validate_date),
-                ("StorageClass", None, _validate_storage_class),
+                ("StorageClass", _get_storage_class, _validate_storage_class),
             ),
         ),
         (
@@ -913,7 +927,7 @@ def _build_actions(rule_xml, rule, index=0, **kwargs):
                 ),
                 (
                     "StorageClass",
-                    None,
+                    _get_storage_class,
                     _validate_storage_class,
                 ),
             ),
@@ -983,7 +997,8 @@ def lifecycle_xml_conf_to_dict(
     lifecycle_conf,
     storage_durations,
     minimal_object_size,
-    allow_transitions=True
+    allow_transitions=True,
+    **kwargs,
 ):
     """
     Convert the XML lifecycle configuration into a more pythonic
@@ -1107,7 +1122,8 @@ class LifecycleController(Controller):
             "_transition_default_minimum_object_size",
             LifecycleMinimumObjectSize.AllStorageClasses128k)
         minimum_obj_size = LifecycleMinimumObjectSize(minimum_obj_size)
-        generated_body = dict_conf_to_xml(body)
+        generated_body = dict_conf_to_xml(
+            body, denormalize_func=req.denormalize_storage_class)
         resp = HTTPOk(body=generated_body, content_type="application/xml")
         resp.headers["x-amz-transition-default-minimum-object-size"] = (
             minimum_obj_size.value)
@@ -1178,7 +1194,10 @@ class LifecycleController(Controller):
             data,
             self.conf.storage_classes_minimal_duration,
             minimum_object_size,
-            allow_transitions=allow_transition)
+            allow_transitions=allow_transition,
+            normalize_func=req.normalize_storage_class,
+            denormalize_func=req.denormalize_storage_class,
+        )
         req.headers[LIFECYCLE_HEADER] = json.dumps(
             config, separators=(',', ':'))
         resp = req.get_response(self.app, method="POST")

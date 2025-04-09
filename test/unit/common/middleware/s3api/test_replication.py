@@ -109,6 +109,53 @@ REPLICATION_CONF_DICT = {
 }
 
 REPLICATION_CONF_JSON = json.dumps(REPLICATION_CONF_DICT)
+
+REPLICATION_STORAGE_CLASS_CONF_XML = (
+    b"<?xml version='1.0' encoding='UTF-8'?>\n<ReplicationConfiguration"
+    b' xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+    b"<Role>arn:aws:iam::012345678942:role/s3-replication</Role>"
+    b"<Rule><DeleteMarkerReplication>"
+    b"<Status>Disabled</Status>"
+    b"</DeleteMarkerReplication>"
+    b"<Destination>"
+    b"<Bucket>arn:aws:s3:::dest</Bucket>"
+    b"<StorageClass>STANDARD</StorageClass>"
+    b"</Destination>"
+    b"<Filter>"
+    b"<Tag>"
+    b"<Key>string</Key>"
+    b"<Value>string</Value>"
+    b"</Tag>"
+    b"</Filter>"
+    b"<ID>2dfdcf571182407293d35b52959876e3</ID>"
+    b"<Priority>0</Priority>"
+    b"<Status>Enabled</Status>"
+    b"</Rule>"
+    b"</ReplicationConfiguration>"
+)
+
+REPLICATION_STORAGE_CLASS_CONF_DICT = {
+    "role": "arn:aws:iam::012345678942:role/s3-replication",
+    "rules": {
+        "2dfdcf571182407293d35b52959876e3": {
+            "ID": "2dfdcf571182407293d35b52959876e3",
+            "Priority": 0,
+            "Status": "Enabled",
+            "DeleteMarkerReplication": {"Status": "Disabled"},
+            "Filter": {"Tag": {"Key": "string", "Value": "string"}},
+            "Destination": {
+                "Bucket": "arn:aws:s3:::dest",
+                "StorageClass": "STANDARD",
+            },
+        }
+    },
+    "replications": [],
+    "deletions": [],
+    "use_tags": True,
+}
+REPLICATION_STORAGE_CLASS_CONF_JSON = json.dumps(
+    REPLICATION_STORAGE_CLASS_CONF_DICT)
+
 BASIC_CONF = b"""<?xml version="1.0" encoding="UTF-8"?>
             <ReplicationConfiguration
                 xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -129,11 +176,79 @@ BASIC_CONF = b"""<?xml version="1.0" encoding="UTF-8"?>
             </ReplicationConfiguration>
 """
 
+STORAGE_CLASS_CONF = b"""<?xml version="1.0" encoding="UTF-8"?>
+            <ReplicationConfiguration
+                xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                <Role>arn:aws:iam::test:role/s3-replication</Role>
+                <Rule>
+                    <Priority>1</Priority>
+                    <DeleteMarkerReplication>
+                        <Status>Enabled</Status>
+                    </DeleteMarkerReplication>
+                    <Filter>
+                        <Prefix>Tax</Prefix>
+                    </Filter>
+                    <Destination>
+                        <Bucket>arn:aws:s3:::dest</Bucket>
+                        <StorageClass>STANDARD</StorageClass>
+                    </Destination>
+                    <Status>Enabled</Status>
+                </Rule>
+            </ReplicationConfiguration>
+"""
+
 
 class TestS3ApiReplication(S3ApiTestCase):
 
     def setUp(self):
-        self.update_conf = {'replicator_ids': 's3-replication'}
+        self.update_conf = {
+            "replicator_ids": "s3-replication",
+            "storage_classes": "STANDARD,EXPRESS_ONEZONE",
+            "storage_domain": "example.com:EXPRESS_ONEZONE",
+            "auto_storage_policies_STANDARD": "EC",
+            "auto_storage_policies_STANDARD_IA": "THREECOPIES",
+            "auto_storage_policies_EXPRESS_ONEZONE": "SINGLE",
+            "storage_classes_mappings_write": {
+                "": {
+                    "": "STANDARD",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "STANDARD",
+                    "STANDARD_IA": "STANDARD",
+                    "INTELLIGENT_TIERING": "STANDARD",
+                    "ONEZONE_IA": "STANDARD",
+                    "GLACIER_IR": "STANDARD",
+                    "GLACIER": "GLACIER",
+                    "DEEP_ARCHIVE": "GLACIER",
+                },
+                "example.com": {
+                    "": "EXPRESS_ONEZONE",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "EXPRESS_ONEZONE",
+                    "STANDARD_IA": "STANDARD",
+                    "INTELLIGENT_TIERING": "STANDARD",
+                    "ONEZONE_IA": "STANDARD",
+                    "GLACIER_IR": "STANDARD",
+                    "GLACIER": "STANDARD",
+                    "DEEP_ARCHIVE": "GLACIER",
+                },
+            },
+            "storage_classes_mappings_read": {
+                "": {
+                    "": "STANDARD",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "STANDARD",
+                    "STANDARD_IA": "STANDARD_IA",
+                    "GLACIER": "GLACIER",
+                },
+                "example.com": {
+                    "": "STANDARD",
+                    "EXPRESS_ONEZONE": "STANDARD",
+                    "STANDARD": "STANDARD_IA",
+                    "STANDARD_IA": "INTELLIGENT_TIERING",
+                    "GLACIER": "DEEP_ARCHIVE",
+                },
+            },
+        }
         super(TestS3ApiReplication, self).setUp()
         self.s3api.conf.bucket_db_connection = "dummy://"
         self.s3api.bucket_db = get_bucket_db(self.s3api.conf)
@@ -153,6 +268,25 @@ class TestS3ApiReplication(S3ApiTestCase):
         )
         self.swift.register(
             "HEAD",
+            "/v1/AUTH_test/test-replication-storage-class",
+            HTTPNoContent,
+            {
+                BUCKET_REPLICATION_HEADER: REPLICATION_STORAGE_CLASS_CONF_JSON,
+                SYSMETA_VERSIONS_ENABLED: True,
+            },
+            None,
+        )
+        self.swift.register(
+            "HEAD",
+            "/v1/AUTH_test/test-replication-put-storage-class",
+            HTTPNoContent,
+            {
+                SYSMETA_VERSIONS_ENABLED: True,
+            },
+            None,
+        )
+        self.swift.register(
+            "HEAD",
             "/v1/AUTH_test/test-replication-no-conf",
             HTTPNoContent,
             {},
@@ -160,6 +294,10 @@ class TestS3ApiReplication(S3ApiTestCase):
         )
         self.s3api.bucket_db = BucketDbWrapper(self.s3api.bucket_db)
         self.s3api.bucket_db.create("test-replication", "AUTH_test")
+        self.s3api.bucket_db.create(
+            "test-replication-storage-class", "AUTH_test")
+        self.s3api.bucket_db.create(
+            "test-replication-put-storage-class", "AUTH_test")
         self.s3api.bucket_db.create("test-replication-lock", "AUTH_test")
         self.s3api.bucket_db.create("test-replication-no-conf", "AUTH_test")
         self.s3api.bucket_db.create("dest", "AUTH_test")
@@ -421,6 +559,96 @@ class TestS3ApiReplication(S3ApiTestCase):
         status, _, body = self.call_s3api(req)
         self.assertEqual("200 OK", status)
         self.assertEqual(tostring(fromstring(REPLICATION_CONF_XML)), body)
+
+    def test_GET_Ok_storage_class(self):
+        req = Request.blank(
+            "/test-replication-storage-class?replication",
+            environ={"REQUEST_METHOD": "GET"},
+            headers={
+                "Authorization": "AWS test:tester:hmac",
+                "Date": self.get_date_header(),
+            },
+        )
+
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("200 OK", status)
+        self.assertEqual(
+            tostring(fromstring(REPLICATION_STORAGE_CLASS_CONF_XML)), body)
+
+    def test_GET_Ok_storage_class_alternative_endpoint(self):
+        req = Request.blank(
+            "/test-replication-storage-class?replication",
+            environ={"REQUEST_METHOD": "GET", "HTTP_HOST": "example.com"},
+            headers={
+                "Authorization": "AWS test:tester:hmac",
+                "Date": self.get_date_header(),
+            },
+        )
+
+        status, _, body = self.call_s3api(req)
+        self.assertEqual("200 OK", status)
+        conf = tostring(
+            fromstring(REPLICATION_STORAGE_CLASS_CONF_XML)).replace(
+                b"STANDARD", b"STANDARD_IA")
+        self.assertEqual(conf, body)
+
+    def test_PUT_storage_class(self):
+        self.swift.register(
+            "POST",
+            "/v1/AUTH_test/test-replication-put-storage-class",
+            HTTPNoContent,
+            {},
+            None,
+        )
+        self.swift.register(
+            "HEAD",
+            "/v1/AUTH_test/dest",
+            HTTPOk,
+            {SYSMETA_VERSIONS_ENABLED: True},
+            None
+        )
+        req = Request.blank(
+            "/test-replication-put-storage-class?replication",
+            environ={"REQUEST_METHOD": "PUT"},
+            body=STORAGE_CLASS_CONF,
+            headers={
+                "Authorization": "AWS test:tester:hmac",
+                "Date": self.get_date_header(),
+            },
+        )
+        status, _, body = self.call_s3api(req)
+
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
+
+    def test_PUT_storage_class_different_endpoint(self):
+        self.swift.register(
+            "POST",
+            "/v1/AUTH_test/test-replication-put-storage-class",
+            HTTPNoContent,
+            {},
+            None,
+        )
+        self.swift.register(
+            "HEAD",
+            "/v1/AUTH_test/dest",
+            HTTPOk,
+            {SYSMETA_VERSIONS_ENABLED: True},
+            None
+        )
+        req = Request.blank(
+            "/test-replication-put-storage-class?replication",
+            environ={"REQUEST_METHOD": "PUT", "HTTP_HOST": "example.com"},
+            body=STORAGE_CLASS_CONF,
+            headers={
+                "Authorization": "AWS test:tester:hmac",
+                "Date": self.get_date_header(),
+            },
+        )
+        status, _, body = self.call_s3api(req)
+
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
 
     def test_PUT_no_content(self):
         config = b""

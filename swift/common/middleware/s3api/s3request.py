@@ -2232,6 +2232,30 @@ class S3Request(swob.Request):
         return self.conf.storage_classes_mappings_read[
             storage_domain][STANDARD_STORAGE_CLASS] == STANDARD_STORAGE_CLASS
 
+    def normalize_storage_class(self, storage_class):
+        """
+        Return the storage class according to standard endpoint.
+        """
+        storage_domain = self.storage_domain
+        if storage_domain not in self.conf.storage_classes_mappings_write:
+            storage_domain = ""
+        normalized_storage_class = self.conf.storage_classes_mappings_write[
+            storage_domain].get(storage_class or "")
+        if normalized_storage_class is None:
+            raise InvalidStorageClass(storage_class)
+        return normalized_storage_class
+
+    def denormalize_storage_class(self, storage_class):
+        """
+        Return the storage class for the current endpoint from a normalized
+        storage class.
+        """
+        storage_domain = self.storage_domain
+        if storage_domain not in self.conf.storage_classes_mappings_read:
+            storage_domain = ""
+        return self.conf.storage_classes_mappings_read[
+            storage_domain].get(storage_class or "", STANDARD_STORAGE_CLASS)
+
     def _swift_success_codes(self, method, container, obj):
         """
         Returns a list of expected success codes from Swift.
