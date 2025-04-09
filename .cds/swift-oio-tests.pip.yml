@@ -67,14 +67,17 @@ jobs:
           rabbitmq-plugins enable rabbitmq_management
 
           # --- Redpanda ---
+          pushd ./third_party/oio-sds/docker/
+          cp env_file .env
           docker login -u {{ .cds.proj.artifactory_user }} -p {{ .cds.proj.artifactory_token }} pu-objectstorage-default-docker.artifactory.ovhcloud.tools
           # Start Redpanda (kafka)
-          docker-compose -f ./third_party/oio-sds/docker/redpanda.docker-compose.yml up -d
+          docker-compose -f redpanda.docker-compose.yml up -d
           until [ "$(docker inspect -f "{{.State.Status}}" redpanda-0)" = "running" ]
           do
             sleep 1
           done
           sleep 1
+          popd
 
           # --- Reconfigure logging ---
           echo "RateLimitBurst=0" >> /etc/systemd/journald.conf
