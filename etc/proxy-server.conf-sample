@@ -886,6 +886,10 @@ use = egg:swift#s3api
 # Enable or disable website.
 #enable_website = true
 
+# Set minimum days for transitions and allow set set values for a specific
+# storage class
+# storage_class_minimal_duration_STANDARD_IA = 30
+
 # Key to the account metadata telling if an account is enabled or disabled.
 # This will be prefixed internally with "X-Account-Meta-", and is
 # case-insensitive.

@@ -313,6 +313,11 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'SINGLE': 'EXPRESS_ONEZONE',
             'TWOCOPIES': 'GLACIER',
         }
+        conf['storage_classes_minimal_duration'] = {
+            'EXPRESS_ONEZONE': 0,
+            'GLACIER': 0,
+            'STANDARD': 0,
+        }
         conf.pop('storage_domain')
         conf['storage_domains'] = ['somewhere', 'some.other.where']
         expected_cors_rules = []

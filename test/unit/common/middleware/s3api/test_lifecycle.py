@@ -13,15 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from swift.common.middleware.s3api.controllers.lifecycle import \
-    _action_to_int, lifecycle_xml_conf_to_dict
+from swift.common.middleware.s3api.controllers.lifecycle import (
+    _action_to_int,
+    lifecycle_xml_conf_to_dict,
+    _validate_transitions_different_times,
+)
 from test.unit.common.middleware.s3api import S3ApiTestCase
-from swift.common.middleware.s3api.s3response import S3NotImplemented
+from swift.common.middleware.s3api.s3response import S3NotImplemented, \
+    InvalidArgument
 
+from swift.common.middleware.s3api.utils import \
+    S3_DEFAULT_MINIMAL_STORAGE_DURATION
 from swift.common.middleware.s3api.etree import fromstring
 
 
 class TestS3ApiLifecycle(S3ApiTestCase):
+
+    STORAGE_CLASS_DURATIONS = {
+        "STANDARD": 0,
+        "STANDARD_IA": 30,
+    }
 
     def setUp(self):
         super().setUp()
@@ -135,7 +146,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             </LifecycleConfiguration>
         """
         data = fromstring(xml_conf, "LifecycleConfiguration")
-        conf = lifecycle_xml_conf_to_dict(data)
+        conf = lifecycle_xml_conf_to_dict(data, self.STORAGE_CLASS_DURATIONS)
         self.assertIn("_expiration_rules", conf)
         self.assertDictEqual(
             {
@@ -182,6 +193,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             S3NotImplemented,
             lifecycle_xml_conf_to_dict,
             data,
+            self.STORAGE_CLASS_DURATIONS,
             allow_transitions=False
         )
 
@@ -202,7 +214,9 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             </LifecycleConfiguration>
         """
         data = fromstring(xml_conf, "LifecycleConfiguration")
-        conf = lifecycle_xml_conf_to_dict(data, allow_transitions=False)
+        conf = lifecycle_xml_conf_to_dict(
+            data, self.STORAGE_CLASS_DURATIONS, allow_transitions=False
+        )
         self.assertListEqual([], conf["_transition_rules"]["date"])
         self.assertListEqual([], conf["_transition_rules"]["days"])
 
@@ -227,6 +241,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             S3NotImplemented,
             lifecycle_xml_conf_to_dict,
             data,
+            self.STORAGE_CLASS_DURATIONS,
             allow_transitions=False
         )
 
@@ -247,5 +262,70 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             </LifecycleConfiguration>
         """
         data = fromstring(xml_conf, "LifecycleConfiguration")
-        conf = lifecycle_xml_conf_to_dict(data, allow_transitions=False)
+        conf = lifecycle_xml_conf_to_dict(
+            data, self.STORAGE_CLASS_DURATIONS, allow_transitions=False
+        )
         self.assertListEqual([], conf["_non_current_transition_rules"])
+
+    def test_transitions_days_validation(self):
+
+        _validate_transitions_different_times(
+            {
+                "0": {"StorageClass": "STANDARD_IA", "Days": 30},
+            },
+            "Transitions",
+            {},
+            storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
+        )
+
+        _validate_transitions_different_times(
+            {
+                "0": {"StorageClass": "STANDARD_IA", "Days": 30},
+                "1": {"StorageClass": "INTELLIGENT_TIERING", "Days": 31},
+                "2": {"StorageClass": "ONEZONE_IA", "Days": 61},
+            },
+            "Transitions",
+            {},
+            storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
+        )
+
+        self.assertRaises(
+            InvalidArgument,
+            _validate_transitions_different_times,
+            {
+                "0": {"StorageClass": "STANDARD_IA", "Days": 3},
+            },
+            "Transitions",
+            {},
+            storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
+        )
+
+        self.assertRaises(
+            InvalidArgument,
+            _validate_transitions_different_times,
+            {
+                "0": {"StorageClass": "STANDARD_IA", "Days": 30},
+                "1": {"StorageClass": "ONEZONE_IA", "Days": 30},
+            },
+            "Transitions",
+            {},
+            storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
+        )
+
+        self.assertRaises(
+            InvalidArgument,
+            _validate_transitions_different_times,
+            {
+                "0": {
+                    "StorageClass": "STANDARD_IA",
+                    "Days": 30,
+                },
+                "1": {
+                    "StorageClass": "ONEZONE_IA",
+                    "Days": 59,
+                },
+            },
+            "Transitions",
+            {},
+            storage_durations=S3_DEFAULT_MINIMAL_STORAGE_DURATION,
+        )

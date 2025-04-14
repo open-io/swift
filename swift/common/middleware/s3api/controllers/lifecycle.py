@@ -44,6 +44,7 @@ XMLNS_S3 = 'http://s3.amazonaws.com/doc/2006-03-01/'
 MAX_LENGTH_RULE_ID = 255
 MAX_LENGTH_PREFIX = 1024
 MAX_RULES_ALLOWED = 1000
+MAX_OBJECT_SIZE = 1099511627776000
 
 # This version should be incremented every time a breaking change is done on
 # lifecycle configuration schema. We should also implement a function to
@@ -107,12 +108,24 @@ class InvalidTransition(InvalidArgument, FilterSerializerMixin):
     _code = 'InvalidArgument'
 
     def __init__(
-            self, name, value, transition_type, time_type, stg1, stg2, rule):
+        self,
+        name,
+        value,
+        transition_type,
+        time_type,
+        stg1,
+        stg2,
+        rule,
+        min_days=None
+    ):
         super().__init__(name, value)
         filter_str = FilterSerializerMixin._build_filter_str(self, rule)
+        greater_str = "greater"
+        if min_days:
+            greater_str = f"{min_days} days more"
         self._msg = (
             f"'{time_type}' in the '{transition_type}' action for "
-            f"StorageClass '{stg1}' for {filter_str} must be greater "
+            f"StorageClass '{stg1}' for {filter_str} must be {greater_str} "
             f"than '{time_type}' in the '{transition_type}' action for "
             f"StorageClass '{stg2}' for {filter_str}"
         )
@@ -461,7 +474,7 @@ def _validate_no_transitions(conf):
             raise S3NotImplemented()
 
 
-def _build_rule(rule_xml, index):
+def _build_rule(rule_xml, index, **kwargs):
     rule = {
         "ID": _get_rule_id(rule_xml),
         "Status": rule_xml.find("Status").text,
@@ -478,31 +491,31 @@ def _build_rule(rule_xml, index):
     _validate_prefix_filter_consistency(rule)
 
     # Actions
-    index = _build_actions(rule_xml, rule, index)
+    index = _build_actions(rule_xml, rule, index=index, **kwargs)
 
     return rule, index
 
 
-def _get_field(field, elem):
+def _get_field(field, elem, **_kwargs):
     e = elem.find(field)
     return (e.text or "") if e is not None else None
 
 
-def _get_integer(field, elem):
+def _get_integer(field, elem, **_kwargs):
     e = elem.find(field)
     if e is not None:
         return int(e.text)
     return None
 
 
-def _get_boolean(field, elem):
+def _get_boolean(field, elem, **_kwargs):
     e = elem.find(field)
     if e is not None:
         return e.text.lower() == ('true')
     return None
 
 
-def _get_tags(field, elem):
+def _get_tags(field, elem, **_kwargs):
     tags = []
     for e in elem.findall(field):
         tags.append(
@@ -535,21 +548,21 @@ def _get_max_time_in_actions(actions):
     return max_time
 
 
-def _extract_from_field(element, fields, context):
+def _extract_from_field(element, fields, context, **kwargs):
     info = {}
     for field, trans_func, valid_func in fields:
         if trans_func:
-            field_data = trans_func(field, element)
+            field_data = trans_func(field, element, **kwargs)
         else:
-            field_data = _get_field(field, element)
+            field_data = _get_field(field, element, **kwargs)
         if field_data is not None:
             if valid_func:
-                valid_func(field, field_data, context)
+                valid_func(field, field_data, context, **kwargs)
             info[field] = field_data
     return info
 
 
-def _validate_positive_integer(field, value, context):
+def _validate_positive_integer(field, value, context, **_kwargs):
     if value is None or value <= 0:
         raise InvalidArgument(
             field,
@@ -558,19 +571,31 @@ def _validate_positive_integer(field, value, context):
                 "integer")
 
 
-def _validate_date(field, value, context):
+def _validate_date(field, value, context, **_kwargs):
     date = iso8601_to_int(value)
     if date % 86400 > 0:
         raise InvalidArgument(
             field, value, "'Date' must be at midnight GMT")
 
 
-def _validate_storage_class(field, value, context):
-    if value not in S3_STORAGE_CLASSES:
+def _validate_storage_class(
+        field, value, context, storage_durations=None, **_kwargs):
+    if storage_durations is None:
+        storage_durations = {}
+    storage_classes = sorted(
+        [s for s in storage_durations],
+        key=lambda x: S3_STORAGE_CLASSES.index(x)
+    )
+    # Transition to highest storage class is forbidden
+    if value == storage_classes[0]:
+        raise InvalidArgument(field, value)
+
+    # Ensure storage class is in the supported classes
+    if value not in storage_durations:
         raise MalformedXML()
 
 
-def _validate_tags(field, tags, context):
+def _validate_tags(field, tags, context, **_kwargs):
     keys = []
     for tag in tags:
         if tag["Key"] in keys:
@@ -583,7 +608,7 @@ def _validate_tags(field, tags, context):
             raise InvalidTagValue()
 
 
-def _validate_object_size_consistency(rule_filter):
+def _validate_object_size_consistency(rule_filter, **_kwargs):
     less = rule_filter.get("ObjectSizeLessThan")
     greater = rule_filter.get("ObjectSizeGreaterThan")
     if less is not None and greater is not None and less <= greater:
@@ -593,7 +618,7 @@ def _validate_object_size_consistency(rule_filter):
         )
 
 
-def _validate_one_time_per_actions(actions):
+def _validate_one_time_per_actions(actions, **_kwargs):
     for action in actions.values():
         found = False
         for timed_type in ("Days", "Date", "ExpiredObjectDeleteMarker"):
@@ -603,7 +628,7 @@ def _validate_one_time_per_actions(actions):
                 found = True
 
 
-def _validate_time_consistency(actions, rule):
+def _validate_time_consistency(actions, rule, **_kwargs):
     # Validate time type consistency
     for prefix in ("", "NoncurrentVersion"):
         time_type_used = None
@@ -631,7 +656,8 @@ def _validate_time_consistency(actions, rule):
             actions, prefix, time_type_used, rule)
 
 
-def _validate_transitions_before_expiration(actions, prefix, time_type, rule):
+def _validate_transitions_before_expiration(
+        actions, prefix, time_type, rule, **_kwargs):
     # Validate all transitions occur before expiration
     max_transition = (
         _get_max_time_in_actions(actions.get(f"{prefix}Transition", {}))
@@ -648,26 +674,27 @@ def _validate_transitions_before_expiration(actions, prefix, time_type, rule):
             time_type, max_expiration, prefix == "NonCurrent", rule)
 
 
-def _validate_transitions(actions, rule):
+def _validate_transitions(actions, rule, **kwargs):
     for action_type in ("Transition", "NoncurrentVersionTransition"):
         _validate_transitions_no_duplicate(
-            actions.get(action_type, {}), action_type, rule)
+            actions.get(action_type, {}), action_type, rule, **kwargs)
         _validate_transitions_consistency(
-            actions.get(action_type, {}), action_type, rule)
+            actions.get(action_type, {}), action_type, rule, **kwargs)
         _validate_transitions_days(
-            actions.get(action_type, {}), action_type, rule)
+            actions.get(action_type, {}), action_type, rule, **kwargs)
         _validate_transitions_different_times(
-            actions.get(action_type, {}), action_type, rule)
+            actions.get(action_type, {}), action_type, rule, **kwargs)
 
 
-def _validate_object_size(field, value, _rule):
-    if value <= 0 or value >= 1099511627776000:
+def _validate_object_size(field, value, _rule, **_kwargs):
+
+    if value <= 0 or value >= MAX_OBJECT_SIZE:
         raise InvalidRequest(
-            msg="'{field}' should be between 0 and 1099511627776000."
+            msg=f"'{field}' should be between 0 and {MAX_OBJECT_SIZE}."
         )
 
 
-def _validate_limited_action_filter(actions, rule):
+def _validate_limited_action_filter(actions, rule, **_kwargs):
     forbidden_field = _get_forbidden_field(rule)
     if not forbidden_field:
         return
@@ -688,13 +715,13 @@ def _validate_limited_action_filter(actions, rule):
                 )
 
 
-def _validate_one_action(actions, rule):
+def _validate_one_action(actions, rule, **_kwargs):
     if not actions:
         raise InvalidRequest(
             "At least one action needs to be specified in a Rule")
 
 
-def _validate_actions_time_type_consistency(actions, rule):
+def _validate_actions_time_type_consistency(actions, rule, **_kwargs):
     time_types = set(
         [x for x in [_get_days_or_date(a)[1] for a in actions.values()] if x])
     if len(time_types) > 1:
@@ -702,7 +729,8 @@ def _validate_actions_time_type_consistency(actions, rule):
     return time_types.pop() if time_types else None
 
 
-def _validate_transitions_no_duplicate(transitions, transition_type, rule):
+def _validate_transitions_no_duplicate(
+        transitions, transition_type, rule, **_kwargs):
     stg_classes = [
         v.get("StorageClass")
         for k, v in _iter_skip_internal(transitions)
@@ -711,48 +739,87 @@ def _validate_transitions_no_duplicate(transitions, transition_type, rule):
         raise InvalidDuplicatedStorageClass(transition_type, rule)
 
 
-def _validate_transitions_days(transitions, transition_type, rule):
+def _validate_transitions_days(
+    transitions,
+    transition_type,
+    rule,
+    storage_durations=None,
+    **_kwargs
+):
+    if storage_durations is None:
+        storage_durations = {}
+
     for _, transition in _iter_skip_internal(transitions):
         days, days_type = _get_days(transition)
         if days is None:
             continue
-        if days < 30:
-            stg_class = transition.get("StorageClass")
+        stg_class = transition.get("StorageClass")
+        class_minimal_duration = storage_durations.get(stg_class)
+
+        if days < class_minimal_duration:
             raise InvalidArgument(
                 days_type,
                 days,
-                msg=(
-                    f"'{days_type}' in {transition_type} action must be "
-                    "greater than or equal to 30 for storageClass "
-                    f"'{stg_class}'"
-                ),
+                f"'{days_type}' in {transition_type} action must be "
+                f"greater than or equal to {class_minimal_duration} for "
+                f"storageClass '{stg_class}'",
             )
 
 
-def _validate_transitions_different_times(transitions, transition_type, rule):
-    time_sorted = sorted(
-        [v for k, v in _iter_skip_internal(transitions)],
-        key=lambda x: _get_days_or_date(x)[0]
+def _validate_transitions_different_times(
+    transitions,
+    transition_type,
+    rule,
+    storage_durations=None,
+    **_kwargs
+):
+    if storage_durations is None:
+        storage_durations = {}
+    stg_sorted = sorted(
+        [v for _, v in _iter_skip_internal(transitions)],
+        key=lambda x: S3_STORAGE_CLASSES.index(x.get("StorageClass")),
     )
-    if not time_sorted:
-        return
-    previous = time_sorted[0]
-    for elem in time_sorted[1:]:
-        if _get_days_or_date(previous)[0] == _get_days_or_date(elem)[0]:
-            time_type = transitions.get("__time_type")
-            raise InvalidTransition(
-                time_type,
-                _get_days_or_date(previous)[0],
-                transition_type,
-                time_type,
-                elem.get("StorageClass"),
-                previous.get("StorageClass"),
-                rule,
-            )
-        previous = elem
+    next_allowed_days = 0
+    previous = None
+    for transition in stg_sorted:
+        days, days_type = _get_days(transition)
+        if days is None:
+            continue
+        stg_class = transition.get("StorageClass")
+        class_minimal_duration = storage_durations.get(stg_class)
+
+        if days < next_allowed_days + class_minimal_duration:
+            if previous is None:
+                raise InvalidArgument(
+                    days_type,
+                    days,
+                    msg=(
+                        f"'{days_type}' in {transition_type} action must be "
+                        "greater than or equal to "
+                        f"{next_allowed_days + class_minimal_duration} for "
+                        f"storageClass '{stg_class}'"
+                    ),
+                )
+            else:
+                time_type = transitions.get("__time_type")
+                raise InvalidTransition(
+                    time_type,
+                    _get_days_or_date(previous)[0],
+                    transition_type,
+                    time_type,
+                    stg_class,
+                    previous.get("StorageClass"),
+                    rule,
+                    min_days=class_minimal_duration,
+                )
+        previous = transition
+        next_allowed_days = max(
+            days, next_allowed_days + max(class_minimal_duration, 1)
+        )
 
 
-def _validate_transitions_consistency(transitions, transition_type, rule):
+def _validate_transitions_consistency(
+        transitions, transition_type, rule, **_kwargs):
     stg_sorted = sorted(
         [v for k, v in _iter_skip_internal(transitions)],
         key=lambda x: S3_STORAGE_CLASSES.index(x.get("StorageClass"))
@@ -777,7 +844,7 @@ def _validate_transitions_consistency(transitions, transition_type, rule):
     return None, None
 
 
-def _build_actions(rule_xml, rule, index=0):
+def _build_actions(rule_xml, rule, index=0, **kwargs):
     """
     Return actions from conf
     """
@@ -850,14 +917,14 @@ def _build_actions(rule_xml, rule, index=0):
         for action in rule_xml.findall(action_type):
             tag_actions = actions.setdefault(action_type, {})
             tag_actions[str(index)] = _extract_from_field(
-                action, fields, action_type)
+                action, fields, action_type, **kwargs)
             index += 1
 
     # Validation
-    _validate_limited_action_filter(actions, rule)
-    _validate_time_consistency(actions, rule)
-    _validate_transitions(actions, rule)
-    _validate_one_action(actions, rule)
+    _validate_limited_action_filter(actions, rule, **kwargs)
+    _validate_time_consistency(actions, rule, **kwargs)
+    _validate_transitions(actions, rule, **kwargs)
+    _validate_one_action(actions, rule, **kwargs)
 
     rule.update(**actions)
     return index
@@ -904,7 +971,8 @@ def _build_filter(rule_xml, rule):
     _validate_object_size_consistency(rule_filter)
 
 
-def lifecycle_xml_conf_to_dict(lifecycle_conf, allow_transitions=True):
+def lifecycle_xml_conf_to_dict(
+        lifecycle_conf, storage_durations, allow_transitions=True):
     """
     Convert the XML lifecycle configuration into a more pythonic
     dictionary.
@@ -945,7 +1013,8 @@ def lifecycle_xml_conf_to_dict(lifecycle_conf, allow_transitions=True):
         )
 
     for rule_xml in rules:
-        rule, action_index = _build_rule(rule_xml, action_index)
+        rule, action_index = _build_rule(
+            rule_xml, action_index, storage_durations=storage_durations)
         rule_id = rule.get("ID")
         if rule_id in registered_rules:
             raise InvalidArgument(
@@ -1070,7 +1139,9 @@ class LifecycleController(Controller):
         )
 
         config = lifecycle_xml_conf_to_dict(
-            data, allow_transitions=allow_transition)
+            data,
+            self.conf.storage_classes_minimal_duration,
+            allow_transitions=allow_transition)
         req.headers[LIFECYCLE_HEADER] = json.dumps(
             config, separators=(',', ':'))
         resp = req.get_response(self.app, method='POST')

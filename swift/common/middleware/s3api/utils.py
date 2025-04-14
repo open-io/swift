@@ -41,6 +41,17 @@ S3_STORAGE_CLASSES = [
 ]
 STANDARD_STORAGE_CLASS = "STANDARD"
 
+S3_DEFAULT_MINIMAL_STORAGE_DURATION = {
+    "EXPRESS_ONEZONE": 0,
+    "STANDARD": 0,
+    "STANDARD_IA": 30,
+    "INTELLIGENT_TIERING": 0,
+    "ONEZONE_IA": 30,
+    "GLACIER_IR": 0,
+    "GLACIER": 0,
+    "DEEP_ARCHIVE": 0,
+}
+
 MULTIUPLOAD_SUFFIX = '+segments'
 VERSION_ID_HEADER = 'X-Object-Sysmeta-Version-Id'
 # Content-Type by default at AWS, the official value being
@@ -353,6 +364,9 @@ class Config(dict):
                 '': 'STANDARD',
                 'STANDARD': 'STANDARD',
             },
+        },
+        'storage_classes_minimal_duration': {
+            'STANDARD': 0,
         },
         'storage_domains': [],
         'auto_storage_policies': {},

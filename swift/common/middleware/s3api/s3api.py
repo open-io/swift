@@ -165,10 +165,10 @@ from swift.common.middleware.s3api.s3response import ErrorResponse, \
     InvalidRequest, Redirect, AllAccessDisabled, WebsiteErrorResponse
 from swift.common.utils import get_logger, config_true_value, \
     config_positive_int_value, split_path, closing_if_possible, \
-    list_from_csv, parse_auto_storage_policies
+    list_from_csv, parse_auto_storage_policies, config_auto_int_value
 from swift.common.middleware.s3api.utils import S3_DEFAULT_REGION, \
     S3_STORAGE_CLASSES, STANDARD_STORAGE_CLASS, Config, \
-    CHECKSUMS
+    CHECKSUMS, S3_DEFAULT_MINIMAL_STORAGE_DURATION
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.registry import register_swift_info, \
     register_sensitive_header, register_sensitive_param
@@ -305,6 +305,8 @@ class S3ApiMiddleware(object):
             self.conf.auto_storage_policies,
             self.conf.storage_class_by_policy,
         ) = self._get_storage_policies_conf(wsgi_conf)
+        self.conf.storage_classes_minimal_duration =  \
+            self._get_storage_class_minimal_duration(wsgi_conf)
         self.conf.check_account_enabled = config_true_value(
             wsgi_conf.get('check_account_enabled', False))
         self.conf.check_ip_whitelist = config_true_value(
@@ -418,6 +420,15 @@ class S3ApiMiddleware(object):
         self.logger.info(
             f"Storage classes mappings read: {mappings_read_log}"
         )
+
+    def _get_storage_class_minimal_duration(self, wsgi_conf):
+        durations = {}
+        storage_classes, _ = self._get_storage_classes(wsgi_conf)
+        for storage_class in storage_classes:
+            durations[storage_class] = config_auto_int_value(wsgi_conf.get(
+                f"storage_class_minimal_duration_{storage_class}"),
+                S3_DEFAULT_MINIMAL_STORAGE_DURATION.get(storage_class, 0))
+        return durations
 
     def _get_storage_classes_list(
         self, wsgi_conf, conf_key, mandatory, preloading=None

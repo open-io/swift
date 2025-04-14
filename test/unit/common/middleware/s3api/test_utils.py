@@ -194,6 +194,7 @@ class TestConfig(unittest.TestCase):
         self._assert_defaults(conf)
         del conf.storage_classes_mappings_write
         del conf.storage_classes_mappings_read
+        del conf.storage_classes_minimal_duration
         del conf.storage_domains
         del conf.auto_storage_policies
         del conf.storage_class_by_policy
