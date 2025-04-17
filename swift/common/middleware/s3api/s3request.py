@@ -1718,6 +1718,11 @@ class S3Request(swob.Request):
                 raise InvalidRequest(
                     'Expecting a single x-amz-checksum- header. '
                     'Multiple checksum Types are not allowed.')
+        if self.method in ('GET', 'HEAD'):
+            checksum_mode = self.headers.get('x-amz-checksum-mode')
+            if checksum_mode and checksum_mode != "ENABLED":
+                raise InvalidRequest(
+                    'Value for x-amz-checksum-mode header is invalid.')
 
     @property
     def body(self):
