@@ -27,11 +27,11 @@ echo "*** Creating bucket $BUCKET ***"
 ${AWS} s3 mb "s3://${BUCKET}"
 
 echo "Listing current version, and checking"
-CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged)")
+CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged) | del(.Prefix)")
 [[ "$CUR_VERS" == "{}" ]]
 
 echo "Listing objects versions, and checking all versions appear"
-ALL_OBJ_VERS=$(${AWS} s3api list-object-versions --bucket "${BUCKET}" | jq "del(.RequestCharged)")
+ALL_OBJ_VERS=$(${AWS} s3api list-object-versions --bucket "${BUCKET}" | jq "del(.RequestCharged) | del(.Prefix)")
 [[ "$ALL_OBJ_VERS" == "{}" ]]
 
 echo "*** Putting an object before enabling versioning ***"
@@ -194,7 +194,7 @@ MARKER_META=$(${AWS} s3api delete-object --bucket "${BUCKET}" --key obj)
 [[ $(jq -r ".DeleteMarker" <<< "$MARKER_META") == "true" ]]
 
 echo "Listing current version, and checking"
-CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged)")
+CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged) | del(.Prefix)")
 [[ "$CUR_VERS" == "{}" ]]
 
 echo "Listing objects versions, and checking all versions appear"
@@ -249,7 +249,7 @@ echo "*** Deleting the most recent version (not the delete marker) ***"
 ${AWS} s3api delete-object --bucket "${BUCKET}" --key "obj" --version-id "${OBJ_2_ID}"
 
 echo "Listing current version, and checking"
-CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged)")
+CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged) | del(.Prefix)")
 [[ "$CUR_VERS" == "{}" ]]
 
 echo "Listing objects versions, and checking all versions appear"
@@ -339,11 +339,11 @@ echo "*** Deleting the last remaining version ***"
 ${AWS} s3api delete-object --bucket "${BUCKET}" --key "obj" --version-id "${OBJ_1_ID}"
 
 echo "Listing current version, and checking"
-CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged)")
+CUR_VERS=$(${AWS} s3api list-objects --bucket "${BUCKET}" | jq "del(.RequestCharged) | del(.Prefix)")
 [[ "$CUR_VERS" == "{}" ]]
 
 echo "Listing objects versions, and checking all versions appear"
-ALL_OBJ_VERS=$(${AWS} s3api list-object-versions --bucket "${BUCKET}" | jq "del(.RequestCharged)")
+ALL_OBJ_VERS=$(${AWS} s3api list-object-versions --bucket "${BUCKET}" | jq "del(.RequestCharged) | del(.Prefix)")
 [[ "$ALL_OBJ_VERS" == "{}" ]]
 
 echo "Fetching current version, and checking"

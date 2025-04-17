@@ -214,6 +214,7 @@ class TestS3Mpu(unittest.TestCase):
     def test_create_abort_mpu(self):
         listing = run_awscli_s3api(
             "list-multipart-uploads", bucket=self.bucket)
+        listing.pop("Prefix", None)
         listing.pop("RequestCharged")
         self.assertFalse(listing)
 
@@ -230,6 +231,7 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket, key=path)
         listing = run_awscli_s3api(
             "list-multipart-uploads", bucket=self.bucket)
+        listing.pop("Prefix", None)
         listing.pop("RequestCharged")
         self.assertFalse(listing)
 
@@ -679,6 +681,7 @@ class TestS3Mpu(unittest.TestCase):
         uploads = run_awscli_s3api(
             "list-multipart-uploads",
             bucket=self.bucket_object_lock)
+        uploads.pop("Prefix", None)
         uploads.pop("RequestCharged")
         self.assertFalse(uploads)
 

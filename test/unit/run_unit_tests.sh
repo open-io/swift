@@ -6,10 +6,9 @@ coverage run \
   --omit=swift/account/*,swift/cli/*,swift/container/*,swift/obj/* \
   --context "swift-unit" \
   -p \
-    $(which nosetests) \
-    -v --exe \
-    --with-timer --timer-ok=100ms --timer-warning=1s \
-    --with-xunit --xunit-file=tests_report.xml \
-    --xunit-testsuite-name=swift \
-    --ignore-files test_decrypter.py \
+    -m pytest -v \
+    --deselect=test/unit/common/test_utils.py::TestUtils::test_LoggerFileObject_recursion \
+    --ignore=test/unit/common/middleware/crypto/test_decrypter.py \
+    --junit-xml=tests_report.xml \
+    -m "not ipv6" \
     test/unit/

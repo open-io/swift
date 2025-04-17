@@ -1,0 +1,21 @@
+[project]
+name = "swift"
+dynamic = ["authors", "classifiers", "dependencies", "entry-points", "optional-dependencies", "readme", "scripts", "version"]
+
+[build-system]
+requires = ["black", "setuptools >= 47.1.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 79
+
+[tool.pytest.ini_options]
+addopts = [
+  "-l",
+  "--tb=short",
+  "--timer-top-n=10",
+]
+#log_level = "DEBUG"
+markers = [
+  "ipv6: tests which use IPv6",
+]

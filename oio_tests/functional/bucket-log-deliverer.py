@@ -97,7 +97,7 @@ class TestBucketLogDelivery(unittest.TestCase):
             'list-objects', bucket=logging_bucket, profile=profile)
         data.pop("RequestCharged")
         if data:
-            keys = [obj['Key'] for obj in data['Contents']]
+            keys = [obj['Key'] for obj in data.get('Contents', [])]
         else:
             keys = []
         self.assertEqual(len(file_names), len(keys))

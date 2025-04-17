@@ -234,8 +234,14 @@ function configure_oioswift() {
     sed -i "s#%IAM_RULES_CONN%#file://${RULES_FILE}#g" "$1"
 }
 
-function run_script() {
-  if "$1"; then
+function run_test_script() {
+  case "$1" in
+    *.py)
+      COMMAND="python -m pytest -v $1";;
+    *)
+      COMMAND="$1";;
+  esac
+  if $COMMAND; then
     printf "${GREEN}\n${1}: OK\n${NO_COLOR} ($2)"
     return 0
   else
@@ -276,7 +282,7 @@ function run_functional_test() {
 
     for suite in $test_suites
     do
-      run_script "$suite" "$conf"
+      run_test_script "$suite" "$conf"
       if [ $? -ne 0 ]; then
         echo "LOG"
         tail -n100 /tmp/journal.log

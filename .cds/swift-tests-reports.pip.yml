@@ -59,7 +59,7 @@ jobs:
           shopt -s nullglob
           for TEST_RESULT in tests_report.*.xml
           do
-            count=$(xq -r "//testsuite/@tests" $TEST_RESULT)
+            count=$(xq -r "/testsuites/testsuite/@tests" $TEST_RESULT)
             if [[ "$TEST_RESULT" =~ .+unit.* ]]
             then
               ((TEST_UNIT+=$count))

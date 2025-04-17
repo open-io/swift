@@ -27,6 +27,7 @@ from uuid import uuid4
 import os
 
 import mock
+import pytest
 
 from eventlet import GreenPool, sleep, Queue
 from eventlet.pools import Pool
@@ -253,6 +254,7 @@ class TestMemcached(unittest.TestCase):
         finally:
             memcached.DEFAULT_MEMCACHED_PORT = orig_port
 
+    @pytest.mark.ipv6
     def test_get_conns_v6(self):
         if not socket.has_ipv6:
             return
@@ -273,6 +275,7 @@ class TestMemcached(unittest.TestCase):
         finally:
             sock.close()
 
+    @pytest.mark.ipv6
     def test_get_conns_v6_default(self):
         if not socket.has_ipv6:
             return
@@ -327,6 +330,7 @@ class TestMemcached(unittest.TestCase):
             finally:
                 sock.close()
 
+    @pytest.mark.ipv6
     def test_get_conns_hostname6(self):
         with patch('swift.common.memcached.socket.getaddrinfo') as addrinfo:
             try:

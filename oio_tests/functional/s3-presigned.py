@@ -15,8 +15,9 @@
 # limitations under the License.
 
 import random
-import requests
 import unittest
+
+import requests
 
 from botocore.exceptions import ClientError
 
@@ -33,15 +34,28 @@ class TestPresignedUrls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super(TestPresignedUrls, cls).setUpClass()
-        cls.bucket = "presigned-%06d" % (random.randint(0, 999999), )
+        cls.bucket = f"presigned-{random.randint(0, 999999):06d}"
         cls.client = get_boto3_client()
 
     @classmethod
     def tearDownClass(cls):
+        resp = cls.client.list_object_versions(Bucket=cls.bucket)
+        to_delete = []
+        for obj in resp.get("Versions", []):
+            to_delete.append({"Key": obj["Key"], "VersionId": obj["VersionId"]})
+        for obj in resp.get("DeleteMarkers", []):
+            to_delete.append({"Key": obj["Key"], "VersionId": obj["VersionId"]})
+        try:
+            cls.client.delete_objects(
+                Bucket=cls.bucket,
+                Delete={"Objects": to_delete}
+            )
+        except ClientError as exc:
+            print(f"tearDownClass: delete_objects: {exc}")
         try:
             cls.client.delete_bucket(Bucket=cls.bucket)
         except ClientError as exc:
-            print(f"tearDownClass: {exc}")
+            print(f"tearDownClass: delete_bucket: {exc}")
         super(TestPresignedUrls, cls).tearDownClass()
 
     def setUp(self):
@@ -75,7 +89,9 @@ class TestPresignedUrls(unittest.TestCase):
         url = client.generate_presigned_url(
             'put_object', Params={"Bucket": self.bucket, "Key": key})
         res = requests.put(url, data=data)
-        self.assertEqual(200, res.status_code)
+        self.assertEqual(
+            res.status_code, 200, f"put_object: {res.content.decode('utf-8')}",
+        )
 
         # Check if object is present
         head_res = self.client.head_object(Bucket=self.bucket, Key=key)
@@ -116,12 +132,22 @@ class TestPresignedUrls(unittest.TestCase):
     def test_object_v2_sign(self):
         sigv2_client = get_boto3_client(signature_version='s3')
         self._test_presigned_object(sigv2_client)
+
+    def test_object_v2_sign_prefix_slash(self):
+        sigv2_client = get_boto3_client(signature_version='s3')
         self._test_presigned_object(sigv2_client, key_prefix="/")
+
+    def test_object_v2_sign_prefix_dot(self):
+        sigv2_client = get_boto3_client(signature_version='s3')
         self._test_presigned_object(sigv2_client, key_prefix=".")
 
     def test_object_v4_sign(self):
         self._test_presigned_object(self.client)
+
+    def test_object_v4_sign_prefix_slash(self):
         self._test_presigned_object(self.client, key_prefix="/")
+
+    def test_object_v4_sign_prefix_dot(self):
         self._test_presigned_object(self.client, key_prefix=".")
 
 

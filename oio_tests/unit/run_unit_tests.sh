@@ -6,9 +6,6 @@ coverage run \
   --omit=swift/account/*,swift/cli/*,swift/container/*,swift/obj/* \
   --context "oioswift-unit" \
   -p \
-    $(which nosetests) \
-    -v --exe \
-    --with-timer --timer-ok=100ms --timer-warning=1s \
-    --with-xunit --xunit-file=tests_report.xml \
-    --xunit-testsuite-name=oioswift \
+    -m pytest -v \
+    --junit-xml=tests_report.xml \
     oio_tests/unit/

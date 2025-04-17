@@ -78,7 +78,7 @@ objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subd
 [ $objs -eq 21 ] || exit 1
 
 echo "Recursive listing with page-size 10, prefix without trailing / and delimiter /"
-objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subdir --delimiter / | grep -c '"Prefix"')
+objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subdir --delimiter / | jq -r ".CommonPrefixes|length")
 [ $objs -eq 1 ] || exit 1
 
 # cleanup
@@ -109,11 +109,11 @@ objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subd
 [ $objs -eq 21 ] || exit 1
 
 echo "Recursive listing with page-size 10, prefix with trailing / and delimiter /"
-objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subdir/ --delimiter / | grep -c '"Prefix"')
+objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subdir/ --delimiter / | jq -r ".CommonPrefixes|length")
 [ $objs -eq 21 ] || exit 1
 
 echo "Recursive listing with page-size 10, prefix without trailing / and delimiter /"
-objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subdir --delimiter / | grep -c '"Prefix"')
+objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 --prefix subdir --delimiter / | jq -r ".CommonPrefixes|length")
 [ $objs -eq 1 ] || exit 1
 
 # cleanup
@@ -144,11 +144,11 @@ objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --page-size 10 | grep -c Key
 [ $objs -eq 63 ] || exit 1
 
 echo "Non recursive listing with default page-size"
-objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --delimiter '/' | grep -c '"Key"\|"Prefix"')
+objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --delimiter '/' | jq -r ".CommonPrefixes+.Contents|length")
 [ $objs -eq 63 ] || exit 1
 
 echo "Non recursive listing with page-size 10"
-objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --delimiter '/' --page-size 10 | grep -c '"Key"\|"Prefix"')
+objs=$(${AWS} s3api list-objects --bucket ${BUCKET} --delimiter '/' --page-size 10 | jq -r ".CommonPrefixes+.Contents|length")
 [ $objs -eq 63 ] || exit 1
 
 # cleanup

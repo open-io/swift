@@ -26,7 +26,6 @@ import six
 # pylint: disable-msg=import-error
 from six.moves.urllib.parse import quote, unquote, parse_qsl
 import string
-from sys import version_info
 
 from swift.common.utils import md5, compute_md5, split_path, json, \
     close_if_possible, reiterate, drain_and_close, is_from_replicator, \
@@ -1255,16 +1254,11 @@ class S3Request(swob.Request):
         return None, None, None
 
     def _parse_uri(self):
-        path_info = self.environ['PATH_INFO']
-        # This issue comes from the replacement of leading '//' by '/'
-        # done on PATH_INFO while parsing request in python version < 3.8.
-        # RAW_PATH_INFO still contains '//' but requires decoding.
-        if version_info < (3, 8):
-            path_info = self.environ.get('RAW_PATH_INFO')
-            if path_info is None:
-                path_info = self.environ['PATH_INFO']
-            else:
-                path_info = swob.wsgi_unquote_plus(path_info)
+        path_info = self.environ.get('RAW_PATH_INFO')
+        if path_info is None:
+            path_info = self.environ['PATH_INFO']
+        else:
+            path_info = swob.wsgi_unquote_plus(path_info)
 
         # NB: returns WSGI strings
         if not check_utf8(swob.wsgi_to_str(path_info)):
