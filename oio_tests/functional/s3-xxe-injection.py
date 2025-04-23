@@ -462,8 +462,8 @@ class TestS3XxeInjection(unittest.TestCase):
                     }
                 ]
             })
-        # "&xxe;" is rendered as an empty value, add a prefix as empty keys are
-        # not allowed (we don't want to test empty keys here).
+        # "&xxe;" may be rendered as an empty value, add a prefix as empty
+        # keys are not allowed (we don't want to test empty keys here).
         resp = requests.put(url, data=f"""
 <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file://{self.tmp_file.name}"> ]>
 <Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -475,16 +475,13 @@ class TestS3XxeInjection(unittest.TestCase):
     </TagSet>
 </Tagging>
 """)  # noqa: E501
-        self.assertEqual(204, resp.status_code)
-        self.assertNotIn(b'xxe', resp.content)
-        self.assertNotIn(b'donotreadme', resp.content)
+        self.assertEqual(400, resp.status_code)
+        self.assertRegex(resp.content, rb"Entity.+not defined")
+        self.assertNotIn(b"donotreadme", resp.content)
 
-        try:
-            self.client.get_bucket_tagging(Bucket=self.bucket)
-            self.fail('Now it is fixed')
-        except botocore.parsers.ResponseParserError:  # FIXME(adu)
-            # self.assertNotIn(b'xxe', resp.content)
-            self.assertNotIn(b'donotreadme', resp.content)
+        self.assertRaisesRegex(
+            botocore.exceptions.ClientError, "NoSuchTagSet",
+            self.client.get_bucket_tagging, Bucket=self.bucket)
 
     def test_put_bucket_versioning(self):
         self._create_bucket()

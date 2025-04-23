@@ -281,7 +281,10 @@ class TaggingController(Controller):
         need_update_tags = True
         try:
             # Validate the body and reserved keys
-            tagging = fromstring(body, 'Tagging')
+            data = fromstring(body, 'Tagging')
+            filtered_body = tostring(data, xml_declaration=False)
+            tagging = fromstring(filtered_body, 'Tagging')
+
             tagset = tagging.find('TagSet')
             from_replicator = req.from_replicator()
             tags = tagset.xpath('//Tag')
