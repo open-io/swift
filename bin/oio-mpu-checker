@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2023-2024 OVH SAS
+# Copyright (c) 2023-2025 OVH SAS
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,23 +18,33 @@ import argparse
 import base64
 import time
 
+from collections import Counter
+
 from oio.api.object_storage import ObjectStorageApi
 from oio.common.configuration import load_namespace_conf
 from oio.common.exceptions import NoSuchContainer, NoSuchObject
 from oio.common.json import json
 from oio.common.logger import get_logger
 from oio.common.utils import depaginate, CacheDict, request_id
+from oio.crawler.common.crawler import CrawlerWorkerMarkerMixin
+
+SHELL_ESCAPES = str.maketrans({" ": "\\ ", "\t": "\\\t", "\n": "\\\n", "\r": "\\\r"})
 
 
-class MpuChecker:
+class MpuChecker(CrawlerWorkerMarkerMixin):
     """Find stray MPU parts, print cleanup commands on stdout"""
 
-    def __init__(self, namespace, bucket, account=None, logger=None):
+    def __init__(
+        self, namespace, bucket, account=None, double_check=False, logger=None
+    ):
         ns_conf = load_namespace_conf(namespace)
         self.bucket = bucket
         self.account = account
         self.logger = logger or get_logger(ns_conf)
         self.api = ObjectStorageApi(namespace, logger=logger)
+        self.clean_commands = set()
+        self.double_check = double_check
+        self.to_be_checked_again = set()
 
         # string -> list of object versions
         # (string, int) -> list of MPU parts (parsed from manifest)
@@ -49,9 +59,13 @@ class MpuChecker:
         if self.account is None:
             self.account = bucket_info["account"]
         if ns_conf.get("ns.region").upper() != bucket_info["region"]:
-            raise ValueError(
-                f"Bucket in another region ({bucket_info['region']})"
-            )
+            raise ValueError(f"Bucket in another region ({bucket_info['region']})")
+
+        # Hacks to make CrawlerWorkerMarkerMixin work
+        self.conf = {"conf_file": f"{self.account}_{self.bucket}"}
+        super().__init__()
+        self.nb_path_processed = 0
+        self.use_marker = True
 
     @staticmethod
     def reqid():
@@ -61,9 +75,10 @@ class MpuChecker:
     def micros_to_date(microseconds):
         """Convert microseconds (str or int) to a human-readable date"""
         micros = int(microseconds)
-        date = time.strftime(
-            "%Y-%m-%d %H:%M:%S", time.localtime(micros / 1000000.0)
-        ) + f".{micros % 1000000:06d}"
+        date = (
+            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(micros / 1000000.0))
+            + f".{micros % 1000000:06d}"
+        )
         return date
 
     def check_upload_id(self, upload_id):
@@ -74,7 +89,7 @@ class MpuChecker:
         except Exception:
             raise ValueError("Upload ID is not base64")
 
-    def list_all_parts(self):
+    def list_all_parts(self, marker=None):
         """
         Look into the segments container, yield all segment names.
         """
@@ -88,6 +103,8 @@ class MpuChecker:
             account=self.account,
             container=container,
             chunks=False,
+            force_master=True,
+            marker=marker,
             reqid=self.reqid(),
         )
         try:
@@ -99,16 +116,17 @@ class MpuChecker:
         for obj in objs_gen:
             yield obj
 
-    def find_manifests(self, obj_name, reqid=None):
+    def find_manifests(self, obj_name, reqid=None, use_cache=True):
         """
         Find all object versions which could be MPU manifests.
 
         Keep the list in a cache.
         """
-        mf_versions = self.mf_cache.get(obj_name)
-        # If it is an empty list, return it anyway.
-        if mf_versions is not None:
-            return mf_versions
+        if use_cache:
+            mf_versions = self.mf_cache.get(obj_name)
+            # If it is an empty list, return it anyway.
+            if mf_versions is not None:
+                return mf_versions
 
         resp = self.api.object_list(
             self.account,
@@ -118,9 +136,11 @@ class MpuChecker:
             versions=True,
             limit=10000,
             reqid=reqid,
+            force_master=True,
         )
         mf_versions = [
-            mf["version"] for mf in resp["objects"]
+            mf["version"]
+            for mf in resp["objects"]
             if mf["name"] == obj_name and not mf["deleted"]
         ]
         mf_versions.sort()
@@ -135,20 +155,48 @@ class MpuChecker:
         obj = obj_name + "/" + upload_id
         try:
             return self.api.object_get_properties(
-                self.account, container, obj, reqid=reqid
+                self.account,
+                container,
+                obj,
+                reqid=reqid,
+                force_master=True,
             )
         except NoSuchObject:
             return {}
 
-    def get_manifest(self, obj_name, version, reqid=None):
+    def head_manifest(self, obj_name, reqid=None):
+        """
+        Check for a visible (i.e. no delete marker) MPU manifest,
+        return its version.
+        """
+        try:
+            meta = self.api.object_get_properties(
+                self.account, self.bucket, obj_name, reqid=reqid, force_master=True
+            )
+            return meta["version"]
+        except NoSuchObject:
+            pass
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to check for a manifest for %s: %s (reqid=%s)",
+                obj_name,
+                exc,
+                reqid,
+            )
+        return None
+
+    def get_manifest(self, obj_name, version, reqid=None, use_cache=True):
         """
         Get the (parsed) content of an MPU manifest.
 
         Keep it in cache.
         """
-        mf_part_list = self.mf_cache.get((obj_name, version), None)
-        if mf_part_list:
-            return mf_part_list
+        if use_cache:
+            mf_part_list = self.mf_cache.get((obj_name, version), None)
+            if mf_part_list:
+                return mf_part_list
+        else:
+            mf_part_list = None
 
         try:
             meta, stream = self.api.object_fetch(
@@ -157,6 +205,8 @@ class MpuChecker:
                 obj_name,
                 version=version,
                 reqid=reqid,
+                # When asking for no cache, make sure to get up-to-date info
+                force_master=not use_cache,
             )
             data = b"".join(stream)
             if "x-static-large-object" not in meta["properties"]:
@@ -173,11 +223,15 @@ class MpuChecker:
             )
         return mf_part_list
 
-    def part_in_manifest(self, part_name, mf_name, mf_version, reqid=None):
+    def part_in_manifest(
+        self, part_name, mf_name, mf_version, reqid=None, use_cache=True
+    ):
         """
         Check that part_name appears in the specified manifest.
         """
-        mf_part_list = self.get_manifest(mf_name, mf_version, reqid=reqid)
+        mf_part_list = self.get_manifest(
+            mf_name, mf_version, reqid=reqid, use_cache=use_cache
+        )
         if not mf_part_list:
             return False
         for part_descr in mf_part_list:
@@ -198,126 +252,263 @@ class MpuChecker:
                 obj_name, upload_id = obj_part_name.rsplit("/", 1)
                 part_number = None
             except ValueError as err:
-                raise ValueError(
-                    "does not look like MPU marker nor part"
-                ) from err
+                raise ValueError("does not look like MPU marker nor part") from err
         self.check_upload_id(upload_id)
         return obj_name, upload_id, part_number
 
-    def run(self):
-        clean_commands = set()
-        for obj in self.list_all_parts():
-            reqid = self.reqid()
-            obj_part_name = obj["name"]
-            self.logger.debug("Analyzing %s (reqid=%s)", obj_part_name, reqid)
-            try:
-                obj_name, upload_id, part_number = self.decode_object_name(
-                    obj_part_name
-                )
-            except ValueError as err:
-                self.logger.warning(
-                    "Unexpected object %r in segments container: %s",
-                    obj_part_name,
-                    err,
-                )
-                # We won't generate deletion commands: this tool is dedicated
-                # to stray MPUs, and this object is not one.
-                continue
-            except Exception:
-                self.logger.exception(
-                    "Unexpected object %r in segments container",
-                    obj_part_name,
-                )
-                continue
-
-            marker_meta = self.get_marker_meta(
-                obj_name, upload_id, reqid=reqid
+    def check_part(self, obj_part_name, reqid, use_cache=True):
+        self.logger.debug("Analyzing %s (reqid=%s)", obj_part_name, reqid)
+        try:
+            obj_name, upload_id, part_number = self.decode_object_name(obj_part_name)
+        except ValueError as err:
+            self.logger.warning(
+                "Unexpected object %r in segments container: %s",
+                obj_part_name,
+                err,
             )
-            mf_versions = self.find_manifests(obj_name, reqid=reqid)
-            if part_number is None and mf_versions:
-                # Possibly a new MPU with the same name. To be sure we need
-                # to analyze all manifests and look for the upload ID.
-                self.logger.info(
-                    "Found an upload marker %s (%s) "
-                    "but there is at least one object with the same name: "
-                    "%s (%s) (reqid=%s)",
+            # We won't generate deletion commands: this tool is dedicated
+            # to stray MPUs, and this object is not one.
+            return False
+        except Exception:
+            self.logger.exception(
+                "Unexpected object %r in segments container",
+                obj_part_name,
+            )
+            return False
+
+        needs_cleaning = False
+        marker_meta = self.get_marker_meta(
+            obj_name,
+            upload_id,
+            reqid=reqid,
+        )
+        mf_versions = self.find_manifests(obj_name, reqid=reqid, use_cache=use_cache)
+        if part_number is None and mf_versions:
+            # Possibly a new MPU with the same name. To be sure we need
+            # to analyze all manifests and look for the upload ID.
+            self.logger.info(
+                "Found an upload marker %s (%s) "
+                "but there is at least one object with the same name: "
+                "%s (%s) (reqid=%s)",
+                obj_part_name,
+                self.micros_to_date(marker_meta.get("version")),
+                obj_name,
+                self.micros_to_date(mf_versions[-1]),
+                reqid,
+            )
+        elif part_number and not marker_meta:
+            escaped_obj = obj_part_name.translate(SHELL_ESCAPES)
+            cmd = f"object delete '{self.bucket}+segments' '{escaped_obj}' -f value"
+            if not mf_versions and not use_cache:
+                # Opportunistically look for a manifest
+                # which does not appear in listings.
+                latest = self.head_manifest(obj_name, reqid=reqid)
+                mf_versions = [latest]
+            if not mf_versions:
+                self.logger.warning(
+                    "%s has neither MPU marker nor manifest, "
+                    "orphan part? (reqid=%s)",
                     obj_part_name,
-                    self.micros_to_date(marker_meta.get("version")),
-                    obj_name,
-                    self.micros_to_date(mf_versions[-1]),
                     reqid,
                 )
-            elif part_number and not marker_meta:
-                cmd = (
-                    f"object delete '{self.bucket}+segments' '{obj_part_name}'"
-                )
-                if not mf_versions:
-                    self.logger.warning(
-                        "%s has neither MPU marker nor manifest, "
-                        "orphan part? (reqid=%s)",
-                        obj_part_name,
-                        reqid,
-                    )
-                    if cmd not in clean_commands:
-                        print(cmd)
-                        clean_commands.add(cmd)
-                else:
-                    for mf_version in mf_versions:
-                        if self.part_in_manifest(
-                            obj_part_name, obj_name, mf_version, reqid=reqid
-                        ):
-                            break
-                    else:
-                        if cmd not in clean_commands:
-                            print(cmd)
-                            clean_commands.add(cmd)
-                            self.logger.warning(
-                                "%s does not appear in any MPU manifest, "
-                                "orphan part? (reqid=%s)",
-                                obj_part_name,
-                                reqid,
-                            )
-            elif mf_versions and marker_meta:
+                needs_cleaning = True
+                if cmd not in self.clean_commands and not self.double_check:
+                    print(cmd)
+                    self.clean_commands.add(cmd)
+            else:
+                # Look in all manifests if the part belongs to one
                 for mf_version in mf_versions:
                     if self.part_in_manifest(
                         obj_part_name, obj_name, mf_version, reqid=reqid
                     ):
-                        cmd = (
-                            f"object delete '{self.bucket}+segments' "
-                            f"'{marker_meta['name']}' -a {self.account}"
-                        )
-                        if cmd not in clean_commands:
-                            print(cmd)
-                            clean_commands.add(cmd)
-                            self.logger.warning(
-                                "%s should be deleted, the MPU is complete "
-                                "(name=%s version=%s reqid=%s)",
-                                marker_meta["name"],
-                                obj_name,
-                                mf_version,
-                                reqid,
-                            )
-                    else:
-                        self.logger.info(
-                            "Part %s is in an incomplete MPU (%s), "
-                            "but complete MPUs already exist with the same "
-                            "name (%s) (reqid=%s)",
+                        break
+                # No manifest referencing the part has been found
+                else:
+                    needs_cleaning = True
+                    if cmd not in self.clean_commands and not self.double_check:
+                        print(cmd)
+                        self.clean_commands.add(cmd)
+                        self.logger.warning(
+                            "%s does not appear in any MPU manifest, "
+                            "orphan part? (reqid=%s)",
                             obj_part_name,
-                            self.micros_to_date(marker_meta["version"]),
-                            self.micros_to_date(mf_version),
                             reqid,
                         )
+        elif mf_versions and marker_meta:
+            # Look in all manifests if the part belongs to one
+            for mf_version in mf_versions:
+                if self.part_in_manifest(
+                    obj_part_name, obj_name, mf_version, reqid=reqid
+                ):
+                    escaped_marker = marker_meta["name"].translate(SHELL_ESCAPES)
+                    cmd = (
+                        f"object delete '{self.bucket}+segments' "
+                        f"'{escaped_marker}' -a {self.account} "
+                        "-f value"
+                    )
+                    needs_cleaning = True
+                    if cmd not in self.clean_commands and not self.double_check:
+                        print(cmd)
+                        self.clean_commands.add(cmd)
+                        self.logger.warning(
+                            "%s should be deleted, the MPU is complete "
+                            "(name=%s version=%s reqid=%s)",
+                            marker_meta["name"],
+                            obj_name,
+                            mf_version,
+                            reqid,
+                        )
+                    break
+            # No manifest referencing the part has been found,
+            # but there is a MPU marker!
+            else:
+                self.logger.info(
+                    "Part %s is in an incomplete MPU (%s), "
+                    "but complete MPUs already exist with the same "
+                    "name (%s) (reqid=%s)",
+                    obj_part_name,
+                    self.micros_to_date(marker_meta["version"]),
+                    self.micros_to_date(mf_version),
+                    reqid,
+                )
+        return needs_cleaning
+
+    def read_part_list(self):
+        """
+        Read a list of parts to be checked again.
+        """
+        fname = self.marker_path + ".parts"
+        try:
+            parts = []
+            with open(fname, "rt", encoding="utf-8") as infile:
+                for line in infile:
+                    if line.startswith("#"):
+                        continue
+                    part, part_size_str, part_policy = line.rsplit("\t", 2)
+                    parts.append((part, int(part_size_str), part_policy))
+            self.to_be_checked_again = set(parts)
+            return True
+        except FileNotFoundError:
+            return False
+
+    def write_part_list(self):
+        """
+        Overwrite the "to be checked again" part list.
+        """
+        fname = self.marker_path + ".parts"
+        with open(fname, "wt", encoding="utf-8") as outfile:
+            outfile.write("# Part name\tPart size\tPart policy\n")
+            for part, part_size, policy in sorted(self.to_be_checked_again):
+                outfile.write(f"{part}\t{part_size}\t{policy}\n")
+
+    @staticmethod
+    def size_by_policy(all_parts):
+        size_by_policy = Counter()
+        for _, size, policy in all_parts:
+            size_by_policy[policy] += size
+        return size_by_policy
+
+    def run(self):
+        # Init and/or load self.current_marker
+        self.init_current_marker("/tmp", 1)
+        if self.current_marker:
+            self.logger.info(
+                "--- Marker loaded from %s: %s ---",
+                self.marker_path,
+                self.current_marker,
+            )
+            # Load the list of parts to be checked again
+            self.read_part_list()
+
+        obj_part_name = self.current_marker
+        # Iterate over all parts of the segment container(s)
+        for obj in self.list_all_parts(marker=self.current_marker):
+            reqid = self.reqid()
+            obj_part_name = obj["name"]
+            needs_cleaning = self.check_part(obj_part_name, reqid=reqid)
+            if needs_cleaning:
+                self.to_be_checked_again.add((obj_part_name, obj["size"], obj["policy"]))
+
+            # If a marker has been written, also overwrite the part list
+            marker_written = self.write_marker(obj_part_name)
+            if marker_written and self.to_be_checked_again:
+                self.write_part_list()
+
+        if self.to_be_checked_again:
+            self.write_part_list()
+
+        # Iterate over all parts which need a 2nd check
+        # (loaded from the file or from the 1st pass)
+        if self.double_check and self.to_be_checked_again:
+            # We have completed a pass on all parts, make sure the next run
+            # of this tool starts at 2nd pass.
+            self.write_marker(obj_part_name, force=True)
+            self.write_part_list()
+
+            size_by_policy = self.size_by_policy(self.to_be_checked_again)
+            self.logger.info(
+                "--- All parts checked once, will recheck %d parts (size: %s) ---",
+                len(self.to_be_checked_again),
+                ", ".join(f"{x[0]}={x[1]}" for x in sorted(size_by_policy.items())),
+            )
+            self.double_check = False
+            cleaned_2nd_pass = set()
+            for obj_part_name, size, policy in sorted(self.to_be_checked_again):
+                reqid = self.reqid()
+                if self.check_part(obj_part_name, reqid=reqid, use_cache=False):
+                    cleaned_2nd_pass.add((obj_part_name, size, policy))
+            size_by_policy = self.size_by_policy(cleaned_2nd_pass)
+            self.logger.info(
+                "--- %d parts cleaned at 2nd pass (size: %s) ---",
+                len(cleaned_2nd_pass),
+                ", ".join(f"{x[0]}={x[1]}" for x in sorted(size_by_policy.items())),
+            )
+        else:
+            size_by_policy = self.size_by_policy(self.to_be_checked_again)
+            self.logger.info(
+                "--- %d parts cleaned at 1st pass (size: %s) ---",
+                len(self.to_be_checked_again),
+                ", ".join(f"{x[0]}={x[1]}" for x in sorted(size_by_policy.items())),
+            )
+
+        self.write_marker("", force=True)
 
 
 def make_arg_parser():
-    descr = """Find stray MPU parts, print cleanup commands on stdout"""
-    parser = argparse.ArgumentParser(description=descr)
+    descr = """
+Find stray MPU parts, print cleanup commands on stdout.
+
+A marker will be written in /tmp/markers/account_bucket, so the tool can be
+stopped and retarted. Delete the marker if you want to restart from the
+beginning.
+
+The tool can run in single pass mode or in double pass mode (--double-check).
+In double pass mode, a list of objects to check again will be written in
+/tmp/markers/account_bucket.parts (in addition to the marker file).
+This list is automatically loaded when the tool starts.
+
+When the tool has finished the two passes, the marker is reset, but the list of
+parts which have been checked two times remains (in case you want to check it).
+"""
+    parser = argparse.ArgumentParser(
+        description=descr, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument("namespace", help="Namespace")
     parser.add_argument("bucket", help="Bucket to analyze")
     parser.add_argument(
-        "--account", "-a", help="Account where to find the bucket"
+        "--account",
+        "-a",
+        help="Account where to find the bucket",
     )
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--double-check",
+        action="store_true",
+        help=(
+            "After the 1st pass on all parts, "
+            "do a 2nd pass on all parts requiring an action"
+        ),
+    )
     parser.add_argument(
         "--verbose",
         "-v",
@@ -338,6 +529,10 @@ if __name__ == "__main__":
     )
 
     checker = MpuChecker(
-        args.namespace, args.bucket, account=args.account, logger=LOGGER
+        args.namespace,
+        args.bucket,
+        account=args.account,
+        logger=LOGGER,
+        double_check=args.double_check,
     )
     checker.run()
