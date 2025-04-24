@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from enum import Enum
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -57,6 +58,11 @@ LIFECYCLE_ACTIONS = (
     "NoncurrentVersionTransition",
     "AbortIncompleteMultipartUpload",
 )
+
+
+class LifecycleMinimumObjectSize(str, Enum):
+    AllStorageClasses128k = "all_storage_classes_128K"
+    VariesByStorageClasses = "varies_by_storage_class"
 
 
 class FilterSerializerMixin(object):
@@ -972,13 +978,21 @@ def _build_filter(rule_xml, rule):
 
 
 def lifecycle_xml_conf_to_dict(
-        lifecycle_conf, storage_durations, allow_transitions=True):
+    lifecycle_conf,
+    storage_durations,
+    minimal_object_size,
+    allow_transitions=True
+):
     """
     Convert the XML lifecycle configuration into a more pythonic
     dictionary.
 
     :param conf: the lifecycle configuration XML document
     :type conf: bytes
+    :param storage_durations: custom per storage classes minimal duration
+    :type storage_durations: dict
+    :param minimal_object_size: minimal object size for transition
+    :type minimal_object_size: LifecycleMinimumObjectSize
     :return: dict representing lifecycle configuration
     :rtype: dict
     """
@@ -1039,6 +1053,8 @@ def lifecycle_xml_conf_to_dict(
     # Resolve actions order
     _sort_accelerators(out)
 
+    out["_transition_default_minimum_object_size"] = minimal_object_size.value
+
     # Validate against internal schema
     registry = SchemaRegistry()
     registry.validate("lifecycle", out)
@@ -1085,8 +1101,15 @@ class LifecycleController(Controller):
         if not body:
             raise NoSuchLifecycleConfiguration
         body = json.loads(body)
+        minimum_obj_size = body.get(
+            "_transition_default_minimum_object_size",
+            LifecycleMinimumObjectSize.AllStorageClasses128k)
+        minimum_obj_size = LifecycleMinimumObjectSize(minimum_obj_size)
         generated_body = dict_conf_to_xml(body)
-        return HTTPOk(body=generated_body, content_type='application/xml')
+        resp = HTTPOk(body=generated_body, content_type="application/xml")
+        resp.headers["x-amz-transition-default-minimum-object-size"] = (
+            minimum_obj_size.value)
+        return resp
 
     @set_s3_operation_rest('LIFECYCLE')
     @ratelimit
@@ -1138,14 +1161,31 @@ class LifecycleController(Controller):
             or self.bypass_feature_disabled(req, "lifecycle_transition")
         )
 
+        minimum_object_size = req.headers.get(
+            "x-amz-transition-default-minimum-object-size",
+            LifecycleMinimumObjectSize.AllStorageClasses128k)
+        try:
+            minimum_object_size = LifecycleMinimumObjectSize(
+                minimum_object_size)
+        except ValueError:
+            raise InvalidRequest(
+                "Invalid TransitionDefaultMinimumObjectSize found: "
+                f"{minimum_object_size}")
+
         config = lifecycle_xml_conf_to_dict(
             data,
             self.conf.storage_classes_minimal_duration,
+            minimum_object_size,
             allow_transitions=allow_transition)
         req.headers[LIFECYCLE_HEADER] = json.dumps(
             config, separators=(',', ':'))
-        resp = req.get_response(self.app, method='POST')
-        return convert_response(req, resp, 204, HTTPOk)
+        resp = req.get_response(self.app, method="POST")
+        resp = convert_response(req, resp, 204, HTTPOk)
+        if resp.status_int == 200:
+            resp.headers["x-amz-transition-default-minimum-object-size"] = (
+                minimum_object_size.value
+            )
+        return resp
 
     @set_s3_operation_rest('LIFECYCLE')
     @ratelimit

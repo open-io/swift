@@ -139,6 +139,97 @@ class TestS3Lifecycle(unittest.TestCase):
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
         self.assertEqual(lifecycle_configuration["Rules"], resp["Rules"])
 
+        headers = resp["ResponseMetadata"]["HTTPHeaders"]
+        self.assertEqual(
+            headers["x-amz-transition-default-minimum-object-size"],
+            "all_storage_classes_128K")
+
+
+    def _put_bucket_lifecycle_configuration_object_size_header(self, object_size):
+        def add_custom_header_before_call(request, **kwargs):
+            request.headers["X-Amz-Transition-Default-Minimum-Object-Size"] = object_size
+        try:
+            # FIXME(TPE): Use TransitionDefaultMinimumObjectSize parameter after
+            # boto3 upgrade instead of using botocore event mechanism to provide
+            # headers
+            self.client.meta.events.register(
+                'before-sign.s3.PutBucketLifecycleConfiguration',
+                add_custom_header_before_call)
+            resp = self.client.put_bucket_lifecycle_configuration(
+                Bucket=self.bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "id1",
+                            "Status": "Enabled",
+                            "Filter": {
+                                "Tag": {
+                                    "Key": "key",
+                                    "Value": "",
+                                },
+                            },
+                            "Expiration": {"Days": 10},
+                        }
+                    ]
+                },
+            )
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.PutBucketLifecycleConfiguration',
+                add_custom_header_before_call)
+        self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
+        headers = resp["ResponseMetadata"]["HTTPHeaders"]
+        self.assertEqual(
+            headers["x-amz-transition-default-minimum-object-size"],
+            object_size)
+
+        resp = self.client.get_bucket_lifecycle_configuration(Bucket=self.bucket)
+        self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
+        headers = resp["ResponseMetadata"]["HTTPHeaders"]
+        self.assertEqual(
+            headers["x-amz-transition-default-minimum-object-size"],
+            object_size)
+
+    def test_test_put_bucket_lifecycle_configuration_object_size_header(self):
+        for value in ("all_storage_classes_128K", "varies_by_storage_class"):
+            self._put_bucket_lifecycle_configuration_object_size_header(value)
+
+    def test_test_put_bucket_lifecycle_configuration_object_size_header_invalid(self):
+        def add_custom_header_before_call(request, **kwargs):
+            request.headers["X-Amz-Transition-Default-Minimum-Object-Size"] = "foobar"
+        try:
+            # FIXME(TPE): Use TransitionDefaultMinimumObjectSize parameter after
+            # boto3 upgrade instead of using botocore event mechanism to provide
+            # headers
+            self.client.meta.events.register(
+                'before-sign.s3.PutBucketLifecycleConfiguration',
+                add_custom_header_before_call)
+            self.assertRaisesRegex(
+                botoexc.ClientError,
+                r".*InvalidRequest.*Invalid TransitionDefaultMinimumObjectSize found: foobar",
+                self.client.put_bucket_lifecycle_configuration,
+                Bucket=self.bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "id1",
+                            "Status": "Enabled",
+                            "Filter": {
+                                "Tag": {
+                                    "Key": "key",
+                                    "Value": "",
+                                },
+                            },
+                            "Expiration": {"Days": 10},
+                        }
+                    ]
+                },
+            )
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.PutBucketLifecycleConfiguration',
+                add_custom_header_before_call)
+
     def test_put_bucket_lifecycle_configuration_without_id(self):
         resp = self.client.put_bucket_lifecycle_configuration(
             Bucket=self.bucket,
