@@ -594,7 +594,9 @@ def _validate_storage_class(
     )
     # Transition to highest storage class is forbidden
     if value == storage_classes[0]:
-        raise InvalidArgument(field, value)
+        raise InvalidArgument(
+            field, value, f"Invalid target Storage class for {context} action"
+        )
 
     # Ensure storage class is in the supported classes
     if value not in storage_durations:

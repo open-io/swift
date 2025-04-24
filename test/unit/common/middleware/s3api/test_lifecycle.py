@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from swift.common.middleware.s3api.controllers.lifecycle import (
+    LifecycleMinimumObjectSize,
     _action_to_int,
     lifecycle_xml_conf_to_dict,
     _validate_transitions_different_times,
@@ -146,7 +147,10 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             </LifecycleConfiguration>
         """
         data = fromstring(xml_conf, "LifecycleConfiguration")
-        conf = lifecycle_xml_conf_to_dict(data, self.STORAGE_CLASS_DURATIONS)
+        conf = lifecycle_xml_conf_to_dict(
+            data,
+            self.STORAGE_CLASS_DURATIONS,
+            LifecycleMinimumObjectSize.AllStorageClasses128k)
         self.assertIn("_expiration_rules", conf)
         self.assertDictEqual(
             {
@@ -194,6 +198,7 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             lifecycle_xml_conf_to_dict,
             data,
             self.STORAGE_CLASS_DURATIONS,
+            LifecycleMinimumObjectSize.AllStorageClasses128k,
             allow_transitions=False
         )
 
@@ -215,8 +220,10 @@ class TestS3ApiLifecycle(S3ApiTestCase):
         """
         data = fromstring(xml_conf, "LifecycleConfiguration")
         conf = lifecycle_xml_conf_to_dict(
-            data, self.STORAGE_CLASS_DURATIONS, allow_transitions=False
-        )
+            data,
+            self.STORAGE_CLASS_DURATIONS,
+            LifecycleMinimumObjectSize.AllStorageClasses128k,
+            allow_transitions=False)
         self.assertListEqual([], conf["_transition_rules"]["date"])
         self.assertListEqual([], conf["_transition_rules"]["days"])
 
@@ -242,8 +249,8 @@ class TestS3ApiLifecycle(S3ApiTestCase):
             lifecycle_xml_conf_to_dict,
             data,
             self.STORAGE_CLASS_DURATIONS,
-            allow_transitions=False
-        )
+            LifecycleMinimumObjectSize.AllStorageClasses128k,
+            allow_transitions=False)
 
     def test_transition_feature_disable_with_nc_transition_rule_disable(self):
         xml_conf = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -263,8 +270,10 @@ class TestS3ApiLifecycle(S3ApiTestCase):
         """
         data = fromstring(xml_conf, "LifecycleConfiguration")
         conf = lifecycle_xml_conf_to_dict(
-            data, self.STORAGE_CLASS_DURATIONS, allow_transitions=False
-        )
+            data,
+            self.STORAGE_CLASS_DURATIONS,
+            LifecycleMinimumObjectSize.AllStorageClasses128k,
+            allow_transitions=False)
         self.assertListEqual([], conf["_non_current_transition_rules"])
 
     def test_transitions_days_validation(self):
