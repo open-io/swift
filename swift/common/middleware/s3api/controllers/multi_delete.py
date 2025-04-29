@@ -25,6 +25,8 @@ from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_access
+from swift.common.middleware.s3api.controllers.replication import \
+    replication_resolve_rules
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE
@@ -145,14 +147,16 @@ class MultiObjectDeleteController(Controller):
                 for _key, version in delete_list):
             raise S3NotImplemented()
 
-        def do_delete(base_req, key, version):
+        def do_delete(base_req, key, version, container_info):
             req = copy.copy(base_req)
             req.environ = copy.copy(base_req.environ)
+            req.headers.environ = req.environ
             # IAM rules are not checked in the main request,
             # only the ACLs are already checked.
             # req.environ[IAM_EXPLICIT_ALLOW] = None
             # req.environ[ACL_EXPLICIT_ALLOW] = True|False
-            req.object_name = str_to_wsgi(key)
+            # The req.key is used when resolving replication rules
+            req.key = req.object_name = str_to_wsgi(key)
             if version:
                 req.params = {'version-id': version, 'symlink': 'get'}
             req_headers = {'Accept': 'application/json'}
@@ -173,7 +177,7 @@ class MultiObjectDeleteController(Controller):
                 try:
                     query = req.gen_multipart_manifest_delete_query(
                         self.app, version=version)
-                except NoSuchKey:
+                except (NoSuchKey, NoSuchVersion):
                     pass
                 except MethodNotAllowed as exc:
                     if not exc.headers.get('x-amz-delete-marker'):
@@ -189,7 +193,18 @@ class MultiObjectDeleteController(Controller):
                     # manifest and its parts.
                     # Only a delete marker will be created.
                     query.pop('multipart-manifest', None)
-
+                try:
+                    sysmeta_info = container_info.get("sysmeta", {})
+                    replication_resolve_rules(
+                        self.app,
+                        req,
+                        sysmeta_info=sysmeta_info,
+                        delete=True
+                    )
+                except (NoSuchKey, NoSuchVersion):
+                    # The object does not exist, therefore will not be deleted.
+                    # Do not raise now to check ACLs later.
+                    pass
                 resp = req.get_response(self.app, method='DELETE', query=query,
                                         headers=req_headers)
                 # If async segment cleanup is available, we expect to get
@@ -246,10 +261,11 @@ class MultiObjectDeleteController(Controller):
 
             return key, version, delete_marker, delete_marker_version, None
 
+        container_info = req.get_container_info(self.app)
         with StreamingPile(self.conf.multi_delete_concurrency) as pile:
             for key, version, del_marker, del_marker_vers, err \
                     in pile.asyncstarmap(do_delete,
-                                         ((req, key, version)
+                                         ((req, key, version, container_info)
                                           for key, version in delete_list)):
                 if err:
                     error = SubElement(elem, 'Error')
