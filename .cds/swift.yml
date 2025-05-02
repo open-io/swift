@@ -159,7 +159,8 @@ metadata:
 
 retention_policy: |+
     if (cds_triggered_by_username == 'cds.scheduler') then
-      return run_days_before < 1
+      # Give a few days to the team to analyze failed builds
+      return run_days_before < 4
     end
     if (has_git_branch == "true") then
       if(git_branch_exist == "true") then
@@ -187,8 +188,8 @@ hooks:
     - name: Clean artifacts and mirror to GitHub
       type: Scheduler
       config:
-        # twice a day
-        cron: "17 13,21 * * *"
+        # once a day
+        cron: "17 13 * * *"
         timezone: UTC
         payload: |-
           {
