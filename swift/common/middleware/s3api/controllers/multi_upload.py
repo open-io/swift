@@ -710,6 +710,14 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             initiator_elem = SubElement(upload_elem, 'Initiator')
             SubElement(initiator_elem, 'ID').text = req.user_id
             SubElement(initiator_elem, 'DisplayName').text = req.user_id
+            if u["checksum_algorithm"]:
+                SubElement(
+                    upload_elem, 'ChecksumAlgorithm'
+                ).text = u["checksum_algorithm"].upper()
+            if u["checksum_type"]:
+                SubElement(
+                    upload_elem, 'ChecksumType'
+                ).text = u["checksum_type"].upper()
             owner_elem = SubElement(upload_elem, 'Owner')
             SubElement(owner_elem, 'ID').text = req.user_id
             SubElement(owner_elem, 'DisplayName').text = req.user_id

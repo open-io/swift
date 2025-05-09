@@ -113,10 +113,14 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
 
     def object_to_upload(object_info):
         obj, upid = object_info['name'].rsplit('/', 1)
-        obj_dict = {'key': obj,
-                    'storage_policy': object_info.get('storage_policy'),
-                    'upload_id': upid,
-                    'last_modified': object_info['last_modified']}
+        obj_dict = {
+            'key': obj,
+            'storage_policy': object_info.get('storage_policy'),
+            'upload_id': upid,
+            'last_modified': object_info['last_modified'],
+            'checksum_type': object_info.get('checksum_type'),
+            'checksum_algorithm': object_info.get('checksum_algorithm')
+        }
         return obj_dict
 
     while len(uploads) < maxuploads:

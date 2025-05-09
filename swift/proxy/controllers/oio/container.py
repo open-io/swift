@@ -16,7 +16,8 @@
 import json
 
 from swift.common.oio_utils import \
-    get_object_etag, handle_oio_no_such_container, handle_oio_timeout, \
+    MULTIUPLOAD_SUFFIX, get_object_etag, \
+    handle_oio_no_such_container, handle_oio_timeout, \
     handle_service_busy, BUCKET_NAME_PROP, \
     BUCKET_OBJECT_LOCK_PROP, oio_versionid_to_swift_versionid, \
     split_oio_version_from_name
@@ -26,7 +27,7 @@ from swift.common.constraints import check_metadata
 from swift.common import constraints
 
 from swift.common.middleware.s3api.utils import \
-    OBJECT_LOCK_ENABLED_HEADER
+    OBJECT_LOCK_ENABLED_HEADER, sysmeta_header
 from swift.common.middleware.versioned_writes.object_versioning import \
     CLIENT_VERSIONS_ENABLED, SYSMETA_VERSIONS_CONT
 from swift.common.middleware.versioned_writes.legacy \
@@ -231,10 +232,23 @@ class ContainerController(SwiftContainerController):
         else:
             hash_ = get_object_etag(record, self.app.logger)
 
+        def get_checksum_properties():
+            checksum_prop = {}
+            checksum_type = sysmeta_header('object', 'checksum-type')
+            checksum_algo = sysmeta_header('object', 'checksum-algorithm')
+            if checksum_type in props:
+                checksum_prop["checksum_type"] = props[checksum_type]
+            if checksum_algo in props:
+                checksum_prop["checksum_algorithm"] = props[checksum_algo]
+            return checksum_prop
+        checksum_properties = {}
+        if self.container_name.endswith(MULTIUPLOAD_SUFFIX):
+            checksum_properties = get_checksum_properties()
         response = {'name': record['name'],
                     'bytes': record['size'],
                     'last_modified': Timestamp(record['mtime']).isoformat,
-                    'is_latest': record.get('is_latest', True)}
+                    'is_latest': record.get('is_latest', True),
+                    **checksum_properties}
         if hash_:
             response['hash'] = hash_
         if record.get('deleted', False):
