@@ -1334,7 +1334,7 @@ class StaticLargeObject(object):
                             parsed_data[i], resp,
                             allow_empty_segment=(i == len(parsed_data) - 1))
                         if hook:
-                            hook(i, seg_data, resp)
+                            hook(i, resp)
                         data_for_storage[i] = seg_data
                         total_size += segment_length
 

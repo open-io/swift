@@ -281,6 +281,8 @@ class CRC32Info(ChecksumInfo):
     digest_size = 4
     name = 'crc32'
     allowed_types_for_mpu = [CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT]
+    # source https://reveng.sourceforge.io/crc-catalogue/all.htm#appendix.b
+    reflected_polynomial = 0xedb88320
 
     def new_hasher(self):
         return checksum.CRCHasher(zlib.crc32)
@@ -290,6 +292,8 @@ class CRC32CInfo(ChecksumInfo):
     digest_size = 4
     name = 'crc32c'
     allowed_types_for_mpu = [CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT]
+    # source https://reveng.sourceforge.io/crc-catalogue/all.htm#appendix.b
+    reflected_polynomial = 0x82f63b78
 
     def new_hasher(self):
         return checksum.CRCHasher(checksum.crc32c)
@@ -299,6 +303,8 @@ class CRC64NVMEInfo(ChecksumInfo):
     digest_size = 8
     name = 'crc64nvme'
     allowed_types_for_mpu = [CHECKSUM_FULL_OBJECT]
+    # source https://reveng.sourceforge.io/crc-catalogue/all.htm#appendix.b
+    reflected_polynomial = 0x9a6c9329ac4bc9b5
 
     def new_hasher(self):
         return checksum.CRCHasher(checksum.crc64nvme, width=64)

@@ -16,6 +16,11 @@
               </element>
             </optional>
             <optional>
+              <element name="ChecksumCRC64NVME">
+                <data type="string"/>
+              </element>
+            </optional>
+            <optional>
               <element name="ChecksumSHA1">
                 <data type="string"/>
               </element>

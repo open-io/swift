@@ -96,7 +96,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
-    PreconditionFailed, S3NotImplemented
+    PreconditionFailed
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
@@ -799,19 +799,14 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
                 # Use the default type of the algorithm
                 checksum_type = \
                     CHECKSUMS_BY_NAME[algo].allowed_types_for_mpu[0]
+            req.headers[
+                sysmeta_header('object', 'checksum-type')] = checksum_type
         if checksum_type:
             checksum_info = CHECKSUMS_BY_NAME[algo]
             if checksum_type not in checksum_info.allowed_types_for_mpu:
                 raise InvalidRequest(
                     f"The {checksum_type} checksum type cannot be used "
                     f"with the {checksum_info.name} checksum algorithm."
-                )
-            if checksum_type == CHECKSUM_FULL_OBJECT:
-                # TODO(adu): For FULL_OBJECT, validate the object integrity
-                # server-side
-                raise S3NotImplemented(
-                    f"Only {CHECKSUM_COMPOSITE} checksum type is supported",
-                    checksum_type=checksum_type,
                 )
 
         # TODO(FVE): disable encryption only if there is a SSE-C key
@@ -892,7 +887,7 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         )
         if algo:
             resp.headers['x-amz-checksum-algorithm'] = algo.upper()
-            resp.headers['x-amz-checksum-type'] = CHECKSUM_COMPOSITE
+            resp.headers['x-amz-checksum-type'] = checksum_type
         return resp
 
 
@@ -1021,10 +1016,11 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         algo = slo_resp.sysmeta_headers.get(sysmeta_header(
             'object', 'checksum-algorithm'))
         if algo:
+            checksum_type = slo_resp.sysmeta_headers.get(sysmeta_header(
+                'object', 'checksum-type'))
             SubElement(result_elem, 'ChecksumAlgorithm').text = \
                 algo.upper()
-            # CHECKSUM_FULL_OBJECT is not yet implemented
-            SubElement(result_elem, 'ChecksumType').text = CHECKSUM_COMPOSITE
+            SubElement(result_elem, 'ChecksumType').text = checksum_type
 
         for i in objList:
             part_elem = SubElement(result_elem, 'Part')
@@ -1123,6 +1119,21 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
         upload_id = _get_upload_id(req)
         resp = _get_upload_info(req, self.app, upload_id)
+        # Used to gather and check encryption properties
+        part1_head_response = None
+
+        def get_nth_part_info(app, req, upload_id, part_number):
+            container = req.container_name + MULTIUPLOAD_SUFFIX
+            obj = f"{req.object_name}/{upload_id}/{part_number}"
+            try:
+                # We are only interested in some unencrypted headers
+                req.environ["swift.crypto.override"] = True
+                return req.get_response(
+                    app, 'HEAD', container=container, obj=obj)
+            except NoSuchKey:
+                return None
+            finally:
+                del req.environ["swift.crypto.override"]
 
         # Use the same storage class for the manifest
         storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
@@ -1178,6 +1189,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
         algo = resp.sysmeta_headers.get(sysmeta_header(
             'object', 'checksum-algorithm'))
+        checksum_type = resp.sysmeta_headers.get(sysmeta_header(
+            'object', 'checksum-type'), '').upper()
         if not algo:
             chksum = client_name = None
         else:
@@ -1262,7 +1275,42 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
                     checksums.append(
                         (part_number, etag, algo, part_chksums[algo]))
-                    chksum.update(strict_b64decode(part_chksums[algo]))
+                    if not checksum_type:
+                        # Use the default type
+                        checksum_type = checksum_info.allowed_types_for_mpu[0]
+                    if checksum_type == CHECKSUM_FULL_OBJECT:
+                        # Part size is required to calculate global checksum,
+                        # so a HEAD request is made to retrieve part's
+                        # metadata.
+                        # The response from this call is cached,
+                        # so subsequent HEAD requests for each part won't hit
+                        # the backend.
+                        resp = get_nth_part_info(
+                            self.app, req, upload_id, part_number)
+                        if not part1_head_response and part_number == 1:
+                            # Saving first part metadata used later
+                            # to check encryption properties
+                            part1_head_response = resp
+                        part_checksum = int(
+                            binascii.hexlify(
+                                strict_b64decode(
+                                    part_chksums[algo])).decode("ascii"), 16)
+                        # Validate part checksum as we already request for
+                        # part metadata.
+                        part_s3_etag_header = sysmeta_header(
+                            'object', 'checksum-' + algo)
+                        if resp.sysmeta_headers.get(
+                            part_s3_etag_header
+                        ) != part_chksums[algo]:
+                            raise S3InputChecksumMismatch(
+                                algo.upper(), part_number, etag)
+                        chksum.combine(
+                            part_checksum,
+                            resp.content_length,
+                            checksum_info.reflected_polynomial
+                        )
+                    else:
+                        chksum.update(strict_b64decode(part_chksums[algo]))
                 elif part_chksums:
                     # No checksum was specified during initialization,
                     # but the part has one
@@ -1285,6 +1333,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             raise MalformedXML()
         except ErrorResponse:
             raise
+        except S3InputChecksumMismatch as e:
+            raise InvalidPart(
+                upload_id=upload_id,
+                part_number=e.args[1],
+                e_tag=e.args[2],
+            )
         except Exception as e:
             self.logger.error(e)
             raise
@@ -1303,8 +1357,9 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         # Leave base header value blank; SLO will populate
         c_etag = '; s3_etag=%s' % s3_etag
         if chksum:
-            b64digest = base64.b64encode(chksum.digest()).decode('ascii')
-            s3_chksum = '%s-%d' % (b64digest, len(manifest))
+            s3_chksum = base64.b64encode(chksum.digest()).decode('ascii')
+            if checksum_type == CHECKSUM_COMPOSITE:
+                s3_chksum += '-%d' % (len(manifest))
             # Check the checksum
             checksum_headers = req.get_checksum_headers()
             if checksum_headers:
@@ -1322,8 +1377,9 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     expected_b64digest = expected_b64digest_split[0]
                 else:
                     expected_parts_number = len(manifest)
-                expected_s3_chksum = '%s-%d' % (
-                    expected_b64digest, expected_parts_number)
+                expected_s3_chksum = expected_b64digest
+                if checksum_type == CHECKSUM_COMPOSITE:
+                    expected_s3_chksum += '-%d' % (expected_parts_number)
                 if (
                     expected_s3_chksum != s3_chksum
                 ):
@@ -1334,7 +1390,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             headers[s3_etag_header] = s3_chksum
             c_etag += '; s3_%s=%s' % (algo, s3_chksum)
 
-        def checksum_checker(index, _seg_dict, resp):
+        def checksum_checker(index, resp):
             part_number, etag, part_algo, expected = checksums[index]
             if not part_algo:
                 return
@@ -1362,24 +1418,13 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 metadata=headers,
             )
 
-        def get_1st_part_info(app, req, upload_id):
-            container = req.container_name + MULTIUPLOAD_SUFFIX
-            obj = f"{req.object_name}/{upload_id}/1"
-            try:
-                # We are only interested in some unencrypted headers
-                req.environ["swift.crypto.override"] = True
-                return req.get_response(
-                    app, 'HEAD', container=container, obj=obj)
-            except NoSuchKey:
-                return None
-            finally:
-                del req.environ["swift.crypto.override"]
-
-        resp_part = get_1st_part_info(self.app, req, upload_id)
-        if resp_part:
-            encryption_sse_s3_header = resp_part.headers.get(
+        if not part1_head_response:
+            part1_head_response = get_nth_part_info(
+                self.app, req, upload_id, 1)
+        if part1_head_response:
+            encryption_sse_s3_header = part1_head_response.headers.get(
                 'x-amz-server-side-encryption')
-            encryption_sse_c_header = resp_part.headers.get(
+            encryption_sse_c_header = part1_head_response.headers.get(
                 'x-amz-server-side-encryption-customer-algorithm')
             if encryption_sse_s3_header or encryption_sse_c_header:
                 headers[sysmeta_header('object', 'cipher-name')] = \

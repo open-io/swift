@@ -42,6 +42,7 @@ class CRCHasher(object):
         """
         self.crc_func = crc_func
         self.crc = initial_value
+        self.width = width
         if width == 32:
             self.digest_fmt = "!I"
         elif width == 64:
@@ -56,6 +57,83 @@ class CRCHasher(object):
         :param data: Data to update the CRC with.
         """
         self.crc = self.crc_func(data, self.crc)
+
+    def combine(self, partial_crc, data_size, crc_polynomial):
+        """
+        Combine the current checksum with a partial checksum.
+
+        This method merges the current checksum (`self.crc`) with a partial
+        checksum (`partial_crc`) associated with a data segment of a
+        specified size (`data_size`). The merge operation is performed using
+        a specified CRC polynomial (`crc_polynomial`).
+
+        :param partial_crc: The partial checksum to merge with the current
+            checksum.
+        :type partial_crc: int
+        :param data_size: The size of the data segment associated with the
+            partial checksum.
+        :type data_size: int
+        :param crc_polynomial: The CRC polynomial used for the merge operation.
+        :type crc_polynomial: int
+        """
+        # Handle edge cases e.g: rejection of negative lengths
+        if data_size <= 0:
+            return self.crc
+
+        # Store operator corresponding to a single zero bit in the 'odd' array
+        # Represents the CRC-{width} polynomial with coefficients:
+        # 1, 2, 4, 8, ..., 2^{width}
+        odd_matrix = [crc_polynomial] + [1 << i for i in range(self.width - 1)]
+        even_matrix = [0] * self.width
+
+        def matrix_multiply(matrix, vector):
+            result = 0
+            matrix_index = 0
+            while vector != 0:
+                if vector & 1:
+                    result ^= matrix[matrix_index]
+                vector = vector >> 1
+                matrix_index += 1
+            return result
+
+        # Store the operator for two zero bits in the 'even' array
+        even_matrix[:] = [
+            matrix_multiply(odd_matrix, odd_matrix[n])
+            for n in range(self.width)
+        ]
+
+        # Store the operator for four zero bits in 'odd' array
+        odd_matrix[:] = [
+            matrix_multiply(even_matrix, even_matrix[n])
+            for n in range(self.width)
+        ]
+        # Apply the specified number of zero bits to the CRC
+        # This process involves iteratively updating the even and odd matrices
+        while data_size != 0:
+            # Apply zeros operator for this bit of length
+            even_matrix[:] = [
+                matrix_multiply(odd_matrix, odd_matrix[n])
+                for n in range(self.width)
+            ]
+            if data_size & 1:
+                self.crc = matrix_multiply(even_matrix, self.crc)
+            data_size >>= 1
+
+            # Exit the loop if all bits have been processed
+            if data_size == 0:
+                break
+
+            # Swap the roles of odd and even matrices for the next iteration
+            odd_matrix[:] = [
+                matrix_multiply(even_matrix, even_matrix[n])
+                for n in range(self.width)
+            ]
+            if data_size & 1:
+                self.crc = matrix_multiply(odd_matrix, self.crc)
+            data_size >>= 1
+
+        # combined crc
+        self.crc ^= partial_crc
 
     def digest(self):
         """
