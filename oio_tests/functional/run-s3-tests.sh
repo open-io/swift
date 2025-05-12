@@ -37,5 +37,4 @@ configure_aws
 run_functional_test s3-default.cfg \
     s3-storage-class.py
 
-# TODO(FVE): gridinit_cmd stop
 exit $RET

@@ -40,5 +40,4 @@ sed -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" etc/s3-default.cfg.in > etc/s3-default
 run_functional_test s3-default.cfg s3-iam.sh \
   s3-object-lock.sh
 
-# TODO(FVE): gridinit_cmd stop
 exit $RET

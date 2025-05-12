@@ -118,6 +118,16 @@ workflow:
       script: |+
         return clean_only ~= "true"
 
+  tests-s3api:
+    pipeline: swift-oio-tests
+    application: swift
+    environment: swift-tests-s3api-env
+    depends_on:
+      - root
+    conditions:
+      script: |+
+        return clean_only ~= "true" and build_only ~= "true"
+
   ceph-s3-tests:
     pipeline: swift-oio-tests
     application: swift
@@ -141,6 +151,7 @@ workflow:
       - oio-tests-iam
       - oio-tests-cold-archive
       - oio-tests-encryption
+      - tests-s3api
     conditions:
       script: |+
         return clean_only ~= "true"

@@ -14,5 +14,4 @@ run_functional_test swift-flatns-skip-metadata.cfg \
     swift-skip-metadata.sh \
     swift-healthcheck.sh
 
-# TODO(FVE): gridinit_cmd stop
 exit $RET

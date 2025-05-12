@@ -235,12 +235,13 @@ function configure_oioswift() {
 }
 
 function run_test_script() {
-  case "$1" in
-    *.py)
-      COMMAND="python -m pytest -v $1";;
-    *)
-      COMMAND="$1";;
-  esac
+  if [ -d "$1" ]; then
+    COMMAND="python -m pytest -v $1"
+  elif [[ "$1" == *.py ]]; then
+    COMMAND="python -m pytest -v $1"
+  else
+    COMMAND="$1"
+  fi
   if $COMMAND; then
     printf "${GREEN}\n${1}: OK\n${NO_COLOR} ($2)"
     return 0
