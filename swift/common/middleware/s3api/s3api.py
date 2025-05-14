@@ -473,19 +473,61 @@ class S3ApiMiddleware(object):
         )
         return storage_classes, backup_storage_classes
 
-    def _get_storage_classes_mapping_write(
-            self, storage_classes, default, shift,
+    def _get_simplified_s3_storage_classes_and_shift(
+            self, storage_classes, default
     ):
+        # Remove INTELLIGENT_TIERING which is very special storage class
+        # and remove ONEZONE_IA which is very similar to STANDARD_IA
+        simplified_s3_storage_classes = S3_STORAGE_CLASSES.copy()
+        for storage_class in ("INTELLIGENT_TIERING", "ONEZONE_IA"):
+            if default == storage_class:
+                raise ValueError(
+                    f"{storage_class} cannot be a default storage class"
+                )
+            simplified_s3_storage_classes.remove(storage_class)
+        # Calculate the default storage class shift from STANDARD
+        shift = (
+            simplified_s3_storage_classes.index(STANDARD_STORAGE_CLASS)
+            - simplified_s3_storage_classes.index(default)
+        )
+        # For ignored storage classes, associate them with the desired
+        # storage class if they are not managed (None = managed).
+        # If ONEZONE_IA is managed, it can only be used
+        # on the standard endpoint.
+        other_s3_storage_classes = {
+            "INTELLIGENT_TIERING": (
+                None
+                if "INTELLIGENT_TIERING" in storage_classes
+                else STANDARD_STORAGE_CLASS
+            ),
+            "ONEZONE_IA": (
+                None
+                if "ONEZONE_IA" in storage_classes and shift == 0
+                else "STANDARD_IA"
+            ),
+        }
+        return (
+            simplified_s3_storage_classes,
+            other_s3_storage_classes,
+            shift
+        )
+
+    def _get_storage_classes_mapping_write(self, storage_classes, default):
         """
         Return a mapping with all S3 storage classes associated
         with managed storage classes.
         """
+        simplified_s3_storage_classes, other_s3_storage_classes, shift = \
+            self._get_simplified_s3_storage_classes_and_shift(
+                storage_classes, default
+            )
         mapping_write = {"": default}
         # When writing, certain shifts cannot manage all the storage classes
         # offered
         storage_class_index = 0
         for storage_class in storage_classes:
-            index_shifted = S3_STORAGE_CLASSES.index(storage_class) + shift
+            index_shifted = simplified_s3_storage_classes.index(
+                storage_class) + shift
             if index_shifted > 0:
                 if storage_class_index > 0:
                     storage_class_index -= 1
@@ -495,7 +537,7 @@ class S3ApiMiddleware(object):
             storage_class_index += 1
         next_storage_class_shifted = None
         # Assign each S3 storage class to a storage class offered
-        for s3_storage_class in S3_STORAGE_CLASSES:
+        for s3_storage_class in simplified_s3_storage_classes:
             # Determine the next storage class offered change
             if next_storage_class_shifted is None:
                 next_storage_class_index = storage_class_index + 1
@@ -507,18 +549,20 @@ class S3ApiMiddleware(object):
                         next_storage_class_index
                     ]
                     next_storage_class_index_shifted = \
-                        S3_STORAGE_CLASSES.index(next_storage_class) + shift
+                        simplified_s3_storage_classes.index(
+                            next_storage_class) + shift
                     if (
                         next_storage_class_index_shifted
-                        >= len(S3_STORAGE_CLASSES)
+                        >= len(simplified_s3_storage_classes)
                     ):
                         # The next storage class offered cannot be managed in
                         # this mapping
                         pass
                     else:
-                        next_storage_class_shifted = S3_STORAGE_CLASSES[
-                            next_storage_class_index_shifted
-                        ]
+                        next_storage_class_shifted = \
+                            simplified_s3_storage_classes[
+                                next_storage_class_index_shifted
+                            ]
                 if next_storage_class_shifted is None:
                     # Use the current storage class offered for the remaining
                     # S3 storage classes
@@ -530,7 +574,29 @@ class S3ApiMiddleware(object):
             # Assign the S3 storage class to the storage class offered
             storage_class = storage_classes[storage_class_index]
             mapping_write[s3_storage_class] = storage_class
-        return mapping_write
+        # For ignored storage classes:
+        # - Either the expected behavior is None, meaning the storage class
+        #   is managed and its usage corresponds to its own storage class.
+        # - Either the expected behavior is STANDARD, meaning usage corresponds
+        #   to the STANDARD offer.
+        # - Or the expected behavior is another storage class, meaning usage
+        #   corresponds to the same offer as the associated storage class.
+        for s3_storage_class, expected_behavior \
+                in other_s3_storage_classes.items():
+            if expected_behavior is None:
+                storage_class = s3_storage_class
+            elif expected_behavior == STANDARD_STORAGE_CLASS:
+                storage_class = STANDARD_STORAGE_CLASS
+            else:
+                storage_class = mapping_write[expected_behavior]
+            mapping_write[s3_storage_class] = storage_class
+        # This dictionary is logged when the worker starts.
+        # For better readability, sort the storage classes
+        # from hottest to coldest.
+        return dict(sorted(
+            mapping_write.items(),
+            key=lambda x: S3_STORAGE_CLASSES.index(x[0]) if x[0] else -1
+        ))
 
     def _get_storage_classes_mapping(
         self, wsgi_conf, storage_domain_storage_class=None
@@ -549,40 +615,56 @@ class S3ApiMiddleware(object):
             wsgi_conf
         )
 
-        # Calculate the default storage class shift from STANDARD
-        shift = (
-            S3_STORAGE_CLASSES.index(STANDARD_STORAGE_CLASS)
-            - S3_STORAGE_CLASSES.index(default)
-        )
-
         # WRITE
         mapping_write = self._get_storage_classes_mapping_write(
-            storage_classes, default, shift
+            storage_classes, default
         )
         mapping_write_backup = self._get_storage_classes_mapping_write(
-            backup_storage_classes, default, shift
+            backup_storage_classes, default
         )
 
         # READ
-        mapping_read = {
-            "": STANDARD_STORAGE_CLASS,
-        }
         # If the replicator are able to use different storage classes,
         # when reading, these storage classes must be visible to the client
+        simplified_s3_storage_classes, other_s3_storage_classes, shift = \
+            self._get_simplified_s3_storage_classes_and_shift(
+                backup_storage_classes, default
+            )
+        mapping_read = {}
         for storage_class in backup_storage_classes:
+            if storage_class in other_s3_storage_classes:
+                expected_behavior = other_s3_storage_classes[storage_class]
+                if expected_behavior is None:
+                    # If the expected behavior is None, the storage class
+                    # is managed and matches itself
+                    mapping_read[storage_class] = storage_class
+                    continue
+            else:
+                expected_behavior = storage_class
             # When reading, these unmanaged storage classes will be displayed
             # as EXPRESS_ONEZONE or DEEP_ARCHIVE, even if other storage classes
             # already use these values
-            storage_class_shifted = S3_STORAGE_CLASSES[
+            storage_class_shifted = simplified_s3_storage_classes[
                 min(
                     max(
-                        S3_STORAGE_CLASSES.index(storage_class) + shift,
+                        simplified_s3_storage_classes.index(
+                            expected_behavior) + shift,
                         0,
                     ),
-                    len(S3_STORAGE_CLASSES) - 1,
+                    len(simplified_s3_storage_classes) - 1,
                 )
             ]
             mapping_read[storage_class] = storage_class_shifted
+        # If the storage class is unknown when reading,
+        # specify the default STANDARD offer
+        mapping_read[""] = mapping_read[STANDARD_STORAGE_CLASS]
+        # This dictionary is logged when the worker starts.
+        # For better readability, sort the storage classes
+        # from hottest to coldest.
+        mapping_read = dict(sorted(
+            mapping_read.items(),
+            key=lambda x: S3_STORAGE_CLASSES.index(x[0]) if x[0] else -1
+        ))
 
         return mapping_write, mapping_write_backup, mapping_read
 

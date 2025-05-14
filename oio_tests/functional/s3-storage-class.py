@@ -34,6 +34,7 @@ STORAGE_POLICIES = {
     "STANDARD": ("TWOCOPIES", "EC21"),
     "EXPRESS_ONEZONE": ("SINGLE", "SINGLE"),
     "STANDARD_IA": ("THREECOPIES", "THREECOPIES"),
+    "GLACIER": ("ECX21", "ECX21"),
 }
 
 
@@ -58,7 +59,7 @@ class _TestS3StorageClassMixin(object):
                 "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
                 "STANDARD": "STANDARD",
                 "STANDARD_IA": "STANDARD_IA",
-                "INTELLIGENT_TIERING": "STANDARD_IA",
+                "INTELLIGENT_TIERING": "STANDARD",
                 "ONEZONE_IA": "STANDARD_IA",
                 "GLACIER_IR": "STANDARD_IA",
                 "GLACIER": "STANDARD_IA",
@@ -216,9 +217,58 @@ class _TestS3StorageClassMixin(object):
                 StorageClass=valid_storage_class,
             )
 
+    def test_with_intelligent_tiering_storage_class(self):
+        # INTELLIGENT_TIERING does not respect storage class offset.
+        # Until this storage class is implemented, it corresponds to
+        # the STANDARD (actual) storage class.
+        key = "obj"
+        intelligent_tiering_storage_class = "INTELLIGENT_TIERING"
+        self.assertNotIn(
+            intelligent_tiering_storage_class, self.valid_storage_classes
+        )
+        expected_storage_class = self._get_expected_storage_class(
+            intelligent_tiering_storage_class
+        )
+        self.assertIsNotNone(expected_storage_class)
+        self.client.create_bucket(Bucket=self.bucket)
+        # use_storage_domain_storage_class
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=b"test",
+            StorageClass=intelligent_tiering_storage_class,
+        )
+        self._check_storage_class(key, expected_storage_class)
+
+    def test_with_onezone_ia_storage_class(self):
+        # ONEZONE_IA does not respect storage class offset.
+        # Until this storage class is implemented, it corresponds to
+        # the same storage class as STANDARD_IA.
+        key = "obj"
+        onezone_ia_storage_class = "ONEZONE_IA"
+        self.assertNotIn(
+            onezone_ia_storage_class, self.valid_storage_classes
+        )
+        expected_storage_class = self._get_expected_storage_class(
+            onezone_ia_storage_class
+        )
+        self.assertIsNotNone(expected_storage_class)
+        self.client.create_bucket(Bucket=self.bucket)
+        # use_storage_domain_storage_class
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=b"test",
+            StorageClass=onezone_ia_storage_class,
+        )
+        self._check_storage_class(key, expected_storage_class)
+
     def test_with_unmanaged_storage_class(self):
         key = "obj"
         unmanaged_storage_class = "GLACIER"
+        self.assertNotIn(
+            unmanaged_storage_class, self.valid_storage_classes
+        )
         expected_storage_class = self._get_expected_storage_class(
             unmanaged_storage_class
         )
@@ -417,7 +467,7 @@ class TestS3StorageClassStandard(_TestS3StorageClassMixin, unittest.TestCase):
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "STANDARD",
             "STANDARD_IA": "STANDARD_IA",
-            "INTELLIGENT_TIERING": "STANDARD_IA",
+            "INTELLIGENT_TIERING": "STANDARD",
             "ONEZONE_IA": "STANDARD_IA",
             "GLACIER_IR": "STANDARD_IA",
             "GLACIER": "STANDARD_IA",
@@ -427,6 +477,7 @@ class TestS3StorageClassStandard(_TestS3StorageClassMixin, unittest.TestCase):
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "STANDARD",
             "STANDARD_IA": "STANDARD_IA",
+            "GLACIER_IR": "GLACIER_IR",
         }
 
 
@@ -444,8 +495,8 @@ class TestS3StorageClassPerf(_TestS3StorageClassMixin, unittest.TestCase):
             "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
             "STANDARD": "EXPRESS_ONEZONE",
             "STANDARD_IA": "STANDARD",
-            "INTELLIGENT_TIERING": "STANDARD_IA",
-            "ONEZONE_IA": "STANDARD_IA",
+            "INTELLIGENT_TIERING": "STANDARD",
+            "ONEZONE_IA": "STANDARD",
             "GLACIER_IR": "STANDARD_IA",
             "GLACIER": "STANDARD_IA",
             "DEEP_ARCHIVE": "STANDARD_IA",
@@ -453,7 +504,8 @@ class TestS3StorageClassPerf(_TestS3StorageClassMixin, unittest.TestCase):
         cls._storage_classes_mappings_read = {
             "EXPRESS_ONEZONE": "STANDARD",
             "STANDARD": "STANDARD_IA",
-            "STANDARD_IA": "INTELLIGENT_TIERING",
+            "STANDARD_IA": "GLACIER_IR",
+            "GLACIER": "DEEP_ARCHIVE",
         }
 
 
