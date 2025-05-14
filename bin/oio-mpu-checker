@@ -42,9 +42,9 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         self.account = account
         self.logger = logger or get_logger(ns_conf)
         self.api = ObjectStorageApi(namespace, logger=logger)
-        self.clean_commands = set()
         self.double_check = double_check
         self.to_be_checked_again = set()
+        self.to_be_deleted = set()
 
         # string -> list of object versions
         # (string, int) -> list of MPU parts (parsed from manifest)
@@ -256,7 +256,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         self.check_upload_id(upload_id)
         return obj_name, upload_id, part_number
 
-    def check_part(self, obj_part_name, reqid, use_cache=True):
+    def check_part(self, obj_part_name, delete_callback, reqid, use_cache=True):
         self.logger.debug("Analyzing %s (reqid=%s)", obj_part_name, reqid)
         try:
             obj_name, upload_id, part_number = self.decode_object_name(obj_part_name)
@@ -298,7 +298,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             )
         elif part_number and not marker_meta:
             escaped_obj = obj_part_name.translate(SHELL_ESCAPES)
-            cmd = f"object delete '{self.bucket}+segments' '{escaped_obj}' -f value"
+            obj_key = (f"{self.bucket}+segments", obj_part_name)
             if not mf_versions and not use_cache:
                 # Opportunistically look for a manifest
                 # which does not appear in listings.
@@ -312,9 +312,9 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                     reqid,
                 )
                 needs_cleaning = True
-                if cmd not in self.clean_commands and not self.double_check:
-                    print(cmd)
-                    self.clean_commands.add(cmd)
+                if obj_key not in self.to_be_deleted and not self.double_check:
+                    delete_callback(obj_key[0], obj_key[1], reqid)
+                    self.to_be_deleted.add(obj_key)
             else:
                 # Look in all manifests if the part belongs to one
                 for mf_version in mf_versions:
@@ -325,15 +325,15 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 # No manifest referencing the part has been found
                 else:
                     needs_cleaning = True
-                    if cmd not in self.clean_commands and not self.double_check:
-                        print(cmd)
-                        self.clean_commands.add(cmd)
+                    if obj_key not in self.to_be_deleted and not self.double_check:
                         self.logger.warning(
                             "%s does not appear in any MPU manifest, "
                             "orphan part? (reqid=%s)",
                             obj_part_name,
                             reqid,
                         )
+                        delete_callback(obj_key[0], obj_key[1], reqid)
+                        self.to_be_deleted.add(obj_key)
         elif mf_versions and marker_meta:
             # Look in all manifests if the part belongs to one
             for mf_version in mf_versions:
@@ -341,15 +341,9 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                     obj_part_name, obj_name, mf_version, reqid=reqid
                 ):
                     escaped_marker = marker_meta["name"].translate(SHELL_ESCAPES)
-                    cmd = (
-                        f"object delete '{self.bucket}+segments' "
-                        f"'{escaped_marker}' -a {self.account} "
-                        "-f value"
-                    )
+                    obj_key = (f"{self.bucket}+segments", marker_meta["name"])
                     needs_cleaning = True
-                    if cmd not in self.clean_commands and not self.double_check:
-                        print(cmd)
-                        self.clean_commands.add(cmd)
+                    if obj_key not in self.to_be_deleted and not self.double_check:
                         self.logger.warning(
                             "%s should be deleted, the MPU is complete "
                             "(name=%s version=%s reqid=%s)",
@@ -358,6 +352,8 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                             mf_version,
                             reqid,
                         )
+                        delete_callback(obj_key[0], obj_key[1], reqid)
+                        self.to_be_deleted.add(obj_key)
                     break
             # No manifest referencing the part has been found,
             # but there is a MPU marker!
@@ -372,6 +368,27 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                     reqid,
                 )
         return needs_cleaning
+
+    def delete_object(self, container, obj, reqid):
+        """Directly delete the object (does not raise exceptions)"""
+        try:
+            self.api.object_delete(
+                self.account, container, obj, reqid=reqid, request_attempts=3
+            )
+        except Exception as exc:
+            self.logger.error(
+                "Failed to delete %s/%s: %s (reqid=%s)", container, obj, exc, reqid
+            )
+
+    def do_nothing(self, container, obj, reqid):
+        """Do nothing (to be used as a callback)"""
+        pass
+
+    def print_delete_command(self, container, obj, reqid):
+        """Print the object deletion command on stdout"""
+        escaped_obj = obj.translate(SHELL_ESCAPES)
+        cmd = f"object delete '{container}' '{escaped_obj}' -f value"
+        print(cmd)
 
     def read_part_list(self):
         """
@@ -408,7 +425,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             size_by_policy[policy] += size
         return size_by_policy
 
-    def run(self):
+    def run(self, delete_callback):
         # Init and/or load self.current_marker
         self.init_current_marker("/tmp", 1)
         if self.current_marker:
@@ -425,9 +442,13 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         for obj in self.list_all_parts(marker=self.current_marker):
             reqid = self.reqid()
             obj_part_name = obj["name"]
-            needs_cleaning = self.check_part(obj_part_name, reqid=reqid)
+            needs_cleaning = self.check_part(
+                obj_part_name, delete_callback, reqid=reqid
+            )
             if needs_cleaning:
-                self.to_be_checked_again.add((obj_part_name, obj["size"], obj["policy"]))
+                self.to_be_checked_again.add(
+                    (obj_part_name, obj["size"], obj["policy"])
+                )
 
             # If a marker has been written, also overwrite the part list
             marker_written = self.write_marker(obj_part_name)
@@ -455,7 +476,9 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             cleaned_2nd_pass = set()
             for obj_part_name, size, policy in sorted(self.to_be_checked_again):
                 reqid = self.reqid()
-                if self.check_part(obj_part_name, reqid=reqid, use_cache=False):
+                if self.check_part(
+                    obj_part_name, delete_callback, reqid=reqid, use_cache=False
+                ):
                     cleaned_2nd_pass.add((obj_part_name, size, policy))
             size_by_policy = self.size_by_policy(cleaned_2nd_pass)
             self.logger.info(
@@ -476,7 +499,8 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
 
 def make_arg_parser():
     descr = """
-Find stray MPU parts, print cleanup commands on stdout.
+Find stray MPU parts, print cleanup commands on stdout
+(or delete them directly).
 
 A marker will be written in /tmp/markers/account_bucket, so the tool can be
 stopped and retarted. Delete the marker if you want to restart from the
@@ -500,6 +524,17 @@ parts which have been checked two times remains (in case you want to check it).
         "-a",
         help="Account where to find the bucket",
     )
+    parser.add_argument(
+        "--action",
+        choices=["print", "delete", "none"],
+        default="print",
+        help=(
+            "What to do with parts or markers which should not be there.\n"
+            '"print":  print delete commands to stdout\n'
+            '"delete": delete directly (forces --double-check)\n'
+            '"none":   do nothing (just print logs)'
+        ),
+    )
     parser.add_argument("--debug", action="store_true")
     parser.add_argument(
         "--double-check",
@@ -520,6 +555,8 @@ parts which have been checked two times remains (in case you want to check it).
 
 if __name__ == "__main__":
     args = make_arg_parser().parse_args()
+    if args.action == "delete":
+        args.double_check = True
     verbose = args.verbose
 
     LOGGER = get_logger(
@@ -535,4 +572,9 @@ if __name__ == "__main__":
         logger=LOGGER,
         double_check=args.double_check,
     )
-    checker.run()
+    callbacks = {
+        "print": checker.print_delete_command,
+        "delete": checker.delete_object,
+        "none": checker.do_nothing,
+    }
+    checker.run(delete_callback=callbacks[args.action])

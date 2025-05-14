@@ -22,6 +22,7 @@ import os
 import queue
 import re
 import requests
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -32,7 +33,8 @@ from logging import getLogger
 from urllib.parse import quote
 from oio_tests.functional.common import RANDOM_UTF8_CHARS, \
     random_str, run_awscli_s3, run_awscli_s3api, CliError, \
-    get_boto3_client, STORAGE_DOMAIN, run_openiocli
+    get_boto3_client, OIO_ACCOUNT, OIO_NS, STORAGE_DOMAIN, \
+    run_openiocli
 
 from s3transfer.futures import TransferCoordinator
 from s3transfer.bandwidth import BandwidthLimiter, LeakyBucket
@@ -1085,6 +1087,67 @@ class TestS3Mpu(unittest.TestCase):
             VersionId=version_id,
         )
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+
+    def _create_complete_mpu(self, path):
+        """Create and complete a multipart-upload"""
+        meta = self.boto_client.create_multipart_upload(
+            Bucket=self.bucket,
+            Key=path,
+        )
+        upload_id = meta['UploadId']
+        resp = self.boto_client.upload_part(
+            Bucket=self.bucket,
+            Key=path,
+            PartNumber=1,
+            UploadId=upload_id,
+            Body=b"whatever",
+        )
+        mpu_parts = [{"ETag": resp['ETag'], "PartNumber": 1}]
+        final = self.boto_client.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=path,
+            MultipartUpload={
+                'Parts': mpu_parts,
+            },
+            UploadId=upload_id
+        )
+        return upload_id
+
+    def test_oio_mpu_checker_delete(self):
+        """Test "oio-mpu-checker --action delete" command"""
+        path0 = "will-be-cleaned-" + random_str(3)
+        path1 = "will-not-be-cleaned-" + random_str(3)
+        self._create_complete_mpu(path0)
+        self._create_complete_mpu(path1)
+
+        # Check nothing is cleaned when there is nothing to clean
+        cmd = ["oio-mpu-checker", "-v", "--action", "delete", OIO_NS, self.bucket]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, encoding="utf-8")
+        lines = out.splitlines()
+        self.assertIn("0 parts cleaned", lines[-1])
+
+        # Delete one manifest, check associated parts are cleaned
+        run_openiocli(
+            'object',
+            'delete',
+            self.bucket,
+            path0,
+            account=OIO_ACCOUNT,
+        )
+        cmd = ["oio-mpu-checker", "-v", "--action", "delete", OIO_NS, self.bucket]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, encoding="utf-8")
+        lines = out.splitlines()
+        self.assertIn("1 parts cleaned", lines[-1])
+
+        # Check the parts of the 2nd MPU are still there
+        parts = run_openiocli(
+            'object',
+            'list',
+            f"{self.bucket}+segments",
+            account=OIO_ACCOUNT,
+        )
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0]["Name"].rsplit("/", 2)[0], path1)
 
 
 if __name__ == "__main__":
