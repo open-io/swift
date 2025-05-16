@@ -173,7 +173,7 @@ retention_policy: |+
     end
 
 integrations:
-  artifactory-pu-objectstorage-swift:
+  artifactory-pu-objectstorage-default:
     type: artifact_manager
 
 notifications:

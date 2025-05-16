@@ -49,7 +49,7 @@ jobs:
           make -f /external-packages/ubuntu/focal/Makefile.common install-apt-repo
           make -f /external-packages/ubuntu/focal/Makefile.common deb_changelog
           make -f /external-packages/ubuntu/focal/Makefile.common
-          make -f /external-packages/ubuntu/focal/Makefile.common upload_to_artifacts
           make -f /external-packages/ubuntu/focal/Makefile.common upload_to_repo
+          make -f /external-packages/ubuntu/focal/Makefile.common add_tag
     requirements:
       - model: openio-debbuild-20.04
