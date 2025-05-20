@@ -394,8 +394,9 @@ class ObjectController(Controller):
             resp.headers['x-amz-checksum-type'] = CHECKSUM_FULL_OBJECT
 
         # Add expiration header if lifecycle configuration is present
-        if (self.conf.enable_lifecycle or
-                self.bypass_feature_disabled(req, "lifecycle")):
+        if (resp.is_success
+                and (self.conf.enable_lifecycle
+                     or self.bypass_feature_disabled(req, "lifecycle"))):
             xml_tags = req.headers.get(OBJECT_TAGGING_HEADER)
             tags_json = xmltodict.parse(xml_tags) if xml_tags else None
             expiration, rule_id = get_expiration(

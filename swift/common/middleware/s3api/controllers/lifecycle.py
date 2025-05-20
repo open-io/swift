@@ -202,6 +202,8 @@ def get_expiration(conf, key, size, last_modified, tags=None):
     """
     if conf is None:
         return None, None
+    if not last_modified:
+        last_modified = datetime.now()
     conf = json.loads(conf)
     expiration_date = None
     expiration_rule = None
