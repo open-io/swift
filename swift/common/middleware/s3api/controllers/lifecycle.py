@@ -28,7 +28,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     MalformedXML, NoSuchLifecycleConfiguration, S3NotImplemented, \
-    InvalidTagKey, InvalidTagValue, BadEndpoint
+    InvalidTagKey, InvalidTagValue
 from swift.common.middleware.s3api.utils import convert_response, \
     sysmeta_header, S3_STORAGE_CLASSES, validate_tag_key, validate_tag_value
 from swift.common.swob import HTTPNoContent
@@ -1110,15 +1110,6 @@ class LifecycleController(Controller):
             if not self.bypass_feature_disabled(req, "lifecycle"):
                 raise S3NotImplemented()
 
-        # Only the standard enpoint is supported to avoid storage classes
-        # mapping with the backward compatibility endpoint: highperf
-        if not req.is_standard_endpoint():
-            # This log is only helpful to see if customer are trying to do it.
-            self.logger.info(
-                "Refuse GET lifecycle conf (non standard endpoint)"
-            )
-            raise BadEndpoint
-
         resp = req.get_response(self.app, method='HEAD')
         body = resp.sysmeta_headers.get(LIFECYCLE_HEADER)
         if not body:
@@ -1158,14 +1149,6 @@ class LifecycleController(Controller):
                 'upload a lifecycle configuration. To upload a lifecycle '
                 'configuration, first enable the versioning.'
             )
-
-        # Only the standard enpoint is supported to avoid storage classes
-        # mapping with the backward compatibility endpoint: highperf
-        if not req.is_standard_endpoint():
-            # This log is only helpful to see if customer are trying to do it.
-            self.logger.info(
-                "Refuse PUT lifecycle conf (non standard endpoint)")
-            raise BadEndpoint
 
         xml = req.xml(MAX_LIFECYCLE_BODY_SIZE)
         try:
@@ -1229,15 +1212,6 @@ class LifecycleController(Controller):
         if not self.conf.enable_lifecycle:
             if not self.bypass_feature_disabled(req, "lifecycle"):
                 raise S3NotImplemented()
-
-        # Only the standard enpoint is supported to avoid storage classes
-        # mapping with the backward compatibility endpoint: highperf
-        if not req.is_standard_endpoint():
-            # This log is only helpful to see if customer are trying to do it.
-            self.logger.info(
-                "Refuse DELETE lifecycle conf (non standard endpoint)"
-            )
-            raise BadEndpoint
 
         req.headers[LIFECYCLE_HEADER] = ''
         resp = req.get_response(self.app, method='POST')

@@ -268,7 +268,8 @@ class TestS3Lifecycle(unittest.TestCase):
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
 
     def test_put_bucket_lifecycle_configuration_multiple_endpoints(self):
-        resp = self.perf_client.create_bucket(Bucket="bucket")
+        bucket = self.bucket + "-perf"
+        resp = self.perf_client.create_bucket(Bucket=bucket)
         self.assertEqual(resp["ResponseMetadata"]["HTTPStatusCode"], 200)
 
         lc_config_perf = {
@@ -295,39 +296,39 @@ class TestS3Lifecycle(unittest.TestCase):
         }
         # Put via perf endpoint
         resp = self.perf_client.put_bucket_lifecycle_configuration(
-            Bucket="bucket",
+            Bucket=bucket,
             LifecycleConfiguration=lc_config_perf,
         )
         self.assertEqual(resp["ResponseMetadata"]["HTTPStatusCode"], 200)
 
         # Get via perf endpoint
         resp = self.perf_client.get_bucket_lifecycle_configuration(
-            Bucket="bucket")
+            Bucket=bucket)
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
         self.assertEqual(lc_config_perf["Rules"], resp["Rules"])
 
         # Get via std endpoint
-        resp = self.standard_client.get_bucket_lifecycle_configuration(
-            Bucket="bucket")
+        resp = self.client.get_bucket_lifecycle_configuration(
+            Bucket=bucket)
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
         self.assertEqual(lc_config_std["Rules"], resp["Rules"])
 
         # Put via std endpoint
-        resp = self.standard_client.put_bucket_lifecycle_configuration(
-            Bucket="bucket",
+        resp = self.client.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
             LifecycleConfiguration=lc_config_std,
         )
         self.assertEqual(resp["ResponseMetadata"]["HTTPStatusCode"], 200)
 
         # Get via std endpoint
-        resp = self.standard_client.get_bucket_lifecycle_configuration(
-            Bucket="bucket")
+        resp = self.client.get_bucket_lifecycle_configuration(
+            Bucket=bucket)
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
         self.assertEqual(lc_config_std["Rules"], resp["Rules"])
 
         # Get via perf endpoint
         resp = self.perf_client.get_bucket_lifecycle_configuration(
-            Bucket="bucket")
+            Bucket=bucket)
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
         self.assertEqual(lc_config_perf["Rules"], resp["Rules"])
 
