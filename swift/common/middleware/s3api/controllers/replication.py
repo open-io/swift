@@ -616,8 +616,19 @@ class ReplicationController(Controller):
         config = req.xml(MAX_REPLICATION_BODY_SIZE)
         # Validation
         self._validate_configuration(config, req)
+        if req.is_standard_endpoint():
+            # The storage classes managed in the source region are not
+            # necessarily identical to those in the destination region.
+            # To ensure they can always be configured (at the source),
+            # only on the standard endpoint (available in all regions), the
+            # storage class configured by the customer must not be modified.
+            # The destination region will decide which storage class to use
+            # when uploading objects, based on its mapping.
+            normalize_func = None
+        else:
+            normalize_func = req.normalize_storage_class
         dict_conf = replication_xml_conf_to_dict(
-            config, normalize_func=req.normalize_storage_class
+            config, normalize_func=normalize_func
         )
         self._validate_role(dict_conf.get("Role"), req)
 
