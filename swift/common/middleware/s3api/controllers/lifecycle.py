@@ -1047,7 +1047,11 @@ def lifecycle_xml_conf_to_dict(
 
     for rule_xml in rules:
         rule, action_index = _build_rule(
-            rule_xml, action_index, storage_durations=storage_durations)
+            rule_xml,
+            action_index,
+            storage_durations=storage_durations,
+            **kwargs,
+        )
         rule_id = rule.get("ID")
         if rule_id in registered_rules:
             raise InvalidArgument(
