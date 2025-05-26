@@ -43,7 +43,8 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         self.logger = logger or get_logger(ns_conf)
         self.api = ObjectStorageApi(namespace, logger=logger)
         self.double_check = double_check
-        self.to_be_checked_again = set()
+        self.to_be_checked_again = []
+        self._nb_saved_to_be_checked_again = 0
         self.to_be_deleted = set()
 
         # string -> list of object versions
@@ -403,7 +404,8 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                         continue
                     part, part_size_str, part_policy = line.rsplit("\t", 2)
                     parts.append((part, int(part_size_str), part_policy))
-            self.to_be_checked_again = set(parts)
+            self.to_be_checked_again = parts
+            self._nb_saved_to_be_checked_again = len(self.to_be_checked_again)
             return True
         except FileNotFoundError:
             return False
@@ -412,11 +414,32 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         """
         Overwrite the "to be checked again" part list.
         """
+        # Calculate and check the number of new unsaved parts
+        nb_to_be_checked_again = len(self.to_be_checked_again)
+        diff_to_be_checked_again = (
+            nb_to_be_checked_again - self._nb_saved_to_be_checked_again
+        )
+        if diff_to_be_checked_again < 0:
+            raise ValueError(
+                "The number of parts to be checked again has decreased, "
+                "this is normally impossible"
+            )
+        if diff_to_be_checked_again == 0:
+            return
+        # Add the new parts to the file
+        create_file = self._nb_saved_to_be_checked_again == 0
         fname = self.marker_path + ".parts"
-        with open(fname, "wt", encoding="utf-8") as outfile:
-            outfile.write("# Part name\tPart size\tPart policy\n")
-            for part, part_size, policy in sorted(self.to_be_checked_again):
+        with open(
+            fname, "wt" if create_file else "at", encoding="utf-8"
+        ) as outfile:
+            if create_file:
+                outfile.write("# Part name\tPart size\tPart policy\n")
+            for part, part_size, policy in self.to_be_checked_again[
+                -diff_to_be_checked_again:
+            ]:
                 outfile.write(f"{part}\t{part_size}\t{policy}\n")
+        # Update the saved parts counter
+        self._nb_saved_to_be_checked_again = nb_to_be_checked_again
 
     @staticmethod
     def size_by_policy(all_parts):
@@ -446,13 +469,13 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 obj_part_name, delete_callback, reqid=reqid
             )
             if needs_cleaning:
-                self.to_be_checked_again.add(
+                self.to_be_checked_again.append(
                     (obj_part_name, obj["size"], obj["policy"])
                 )
 
             # If a marker has been written, also overwrite the part list
             marker_written = self.write_marker(obj_part_name)
-            if marker_written and self.to_be_checked_again:
+            if marker_written:
                 self.write_part_list()
 
         if self.to_be_checked_again:
@@ -474,7 +497,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             )
             self.double_check = False
             cleaned_2nd_pass = set()
-            for obj_part_name, size, policy in sorted(self.to_be_checked_again):
+            for obj_part_name, size, policy in self.to_be_checked_again:
                 reqid = self.reqid()
                 if self.check_part(
                     obj_part_name, delete_callback, reqid=reqid, use_cache=False
