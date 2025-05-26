@@ -151,12 +151,13 @@ bucket_db_enabled = True
 bucket_db_connection = oio://
 force_swift_request_proxy_log = True
 location = RegionOne
-storage_classes = EXPRESS_ONEZONE,STANDARD,STANDARD_IA
+storage_classes = EXPRESS_ONEZONE,STANDARD,STANDARD_IA,DEEP_ARCHIVE
 backup_storage_classes = GLACIER
 auto_storage_policies_STANDARD = EC21,TWOCOPIES:0,EC21:102400
 auto_storage_policies_EXPRESS_ONEZONE = EC:-2,SINGLE
 auto_storage_policies_STANDARD_IA = THREECOPIES
 auto_storage_policies_GLACIER = ECX21
+auto_storage_policies_DEEP_ARCHIVE = ANY-E93
 storage_domain = s3.regionone.perf.lo.team-swift.ovh:EXPRESS_ONEZONE,s3.regionone.io.lo.team-swift.ovh,s3.sbg.perf.cloud.ovh.net
 check_ip_whitelist = true
 max_multi_delete_objects = 1000
@@ -176,6 +177,7 @@ enable_access_logging = true
 retry_after = 1
 #enable_beta_features = true
 enable_encryption = true
+enable_restore_object = true
 backup_pepper = this-is-not-really-a-random-string-but-should-be-in-prod
 # Force SSE-S3 mode. Only one value is currently supported: AES256
 # If commented: root key if fallback_on_keymaster is True

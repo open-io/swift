@@ -1,0 +1,46 @@
+start = element RestoreRequest {
+    element Days { xsd:positiveInteger },
+    element GlacierJobParameters {
+        element Tier { "Standard" | "Bulk" | "Expedited" }
+    }?,
+    element Description { xsd:string }?,
+    element OutputLocation {
+        element S3 {
+            element AccessControlList {
+                element Grant {
+                    element Grantee {
+                        element DisplayName { xsd:string }?,
+                        element EmailAddress { xsd:string }?,
+                        element ID { xsd:string }?,
+                        attribute xsi:type { xsd:string }?,
+                        element URI { xsd:string }?
+                    },
+                    element Permission { xsd:string }
+                }*
+            },
+            element BucketName { xsd:string },
+            element CannedACL { xsd:string }?,
+            element Encryption {
+                element EncryptionType { xsd:string },
+                element KMSContext { xsd:string }?,
+                element KMSKeyId { xsd:string }?
+            }?,
+            element Prefix { xsd:string }?,
+            element StorageClass { xsd:string }?,
+            element Tagging {
+                element TagSet {
+                    element Tag {
+                        element Key { xsd:string },
+                        element Value { xsd:string }
+                    }+
+                }
+            }?,
+            element UserMetadata {
+                element MetadataEntry {
+                    element Name { xsd:string },
+                    element Value { xsd:string }
+                }+
+            }?
+        }
+    }?,
+}

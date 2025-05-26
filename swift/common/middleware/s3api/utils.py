@@ -39,6 +39,10 @@ S3_STORAGE_CLASSES = [
     "GLACIER",
     "DEEP_ARCHIVE",
 ]
+
+S3_STORAGE_CLASSES_RESTORABLE = [
+    "DEEP_ARCHIVE",
+]
 STANDARD_STORAGE_CLASS = "STANDARD"
 
 S3_DEFAULT_MINIMAL_STORAGE_DURATION = {
@@ -86,6 +90,18 @@ def sysmeta_header(resource, name):
 
 
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
+RESTORE_OBJECT_HEADER = sysmeta_header("object", "restore")
+
+
+def is_storage_class_restorable(storage_class):
+    """True if storage class restorable
+
+    :param storage_class: storage class to classify as restorable or not
+    :type storage_class: str
+    :return: True if storage class restorable
+    :rtype: bool
+    """
+    return storage_class.upper() in S3_STORAGE_CLASSES_RESTORABLE
 
 
 def camel_to_snake(camel):

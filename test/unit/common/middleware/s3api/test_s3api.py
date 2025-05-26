@@ -143,6 +143,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_website': True,
             'enable_lifecycle': True,
             'enable_lifecycle_transition': True,
+            'enable_restore_object': True,
             'token_prefix': "",
             'backup_pepper': None,
         })
@@ -197,6 +198,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_website': False,
             'enable_lifecycle': False,
             'enable_lifecycle_transition': False,
+            'enable_restore_object': True,
             'enable_encryption': True,
             'token_prefix': '',
             'backup_pepper': True,
@@ -1173,9 +1175,6 @@ class TestS3ApiMiddleware(S3ApiTestCase):
                                      'Date': self.get_date_header()})
         status, _, _ = self.call_s3api(req)
         self.assertEqual(status.split()[0], '204')
-
-    def test_restore(self):
-        self._test_unsupported_resource('restore')
 
     def test_unsupported_method(self):
         req = Request.blank('/bucket?acl',

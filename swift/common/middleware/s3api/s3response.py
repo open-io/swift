@@ -936,6 +936,11 @@ class RestoreAlreadyInProgress(ErrorResponse):
     _msg = 'Object restore is already in progress.'
 
 
+class InvalidTier(ErrorResponse):
+    _status = '403 Forbidden'
+    _msg = 'Invalid tier.'
+
+
 class RequestIsNotMultiPartContent(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'Bucket POST must be of the enclosure-type multipart/form-data.'

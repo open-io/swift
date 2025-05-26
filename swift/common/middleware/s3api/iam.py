@@ -97,6 +97,7 @@ SUPPORTED_ACTIONS = {
     "s3:PutObjectRetention": RT_OBJECT,
     "s3:PutObjectTagging": RT_OBJECT,
     "s3:PutReplicationConfiguration": RT_BUCKET,
+    "s3:RestoreObject": RT_OBJECT,
 }
 
 REPLICATOR_ACTIONS = {
