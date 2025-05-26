@@ -19,12 +19,14 @@ from swift.common.middleware.crypto.crypto_utils import Crypto
 from swift.common.utils import md5
 
 
-def fetch_crypto_keys(key_id=None):
+def fetch_crypto_keys(key_id=None, encryption=None):
     id_to_keys = {None: {'account': b'This is an account key 012345678',
                          'container': b'This is a container key 01234567',
+                         'bucket': b'This is a bucket key 01234567890',
                          'object': b'This is an object key 0123456789'},
                   'myid': {'account': b'This is an account key 123456789',
                            'container': b'This is a container key 12345678',
+                           'bucket': b'This is a bucket key 01234567',
                            'object': b'This is an object key 1234567890'}}
     key_id = key_id or {}
     secret_id = key_id.get('secret_id') or None
@@ -33,6 +35,9 @@ def fetch_crypto_keys(key_id=None):
     except KeyError:
         raise UnknownSecretIdError(secret_id)
     keys['id'] = {'v': 'fake', 'path': '/a/c/fake'}
+    if encryption:
+        keys['id'][encryption] = True
+
     if secret_id:
         keys['id']['secret_id'] = secret_id
     keys['all_ids'] = [{'v': 'fake', 'path': '/a/c/fake'},

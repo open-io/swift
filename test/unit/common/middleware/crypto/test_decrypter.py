@@ -451,6 +451,35 @@ class TestDecrypterObjectRequests(unittest.TestCase):
         self.assertIn("Bad key for 'object'",
                       self.decrypter.logger.get_lines_for_level('error')[0])
 
+    def _test_bad_bucket_key(self, method):
+        # use bad key
+        def bad_fetch_crypto_keys(**kwargs):
+            keys = fetch_crypto_keys(encryption="sses3")
+            keys['bucket'] = b'This is a BAD bucket key 0123456'
+            return keys
+
+        env = {'REQUEST_METHOD': method,
+               CRYPTO_KEY_CALLBACK: bad_fetch_crypto_keys}
+        req = Request.blank('/v1/a/c/o', environ=env)
+        body = b'FAKE APP'
+        key = fetch_crypto_keys()['bucket']
+        enc_body = encrypt(body, key, FAKE_IV)
+        hdrs = self._make_response_headers(
+            len(body),
+            md5hex(body),
+            fetch_crypto_keys(encryption="sses3"),
+            b"not used",
+        )
+        self.app.register(method, '/v1/a/c/o', HTTPOk, body=enc_body,
+                          headers=hdrs)
+        return req.get_response(self.decrypter)
+
+    def test_GET_with_bad_bucket_key(self):
+        resp = self._test_bad_bucket_key('GET')
+        self.assertEqual('500 Internal Error', resp.status)
+        self.assertEqual(b'Invalid key from bucket.',
+                         resp.body)
+
     def _test_bad_crypto_meta_for_user_metadata(self, method, bad_crypto_meta):
         # use bad iv for metadata headers
         env = {'REQUEST_METHOD': method,

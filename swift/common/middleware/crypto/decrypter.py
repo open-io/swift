@@ -229,6 +229,9 @@ class DecrypterObjContext(BaseDecrypterContext):
             load_crypto_meta(crypto_body_meta_hdr)
             if crypto_body_meta_hdr else {}
         )
+        is_customer_key_required = requires_customer_provided_key(
+            crypto_body_meta
+        )
 
         if put_keys:
             # Decrypt plaintext etag and place in Etag header for client
@@ -237,7 +240,7 @@ class DecrypterObjContext(BaseDecrypterContext):
             encrypted_etag = self._response_header_value(etag_header)
             decrypted_etag = None
             if encrypted_etag and 'object' in put_keys:
-                if (requires_customer_provided_key(crypto_body_meta)
+                if (is_customer_key_required
                         and not is_customer_provided_key(put_keys.get('id'))
                         and not self.fail_if_no_key(environ)):
                     self.logger.warning(
@@ -261,17 +264,29 @@ class DecrypterObjContext(BaseDecrypterContext):
                 if decrypted_etag and decrypted_etag_ct != decrypted_etag:
                     sses3_key = put_keys.get('id', {}).get('sses3')
                     # FIXME(FVE): call debug() when error is logged properly
-                    self.logger.warning(
-                        'Failed ETag verification%s: obj=%s ct=%s',
-                        " (no SSE-C key)" if sses3_key else " (invalid key?)",
-                        quote(decrypted_etag),
-                        quote(decrypted_etag_ct)
-                    )
                     if sses3_key:
-                        # The key we have here was provided by the bucket,
-                        # whereas it should have been provided by the client.
-                        raise HTTPBadRequest(MISSING_KEY_MSG)
-                    raise HTTPForbidden('Invalid key')
+                        if is_customer_key_required:
+                            # The key we have here was provided by the bucket,
+                            # whereas it should have been provided by the
+                            # client.
+                            reason = " (no SSE-C key)"
+                            error = HTTPBadRequest(MISSING_KEY_MSG)
+                        else:
+                            reason = " (invalid key from bucket)"
+                            error = HTTPInternalServerError(
+                                "Invalid key from bucket."
+                            )
+                    else:
+                        reason = " (invalid key?)"
+                        error = HTTPForbidden('Invalid key')
+
+                    self.logger.warning(
+                        "Failed ETag verification%s: obj=%s ct=%s",
+                        reason,
+                        quote(decrypted_etag),
+                        quote(decrypted_etag_ct),
+                    )
+                    raise error
                 mod_hdr_pairs.append((etag_header, decrypted_etag_ct))
                 mod_hdr_pairs.append(('Etag', decrypted_etag_ct))
 
