@@ -657,8 +657,19 @@ class ReplicationController(Controller):
             raise ReplicationConfigurationNotFoundError
         body = json.loads(body)
 
+        if req.is_standard_endpoint():
+            # The storage classes managed in the source region are not
+            # necessarily identical to those in the destination region.
+            # To ensure they can always be configured (at the source),
+            # only on the standard endpoint (available in all regions), the
+            # storage class configured by the customer must not be modified.
+            # The destination region will decide which storage class to use
+            # when uploading objects, based on its mapping.
+            denormalize_func = None
+        else:
+            denormalize_func = req.denormalize_storage_class
         generated_body = dict_conf_to_xml(
-            body, denormalize_func=req.denormalize_storage_class)
+            body, denormalize_func=denormalize_func)
         return HTTPOk(body=generated_body, content_type="application/xml")
 
     @set_s3_operation_rest('REPLICATION')
