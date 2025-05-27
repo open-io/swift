@@ -253,8 +253,8 @@ def get_object_etag(metadata, logger):
             logger.warning(
                 'The object checksum is not MD5 '
                 'and there is no override for the Etag')
-            # The ETag will not be correct, it is better to return no value
-            etag = None
+            # The ETag will not be correct, but we need to return an etag
+            etag = metadata.get('hash')
         else:
             # The object checksum algorithm doesn't matter here,
             # the Etag is overridden
