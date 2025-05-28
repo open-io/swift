@@ -273,8 +273,7 @@ class DecrypterObjContext(BaseDecrypterContext):
                         raise HTTPBadRequest(MISSING_KEY_MSG)
                     raise HTTPForbidden('Invalid key')
                 mod_hdr_pairs.append((etag_header, decrypted_etag_ct))
-                if self.crypto.ssec_mode:
-                    mod_hdr_pairs.append(('Etag', decrypted_etag_ct))
+                mod_hdr_pairs.append(('Etag', decrypted_etag_ct))
 
         # Decrypt all user metadata. Encrypted user metadata values are stored
         # in the x-object-transient-sysmeta-crypto-meta- namespace. Those are
@@ -358,14 +357,12 @@ class DecrypterObjContext(BaseDecrypterContext):
             self.logger.debug('No decryption is necessary because of override')
             return None
 
-        if self.crypto.ssec_mode:
-            info = get_object_info(req.environ, self.app,
-                                   swift_source='DCRYPT')
-            if (
-                'crypto-body-meta' not in info['sysmeta']
-            ):
-                # object is not cyphered
-                return None
+        info = get_object_info(req.environ, self.app, swift_source='DCRYPT')
+        if (
+            'crypto-body-meta' not in info['sysmeta']
+        ):
+            # object is not cyphered
+            return None
 
         key_id = crypto_meta.get('key_id') if crypto_meta else None
         try:
@@ -404,12 +401,12 @@ class DecrypterObjContext(BaseDecrypterContext):
         )
         # Some middlewares need to know the object is encrypted with a
         # customer-provided key but there is no key in the request.
-        if self.crypto.ssec_mode and \
-                (
-                    requires_customer_provided_key(put_crypto_meta)
-                    or
-                    self._response_header_value(
-                        "X-Object-Sysmeta-S3Api-Requires-Encryption-Key")):
+        if (
+                requires_customer_provided_key(put_crypto_meta)
+                or
+                self._response_header_value(
+                    "X-Object-Sysmeta-S3Api-Requires-Encryption-Key")
+        ):
             mod_resp_headers.append(('X-Requires-Encryption-Key', True))
 
         if put_crypto_meta and req.method == 'GET' and \
@@ -446,8 +443,6 @@ class DecrypterObjContext(BaseDecrypterContext):
             if cipher:
                 cipher_name = CIPHER_NAME.get(cipher, 'AES256')
                 if (
-                        self.crypto.ssec_mode
-                        and
                         is_customer_provided_key(
                             put_crypto_meta.get('key_id')
                         )

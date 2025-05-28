@@ -45,7 +45,7 @@ CIPHER_NAME = {
 
 def is_customer_provided_key(key_id):
     """
-    Tell if the key ID represends an encryption key provided by the customer.
+    Tell if the key ID represents an encryption key provided by the customer.
     """
     return (key_id
             and key_id.get('ssec', False)
@@ -80,8 +80,6 @@ class Crypto(object):
         self.complete_without_key = config_true_value(
             conf.get('complete_without_key', 'true') if conf else False
         )
-        self.ssec_mode = config_true_value(conf.get('ssec_mode', 'false')
-                                           if conf else False)
 
     def create_encryption_ctxt(self, key, iv):
         """

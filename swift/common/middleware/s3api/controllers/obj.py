@@ -47,7 +47,7 @@ from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, InvalidRequest, AccessDenied, MethodNotAllowed
+    PreconditionFailed, AccessDenied, MethodNotAllowed
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \

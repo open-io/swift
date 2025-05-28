@@ -263,9 +263,6 @@ disable_encryption = False
 # keep computing the plaintext's md5 to comply with the protocol, but the
 # ciphertext's checksum can be anything else supported by the backend.
 ciphertext_hash_algo = blake3
-# Enable SSE-C encryption mode: objects are cyphered only when the requester
-# provides an encryption key.
-ssec_mode = True
 
 [app:proxy-server]
 object_post_as_copy = False

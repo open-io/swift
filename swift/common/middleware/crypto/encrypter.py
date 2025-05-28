@@ -306,8 +306,6 @@ class EncrypterObjContext(CryptoWSGIContext):
                 if cipher:
                     cipher_name = CIPHER_NAME.get(cipher, 'AES256')
                     if (
-                        self.crypto.ssec_mode
-                        and
                         is_customer_provided_key(
                             put_crypto_meta.get('key_id')
                         )
@@ -377,19 +375,16 @@ class EncrypterObjContext(CryptoWSGIContext):
         if old_etags:
             # See comment below
             optionals = []
-            if self.crypto.ssec_mode and req.method == 'HEAD':
+            if req.method == 'HEAD':
                 optionals.append("object")
             try:
                 all_keys = self.get_multiple_keys(req.environ,
                                                   optionals=optionals)
             except HTTPException:
-                if self.crypto.ssec_mode:
-                    # In SSE-C mode, if the customer does not provide the key:
-                    # - either the object is not encrypted: no problem
-                    # - or it is encrypted and we will just fail ETag matching
-                    all_keys = []
-                else:
-                    raise
+                # In SSE-C mode, if the customer does not provide the key:
+                # - either the object is not encrypted: no problem
+                # - or it is encrypted and we will just fail ETag matching
+                all_keys = []
             new_etags = []
             for etag in Match(old_etags).tags:
                 if etag == '*':
@@ -456,35 +451,34 @@ class Encrypter(object):
         if not is_object_request:
             return self.app(env, start_response)
 
-        if self.crypto.ssec_mode:
-            fetch_crypto_keys = env.get(CRYPTO_KEY_CALLBACK)
-            if fetch_crypto_keys is not None:
-                try:
-                    fetch_crypto_keys()
-                except HTTPException as exc:
-                    if MISSING_KEY_ALGO_MSG.encode('utf-8') in exc.body:
-                        if req.method in ('PUT', 'POST'):
-                            # No key, just upload without encryption
-                            env['swift.crypto.override'] = True
-                            return self.app(env, start_response)
-                        # else:
-                        #   let the thing fail later,
-                        #   if a key is required for decoding
-                    elif any(
-                        [
-                            msg.encode("utf-8") in exc.body for msg in (
-                                MISSING_ALGO_MSG, MISSING_KEY_MSG, INVALID_KEY,
-                                INVALID_MD5_VALUE, WRONG_MD5_VALUE
-                            )
-                        ]
-                    ):
-                        if req.method in ('PUT', 'POST'):
-                            raise
-                    else:
+        fetch_crypto_keys = env.get(CRYPTO_KEY_CALLBACK)
+        if fetch_crypto_keys is not None:
+            try:
+                fetch_crypto_keys()
+            except HTTPException as exc:
+                if MISSING_KEY_ALGO_MSG.encode('utf-8') in exc.body:
+                    if req.method in ('PUT', 'POST'):
+                        # No key, just upload without encryption
+                        env['swift.crypto.override'] = True
+                        return self.app(env, start_response)
+                    # else:
+                    #   let the thing fail later,
+                    #   if a key is required for decoding
+                elif any(
+                    [
+                        msg.encode("utf-8") in exc.body for msg in (
+                            MISSING_ALGO_MSG, MISSING_KEY_MSG, INVALID_KEY,
+                            INVALID_MD5_VALUE, WRONG_MD5_VALUE
+                        )
+                    ]
+                ):
+                    if req.method in ('PUT', 'POST'):
                         raise
-                except Exception:
-                    # Let the parent class handle other exceptions
-                    pass
+                else:
+                    raise
+            except Exception:
+                # Let the parent class handle other exceptions
+                pass
 
         if req.method in ('GET', 'HEAD'):
             handler = EncrypterObjContext(self, self.logger).handle_get_or_head

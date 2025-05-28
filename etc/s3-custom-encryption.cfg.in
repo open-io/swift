@@ -131,4 +131,3 @@ active_root_secret_id = 0
 use = egg:swift#encryption
 # disable_encryption = False
 ciphertext_hash_algo = blake3
-ssec_mode = true
