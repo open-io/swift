@@ -277,12 +277,6 @@ class ObjectController(Controller):
         if content_type and content_type == DELETE_MARKER_CONTENT_TYPE:
             raise_for_delete_marker()
 
-        # SSE-C headers cannot be included on SSE-S3 encrypted objects
-        if ((SSEC_ALGO_HEADER in req.headers or SSEC_KEY_HEADER in req.headers)
-                and self.conf.default_sse_configuration == 'AES256'):
-            raise InvalidRequest('The encryption parameters are not '
-                                 'applicable to this object.')
-
         update_response_header_with_response_params(req, resp)
         return resp
 
