@@ -505,14 +505,18 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                     cleaned_2nd_pass.add((obj_part_name, size, policy))
             size_by_policy = self.size_by_policy(cleaned_2nd_pass)
             self.logger.info(
-                "--- %d parts cleaned at 2nd pass (size: %s) ---",
+                "--- %s/%s: %d parts cleaned at 2nd pass (size: %s) ---",
+                self.account,
+                self.bucket,
                 len(cleaned_2nd_pass),
                 ", ".join(f"{x[0]}={x[1]}" for x in sorted(size_by_policy.items())),
             )
         else:
             size_by_policy = self.size_by_policy(self.to_be_checked_again)
             self.logger.info(
-                "--- %d parts cleaned at 1st pass (size: %s) ---",
+                "--- %s/%s: %d parts cleaned at 1st pass (size: %s) ---",
+                self.account,
+                self.bucket,
                 len(self.to_be_checked_again),
                 ", ".join(f"{x[0]}={x[1]}" for x in sorted(size_by_policy.items())),
             )
