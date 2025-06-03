@@ -21,7 +21,7 @@ import itertools
 import json
 
 from swift.common.constraints import valid_api_version, CONTAINER_LISTING_LIMIT
-from swift.common.http import is_success, HTTP_NOT_FOUND
+from swift.common.http import is_success
 from swift.common.request_helpers import \
     get_reserved_name, constrain_req_limit
 from swift.common.swob import \
@@ -360,9 +360,7 @@ class OioContainerContext(ContainerContext):
             for k in ('prefix', 'marker', 'limit', 'delimiter', 'reverse')}
         versions_resp = versions_req.get_response(self.app)
 
-        if versions_resp.status_int == HTTP_NOT_FOUND:
-            raise versions_resp
-        elif is_success(versions_resp.status_int):
+        if is_success(versions_resp.status_int):
             try:
                 listing = json.loads(versions_resp.body)
             except ValueError:
