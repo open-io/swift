@@ -45,9 +45,10 @@ from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
-from swift.common.middleware.s3api.s3response import S3NotImplemented, \
-    InvalidRange, NoSuchKey, NoSuchVersion, InvalidArgument, HTTPNoContent, \
-    PreconditionFailed, AccessDenied, MethodNotAllowed
+from swift.common.middleware.s3api.s3response import \
+    S3NotImplemented, InvalidRange, NoSuchKey, NoSuchVersion, \
+    InvalidArgument, HTTPNoContent, PreconditionFailed, \
+    AccessDenied, MethodNotAllowed
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
@@ -214,6 +215,9 @@ class ObjectController(Controller):
                 if not isinstance(tagset["Tag"], list):
                     tagset["Tag"] = [tagset["Tag"]]
                 resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
+
+        # Check if object is not archived
+        req.validate_restore_state(resp)
 
         if version_id in ('null', None):
             if (self.conf.enable_lifecycle or

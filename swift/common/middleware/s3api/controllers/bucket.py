@@ -43,7 +43,7 @@ from swift.common.middleware.s3api.s3response import \
     VersionedBucketNotEmpty
 from swift.common.middleware.s3api.utils import CHECKSUMS, \
     CHECKSUM_COMPOSITE, CHECKSUM_FULL_OBJECT, MULTIUPLOAD_SUFFIX, \
-    OBJECT_LOCK_ENABLED_HEADER, truncate_excess_characters
+    OBJECT_LOCK_ENABLED_HEADER, bool_to_str, truncate_excess_characters
 
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
@@ -415,6 +415,13 @@ class BucketController(Controller):
                 o.get('storage_policy')
             )
             SubElement(contents, 'StorageClass').text = storage_class
+        restore_status = o.get("restore_status")
+        if restore_status:
+            restore_status_element = SubElement(contents, 'RestoreStatus')
+            for key, value in restore_status.items():
+                if isinstance(value, bool):
+                    value = bool_to_str(value)
+                SubElement(restore_status_element, key).text = value
 
     def _add_objects_to_result(self, req, elem, objects, escape_xml_text,
                                listing_type, fetch_owner):

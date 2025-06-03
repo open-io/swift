@@ -25,7 +25,11 @@ start =
       element ETag { xsd:string },
       element Size { xsd:long },
       element Owner { CanonicalUser }?,
-      element StorageClass { StorageClass }
+      element StorageClass { StorageClass },
+      element RestoreStatus {
+        element IsRestoreInProgress { xsd:boolean },
+        element RestoreExpiryDate { xsd:dateTime }?,
+       }?,
     }*,
     element CommonPrefixes {
       element Prefix { xsd:string }

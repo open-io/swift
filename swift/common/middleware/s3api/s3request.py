@@ -17,6 +17,7 @@ import base64
 import binascii
 from collections import defaultdict, OrderedDict
 import contextlib
+from datetime import datetime, timezone
 from email.header import Header
 from functools import partial
 from hashlib import sha1, sha256
@@ -24,6 +25,7 @@ import hmac
 import re
 import six
 # pylint: disable-msg=import-error
+from oio.common.properties import RestoreProperty
 from six.moves.urllib.parse import quote, unquote, parse_qsl
 import string
 
@@ -62,9 +64,10 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     EncryptionController, RestoreObjectController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
-    RequestTimeTooSkewed, S3Response, SignatureDoesNotMatch, \
-    BucketAlreadyExists, BucketNotEmpty, EntityTooLarge, \
-    InternalError, NoSuchBucket, NoSuchKey, PreconditionFailed, InvalidRange, \
+    InvalidObjectState, RequestTimeTooSkewed, S3Response, \
+    SignatureDoesNotMatch, BucketAlreadyExists, BucketNotEmpty, \
+    EntityTooLarge, InternalError, NoSuchBucket, NoSuchKey, \
+    PreconditionFailed, InvalidRange, \
     MissingContentLength, InvalidStorageClass, S3NotImplemented, InvalidURI, \
     MalformedXML, InvalidRequest, RequestTimeout, InvalidBucketName, \
     BadDigest, AuthorizationHeaderMalformed, SlowDown, MalformedTrailerError, \
@@ -78,9 +81,10 @@ from swift.common.middleware.s3api.exception import NotS3Request, \
     S3InputChunkSignatureMismatch, S3InputChunkTooSmall, \
     S3InputMalformedTrailer, S3InputSHA256Mismatch, S3InputChecksumMismatch
 from swift.common.middleware.s3api.utils import MULTIUPLOAD_SUFFIX, \
-    S3_DEFAULT_REGION, STANDARD_STORAGE_CLASS, Config, S3Timestamp, \
+    RESTORE_OBJECT_HEADER, RESTORE_STATE_ERROR_MSG, S3_DEFAULT_REGION, \
+    STANDARD_STORAGE_CLASS, Config, S3Timestamp, is_storage_class_restorable, \
     utf8encode, mktime, sysmeta_header, validate_bucket_name, is_not_ascii, \
-    CHECKSUMS_BY_HEADER, CHECKSUMS_BY_NAME
+    CHECKSUMS_BY_HEADER, CHECKSUMS_BY_NAME, bool_to_str
 from swift.common.middleware.s3api.subresource import LOG_DELIVERY_USER, \
     decode_acl, encode_acl
 from swift.common.middleware.s3api.acl_utils import handle_acl_header
@@ -1895,8 +1899,8 @@ class S3Request(swob.Request):
                                  "storage class, website redirect "
                                  "location or encryption "
                                  "attributes.")
-        # We've done some normalizing; write back so it's ready for
-        # to_swift_req
+        # Check if object is not archived
+        self.validate_restore_state(src_resp, method="GET")
         self.headers['X-Amz-Copy-Source'] = quote(src_path)
         if query:
             self.headers['X-Amz-Copy-Source'] += \
@@ -1914,6 +1918,45 @@ class S3Request(swob.Request):
             get_container_update_override_key('etag'): '',
         })
         return src_resp
+
+    def validate_restore_state(self, resp, method=None):
+        """Validate the source copy object restore state
+
+        :param resp: response object
+        :param method: enforce request method
+        :type method: str
+        :raises InvalidObjectState: when object has been restored but
+            restoration delay is expired
+        :raises InvalidObjectState: when object is being restored
+        :raises InvalidObjectState: when object is archived
+        """
+        if method is None:
+            method = self.method
+
+        obj_available = not is_storage_class_restorable(self.storage_class)
+
+        if RESTORE_OBJECT_HEADER in resp.sysmeta_headers:
+            resp_header_fields = []
+            restore_prop = resp.sysmeta_headers[RESTORE_OBJECT_HEADER]
+            restore_prop = RestoreProperty.load(restore_prop)
+
+            status = bool_to_str(restore_prop.ongoing)
+            resp_header_fields.append(f'ongoing-request="{status}"')
+
+            now = datetime.now(timezone.utc).timestamp()
+            obj_available = (not restore_prop.ongoing
+                             and now < restore_prop.expiry_date)
+
+            if obj_available:
+                dt_formatted = datetime.fromtimestamp(
+                    restore_prop.expiry_date, tz=timezone.utc
+                ).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                resp_header_fields.append(f'expiry-date="{dt_formatted}"')
+
+            resp.headers["x-amz-restore"] = ",".join(resp_header_fields)
+
+        if not obj_available and method == "GET":
+            raise InvalidObjectState(RESTORE_STATE_ERROR_MSG)
 
     def _canonical_uri(self):
         """

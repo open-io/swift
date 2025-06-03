@@ -15,7 +15,7 @@
 
 import binascii
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 import functools
 from hashlib import sha256
 import os
@@ -36,7 +36,8 @@ from swift.common.middleware.s3api.controllers import tagging
 from swift.common.middleware.s3api.subresource import ACL, User, encode_acl, \
     Owner, Grant
 from swift.common.middleware.s3api.etree import fromstring
-from swift.common.middleware.s3api.utils import mktime, S3Timestamp
+from swift.common.middleware.s3api.utils import RESTORE_OBJECT_HEADER, \
+    mktime, S3Timestamp
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.utils import md5
@@ -45,6 +46,57 @@ from swift.common.utils import md5
 class TestS3ApiObj(S3ApiTestCase):
 
     def setUp(self):
+        self.update_conf = {
+            "enable_restore_object": True,
+            "storage_classes": "STANDARD,EXPRESS_ONEZONE,DEEP_ARCHIVE,"
+            "STANDARD_IA",
+            "storage_domain": "example.com:EXPRESS_ONEZONE",
+            "auto_storage_policies_STANDARD": "EC",
+            "auto_storage_policies_STANDARD_IA": "THREECOPIES",
+            "auto_storage_policies_EXPRESS_ONEZONE": "SINGLE",
+            "auto_storage_policies_DEEP_ARCHIVE": "TWOCOPIES",
+            "storage_classes_mappings_write": {
+                "": {
+                    "": "STANDARD",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "STANDARD",
+                    "STANDARD_IA": "STANDARD_IA",
+                    "INTELLIGENT_TIERING": "STANDARD_IA",
+                    "ONEZONE_IA": "STANDARD_IA",
+                    "GLACIER_IR": "STANDARD_IA",
+                    "GLACIER": "STANDARD_IA",
+                    "DEEP_ARCHIVE": "DEEP_ARCHIVE"
+                },
+                "some.domain.name": {
+                    "": "EXPRESS_ONEZONE",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "EXPRESS_ONEZONE",
+                    "STANDARD_IA": "STANDARD",
+                    "INTELLIGENT_TIERING": "STANDARD_IA",
+                    "ONEZONE_IA": "STANDARD_IA",
+                    "GLACIER_IR": "STANDARD_IA",
+                    "GLACIER": "STANDARD_IA",
+                    "DEEP_ARCHIVE": "STANDARD_IA"
+                },
+
+            },
+            "storage_classes_mappings_read": {
+                "": {
+                    "": "STANDARD",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "STANDARD",
+                    "STANDARD_IA": "STANDARD_IA",
+                    "DEEP_ARCHIVE": "DEEP_ARCHIVE"
+                },
+                "some.domain.name": {
+                    "": "STANDARD",
+                    "EXPRESS_ONEZONE": "EXPRESS_ONEZONE",
+                    "STANDARD": "STANDARD",
+                    "STANDARD_IA": "STANDARD_IA",
+                    "DEEP_ARCHIVE": "DEEP_ARCHIVE"
+                },
+            },
+        }
         super(TestS3ApiObj, self).setUp()
 
         self.object_body = b'hello'
@@ -76,42 +128,59 @@ class TestS3ApiObj(S3ApiTestCase):
                              'x-object-meta-something': 'oh hai'},
                             None)
 
-    def _test_object_GETorHEAD(self, method):
-        req = Request.blank('/bucket/object',
+    def _test_object_GETorHEAD(self,
+                               method,
+                               storage_class='STANDARD',
+                               object_name='object',
+                               expected_headers=None,
+                               extra_check=set(),
+                               status_code='200',
+                               expected_error=None):
+        if not expected_headers:
+            expected_headers = self.response_headers
+        req = Request.blank(f'/bucket/{object_name}',
                             environ={'REQUEST_METHOD': method},
                             headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+                                     'Date': self.get_date_header(),
+                                     'x-amz-storage-class': storage_class})
         status, headers, body = self.call_s3api(req)
-        self.assertEqual(status.split()[0], '200')
-        # we'll want this for logging
-        self.assertEqual(req.headers['X-Backend-Storage-Policy-Index'], '2')
+        self.assertEqual(status.split()[0], status_code)
+        if expected_error:
+            self.assertEqual(expected_error, self._get_error_code(body))
+        if status_code == '200':
+            # we'll want this for logging
+            self.assertEqual(
+                req.headers['X-Backend-Storage-Policy-Index'], '2')
 
-        unexpected_headers = []
-        for key, val in self.response_headers.items():
-            if key in ('Content-Length', 'Content-Type', 'content-encoding',
-                       'last-modified', 'cache-control', 'Content-Disposition',
-                       'Content-Language', 'expires', 'x-robots-tag'):
-                self.assertIn(key, headers)
-                self.assertEqual(headers[key], str(val))
+            unexpected_headers = []
+            for key, val in expected_headers.items():
+                if key in (
+                    'Content-Length', 'Content-Type', 'content-encoding',
+                    'last-modified', 'cache-control', 'Content-Disposition',
+                    'Content-Language', 'expires', 'x-robots-tag',
+                    *extra_check
+                ):
+                    self.assertIn(key, headers)
+                    self.assertEqual(headers[key], str(val))
 
-            elif key == 'etag':
-                self.assertEqual(headers[key], '"%s"' % val)
+                elif key == 'etag':
+                    self.assertEqual(headers[key], '"%s"' % val)
 
-            elif key.startswith('x-object-meta-'):
-                self.assertIn('x-amz-meta-' + key[14:], headers)
-                self.assertEqual(headers['x-amz-meta-' + key[14:]], val)
+                elif key.startswith('x-object-meta-'):
+                    self.assertIn('x-amz-meta-' + key[14:], headers)
+                    self.assertEqual(headers['x-amz-meta-' + key[14:]], val)
 
-            else:
-                unexpected_headers.append((key, val))
+                else:
+                    unexpected_headers.append((key, val))
 
-        if unexpected_headers:
-            self.fail('unexpected headers: %r' % unexpected_headers)
+            if unexpected_headers:
+                self.fail('unexpected headers: %r' % unexpected_headers)
 
-        self.assertEqual(headers['etag'],
-                         '"%s"' % self.response_headers['etag'])
+            self.assertEqual(headers['etag'],
+                             '"%s"' % self.response_headers['etag'])
 
-        if method == 'GET':
-            self.assertEqual(body, self.object_body)
+            if method == 'GET':
+                self.assertEqual(body, self.object_body)
 
     @s3acl
     def test_object_HEAD_delete_marker_no_version_id(self):
@@ -300,6 +369,149 @@ class TestS3ApiObj(S3ApiTestCase):
         self.assertEqual(' '.join(parts[4:8]),
                          'GET /bucket/object HTTP/1.0 200')
         self.assertEqual(parts[-1], '2')
+
+    def _test_GETorHEAD_archived_object(
+        self,
+        method,
+        status_code="200",
+        expected_error=None
+    ):
+        headers = {}
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+        })
+        headers.update(self.response_headers)
+        self.swift.register('GET', '/v1/AUTH_test/bucket/object-archived',
+                            swob.HTTPOk, headers.copy(), self.object_body)
+        headers.pop("x-object-sysmeta-storage-policy")
+        headers["x-amz-storage-class"] = "DEEP_ARCHIVE"
+        self._test_object_GETorHEAD(
+            method=method,
+            storage_class="DEEP_ARCHIVE",
+            object_name="object-archived",
+            expected_headers=headers,
+            extra_check=("x-amz-storage-class",),
+            status_code=status_code,
+            expected_error=expected_error
+        )
+
+    def test_HEAD_archived_object(self):
+        self._test_GETorHEAD_archived_object("HEAD")
+
+    def test_GET_archived_object(self):
+        self._test_GETorHEAD_archived_object(
+            "GET", status_code="403", expected_error="InvalidObjectState")
+
+    def _test_GETorHEAD_restoring_object(
+        self,
+        method,
+        status_code="200",
+        expected_error=None
+    ):
+        headers = {}
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+            RESTORE_OBJECT_HEADER: json.dumps({"ongoing": True})
+        })
+        headers.update(self.response_headers)
+        self.swift.register('GET', '/v1/AUTH_test/bucket/object-archived',
+                            swob.HTTPOk, headers.copy(), self.object_body)
+        headers.pop("x-object-sysmeta-storage-policy")
+        headers.pop(RESTORE_OBJECT_HEADER)
+        headers["x-amz-storage-class"] = "DEEP_ARCHIVE"
+        headers["x-amz-restore"] = 'ongoing-request="true"'
+        self._test_object_GETorHEAD(
+            method=method,
+            object_name="object-archived",
+            expected_headers=headers,
+            extra_check=("x-amz-storage-class", "x-amz-restore"),
+            status_code=status_code,
+            expected_error=expected_error
+        )
+
+    def test_HEAD_restoring_object(self):
+        self._test_GETorHEAD_restoring_object("HEAD")
+
+    def test_GET_restoring_object(self):
+        self._test_GETorHEAD_restoring_object(
+            "GET", status_code="403", expected_error="InvalidObjectState"
+        )
+
+    def _test_GETorHEAD_restored_object(
+        self,
+        method,
+        status_code="200",
+        expected_error=None
+    ):
+        headers = {}
+        expiry_date = datetime.now(timezone.utc).timestamp() + 2500
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+            RESTORE_OBJECT_HEADER: json.dumps({
+                "ongoing": False,
+                "expiry_date": expiry_date
+            })
+        })
+        headers.update(self.response_headers)
+        self.swift.register('GET', '/v1/AUTH_test/bucket/object-archived',
+                            swob.HTTPOk, headers.copy(), self.object_body)
+        headers.pop("x-object-sysmeta-storage-policy")
+        headers.pop(RESTORE_OBJECT_HEADER)
+        dt_expiry_date = datetime.fromtimestamp(expiry_date, tz=timezone.utc)
+        dt_formatted = dt_expiry_date.strftime('%a, %d %b %Y %H:%M:%S GMT')
+        headers["x-amz-restore"] = (
+            f'ongoing-request="false",expiry-date="{dt_formatted}"')
+        self._test_object_GETorHEAD(
+            method=method,
+            storage_class="DEEP_ARCHIVE",
+            object_name="object-archived",
+            expected_headers=headers,
+            extra_check=("x-amz-storage-class", "x-amz-restore"),
+            status_code=status_code,
+            expected_error=expected_error
+        )
+
+    def test_HEAD_restored_object(self):
+        self._test_GETorHEAD_restored_object("HEAD")
+
+    def test_GET_restored_object(self):
+        self._test_GETorHEAD_restored_object("GET")
+
+    def _test_GETorHEAD_restored_object_expired(
+        self,
+        method,
+        status_code="200",
+        expected_error=None
+    ):
+        headers = {}
+        expiry_date = datetime.now(timezone.utc).timestamp() - 2500
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+            RESTORE_OBJECT_HEADER: json.dumps({
+                "ongoing": False,
+                "expiry_date": expiry_date
+            })
+        })
+        headers.update(self.response_headers)
+        self.swift.register('GET', '/v1/AUTH_test/bucket/object-archived',
+                            swob.HTTPOk, headers.copy(), self.object_body)
+        headers.pop("x-object-sysmeta-storage-policy")
+        headers.pop(RESTORE_OBJECT_HEADER)
+        headers["x-amz-storage-class"] = "DEEP_ARCHIVE"
+        self._test_object_GETorHEAD(
+            method=method,
+            object_name="object-archived",
+            expected_headers=headers,
+            extra_check=("x-amz-storage-class",),
+            status_code=status_code,
+            expected_error=expected_error
+        )
+
+    def test_HEAD_restored_object_expired(self):
+        self._test_GETorHEAD_restored_object_expired("HEAD")
+
+    def test_GET_restored_object_expired(self):
+        self._test_GETorHEAD_restored_object_expired("GET", status_code="403")
 
     def _test_object_HEAD_Range(self, range_value):
         req = Request.blank('/bucket/object',

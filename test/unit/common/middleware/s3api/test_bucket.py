@@ -214,6 +214,64 @@ class TestS3ApiBucket(S3ApiTestCase):
         ]
         self.assertEqual(items, expected)
 
+    def test_bucket_GET_with_restored_objects(self):
+        objects_list = self.objects_list.copy()
+        objects_list[0]["restore_status"] = {
+            "IsRestoreInProgress": False,
+            "RestoreExpiryDate": "2025-04-04T00:00:00.000Z"
+        }
+        objects_list[1]["restore_status"] = {
+            "IsRestoreInProgress": True,
+        }
+        listing_body = json.dumps(objects_list)
+        self.swift.register(
+            'GET', '/v1/AUTH_test/junk', swob.HTTPOk,
+            {'Content-Type': 'application/json'}, listing_body)
+        bucket_name = 'junk'
+        req = Request.blank('/%s' % bucket_name,
+                            environ={'REQUEST_METHOD': 'GET'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '200')
+
+        elem = fromstring(body, 'ListBucketResult')
+        name = elem.find('./Name').text
+        self.assertEqual(name, bucket_name)
+
+        objects = elem.iterchildren('Contents')
+
+        items = []
+        for o in objects:
+            items.append((o.find('./Key').text, o.find('./ETag').text))
+            self.assertEqual('2011-01-05T02:19:14.275Z',
+                             o.find('./LastModified').text)
+            if o.find('./Key').text == objects_list[0]["name"]:
+                # Test listing with restored object
+                restore_status = o.find("./RestoreStatus")
+                restore_status.find("./IsRestoreInProgress").text
+                self.assertEqual(
+                    restore_status.find(
+                        "./IsRestoreInProgress").text, 'false')
+                self.assertEqual(
+                    restore_status.find(
+                        "./RestoreExpiryDate").text, "2025-04-04T00:00:00.000Z"
+                )
+            elif o.find('./Key').text == objects_list[1]["name"]:
+                # Test listing with restoring object
+                restore_status = o.find("./RestoreStatus")
+                restore_status.find("./IsRestoreInProgress").text
+                self.assertEqual(
+                    restore_status.find(
+                        "./IsRestoreInProgress").text, 'true')
+        expected = [
+            (i[0].encode('utf-8') if six.PY2 else i[0],
+             PFS_ETAG if i[0] == 'pfs-obj' else
+             '"0-N"' if i[0] == 'slo' else '"0"')
+            for i in self.objects
+        ]
+        self.assertEqual(items, expected)
+
     def test_bucket_GET_url_encoded(self):
         bucket_name = 'junk'
         req = Request.blank('/%s?encoding-type=url' % bucket_name,

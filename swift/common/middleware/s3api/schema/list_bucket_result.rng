@@ -79,6 +79,18 @@
           <element name="StorageClass">
             <ref name="StorageClass"/>
           </element>
+          <optional>
+            <element name="RestoreStatus">
+              <element name="IsRestoreInProgress">
+                <data type="boolean"/>
+              </element>
+              <optional>
+                <element name="RestoreExpiryDate">
+                  <data type="dateTime"/>
+                </element>
+              </optional>
+            </element>
+          </optional>
         </element>
       </zeroOrMore>
       <zeroOrMore>

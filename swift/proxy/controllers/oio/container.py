@@ -27,7 +27,7 @@ from swift.common.constraints import check_metadata
 from swift.common import constraints
 
 from swift.common.middleware.s3api.utils import \
-    OBJECT_LOCK_ENABLED_HEADER, sysmeta_header
+    OBJECT_LOCK_ENABLED_HEADER, RESTORE_OBJECT_HEADER, sysmeta_header
 from swift.common.middleware.versioned_writes.object_versioning import \
     CLIENT_VERSIONS_ENABLED, SYSMETA_VERSIONS_CONT
 from swift.common.middleware.versioned_writes.legacy \
@@ -45,6 +45,7 @@ from swift.proxy.controllers.base import clear_info_cache, \
     _get_info_from_caches, headers_from_container_info
 
 from oio.common import exceptions
+from oio.common.properties import RestoreProperty
 
 
 class ContainerController(SwiftContainerController):
@@ -245,11 +246,28 @@ class ContainerController(SwiftContainerController):
         checksum_properties = {}
         if self.container_name.endswith(MULTIUPLOAD_SUFFIX):
             checksum_properties = get_checksum_properties()
+
+        def get_restore_object_prop():
+            restore_object_properties = {}
+            restore_data = props[RESTORE_OBJECT_HEADER]
+            restore_property = RestoreProperty.load(restore_data)
+            restore_object_properties["restore_status"] = {
+                "IsRestoreInProgress": restore_property.ongoing,
+            }
+            if not restore_property.ongoing:
+                expiry_date_timestamp = restore_property.expiry_date
+                restore_object_properties["restore_status"][
+                    "RestoreExpiryDate"
+                ] = Timestamp(expiry_date_timestamp).isoformat
+            return restore_object_properties
+        restore_object_properties = {}
+        if RESTORE_OBJECT_HEADER in props:
+            restore_object_properties = get_restore_object_prop()
         response = {'name': record['name'],
                     'bytes': record['size'],
                     'last_modified': Timestamp(record['mtime']).isoformat,
                     'is_latest': record.get('is_latest', True),
-                    **checksum_properties}
+                    **checksum_properties, **restore_object_properties}
         if hash_:
             response['hash'] = hash_
         if record.get('deleted', False):

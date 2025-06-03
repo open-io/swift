@@ -91,6 +91,9 @@ def sysmeta_header(resource, name):
 
 OBJECT_LOCK_ENABLED_HEADER = sysmeta_header('', 'bucket-object-lock-enabled')
 RESTORE_OBJECT_HEADER = sysmeta_header("object", "restore")
+RESTORE_STATE_ERROR_MSG = (
+    "The operation is not valid for the object's storage class"
+)
 
 
 def is_storage_class_restorable(storage_class):
@@ -101,7 +104,10 @@ def is_storage_class_restorable(storage_class):
     :return: True if storage class restorable
     :rtype: bool
     """
-    return storage_class.upper() in S3_STORAGE_CLASSES_RESTORABLE
+    return (
+        isinstance(storage_class, str)
+        and storage_class.upper() in S3_STORAGE_CLASSES_RESTORABLE
+    )
 
 
 def camel_to_snake(camel):
@@ -129,6 +135,10 @@ def utf8decode(s):
     if isinstance(s, bytes):
         s = s.decode('utf8')
     return s
+
+
+def bool_to_str(value):
+    return 'true' if value else 'false'
 
 
 def is_not_ascii(s):
