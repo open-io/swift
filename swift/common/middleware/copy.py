@@ -114,6 +114,7 @@ greater than 5GB.
 
 """
 
+from swift.common.middleware.s3api.utils import RESTORE_OBJECT_HEADER
 from swift.common.utils import DEFAULT_YIELD_FREQUENCY, get_logger, \
     config_true_value, FileLikeIter, close_if_possible, HeartbeatMixin
 from swift.common.swob import Request, HTTPPreconditionFailed, \
@@ -395,7 +396,8 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
                                'x-object-sysmeta-s3api-upload-id',
                                'x-amz-server-side-encryption',
                                'x-amz-server-side-encryption-customer-'
-                               'algorithm', *checksum_headers,
+                               'algorithm', RESTORE_OBJECT_HEADER,
+                               *checksum_headers,
                                }
             copy_header_subset(source_resp, sink_req,
                                lambda k: k.lower() not in exclude_headers)

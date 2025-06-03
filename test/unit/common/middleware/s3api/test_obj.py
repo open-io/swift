@@ -974,6 +974,110 @@ class TestS3ApiObj(S3ApiTestCase):
         _, _, headers = self.swift.calls_with_headers[-1]
         self.assertEqual(headers['x-copy-from'], '/bucket/src_obj')
 
+    def test_copy_archived_object(self):
+        headers = {}
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+        })
+        headers.update(self.response_headers)
+        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
+        self.swift.register('GET',
+                            '/v1/AUTH_test/bucket/src_obj',
+                            swob.HTTPOk, headers,
+                            self.object_body)
+        req = Request.blank('/bucket/object', method='PUT', body='', headers={
+            'Authorization': 'AWS test:tester:hmac',
+            'Date': self.get_date_header(),
+            'X-Amz-Copy-Source': '/bucket/src_obj',
+        })
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual('403 Forbidden', status)
+        self.assertEqual("InvalidObjectState", self._get_error_code(body))
+
+    def test_copy_restoring_object(self):
+        headers = {}
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+            RESTORE_OBJECT_HEADER: json.dumps({"ongoing": True})
+        })
+        headers.update(self.response_headers)
+        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
+        self.swift.register('GET',
+                            '/v1/AUTH_test/bucket/src_obj',
+                            swob.HTTPOk, headers,
+                            self.object_body)
+        req = Request.blank('/bucket/object', method='PUT', body='', headers={
+            'Authorization': 'AWS test:tester:hmac',
+            'Date': self.get_date_header(),
+            'X-Amz-Copy-Source': '/bucket/src_obj',
+        })
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual('403 Forbidden', status)
+        self.assertEqual("InvalidObjectState", self._get_error_code(body))
+
+    def test_copy_restored_object(self):
+        headers = {}
+        expiry_date = datetime.now(timezone.utc).timestamp() + 2500
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+            RESTORE_OBJECT_HEADER: json.dumps({
+                "ongoing": False,
+                "expiry_date": expiry_date
+            })
+        })
+
+        headers.update(self.response_headers)
+        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
+        self.swift.register('GET',
+                            '/v1/AUTH_test/bucket/src_obj',
+                            swob.HTTPOk, headers,
+                            self.object_body)
+        self.swift.register('PUT', '/v1/AUTH_test/bucket/object',
+                            swob.HTTPCreated, {
+                                'etag': self.etag,
+                                'last-modified': self.last_modified,
+                            }, None)
+        req = Request.blank('/bucket/object', method='PUT', body='', headers={
+            'Authorization': 'AWS test:tester:hmac',
+            'Date': self.get_date_header(),
+            'X-Amz-Copy-Source': '/bucket/src_obj',
+        })
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual('200 OK', status)
+        elem = fromstring(body, 'CopyObjectResult')
+        self.assertEqual(elem.find('ETag').text, '"%s"' % self.etag)
+
+    def test_copy_restored_object_expired(self):
+        headers = {}
+        expiry_date = datetime.now(timezone.utc).timestamp() - 2500
+        headers.update({
+            "x-object-sysmeta-storage-policy": "TWOCOPIES",
+            RESTORE_OBJECT_HEADER: json.dumps({
+                "ongoing": False,
+                "expiry_date": expiry_date
+            })
+        })
+
+        headers.update(self.response_headers)
+        self.swift.register('HEAD', '/v1/AUTH_X', swob.HTTPOk, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_X/bucket', swob.HTTPOk, {}, None)
+        self.swift.register('GET',
+                            '/v1/AUTH_test/bucket/src_obj',
+                            swob.HTTPOk, headers,
+                            self.object_body)
+
+        req = Request.blank('/bucket/object', method='PUT', body='', headers={
+            'Authorization': 'AWS test:tester:hmac',
+            'Date': self.get_date_header(),
+            'X-Amz-Copy-Source': '/bucket/src_obj',
+        })
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual('403 Forbidden', status)
+        self.assertEqual("InvalidObjectState", self._get_error_code(body))
+
     @s3acl
     def test_object_PUT(self):
         etag = self.response_headers['etag']
