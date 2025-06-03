@@ -1238,7 +1238,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 part_chksums = {
                     e.tag[8:].lower(): e.text.strip()
                     for e in part_elem.iterchildren()
-                    if e.tag.startswith('Checksum')
+                    if e.tag.startswith('Checksum') and e.text
                 }
                 try:
                     if len(part_chksums) > 1:
