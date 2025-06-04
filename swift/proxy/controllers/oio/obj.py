@@ -244,11 +244,14 @@ class ObjectController(BaseObjectController):
         oio_retry_master = req.environ.get('oio.retry.master')
         perfdata = req.environ.get('swift.perfdata')
         version = obj_version_from_env(req.environ)
+        # Retry is possible for multiple reasons:
+        #  - the object is a part referenced in a manifest or complete request
+        #  - we want to make sure a marker/manifest exists or not
         allow_retry = (
             oio_retry_master
             or self.container_name.endswith(MULTIUPLOAD_SUFFIX)
         )
-        force_master = False
+        force_master = req.environ.get('oio.force.master', False)
         while True:
             try:
                 if self.app.check_state:
@@ -267,13 +270,9 @@ class ObjectController(BaseObjectController):
                 break
             except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
                 if force_master or not allow_retry:
-                    # Either the request failed with the master,
-                    # or it is not an MPU
                     return HTTPNotFound(request=req)
 
-                # This part appears in the manifest, so it should be there.
-                # To be sure, we must go check the master
-                # in case of desynchronization.
+                # If retry is needed, do it on the master only.
                 force_master = True
 
         if self.app.check_state:
@@ -320,8 +319,16 @@ class ObjectController(BaseObjectController):
                 self.logger.warning('Malformed Range header (%s): %s',
                                     self.trans_id, exc)
         oio_cache = req.environ.get('oio.cache')
+        oio_retry_master = req.environ.get('oio.retry.master')
+        # Retry is possible for multiple reasons:
+        #  - the object is a part referenced in a manifest
+        #  - the replicator has good reasons to think that the object exists
+        allow_retry = (
+            oio_retry_master
+            or self.container_name.endswith(MULTIUPLOAD_SUFFIX)
+        )
         perfdata = req.environ.get('swift.perfdata')
-        force_master = False
+        force_master = req.environ.get('oio.force.master', False)
         while True:
             try:
                 metadata, stream = storage.object_fetch(
@@ -332,15 +339,10 @@ class ObjectController(BaseObjectController):
                     end_user_request=True, perfdata=perfdata)
                 break
             except (exceptions.NoSuchObject, exceptions.NoSuchContainer):
-                if force_master or not \
-                        self.container_name.endswith(MULTIUPLOAD_SUFFIX):
-                    # Either the request failed with the master,
-                    # or it is not an MPU
+                if force_master or not allow_retry:
                     return HTTPNotFound(request=req)
 
-                # This part appears in the manifest, so it should be there.
-                # To be sure, we must go check the master
-                # in case of desynchronization.
+                # If retry is needed, do it on the master only.
                 force_master = True
         resp = self.make_object_response(req, metadata, stream)
         return resp
@@ -631,7 +633,7 @@ class ObjectController(BaseObjectController):
                 ranges = ranges_from_http_header(req.headers.get('Range'))
                 if len(ranges) != 1:
                     raise HTTPInternalServerError(
-                        request=req, body="mutiple ranges unsupported")
+                        request=req, body="multiple ranges unsupported")
                 ranges = ranges[0]
             except ValueError as exc:
                 # When the Range header is malformed, it is ignored

@@ -132,7 +132,7 @@ def _get_upload_id(req):
     return upload_id
 
 
-def _get_upload_info(req, app, upload_id):
+def _get_upload_info(req, app, upload_id, force_master=False):
 
     container = req.container_name + MULTIUPLOAD_SUFFIX
     obj = '%s/%s' % (req.object_name, upload_id)
@@ -141,6 +141,14 @@ def _get_upload_info(req, app, upload_id):
     # for the upload marker. Until we get around to fixing that, just pop
     # it off for now...
     copy_source = req.headers.pop('X-Amz-Copy-Source', None)
+    # We want to make sure to retry on the master
+    retry_master = req.environ.get('oio.retry.master')
+    req.environ['oio.retry.master'] = True
+    _force_master = req.environ.get('oio.force.master')
+    if force_master:
+        # If force master is used, retry master will be useless.
+        # But keep both to try to keep it simple.
+        req.environ['oio.force.master'] = True
     try:
         return req.get_response(app, 'HEAD', container=container, obj=obj)
     except NoSuchKey:
@@ -156,10 +164,22 @@ def _get_upload_info(req, app, upload_id):
         # ...making sure to restore any copy-source before returning
         if copy_source is not None:
             req.headers['X-Amz-Copy-Source'] = copy_source
+        # ... making sure to restore any retry.master before returning ...
+        if retry_master is not None:
+            req.environ['oio.retry.master'] = retry_master
+        else:
+            # .. or to remove it if it was not present.
+            req.environ.pop('oio.retry.master')
+        # ... making sure to restore any force.master before returning ...
+        if _force_master is not None:
+            req.environ['oio.force.master'] = _force_master
+        else:
+            # .. or to remove it if it was not present.
+            req.environ.pop('oio.force.master', None)
 
 
 def _make_complete_body(req, s3_etag, yielded_anything,
-                        client_checkum_name=None, checksum=None):
+                        client_checksum_name=None, checksum=None):
     escape_xml_text, finalize_xml_texts = init_xml_texts()
 
     result_elem = Element('CompleteMultipartUploadResult')
@@ -191,8 +211,8 @@ def _make_complete_body(req, s3_etag, yielded_anything,
     SubElement(result_elem, 'Key').text = escape_xml_text(
         wsgi_to_str(req.object_name))
     SubElement(result_elem, 'ETag').text = '"%s"' % s3_etag
-    if client_checkum_name and checksum:
-        SubElement(result_elem, client_checkum_name).text = checksum
+    if client_checksum_name and checksum:
+        SubElement(result_elem, client_checksum_name).text = checksum
         SubElement(result_elem, 'ChecksumType').text = (
             CHECKSUM_COMPOSITE if '-' in checksum else CHECKSUM_FULL_OBJECT
         )
@@ -398,6 +418,8 @@ class PartController(Controller):
         def check_upload_marker():
             put_backend_path = resp.environ['PATH_INFO']
             copy_source = req.headers.pop('X-Amz-Copy-Source', None)
+            force_master = req.environ.get('oio.force.master')
+            req.environ['oio.force.master'] = True
             try:
                 container = req.container_name + MULTIUPLOAD_SUFFIX
                 obj = '%s/%s' % (req.object_name, upload_id)
@@ -426,8 +448,14 @@ class PartController(Controller):
                     )
                     raise MpuAborted()
             finally:
+                # Restore any copy-source and force.master before returning
                 if copy_source is not None:
                     req.headers['X-Amz-Copy-Source'] = copy_source
+                if force_master is not None:
+                    req.environ['oio.force.master'] = force_master
+                else:
+                    # .. or to remove it if it was not present.
+                    req.environ.pop('oio.force.master', None)
                 req.environ['s3api.backend_path'] = put_backend_path
 
         req.environ['swift.callback.pre_commit_hook'] = check_upload_marker
@@ -1057,12 +1085,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         Handles Abort Multipart Upload.
         """
         upload_id = _get_upload_id(req)
-        # Inital mpu marker format
+        # Initial mpu marker format
         marker = '%s/%s' % (req.object_name, upload_id)
         container = req.container_name + MULTIUPLOAD_SUFFIX
         # First check to see if this multi-part upload has been already
         # completed.
-        resp = _get_upload_info(req, self.app, upload_id)
+        resp = _get_upload_info(req, self.app, upload_id, force_master=True)
         if upload_id not in resp.environ["PATH_INFO"]:  # Head on the manifest
             # The MPU has been already completed.
             # As amazon seems to do not return an error
@@ -1118,7 +1146,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         req.check_checksum_mismatch(False)
 
         upload_id = _get_upload_id(req)
-        resp = _get_upload_info(req, self.app, upload_id)
+        resp = _get_upload_info(req, self.app, upload_id, force_master=True)
         # Used to gather and check encryption properties
         part1_head_response = None
 
