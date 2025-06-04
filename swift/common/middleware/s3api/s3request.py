@@ -448,7 +448,7 @@ class StreamingInput(object):
                 if self._expected_trailers:
                     for line in iter(partial(self._input.readline,
                                              MAX_HEADER_SIZE), b''):
-                        if not line.endswith(b'\r\n'):
+                        if not line.endswith(b'\n'):
                             raise S3InputIncomplete
                         if line == b'\r\n':
                             break
