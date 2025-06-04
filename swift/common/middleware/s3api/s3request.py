@@ -1121,6 +1121,17 @@ class S3Request(swob.Request):
         return list_from_csv(self.headers.get('x-amz-trailer'))
 
     @property
+    def resolved_content_length(self):
+        """
+        Request Content-Length header. If X-Amz-Decoded-Content-Length header
+        specified, it will prior to Content-Length header.
+        """
+        content_length = self.headers.get('x-amz-decoded-content-length')
+        if content_length is not None and content_length.isdigit():
+            return int(content_length)
+        return self.content_length
+
+    @property
     def timestamp(self):
         """
         S3Timestamp from Date header. If X-Amz-Date header specified, it

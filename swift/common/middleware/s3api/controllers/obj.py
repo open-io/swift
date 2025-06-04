@@ -402,7 +402,7 @@ class ObjectController(Controller):
             expiration, rule_id = get_expiration(
                 sysmeta_info.get("s3api-lifecycle"),
                 req.object_name,
-                req.content_length,
+                req.resolved_content_length,
                 resp.last_modified,
                 tags_json,
             )
