@@ -48,7 +48,7 @@ jobs:
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
           eval $(worker key install --env-git proj-ssh-openio)
           git submodule update --init --remote
-          cd third_party/oio-sds && pip install --progress-bar off -e . && cd ../..
+          cd third_party/oio-sds && pip install --progress-bar off -e ".[all]" && cd ../..
           pip install --progress-bar off -e .
           ./third_party/oio-sds/tools/patch-python-modules.sh
 
