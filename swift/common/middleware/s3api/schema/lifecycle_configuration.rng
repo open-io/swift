@@ -12,6 +12,12 @@
               </element>
             </optional>
             <optional>
+              <!-- Prefix outside Filter is deprecated -->
+              <element name="Prefix">
+                <data type="string"/>
+              </element>
+            </optional>
+            <optional>
               <element name="Filter">
                 <choice>
                   <optional>
@@ -75,11 +81,6 @@
                     </element>
                   </optional>
                 </choice>
-              </element>
-            </optional>
-            <optional>
-              <element name="Prefix">
-                <data type="string"/>
               </element>
             </optional>
             <element name="Status">
@@ -159,7 +160,9 @@
         </element>
       </optional>
       <element name="StorageClass">
-        <data type="string"/>
+        <data type="string">
+          <param name="minLength">7</param>
+        </data>
       </element>
     </interleave>
   </define>
@@ -176,7 +179,9 @@
         </element>
       </optional>
       <element name="StorageClass">
-        <data type="string"/>
+        <data type="string">
+          <param name="minLength">7</param>
+        </data>
       </element>
     </interleave>
   </define>

@@ -49,9 +49,9 @@ Expiration =
 NoncurrentVersionTransition =
   element NoncurrentDays { xsd:int }? &
   element NewerNoncurrentVersions { xsd:nonNegativeInteger }? &
-  element StorageClass { xsd:string }
+  element StorageClass { xsd:string { minLength = "7" } }
 
 Transition =
   element Days { xsd:int }? &
   element Date { xsd:dateTime }? &
-  element StorageClass { xsd:string }
+  element StorageClass { xsd:string { minLength = "7" } }
