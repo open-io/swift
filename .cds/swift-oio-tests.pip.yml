@@ -47,7 +47,9 @@ jobs:
           source $HOME/swift-env.sh
           PIP_EXTRA_INDEX_URL="https://${CDS_INTEGRATION_ARTIFACT_MANAGER_TOKEN_NAME}:${CDS_INTEGRATION_ARTIFACT_MANAGER_TOKEN}@artifactory.ovhcloud.tools/artifactory/api/pypi/pypi-remote/simple"
           mkdir /tmp/oio
-          /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
+          # Note: system-site-packages allows our programs to see "pbr"
+          # embedded in our Python package.
+          /opt/${PYTHON_PACKAGE}/bin/python3 -m venv --system-site-packages $HOME/swiftenv
           cat << EOF > $HOME/swiftenv/pip.conf
           [global]
           index-url = https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
@@ -117,10 +119,12 @@ jobs:
           python -m coverage combine
           mv .coverage .coverage.oio.{{.cds.env.TEST_SUITE}}
           worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.oio.{{.cds.env.TEST_SUITE}}'
-          journalctl -n 50000 -o short-precise -t "OIO,NS,oioswift,1" >> oioswift.{{.cds.env.TEST_SUITE}}.log
-          journalctl -n 50000 -o short-precise -t "OIO,OPENIO,account,1" >> account.{{.cds.env.TEST_SUITE}}.log
+          journalctl -n 50000 -o short-precise -t "OIO,OPENIO,oioswift,1" >> oioswift.{{.cds.env.TEST_SUITE}}.log
+          journalctl -n 50000 -o short-precise -t "OIO,OPENIO,account,0" -t gunicorn.OIO,OPENIO,account,0.access -t oio-account-server >> account.{{.cds.env.TEST_SUITE}}.log
+          journalctl -n 50000 -o short-precise -t "oio-event-agent-kafka" >> event.{{.cds.env.TEST_SUITE}}.log
           worker upload --tag='{{.cds.version}}' 'oioswift.{{.cds.env.TEST_SUITE}}.log'
           worker upload --tag='{{.cds.version}}' 'account.{{.cds.env.TEST_SUITE}}.log'
+          worker upload --tag='{{.cds.version}}' 'event.{{.cds.env.TEST_SUITE}}.log'
 
       - optional: true
         always_executed: true
