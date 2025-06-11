@@ -1725,6 +1725,34 @@ class TestStreamingInput(S3ApiTestCase):
         wrapped.close()
         self.assertTrue(wrapped._input.closed)
 
+    def test_read_truncated_chunk(self):
+        """
+        Ensure a truncated read (without exception)
+        does not lead to an infinite loop.
+        """
+        def chunk_validator(chunk, signature):
+            return signature == 'ok'
+
+        class SafeBytesIO(BytesIO):
+            empty_counter = 0
+
+            def read(self, *args, **kwargs):
+                res = super().read(*args, **kwargs)
+                if not res:
+                    self.empty_counter += 1
+                if self.empty_counter > 1024:
+                    raise Exception("Infinite loop!")
+                return res
+
+        raw = '9;chunk-signature=ok\r\n12345678'.encode('utf8')
+        wrapped = StreamingInput(
+            SafeBytesIO(raw), 10, {'x-amz-checksum-crc32'}, chunk_validator)
+        self.assertEqual(b'1234', wrapped.read(4))
+        self.assertEqual(b'56', wrapped.read(2))
+        with self.assertRaises(s3request.S3InputIncomplete):
+            self.assertEqual(b'789', wrapped.read(3))
+        self.assertTrue(wrapped._input.closed)
+
     def test_too_big_chunk_header(self):
         def chunk_validator(chunk, signature):
             return signature == 'ok'

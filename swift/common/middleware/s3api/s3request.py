@@ -315,6 +315,14 @@ class ChunkReader(object):
                 if self._input.read(2) != b'\r\n':
                     self.close()
                     raise S3InputIncomplete
+        # We are not supposed to get empty buffers.
+        # read() is supposed to block, return the required number of bytes,
+        # or raise an exception. But during network outages, we have noticed
+        # that it can return empty buffers (several times), leading to
+        # infinite loops.
+        elif not chunk and size > 0:
+            self.close()
+            raise S3InputIncomplete(f"EOF (expected {size} bytes)")
         return chunk
 
     def close(self):
