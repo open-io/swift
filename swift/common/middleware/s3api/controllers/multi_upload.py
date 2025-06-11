@@ -132,10 +132,30 @@ def _get_upload_id(req):
     return upload_id
 
 
-def _get_upload_info(req, app, upload_id, force_master=False):
+def _get_upload_info(
+    req,
+    app,
+    upload_id,
+    check_marker=True,  # if False, directly call the manifest
+    force_master=False
+):
+    """
+    First, make a HEAD to the marker on the +segments (if check_marker==True).
+    If the marker is not found, make a HEAD on the root container.
+    If the manifest is not found, raise NoSuchUpload.
 
-    container = req.container_name + MULTIUPLOAD_SUFFIX
-    obj = '%s/%s' % (req.object_name, upload_id)
+    By using the response of this function, one can discriminate the marker or
+    manifest by checking the presence of the upload_id in the PATH_INFO.
+    If the upload_id is present, then the marker exist (but the manifest may
+    also exist).
+
+    Before making HEAD requests, backup copy_source, retry_master and
+    force_master. Then force the necessary values.
+    Before returning, restore the req with its parameters.
+    """
+    segment_container = req.container_name + MULTIUPLOAD_SUFFIX
+    marker = f'{req.object_name}/{upload_id}'
+
     # XXX: if we leave the copy-source header, somewhere later we might
     # drop in a ?version-id=... query string that's utterly inappropriate
     # for the upload marker. Until we get around to fixing that, just pop
@@ -149,10 +169,21 @@ def _get_upload_info(req, app, upload_id, force_master=False):
         # If force master is used, retry master will be useless.
         # But keep both to try to keep it simple.
         req.environ['oio.force.master'] = True
+
     try:
-        return req.get_response(app, 'HEAD', container=container, obj=obj)
+        if check_marker:
+            # HEAD on the marker
+            return req.get_response(
+                app,
+                'HEAD',
+                container=segment_container,
+                obj=marker
+            )
+        # If not check_marker, force the call to be made on the manifest.
+        raise NoSuchKey(marker)
     except NoSuchKey:
         try:
+            # HEAD on the manifest
             resp = req.get_response(app, 'HEAD')
             if resp.sysmeta_headers.get(sysmeta_header(
                     'object', 'upload-id')) == upload_id:
@@ -1086,8 +1117,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         """
         upload_id = _get_upload_id(req)
         # Initial mpu marker format
-        marker = '%s/%s' % (req.object_name, upload_id)
-        container = req.container_name + MULTIUPLOAD_SUFFIX
+        marker = f'{req.object_name}/{upload_id}'
+        segment_container = req.container_name + MULTIUPLOAD_SUFFIX
         # First check to see if this multi-part upload has been already
         # completed.
         resp = _get_upload_info(req, self.app, upload_id, force_master=True)
@@ -1097,6 +1128,27 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             # in case of an abort of a completed MPU,
             # we won't return any error either.
             return HTTPNoContent()
+
+        # Then, make sure the manifest does not exist
+        try:
+            _get_upload_info(
+                req,
+                self.app,
+                upload_id,
+                check_marker=False,
+                force_master=True,
+            )
+            # Reach here, the manifest exist:
+            # - delete the marker as the completion was done
+            # - return HTTPNoContent as Amazon
+            self.logger.warning(
+                "Manifest found while marker still exists, delete the marker"
+            )
+            req.get_response(self.app, container=segment_container, obj=marker)
+            return HTTPNoContent()
+        except NoSuchUpload:
+            # Manifest does not exist, abort can be performed.
+            pass
 
         # The marker was found so this
         # must be a multipart upload abort.
@@ -1108,24 +1160,30 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             'delimiter': '/',
         }
 
-        resp = req.get_response(self.app, 'GET', container, '', query=query)
+        resp = req.get_response(
+            self.app,
+            'GET',
+            segment_container,
+            '',
+            query=query,
+        )
 
         #  Iterate over the segment objects and delete them individually
         objects = json.loads(resp.body)
         while objects:
             for o in objects:
-                container = req.container_name + MULTIUPLOAD_SUFFIX
                 obj = bytes_to_wsgi(o['name'].encode('utf-8'))
-                req.get_response(self.app, container=container, obj=obj)
+                req.get_response(self.app, container=segment_container,
+                                 obj=obj)
             if six.PY2:
                 query['marker'] = objects[-1]['name'].encode('utf-8')
             else:
                 query['marker'] = objects[-1]['name']
-            resp = req.get_response(self.app, 'GET', container, '',
+            resp = req.get_response(self.app, 'GET', segment_container, '',
                                     query=query)
             objects = json.loads(resp.body)
 
-        req.get_response(self.app, container=container, obj=marker)
+        req.get_response(self.app, container=segment_container, obj=marker)
         return HTTPNoContent()
 
     @set_s3_operation_rest('UPLOAD')

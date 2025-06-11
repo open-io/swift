@@ -235,6 +235,61 @@ class TestS3Mpu(unittest.TestCase):
         listing.pop("RequestCharged")
         self.assertFalse(listing)
 
+    def test_abort_after_complete(self):
+        path = "test_abort_after_complete_" + random_str(4)
+        upload_id = self._create_complete_mpu(path)
+
+        # Abort runs without troubles
+        run_awscli_s3api(
+            "abort-multipart-upload",
+            "--upload-id", upload_id,
+            bucket=self.bucket, key=path)
+        
+        # Head is still possible
+        run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+
+        # Recreate a fake marker
+        run_openiocli(
+            "object",
+            "create",
+            f"{self.bucket}+segments",
+            "/etc/magic",  # FIXME: should be an empty file
+            "--name",
+            f"{path}/{upload_id}",
+            account="AUTH_demo",
+        )
+
+        # Make sure the file exists
+        run_openiocli(
+            "object",
+            "show",
+            f"{self.bucket}+segments",
+            f"{path}/{upload_id}",
+            account="AUTH_demo",
+        )
+        # Abort runs without troubles
+        run_awscli_s3api(
+            "abort-multipart-upload",
+            "--upload-id",
+            upload_id,
+            bucket=self.bucket,
+            key=path,
+        )
+        
+        # Head on the MPU is still possible ...
+        run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+
+        # ... but the marker does not exist anymore
+        with self.assertRaises(CliError):
+            run_openiocli(
+                "object",
+                "show",
+                f"{self.bucket}+segments",
+                f"{path}/{upload_id}",
+                account="AUTH_demo",
+            )
+
+
     def test_complete_mpu_with_headers(self):
         path = random_str(10)
         content_type = random_str(10)
@@ -1027,7 +1082,7 @@ class TestS3Mpu(unittest.TestCase):
             'delete',
             f"{self.bucket}+segments",
             f"{path}/{upload_id}/1",
-            account="AUTH_demo"
+            account="AUTH_demo",
         )
         # Get MPU
         self.assertRaisesRegex(
