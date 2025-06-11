@@ -244,9 +244,14 @@ class TestS3Mpu(unittest.TestCase):
             "abort-multipart-upload",
             "--upload-id", upload_id,
             bucket=self.bucket, key=path)
-        
-        # Head is still possible
-        run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+
+        # Get is still possible
+        run_awscli_s3api(
+            "get-object",
+            "/dev/null",
+            bucket=self.bucket,
+            key=path,
+        )
 
         # Recreate a fake marker
         run_openiocli(
@@ -275,9 +280,14 @@ class TestS3Mpu(unittest.TestCase):
             bucket=self.bucket,
             key=path,
         )
-        
-        # Head on the MPU is still possible ...
-        run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+
+        # Get on the MPU is still possible ...
+        run_awscli_s3api(
+            "get-object",
+            "/dev/null",
+            bucket=self.bucket,
+            key=path,
+        )
 
         # ... but the marker does not exist anymore
         with self.assertRaises(CliError):
@@ -288,7 +298,6 @@ class TestS3Mpu(unittest.TestCase):
                 f"{path}/{upload_id}",
                 account="AUTH_demo",
             )
-
 
     def test_complete_mpu_with_headers(self):
         path = random_str(10)

@@ -1204,7 +1204,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         req.check_checksum_mismatch(False)
 
         upload_id = _get_upload_id(req)
-        resp = _get_upload_info(req, self.app, upload_id, force_master=True)
+        upload_resp = _get_upload_info(
+            req,
+            self.app,
+            upload_id,
+            force_master=True,
+        )
         # Used to gather and check encryption properties
         part1_head_response = None
 
@@ -1222,7 +1227,10 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 del req.environ["swift.crypto.override"]
 
         # Use the same storage class for the manifest
-        storage_class = resp.headers.get('X-Amz-Storage-Class', 'STANDARD')
+        storage_class = upload_resp.headers.get(
+            'X-Amz-Storage-Class',
+            'STANDARD',
+        )
         req.headers['X-Amz-Storage-Class'] = storage_class
         auto_storage_policies = self.conf.auto_storage_policies.get(
             req.storage_class)
@@ -1232,7 +1240,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         version_id = None
         headers = {'Accept': 'application/json',
                    sysmeta_header('object', 'upload-id'): upload_id}
-        for key, val in resp.headers.items():
+        for key, val in upload_resp.headers.items():
             _key = key.lower()
             if _key.startswith('x-amz-meta-'):
                 headers['x-object-meta-' + _key[11:]] = val
@@ -1249,7 +1257,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             )
         ]
         tagging_header = None
-        for key, val in resp.sysmeta_headers.items():
+        for key, val in upload_resp.sysmeta_headers.items():
             _key = key.lower()
             if _key in sysmeta_headers_to_keep:
                 headers[key] = val
@@ -1257,15 +1265,15 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     tagging_header = val
 
         hct_header = sysmeta_header('object', 'has-content-type')
-        if resp.sysmeta_headers.get(hct_header) == 'yes':
-            content_type = resp.sysmeta_headers.get(
+        if upload_resp.sysmeta_headers.get(hct_header) == 'yes':
+            content_type = upload_resp.sysmeta_headers.get(
                 sysmeta_header('object', 'content-type'))
-        elif hct_header in resp.sysmeta_headers:
+        elif hct_header in upload_resp.sysmeta_headers:
             # has-content-type is present but false, so no content type was
             # set on initial upload.
             content_type = None
         else:
-            content_type = resp.headers.get('Content-Type')
+            content_type = upload_resp.headers.get('Content-Type')
 
         if content_type:
             headers['Content-Type'] = content_type
@@ -1273,9 +1281,9 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             # Use the default to not use the Content-Type of this request
             headers['Content-Type'] = DEFAULT_CONTENT_TYPE
 
-        algo = resp.sysmeta_headers.get(sysmeta_header(
+        algo = upload_resp.sysmeta_headers.get(sysmeta_header(
             'object', 'checksum-algorithm'))
-        checksum_type = resp.sysmeta_headers.get(sysmeta_header(
+        checksum_type = upload_resp.sysmeta_headers.get(sysmeta_header(
             'object', 'checksum-type'), '').upper()
         if not algo:
             chksum = client_name = None
@@ -1371,12 +1379,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                         # The response from this call is cached,
                         # so subsequent HEAD requests for each part won't hit
                         # the backend.
-                        resp = get_nth_part_info(
+                        part_info_resp = get_nth_part_info(
                             self.app, req, upload_id, part_number)
                         if not part1_head_response and part_number == 1:
                             # Saving first part metadata used later
                             # to check encryption properties
-                            part1_head_response = resp
+                            part1_head_response = part_info_resp
                         part_checksum = int(
                             binascii.hexlify(
                                 strict_b64decode(
@@ -1385,14 +1393,14 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                         # part metadata.
                         part_s3_etag_header = sysmeta_header(
                             'object', 'checksum-' + algo)
-                        if resp.sysmeta_headers.get(
+                        if part_info_resp.sysmeta_headers.get(
                             part_s3_etag_header
                         ) != part_chksums[algo]:
                             raise S3InputChecksumMismatch(
                                 algo.upper(), part_number, etag)
                         chksum.combine(
                             part_checksum,
-                            resp.content_length,
+                            part_info_resp.content_length,
                             checksum_info.reflected_polynomial
                         )
                     else:
@@ -1431,7 +1439,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
         s3_etag = '%s-%d' % (s3_etag_hasher.hexdigest(), len(manifest))
         s3_etag_header = sysmeta_header('object', 'etag')
-        if resp.sysmeta_headers.get(s3_etag_header) == s3_etag:
+        if upload_resp.sysmeta_headers.get(s3_etag_header) == s3_etag:
             # This header should only already be present if the upload marker
             # has been cleaned up and the current target uses the same
             # upload-id; assuming the segments to use haven't changed, the work
@@ -1476,13 +1484,13 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             headers[s3_etag_header] = s3_chksum
             c_etag += '; s3_%s=%s' % (algo, s3_chksum)
 
-        def checksum_checker(index, resp):
+        def checksum_checker(index, checksum_resp):
             part_number, etag, part_algo, expected = checksums[index]
             if not part_algo:
                 return
             part_s3_etag_header = sysmeta_header(
                 'object', 'checksum-' + part_algo)
-            if resp.headers.get(part_s3_etag_header) != expected:
+            if checksum_resp.headers.get(part_s3_etag_header) != expected:
                 raise S3InputChecksumMismatch(
                     part_algo.upper(), part_number, etag)
 
@@ -1620,16 +1628,16 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     yield b'\n'
                 else:
                     # Oh good, we can still change HTTP status code, too!
-                    resp.status = err_resp.status
+                    final_resp.status = err_resp.status
                 for chunk in err_resp({}, lambda *a: None):
                     yield chunk
 
         # Do not use a buffer for the heartbeat to work
         req.environ['eventlet.minimum_write_chunk_size'] = 0
 
-        resp = HTTPOk()  # assume we're good for now... but see above!
-        resp.headers['x-amz-version-id'] = version_id
-        resp.app_iter = reiterate(response_iter())
-        resp.content_type = "application/xml"
+        final_resp = HTTPOk()  # assume we're good for now... but see above!
+        final_resp.headers['x-amz-version-id'] = version_id
+        final_resp.app_iter = reiterate(response_iter())
+        final_resp.content_type = "application/xml"
 
-        return resp
+        return final_resp
