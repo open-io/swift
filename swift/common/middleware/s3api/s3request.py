@@ -453,16 +453,54 @@ class StreamingInput(object):
             # read trailers, if present
             if not self._read_trailers:
                 if self._expected_trailers:
+                    incomplete_trailer = None
                     for line in iter(partial(self._input.readline,
                                              MAX_HEADER_SIZE), b''):
-                        if not line.endswith(b'\n'):
-                            raise S3InputIncomplete
+                        if incomplete_trailer:
+                            # If the previous iteration ended with an
+                            # extra "\n", only the CRLF separator is allowed
+                            if line != b'\r\n':
+                                raise S3InputIncomplete
+                            # Combine incomplete trailer with current line
+                            line = incomplete_trailer + line
+                            if len(line) >= MAX_HEADER_SIZE:
+                                raise S3InputIncomplete
+                        if not line.endswith(b'\r\n'):
+                            if incomplete_trailer:
+                                # Still incomplete after combining
+                                # trailers: invalid trailer
+                                raise S3InputIncomplete
+                            if not line.endswith(b'\n'):
+                                # Only an extra "\n" is tolerated
+                                # before the CRLF separator
+                                raise S3InputIncomplete
+                            # Some S3 clients send a "\n" before the required
+                            # CRLF separator. The trailer is kept to check it
+                            # with the combination of the next iteration.
+                            incomplete_trailer = line
+                            continue
+                        # Reset incomplete_trailer as we have a complete line
+                        incomplete_trailer = None
+
                         if line == b'\r\n':
                             break
                         key, _, value = line.decode('latin1').partition(':')
                         if key.lower() not in self._expected_trailers:
+                            if key.lower() == "x-amz-trailer-signature":
+                                # Some S3 clients want to validate the trailer
+                                # signature. Currently, this signature is
+                                # ignored.
+                                # Also this signature is not declared in the
+                                # trailers expected via "x-amz-trailer"
+                                # headers.
+                                continue
                             raise S3InputMalformedTrailer
                         self.trailers[key.strip()] = value.strip()
+                    else:
+                        if incomplete_trailer:
+                            # Last trailer line was incomplete
+                            # and never completed
+                            raise S3InputIncomplete
                     if set(self.trailers.keys()) != self._expected_trailers:
                         raise S3InputMalformedTrailer
                     # Now that we've read them, we expect no more

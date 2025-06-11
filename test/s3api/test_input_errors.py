@@ -1639,7 +1639,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
                 'x-amz-trailer': 'x-amz-checksum-crc32'})
         self.assertIncompleteBody(resp)
 
-    def test_no_md5_streaming_unsigned_with_trailer_extra_line_before(self):
+    def test_no_md5_streaming_unsigned_with_trailer_crlf(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])[:-2]
@@ -1666,6 +1666,53 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body += ''.join([
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r\n',
             '\r\n',
+        ]).encode('ascii')
+        resp = self.conn.make_request(
+            self.bucket_name,
+            'test-obj',
+            method='PUT',
+            body=chunked_body,
+            headers={
+                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
+                'content-encoding': 'aws-chunked',
+                'x-amz-decoded-content-length': str(len(TEST_BODY)),
+                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        self.assertOK(resp)
+
+    def test_no_md5_streaming_unsigned_with_trailer_extra_line_before(self):
+        chunked_body = b''.join(
+            b'%x\r\n%s\r\n' % (len(chunk), chunk)
+            for chunk in [TEST_BODY, b''])[:-2]
+        chunked_body += ''.join([
+            f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\n\r\n',
+        ]).encode('ascii')
+        resp = self.conn.make_request(
+            self.bucket_name,
+            'test-obj',
+            method='PUT',
+            body=chunked_body,
+            headers={
+                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
+                'content-encoding': 'aws-chunked',
+                'x-amz-decoded-content-length': str(len(TEST_BODY)),
+                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        self.assertOK(resp)
+
+    def test_no_md5_streaming_with_trailer_signature_extra_line_before(self):
+        """
+        This test verifies that when trailers are signed,
+        the x-amz-trailer-signature header is ignored, as trailer signature
+        validation is not currently supported.
+
+        This test should be updated once trailer signature verification
+        is implemented.
+        """
+        chunked_body = b''.join(
+            b'%x\r\n%s\r\n' % (len(chunk), chunk)
+            for chunk in [TEST_BODY, b''])[:-2]
+        chunked_body += ''.join([
+            f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\n\r\n'
+            'x-amz-trailer-signature:toto\r\n',
         ]).encode('ascii')
         resp = self.conn.make_request(
             self.bucket_name,
