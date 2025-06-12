@@ -68,7 +68,9 @@ header_mapping = {
 
 
 def swift_versionid_to_oio_versionid(version_id):
-    if not version_id or version_id == 'null':
+    if version_id == 'null':
+        return version_id
+    elif not version_id:
         return None
     else:
         return int(float(version_id) * 1000000)
