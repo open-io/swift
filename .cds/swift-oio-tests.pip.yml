@@ -119,7 +119,7 @@ jobs:
           python -m coverage combine
           mv .coverage .coverage.oio.{{.cds.env.TEST_SUITE}}
           worker upload --tag='{{.cds.version}}' '{{.cds.workspace}}/.coverage.oio.{{.cds.env.TEST_SUITE}}'
-          journalctl -n 50000 -o short-precise -t "OIO,OPENIO,oioswift,1" >> oioswift.{{.cds.env.TEST_SUITE}}.log
+          journalctl -n 50000 -o short-precise -t "oioswift" >> oioswift.{{.cds.env.TEST_SUITE}}.log
           journalctl -n 50000 -o short-precise -t "OIO,OPENIO,account,0" -t gunicorn.OIO,OPENIO,account,0.access -t oio-account-server >> account.{{.cds.env.TEST_SUITE}}.log
           journalctl -n 50000 -o short-precise -t "oio-event-agent-kafka" >> event.{{.cds.env.TEST_SUITE}}.log
           worker upload --tag='{{.cds.version}}' 'oioswift.{{.cds.env.TEST_SUITE}}.log'

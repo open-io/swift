@@ -6,6 +6,7 @@ workers = 0
 user = %USER%
 log_facility = LOG_LOCAL0
 log_level = DEBUG
+log_name = oioswift
 eventlet_debug = true
 sds_default_account = AUTH_demo
 
@@ -20,7 +21,6 @@ pipeline = catch_errors cache listing_formats iam s3api tempauth proxy-logging c
 use = egg:swift#oio_proxy
 allow_account_management = true
 account_autocreate = true
-log_name = OIO,NS,oioswift,1
 sds_connection_timeout=5
 sds_read_timeout=20
 sds_write_timeout=20
