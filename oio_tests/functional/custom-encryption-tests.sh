@@ -18,9 +18,13 @@ INVALID_KEY="The secret key was invalid for the specified algorithm."
 INVALID_MD5_VALUE="The MD5 hash of the secret key was improperly encoded. The MD5 hash must be Base64 encoded."
 WRONG_MD5_VALUE="The calculated MD5 hash of the key did not match the hash that was provided."
 
-GENERATED_SECRET=$(openssl rand 32)
-ENCKEY=$(echo -n "$GENERATED_SECRET" | base64)
-MD5KEY=$(echo -n "$GENERATED_SECRET" | openssl dgst -md5 -binary | base64)
+# Do not store the binary secret in a bash variable: it may contain '\0' bytes
+# (which will be stripped by bash). Instead, write it in a temporary file.
+GENERATED_SECRET=$(mktemp -t secret-XXXX.dat)
+openssl rand 32 > "$GENERATED_SECRET"
+ENCKEY=$(base64 "$GENERATED_SECRET")
+MD5KEY=$(openssl dgst -md5 -binary "$GENERATED_SECRET" | base64)
+rm -f "$GENERATED_SECRET"
 
 PORT=${PORT:-5000}
 AWS="aws --endpoint-url http://${STORAGE_DOMAIN}:${PORT} --no-verify-ssl"
