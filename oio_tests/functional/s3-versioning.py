@@ -76,17 +76,20 @@ class TestS3Versioning(unittest.TestCase):
                              for k in res['Deleted']))
 
     def test_containers_list(self):
-        bucket = random_str(10)
-        run_awscli_s3api("create-bucket", bucket=bucket)
-        data1 = run_openiocli("container", "list", account="AUTH_demo")
-        run_awscli_s3api(
-            "put-bucket-versioning",
-            "--versioning-configuration", "Status=Enabled",
-            bucket=bucket)
-        sleep(2)  # Wait for all events to be processed
-        data2 = run_openiocli("container", "list", account="AUTH_demo")
-        # Make sure no new containers are created for versioning
-        self.assertEqual(data1, data2)
+        bucket = "tests3vers-containers-list-" + random_str(4)
+        try:
+            run_awscli_s3api("create-bucket", bucket=bucket)
+            data1 = run_openiocli("container", "list", account="AUTH_demo")
+            run_awscli_s3api(
+                "put-bucket-versioning",
+                "--versioning-configuration", "Status=Enabled",
+                bucket=bucket)
+            sleep(2)  # Wait for all events to be processed
+            data2 = run_openiocli("container", "list", account="AUTH_demo")
+            # Make sure no new containers are created for versioning
+            self.assertEqual(data1, data2)
+        finally:
+            run_awscli_s3api("delete-bucket", bucket=bucket)
 
     def test_multi_delete_utf8(self):
         return self._test_multi_delete_utf8(profile='default')
