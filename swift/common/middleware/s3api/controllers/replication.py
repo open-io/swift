@@ -41,6 +41,7 @@ BUCKET_REPLICATION_HEADER = sysmeta_header("bucket", "replication")
 
 HEADER_ADD_METADATA = f'{AWS_OIO_PREFIX}Replication-Add-Customer-Metadata'
 OBJECT_REPLICATION_STATUS = sysmeta_header("object", "replication-status")
+OBJECT_REPLICATION_ERROR = sysmeta_header("object", "replication-error")
 
 REPLICATION_CALLBACK = "swift.callback.replication.apply"
 OBJECT_REPLICATION_PENDING = "PENDING"

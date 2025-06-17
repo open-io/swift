@@ -22,7 +22,8 @@ from swift.common.middleware.s3api.controllers.base import Controller, \
     set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
-    OBJECT_REPLICATION_STATUS, replication_resolve_rules
+    OBJECT_REPLICATION_ERROR, OBJECT_REPLICATION_STATUS, \
+    replication_resolve_rules
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, Element, SubElement, XMLSyntaxError
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -65,6 +66,7 @@ INTELLIGENT_TIERING_RESTO_END_KEY = \
 INTELLIGENT_TIERING_ARCHIVE_LOCK_UNTIL_KEY = \
     'ovh:intelligent_tiering_archive_lock_until'
 REPLICATION_STATUS_KEY = "ovh:replication_status"
+REPLICATION_ERROR_KEY = "ovh:replication_error"
 
 
 def _create_tagging_xml_document():
@@ -233,13 +235,16 @@ class TaggingController(Controller):
         return HTTPOk(body=body, content_type='application/xml',
                       headers=headers)
 
-    def _handle_put_replicator_request(self, req, key, status):
-        if key == REPLICATION_STATUS_KEY:
+    def _handle_put_replicator_request(self, req, key, value):
+        if key in (REPLICATION_STATUS_KEY, REPLICATION_ERROR_KEY):
             # This log is internal only (allows to update the replication
-            # status while updating the cache).
+            # status or error while updating the cache).
             # There is no need for this request to be logged as a s3 request.
             req.environ[IGNORE_CUSTOMER_ACCESS_LOG] = True
-            req.headers[OBJECT_REPLICATION_STATUS] = status
+            if key == REPLICATION_STATUS_KEY:
+                req.headers[OBJECT_REPLICATION_STATUS] = value
+            if key == REPLICATION_ERROR_KEY:
+                req.headers[OBJECT_REPLICATION_ERROR] = value
             return True
         # Replicator is replicating tags for the customer, let it go.
         return None
@@ -290,14 +295,14 @@ class TaggingController(Controller):
             tags = tagset.xpath('//Tag')
 
             # Special handling for updating replication status
-            if from_replicator and len(tags) == 1 and req.is_object_request:
-                # From the replicator we expect only one key
-                # starting with reserved prefixes, and there cannot be
-                # another tag beside the expected one.
-                key = tags[0].find('Key').text
-                value = tags[0].find('Value').text
-                if self._handle_put_replicator_request(req, key, value):
-                    need_update_tags = False
+            if from_replicator and len(tags) <= 2 and req.is_object_request:
+                # From the replicator we expect only one or two key
+                # starting with reserved prefixes.
+                for tag in tags:
+                    key = tag.find('Key').text
+                    value = tag.find('Value').text
+                    if self._handle_put_replicator_request(req, key, value):
+                        need_update_tags = False
 
             # Special handling for buckets declared as backup bucket
             if len(tags) == 1 and req.is_bucket_request:
