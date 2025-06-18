@@ -26,13 +26,11 @@ from swift.common.middleware.s3api.etree import DocumentInvalid, \
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
-    InternalError, InvalidArgument, InvalidRequest, InvalidToken, \
-    MalformedXML, NoSuchKey, ReplicationConfigurationNotFoundError, \
-    S3NotImplemented, ServiceUnavailable, AccessDenied, InvalidTagKey, \
-    InvalidTagValue
+    InternalError, InvalidArgument, InvalidRequest, MalformedXML, NoSuchKey, \
+    ReplicationConfigurationNotFoundError, S3NotImplemented, \
+    ServiceUnavailable, AccessDenied, InvalidTagKey, InvalidTagValue
 from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
-    convert_response, sysmeta_header, is_valid_token, validate_tag_key, \
-    validate_tag_value
+    convert_response, sysmeta_header, validate_tag_key, validate_tag_value
 from swift.common.oio_utils import AWS_OIO_PREFIX
 from swift.common.utils import config_true_value, public
 from swift.proxy.controllers.base import get_container_info
@@ -590,26 +588,9 @@ class ReplicationController(Controller):
             if not self.bypass_feature_disabled(req, "replication"):
                 raise S3NotImplemented()
         info = req.get_container_info(self.app)
-        object_lock = info.get('sysmeta', {}).get(
-            's3api-bucket-object-lock-enabled',
-            None)
         # Check ACLs
         resp = req.get_response(self.app, method='HEAD')
-        if object_lock:
-            # Check if replication has been already defined on this bucket.
-            # Token validation needed only if replication conf not found.
-            if BUCKET_REPLICATION_HEADER not in resp.sysmeta_headers:
-                token = req.environ.get("HTTP_X_AMZ_BUCKET_OBJECT_LOCK_TOKEN")
-                if not token:
-                    raise InvalidRequest(
-                        'Replication configuration cannot be applied'
-                        ' to an Object Lock enabled bucket.')
-                account = req.account
-                container = req.container_name
-                if not is_valid_token(
-                        token, self.conf.token_prefix, account, container):
-                    raise InvalidToken()
-
+        # Check versioning
         versioning = info.get('sysmeta', {}).get('versions-enabled', False)
         if not versioning:
             raise InvalidRequest('Bucket must have versioning enabled.')

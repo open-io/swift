@@ -717,11 +717,6 @@ class InvalidTargetBucketForLogging(ErrorResponse):
             self, *args, msg=msg, target_bucket=bucket, **kwargs)
 
 
-class InvalidToken(ErrorResponse):
-    _status = '400 Bad Request'
-    _msg = 'The provided token is malformed or otherwise invalid.'
-
-
 class InvalidURI(ErrorResponse):
     _status = '400 Bad Request'
     _msg = 'Couldn\'t parse the specified URI.'

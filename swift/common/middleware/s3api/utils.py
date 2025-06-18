@@ -187,27 +187,6 @@ def validate_bucket_name(name, dns_compliant_bucket_names):
         return True
 
 
-def is_valid_token(token, token_prefix, account, container):
-    """
-    Check if token is valid
-
-    :param token: token provided by the user
-    :type token: str
-    :param token_prefix: token prefix used as a private prefix to prevent
-                  user to generate his token by himself
-    :type token_prefix: str
-    :param account: account name
-    :type account: str
-    :param container: container name
-    :type container: str
-    :return: True if provided token is valid, False if not
-    :rtype: bool
-    """
-    secret = '/'.join((token_prefix, account, container))
-    valid_token = base64.b64encode(hashlib.sha256(secret.encode()).digest())
-    return valid_token == token.encode('ascii')
-
-
 class S3Timestamp(utils.Timestamp):
     @property
     def s3xmlformat(self):

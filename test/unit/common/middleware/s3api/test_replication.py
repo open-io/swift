@@ -1890,10 +1890,11 @@ class TestS3ApiReplication(S3ApiTestCase):
         self.assertEqual("MalformedXML", self._get_error_code(body))
 
     def test_PUT_object_lock_enabled(self):
-
+        self.swift.register('POST', '/v1/AUTH_test/test-replication-lock',
+                            HTTPNoContent, {}, None)
         self.swift.register(
             'HEAD', '/v1/AUTH_test/test-replication-lock', HTTPNoContent,
-            {OBJECT_LOCK_ENABLED_HEADER: True},
+            {OBJECT_LOCK_ENABLED_HEADER: True, SYSMETA_VERSIONS_ENABLED: True},
             None)
         self.swift.register('HEAD', '/v1/AUTH_test/dest', HTTPOk,
                             {SYSMETA_VERSIONS_ENABLED: True}, None)
@@ -1905,34 +1906,33 @@ class TestS3ApiReplication(S3ApiTestCase):
                                 "Date": self.get_date_header(),
                             })
         status, _, body = self.call_s3api(req)
-        self.assertEqual("400 Bad Request", status)
-        self.assertEqual("InvalidRequest", self._get_error_code(body))
-        self.assertIn('Replication configuration cannot be applied to '
-                      'an Object Lock enabled bucket',
-                      str(body))
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
 
     def test_PUT_object_lock_enabled_with_invalid_token(self):
-
+        self.swift.register('POST', '/v1/AUTH_test/test-replication-lock',
+                            HTTPNoContent, {}, None)
         self.swift.register(
             'HEAD', '/v1/AUTH_test/test-replication-lock', HTTPNoContent,
-            {OBJECT_LOCK_ENABLED_HEADER: True},
+            {OBJECT_LOCK_ENABLED_HEADER: True, SYSMETA_VERSIONS_ENABLED: True},
             None)
+        self.swift.register('HEAD', '/v1/AUTH_test/dest', HTTPOk,
+                            {SYSMETA_VERSIONS_ENABLED: True}, None)
         req = Request.blank('/test-replication-lock?replication',
                             environ={
                                 "REQUEST_METHOD": "PUT",
                                 'HTTP_X_AMZ_BUCKET_OBJECT_LOCK_TOKEN':
                                 '160fd4d8a9ec4eecbc703bf88c9512caf67'
-                                '1a63b8d27b27bd6505111167690b'},
+                                '1a63b8d27b27bd6505111167690b'
+                            },
                             body=BASIC_CONF,
                             headers={
                                 "Authorization": "AWS test:tester:hmac",
                                 "Date": self.get_date_header(),
                             })
         status, _, body = self.call_s3api(req)
-        self.assertEqual("400 Bad Request", status)
-        self.assertEqual("InvalidToken", self._get_error_code(body))
-        self.assertIn('The provided token is malformed or otherwise invalid.',
-                      str(body))
+        self.assertEqual("200 OK", status)
+        self.assertFalse(body)  # empty -> False
 
     def test_PUT_object_lock_enabled_with_valid_token(self):
         self.swift.register('POST', '/v1/AUTH_test/test-replication-lock',
