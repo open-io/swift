@@ -24,13 +24,20 @@ from collections import Counter
 
 from oio.api.object_storage import ObjectStorageApi
 from oio.common.configuration import load_namespace_conf
-from oio.common.exceptions import NoSuchContainer, NoSuchObject
+from oio.common.exceptions import (
+    ContentDrained,
+    NoSuchContainer,
+    NoSuchObject,
+    NotFound,
+    OioNetworkException,
+)
 from oio.common.json import json
 from oio.common.logger import get_logger
 from oio.common.utils import depaginate, CacheDict, request_id
 from oio.crawler.common.crawler import CrawlerWorkerMarkerMixin
 
 SHELL_ESCAPES = str.maketrans({" ": "\\ ", "\t": "\\\t", "\n": "\\\n", "\r": "\\\r"})
+UPLOAD_ID_KEY = "x-object-sysmeta-s3api-upload-id"
 
 
 class MpuChecker(CrawlerWorkerMarkerMixin):
@@ -200,10 +207,13 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         Get the (parsed) content of an MPU manifest.
 
         Keep it in cache.
+        :returns: the list of parts (if the manifest is readable)
+        :rtype: list or ContentDrained or None
         """
         if use_cache:
             mf_part_list = self.mf_cache.get((obj_name, version), None)
-            if mf_part_list:
+            # If last time we tried there was a temporary problem, retry
+            if mf_part_list and not isinstance(mf_part_list, OioNetworkException):
                 return mf_part_list
         else:
             mf_part_list = None
@@ -223,6 +233,24 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 raise TypeError("not an MPU manifest")
             mf_part_list = json.loads(data)
             self.mf_cache[(obj_name, version)] = mf_part_list
+        except NotFound:
+            self.logger.info(
+                "%s version %s was recently deleted (reqid=%s)",
+                obj_name,
+                version,
+                reqid,
+            )
+            mf_part_list = None
+            self.mf_cache.pop((obj_name, version), None)
+        except ContentDrained as exc:
+            self.logger.info(
+                "Cannot load %s version %s: drained (reqid=%s)",
+                obj_name,
+                version,
+                reqid,
+            )
+            mf_part_list = exc
+            self.mf_cache[(obj_name, version)] = mf_part_list
         except Exception as exc:
             self.logger.warning(
                 "Failed to load %s version %s: %s (reqid=%s)",
@@ -231,10 +259,45 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 exc,
                 reqid,
             )
+            mf_part_list = exc
+            self.mf_cache[(obj_name, version)] = mf_part_list
         return mf_part_list
 
+    def manifest_is_unreadable(self, mf_name, mf_version):
+        """
+        Tell if the specified manifest can be read or returns an error.
+
+        This call will only use the cache.
+        """
+        mf_part_list = self.mf_cache.get((mf_name, mf_version), None)
+        return isinstance(mf_part_list, Exception)
+
+    def manifest_has_upload_id(
+        self, mf_name, mf_version, upload_id, reqid=None,
+    ):
+        """
+        Tell if the manifest has the specified upload ID.
+
+        This works also for drained manifests.
+        """
+        try:
+            meta = self.api.object_get_properties(
+                self.account, self.bucket, mf_name,
+                version=mf_version, reqid=reqid, force_master=True,
+            )
+            return meta["properties"].get(UPLOAD_ID_KEY) == upload_id
+        except NoSuchObject:
+            pass
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to get properties of %s version %s: %s (reqid=%s)",
+                mf_name, mf_version, exc, reqid,
+            )
+        return False
+
     def part_in_manifest(
-        self, part_name, mf_name, mf_version, reqid=None, use_cache=True
+        self, part_name, mf_name, mf_version, upload_id,
+        reqid=None, use_cache=True,
     ):
         """
         Check that part_name appears in the specified manifest.
@@ -242,7 +305,11 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         mf_part_list = self.get_manifest(
             mf_name, mf_version, reqid=reqid, use_cache=use_cache
         )
-        if not mf_part_list:
+        if isinstance(mf_part_list, ContentDrained):
+            return self.manifest_has_upload_id(
+                mf_name, mf_version, upload_id, reqid=reqid,
+            )
+        if not mf_part_list or isinstance(mf_part_list, Exception):
             return False
         for part_descr in mf_part_list:
             _, _plus_seg, name = part_descr["name"].split("/", 2)
@@ -328,26 +395,40 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 # Look in all manifests if the part belongs to one
                 for mf_version in mf_versions:
                     if self.part_in_manifest(
-                        obj_part_name, obj_name, mf_version, reqid=reqid
+                        obj_part_name, obj_name, mf_version, upload_id, reqid=reqid
                     ):
                         break
                 # No manifest referencing the part has been found
                 else:
-                    needs_cleaning = True
-                    if obj_key not in self.to_be_deleted and not self.double_check:
-                        self.logger.warning(
-                            "%s does not appear in any MPU manifest, "
-                            "orphan part? (reqid=%s)",
-                            obj_part_name,
-                            reqid,
-                        )
-                        delete_callback(obj_key[0], obj_key[1], reqid)
-                        self.to_be_deleted.add(obj_key)
+                    for mf_version in mf_versions:
+                        # We did not find the part in any manifest, and did not
+                        # match the upload ID with any drained manifest. If
+                        # there was an error during the process, consider we
+                        # don't have a definitive answer, don't delete anything
+                        if self.manifest_is_unreadable(obj_name, mf_version):
+                            self.logger.info(
+                                "%s may be in a currently unreadable manifest, "
+                                "keep it (reqid=%s)",
+                                obj_part_name,
+                                reqid,
+                            )
+                            break
+                    else:
+                        needs_cleaning = True
+                        if obj_key not in self.to_be_deleted and not self.double_check:
+                            self.logger.warning(
+                                "%s does not appear in any MPU manifest, "
+                                "orphan part? (reqid=%s)",
+                                obj_part_name,
+                                reqid,
+                            )
+                            delete_callback(obj_key[0], obj_key[1], reqid)
+                            self.to_be_deleted.add(obj_key)
         elif mf_versions and marker_meta:
             # Look in all manifests if the part belongs to one
             for mf_version in mf_versions:
                 if self.part_in_manifest(
-                    obj_part_name, obj_name, mf_version, reqid=reqid
+                    obj_part_name, obj_name, mf_version, upload_id, reqid=reqid
                 ):
                     obj_key = (f"{self.bucket}+segments", marker_meta["name"])
                     needs_cleaning = True
@@ -472,6 +553,9 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         for obj in self.list_all_parts(marker=self.current_marker):
             reqid = self.reqid()
             obj_part_name = obj["name"]
+            # Should we accept drained manifests only for drained parts?
+            if obj["chunk_method"] == "drained":
+                self.logger.debug("%s is drained", obj_part_name)
             needs_cleaning = self.check_part(
                 obj_part_name, delete_callback, reqid=reqid
             )

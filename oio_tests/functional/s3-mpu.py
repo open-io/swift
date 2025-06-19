@@ -181,6 +181,15 @@ class TestS3Mpu(unittest.TestCase):
                         f"Delete or flush bucket={bucket_name} failed: {exc}. "
                         "Try to force delete the bucket={bucket_name}"
                     )
+                    for ext in ("", "+segments"):
+                        run_openiocli(
+                            "container",
+                            "flush",
+                            "--all-versions",
+                            f"{self.bucket}{ext}",
+                            account="AUTH_demo",
+                            json_format=False,
+                        )
                     run_awscli_s3('rb', '--force', bucket=self.bucket)
             except ClientError as exc:
                 err_code = exc.response.get("Error", {}).get("Code")
@@ -1217,6 +1226,24 @@ class TestS3Mpu(unittest.TestCase):
         )
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0]["Name"].rsplit("/", 2)[0], path1)
+
+    def test_oio_mpu_checker_drained(self):
+        """Test oio-mpu-checker on a drained (archived) MPU"""
+        path0 = "will-be-drained-" + random_str(3)
+        self._create_complete_mpu(path0)
+        run_openiocli(
+            'object',
+            'drain',
+            self.bucket,
+            path0,
+            account=OIO_ACCOUNT,
+            json_format=False,
+        )
+        # Check nothing is cleaned (manifest is drained)
+        cmd = ["oio-mpu-checker", "-v", "--action", "delete", OIO_NS, self.bucket]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, encoding="utf-8")
+        lines = out.splitlines()
+        self.assertIn("0 parts cleaned", lines[-1])
 
 
 if __name__ == "__main__":
