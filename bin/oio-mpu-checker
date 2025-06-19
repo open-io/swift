@@ -18,6 +18,8 @@ import argparse
 import base64
 import time
 
+from os import getenv
+
 from collections import Counter
 
 from oio.api.object_storage import ObjectStorageApi
@@ -35,7 +37,13 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
     """Find stray MPU parts, print cleanup commands on stdout"""
 
     def __init__(
-        self, namespace, bucket, account=None, double_check=False, logger=None
+        self,
+        namespace,
+        bucket,
+        account=None,
+        double_check=False,
+        logger=None,
+        tmpdir="/tmp",
     ):
         ns_conf = load_namespace_conf(namespace)
         self.bucket = bucket
@@ -46,6 +54,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         self.to_be_checked_again = []
         self._nb_saved_to_be_checked_again = 0
         self.to_be_deleted = set()
+        self.tmpdir = tmpdir
 
         # string -> list of object versions
         # (string, int) -> list of MPU parts (parsed from manifest)
@@ -298,7 +307,6 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 reqid,
             )
         elif part_number and not marker_meta:
-            escaped_obj = obj_part_name.translate(SHELL_ESCAPES)
             obj_key = (f"{self.bucket}+segments", obj_part_name)
             if not mf_versions and not use_cache:
                 # Opportunistically look for a manifest
@@ -341,7 +349,6 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 if self.part_in_manifest(
                     obj_part_name, obj_name, mf_version, reqid=reqid
                 ):
-                    escaped_marker = marker_meta["name"].translate(SHELL_ESCAPES)
                     obj_key = (f"{self.bucket}+segments", marker_meta["name"])
                     needs_cleaning = True
                     if obj_key not in self.to_be_deleted and not self.double_check:
@@ -450,7 +457,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
 
     def run(self, delete_callback):
         # Init and/or load self.current_marker
-        self.init_current_marker("/tmp", 1)
+        self.init_current_marker(self.tmpdir, 1)
         if self.current_marker:
             self.logger.info(
                 "--- Marker loaded from %s: %s ---",
@@ -529,13 +536,13 @@ def make_arg_parser():
 Find stray MPU parts, print cleanup commands on stdout
 (or delete them directly).
 
-A marker will be written in /tmp/markers/account_bucket, so the tool can be
+A marker will be written in $TMPDIR/markers/account_bucket, so the tool can be
 stopped and retarted. Delete the marker if you want to restart from the
 beginning.
 
 The tool can run in single pass mode or in double pass mode (--double-check).
 In double pass mode, a list of objects to check again will be written in
-/tmp/markers/account_bucket.parts (in addition to the marker file).
+$TMPDIR/markers/account_bucket.parts (in addition to the marker file).
 This list is automatically loaded when the tool starts.
 
 When the tool has finished the two passes, the marker is reset, but the list of
@@ -572,6 +579,11 @@ parts which have been checked two times remains (in case you want to check it).
         ),
     )
     parser.add_argument(
+        "--tmpdir",
+        default=getenv("TMPDIR", "/tmp"),
+        help="Temporary dir for markers. Will use $TMPDIR or /tmp if not set",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -598,6 +610,7 @@ if __name__ == "__main__":
         account=args.account,
         logger=LOGGER,
         double_check=args.double_check,
+        tmpdir=args.tmpdir,
     )
     callbacks = {
         "print": checker.print_delete_command,
