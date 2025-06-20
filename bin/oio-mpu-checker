@@ -88,15 +88,18 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
     def reqid():
         return request_id("mpu-check-")
 
-    @staticmethod
-    def micros_to_date(microseconds):
+    def micros_to_date(self, microseconds):
         """Convert microseconds (str or int) to a human-readable date"""
-        micros = int(microseconds)
-        date = (
-            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(micros / 1000000.0))
-            + f".{micros % 1000000:06d}"
-        )
-        return date
+        try:
+            micros = int(microseconds)
+            date = (
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(micros / 1000000.0))
+                + f".{micros % 1000000:06d}"
+            )
+            return date
+        except (TypeError, ValueError) as exc:
+            self.logger.debug("Cannot decode %s into a date: %s", microseconds, exc)
+            return f"timestamp={microseconds}"
 
     def check_upload_id(self, upload_id):
         if len(upload_id) != 48:
@@ -379,7 +382,8 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 # Opportunistically look for a manifest
                 # which does not appear in listings.
                 latest = self.head_manifest(obj_name, reqid=reqid)
-                mf_versions = [latest]
+                if latest is not None:
+                    mf_versions = [latest]
             if not mf_versions:
                 self.logger.warning(
                     "%s has neither MPU marker nor manifest, "
