@@ -41,6 +41,15 @@ test_create_bucket() {
   ${AWSA1ADM} s3 mb s3://${SHARED_BUCKET}
 }
 
+test_list_buckets() {
+  OUT=$(${AWSA1ADM} s3 ls | awk '{ print $3 }' | tr '\n' ' ')
+  [ "$OUT" == "$SHARED_BUCKET " ]
+  OUT=$(${AWSA1U1} s3 ls |& tail -n 1)
+  [ -z "$OUT" ]
+  OUT=$(${AWSA1U2} s3 ls |& tail -n 1)
+  [ -z "$OUT" ]
+}
+
 test_create_object() {
   # user1 cannot create any object in the shared bucket
   # (not the owner and no IAM rule to create object 'magic')
@@ -217,6 +226,7 @@ test_clean() {
 }
 
 test_create_bucket
+test_list_buckets
 test_create_object
 test_intelligent_tiering
 test_clean

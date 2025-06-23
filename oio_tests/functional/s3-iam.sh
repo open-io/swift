@@ -53,9 +53,9 @@ test_create_bucket() {
 test_list_buckets() {
   OUT=$(${AWSA1ADM} s3 ls | awk '{ print $3 }' | tr '\n' ' ')
   [ "$OUT" == "$COMPANY_BUCKET $SHARED_BUCKET $A1U1_BUCKET ${VERSIONS_BUCKET} " ]
-  OUT=$(${AWSA1U2} s3 ls |& tail -n 1)
-  [ -z "$OUT" ]
   OUT=$(${AWSA1U1} s3 ls |& tail -n 1)
+  [ -z "$OUT" ]
+  OUT=$(${AWSA1U2} s3 ls |& tail -n 1)
   [ -z "$OUT" ]
   OUT=$(${AWSA2ADM} s3 ls |& tail -n 1)
   [ -z "$OUT" ]

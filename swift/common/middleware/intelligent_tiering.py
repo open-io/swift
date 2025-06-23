@@ -637,9 +637,14 @@ class IntelligentTieringMiddleware(object):
         Then call the IAM callback from IAM middleware and add those generated
         rules.
         """
-        info = get_intelligent_tiering_info(self.app, req, read_caches=True)
-        bucket_status = info["status"]
-        it_rules = self._iam_generate_rules(bucket_status, req.container_name)
+        if req.container_name:
+            info = get_intelligent_tiering_info(
+                self.app, req, read_caches=True)
+            bucket_status = info["status"]
+            it_rules = self._iam_generate_rules(
+                bucket_status, req.container_name)
+        else:
+            it_rules = {'Statement': []}
 
         matcher = None
         if tiering_callback:
