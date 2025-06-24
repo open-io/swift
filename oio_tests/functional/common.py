@@ -114,6 +114,11 @@ def run_openiocli(*params, namespace=None, account=None, json_format=True):
     return json.loads(data) if data else data
 
 
+def run_with_coverage(cmd, context="oio_tests", **kwargs):
+    cov_cmd = ["coverage", "run", "--context", context, "-p"]
+    return subprocess.check_output(cov_cmd + cmd, **kwargs)
+
+
 def run_rclone(*params, log_level="INFO", retries=0):
     cmd = ('rclone',)
     cmd += params

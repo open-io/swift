@@ -51,6 +51,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         double_check=False,
         logger=None,
         tmpdir="/tmp",
+        cache_size=100,
     ):
         ns_conf = load_namespace_conf(namespace)
         self.bucket = bucket
@@ -65,7 +66,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
 
         # string -> list of object versions
         # (string, int) -> list of MPU parts (parsed from manifest)
-        self.mf_cache = CacheDict(100)
+        self.mf_cache = CacheDict(cache_size)
 
         bucket_info = self.api.bucket.bucket_show(
             self.bucket,
@@ -148,20 +149,28 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             if mf_versions is not None:
                 return mf_versions
 
-        resp = self.api.object_list(
-            self.account,
-            self.bucket,
+        # We used to do a regular listing with a limit of 10000, but found out
+        # that some customers had more than 10000 versions of the same MPU...
+        resp = depaginate(
+            self.api.object_list,
+            listing_key=lambda x: x["objects"],
+            marker_key=lambda x: x.get("next_marker"),
+            version_marker_key=lambda x: x.get("next_version_marker"),
+            truncated_key=lambda x: x["truncated"],
+            account=self.account,
+            container=self.bucket,
             prefix=obj_name,
             end_marker=obj_name + " ",
             versions=True,
-            limit=10000,
             reqid=reqid,
             force_master=True,
         )
         mf_versions = [
             mf["version"]
-            for mf in resp["objects"]
+            for mf in resp
             if mf["name"] == obj_name and not mf["deleted"]
+            # "swift_bytes" tells it's an SLO (swift name for MPU)
+            and "swift_bytes" in mf.get("mime_type", "")
         ]
         mf_versions.sort()
         self.mf_cache[obj_name] = mf_versions
