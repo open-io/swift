@@ -48,7 +48,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             default_log_msg_template=(
                 '{client_ip} {remote_addr} {requester} {end_time.datetime} '
                 '{method} {path} {protocol} {status_int} {operation} '
-                '{error_code} {error_detail} {backend_error} '
+                '{error_code} {error_detail} {backend_error} {known_error} '
                 '{backend_service_id} {referer} {user_agent} {auth_token} '
                 '{signature_version} {authentication_type} {aws_chunked} '
                 '{bytes_recvd} {bytes_sent} {client_etag} {transaction_id} '
@@ -82,16 +82,19 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             '{access_point_arn}')
 
     # customize statsd metric name for s3 requests
-    def statsd_metric_name(self, req, status_int, method):
+    def statsd_metric_name(self, req, status_int, method, known_error=None):
         s3_info = req.environ.get('s3api.info', {})
         operation = s3_info.get('operation', f"REST.{method}.OTHER")
         # ensure to always have a 3 element operation
         # ex: complete the SOAP.ListAllBuckets operation
         if operation.count(".") == 1:
             operation = f"{operation}.OTHER"
-        error_code = s3_info.get(
-            'error_code',
-            'InternalError' if status_int == 500 else "OK")
+        if known_error:
+            error_code = known_error
+        else:
+            error_code = s3_info.get(
+                'error_code',
+                'InternalError' if status_int == 500 else "OK")
         return f"s3.{operation}.{status_int}.{error_code}"
 
     # don't send policy statsd for s3 requests

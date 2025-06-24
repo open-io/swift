@@ -75,6 +75,7 @@ bandwidth usage will want to only sum up logs with no swift.source.
 
 import os
 import re
+import string
 import time
 
 from collections import defaultdict
@@ -134,6 +135,8 @@ class ProxyLoggingMiddleware(object):
         )
         self.log_msg_template = conf.get(
             'log_msg_template', default_log_msg_template)
+        # Extract the fields in log message format
+        self.log_msg_templ_fields = self._extract_log_msg_fields()
         # The salt is only used in StrAnonymizer. This class requires bytes,
         # convert it now to prevent useless convertion later.
         self.anonymization_method = conf.get('log_anonymization_method', 'md5')
@@ -172,6 +175,8 @@ class ProxyLoggingMiddleware(object):
             conf.get('reveal_sensitive_prefix', 16))
         self.check_log_msg_template_validity()
 
+        self.known_error_filters = self._build_known_error_filters(conf)
+
         self.perfdata = config_true_value(conf.get('perfdata', 'false'))
         self.perfdata_user_agents = None
         if self.perfdata:
@@ -183,6 +188,75 @@ class ProxyLoggingMiddleware(object):
                 self.logger.warn('No user-agent pattern defined, '
                                  'performance data will be logged '
                                  'for every request.')
+
+    def _extract_log_msg_fields(self):
+        """Extract fields in the log message format"""
+        log_msg_templ_fields = []
+        log_msg_templ_str_formatter = string.Formatter().parse(
+            self.log_msg_template)
+        for _, field_name, _, _ in log_msg_templ_str_formatter:
+            if field_name:
+                log_msg_templ_fields.append(field_name)
+        return log_msg_templ_fields
+
+    def _build_known_error_filters(self, conf):
+        known_error_filters = []
+        for reason, known_error_conf in (
+            (k.removeprefix("known_error_"), v)
+            for k, v in conf.items()
+            if k.startswith("known_error_")
+        ):
+            known_error_filter = self._build_known_error_filter(
+                reason, known_error_conf)
+            if known_error_filter:
+                known_error_filters.append(known_error_filter)
+        return known_error_filters
+
+    def _build_known_error_filter(self, reason, known_error_conf):
+        known_error_filter = {}
+        for field in known_error_conf.split(';'):
+            field, expected_value = field.split('=', 1)
+            field = field.strip()
+            if field not in self.log_msg_templ_fields:
+                self.logger.warning(
+                    f"Field {field} not defined in log message format. "
+                    f"Ignore known error {reason}: {known_error_conf}"
+                )
+                return None
+            expected_value = expected_value.strip()
+            if expected_value.startswith("regex:"):
+                expected_value = expected_value.removeprefix("regex:")
+                if expected_value:
+                    try:
+                        expected_value = re.compile(expected_value)
+                    except Exception:
+                        self.logger.warning(
+                            'Ignore known error filter: malformed regex (%s)',
+                            known_error_conf,
+                        )
+                        return None
+            if field and expected_value:
+                known_error_filter[field] = expected_value
+            else:
+                self.logger.warning(
+                    'Ignore known error filter: empty fied or value (%s)',
+                    known_error_conf,
+                )
+                return None
+        # Normalize the reason
+        reason = re.sub(r'[^0-9a-zA-Z_\-]', '', reason)
+        if not known_error_filter:
+            self.logger.warning(
+                'Ignore known error filter: missing filter (%s)',
+                known_error_conf,
+            )
+            return None
+        self.logger.info(
+            'Register known error filter %s (%s)',
+            reason,
+            known_error_filter,
+        )
+        return reason, known_error_filter
 
     def _enrich_replacements(self, req, status_int, resp_headers):
         """
@@ -251,6 +325,7 @@ class ProxyLoggingMiddleware(object):
             'slo_time': defaultdict(lambda: '-'),
         }
         replacements.update(self._enrich_replacements(None, None, None))
+        replacements['known_error'] = ""
         try:
             self.log_formatter.format(self.log_msg_template, **replacements)
         except Exception as e:
@@ -390,12 +465,18 @@ class ProxyLoggingMiddleware(object):
         }
         replacements.update(self._enrich_replacements(
             req, status_int, resp_headers))
+        if status_int >= 400:
+            known_error = self.get_known_error(replacements)
+        else:
+            known_error = None
+        replacements['known_error'] = known_error
         self.access_logger.info(
             self.log_formatter.format(self.log_msg_template,
                                       **replacements))
 
         # Log timing and bytes-transferred data to StatsD
-        metric_name = self.statsd_metric_name(req, status_int, method)
+        metric_name = self.statsd_metric_name(
+            req, status_int, method, known_error)
         metric_name_policy = self.statsd_metric_name_policy(
             req, status_int, method, replacements.get('policy_index'))
         # Only log data for valid controllers (or SOS) to keep the metric count
@@ -413,6 +494,23 @@ class ProxyLoggingMiddleware(object):
             self.access_logger.update_stats(metric_name_policy + '.xfer',
                                             bytes_received + bytes_sent)
 
+    def get_known_error(self, replacements):
+        for reason, known_error_filter in self.known_error_filters:
+            for field, expected_value in known_error_filter.items():
+                value = replacements.get(field)
+                if value is None:
+                    value = "-"
+                else:
+                    value = str(value)
+                if isinstance(expected_value, re.Pattern):
+                    if not expected_value.fullmatch(value):
+                        break
+                elif value != expected_value:
+                    break
+            else:
+                return reason
+        return None
+
     def get_metric_name_type(self, req):
         swift_path = req.environ.get('swift.backend_path', req.path)
         if swift_path.startswith('/v1/'):
@@ -425,7 +523,7 @@ class ProxyLoggingMiddleware(object):
             stat_type = req.environ.get('swift.source')
         return stat_type
 
-    def statsd_metric_name(self, req, status_int, method):
+    def statsd_metric_name(self, req, status_int, method, _known_error=None):
         stat_type = self.get_metric_name_type(req)
         if stat_type is None:
             return None
