@@ -173,10 +173,13 @@ class AccountController(SwiftAccountController):
         info = None
 
         if req.environ.get('swift.source') == 'S3':
+            # Until redirects to the correct bucket region are managed,
+            # list only buckets in the request region
             info = self.app.storage.account.bucket_list(
                 self.account_name, limit=limit, marker=marker,
                 end_marker=end_marker, prefix=prefix,
-                delimiter=delimiter, reqid=self.trans_id)
+                delimiter=delimiter, reqid=self.trans_id,
+                region=self.app.storage.account.region)
             listing = info.pop('listing')
             return account_listing_bucket_response(req, listing=listing)
 
