@@ -36,13 +36,11 @@ jobs:
           echo "export PIP_INDEX_URL=https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/" >> $HOME/swift-env.sh
           echo "export PYTHONPATH=$(find /opt/${PYTHON_PACKAGE}/lib/ -name 'site-packages')" >> $HOME/swift-env.sh
           source $HOME/swift-env.sh
-          PIP_EXTRA_INDEX_URL="https://${CDS_INTEGRATION_ARTIFACT_MANAGER_TOKEN_NAME}:${CDS_INTEGRATION_ARTIFACT_MANAGER_TOKEN}@artifactory.ovhcloud.tools/artifactory/api/pypi/pypi-remote/simple"
           mkdir /tmp/oio
           /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
           cat << EOF > $HOME/swiftenv/pip.conf
           [global]
           index-url = https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/
-          extra-index-url = ${PIP_EXTRA_INDEX_URL}
           [install]
           progress-bar = off
           EOF
