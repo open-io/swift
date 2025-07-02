@@ -367,9 +367,10 @@ class ProxyLoggingMiddleware(object):
         # Some headers and parameters are obfuscated
         env = env.copy()
         req = Request(env)
-        self.log_request(req, None, None, None, start_time, None)
+        self.log_request(req, None, 0, 0, start_time, None)
 
-    def log_request(self, req, status_int, bytes_received, bytes_sent,
+    def log_request(self, req, status_int: int | None,
+                    bytes_received: int, bytes_sent: int,
                     start_time, end_time, resp_headers=None, ttfb=None,
                     wire_status_int=None):
         """
@@ -456,7 +457,7 @@ class ProxyLoggingMiddleware(object):
             'log_info':
                 ','.join(req.environ.get('swift.log_info', '')),
             # Same precision as request_time
-            'ttfb': ('%.4f' % ttfb) if isinstance(ttfb, float) else ttfb,
+            'ttfb': f"{ttfb:.4f}" if isinstance(ttfb, float) else ttfb,
             'pid': self.pid,
             'wire_status_int': wire_status_int or status_int,
             'perfdata': perfdata_to_str(req.environ.get('swift.perfdata')),
@@ -465,7 +466,7 @@ class ProxyLoggingMiddleware(object):
         }
         replacements.update(self._enrich_replacements(
             req, status_int, resp_headers))
-        if status_int >= 400:
+        if isinstance(status_int, int) and status_int >= 400:
             known_error = self.get_known_error(replacements)
         else:
             known_error = None
@@ -577,7 +578,10 @@ class ProxyLoggingMiddleware(object):
         start_time = time.time()
 
         if self.pre_log:
-            self.pre_log_request(env, start_time)
+            try:
+                self.pre_log_request(env, start_time)
+            except Exception:
+                self.logger.exception("Failed to pre_log")
 
         def my_start_response(status, headers, exc_info=None):
             start_response_args[0] = (status, list(headers), exc_info)
