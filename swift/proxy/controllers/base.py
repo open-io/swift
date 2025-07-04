@@ -895,7 +895,7 @@ def _get_object_info(app, env, account, container, obj, swift_source=None):
     """
     Get the info about object
 
-    Note: This call bypasses auth. Success does not imply that the
+    Note: This call bypasses auth and crypto. Success does not imply that the
           request has authorization to the info.
 
     :param app: the application object
@@ -916,6 +916,8 @@ def _get_object_info(app, env, account, container, obj, swift_source=None):
     # *Always* allow reserved names for get-info requests -- it's on the
     # caller to keep the result private-ish
     req.headers['X-Backend-Allow-Reserved-Names'] = 'true'
+
+    req.environ['swift.crypto.override'] = 'true'
     resp = req.get_response(app)
     # Unlike get_account_info() and get_container_info(), we don't save
     # things in memcache, so we can store the info without network traffic,

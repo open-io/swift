@@ -207,6 +207,8 @@ class TaggingController(Controller):
         """
         Handles GET Bucket and Object tagging.
         """
+        if req.is_object_request:
+            req.environ["swift.crypto.override"] = True
         resp = req.get_response(self.app, 'HEAD',
                                 req.container_name, req.object_name)
         headers = {}
@@ -348,6 +350,8 @@ class TaggingController(Controller):
             else:
                 # Bucket tagging
                 req.headers[BUCKET_TAGGING_HEADER] = body
+        if req.is_object_request:
+            req.environ["swift.crypto.override"] = True
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
         if resp.status_int == 202:
@@ -383,6 +387,8 @@ class TaggingController(Controller):
         else:
             req.headers[BUCKET_TAGGING_HEADER] = ""
 
+        if req.is_object_request:
+            req.environ["swift.crypto.override"] = True
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
         if resp.status_int == 202:

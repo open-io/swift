@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import os
 import string
 import unittest
 
@@ -378,3 +379,48 @@ class TestS3Tagging(unittest.TestCase):
         resp = self._get_bucket_tagging()
         expected_tagset = TAGSET + expected_tagset  # order matters
         self.assertListEqual(resp["TagSet"], expected_tagset)
+
+    def test_object_sses3_ssec(self):
+        # Create a bucket with SSE-S3 encryption
+        self.bucket = f"test-object-operation-object-exist-{random_str(8)}"
+        self.boto.create_bucket(Bucket=self.bucket)
+        self.boto.put_bucket_encryption(
+            Bucket=self.bucket,
+            ServerSideEncryptionConfiguration={
+                'Rules': [{
+                    'ApplyServerSideEncryptionByDefault': {
+                        'SSEAlgorithm': 'AES256'
+                    }
+                }]
+            }
+        )
+
+        # Put an object with SSE-C encryption
+        key = random_str(8)
+        customer_key = os.urandom(32)
+        user_metadata = {"key": "value"}
+        resp = self.boto.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=b"foobar",
+            Metadata=user_metadata,
+            SSECustomerKey=customer_key,
+            SSECustomerAlgorithm='AES256'
+        )
+        self._obj_to_delete.append((key, resp["VersionId"]))
+
+        self._put_object_tagging(key=key)
+        resp = self._get_object_tagging(key=key)
+        self.assertListEqual(resp["TagSet"], TAGSET)
+
+        self._delete_object_tagging(key=key)
+        resp = self._get_object_tagging(key=key)
+        self.assertListEqual(resp["TagSet"], [])
+
+        resp = self.boto.head_object(
+            Bucket=self.bucket,
+            Key=key,
+            SSECustomerKey=customer_key,
+            SSECustomerAlgorithm='AES256'
+        )
+        self.assertDictEqual(resp["Metadata"], user_metadata)
