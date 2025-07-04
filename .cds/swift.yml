@@ -13,7 +13,7 @@ workflow:
       "git.message": ""
       "git.repository": OPENIO/swift
       "git.tag": ""
-      "build_only": "false"
+      "with_build": "false"
       "clean_only": "false"
       "send_webex_notif": "false"
 
@@ -23,7 +23,7 @@ workflow:
     application: swift
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
     depends_on:
       - root
 
@@ -46,7 +46,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and (cds_manual == "true" or git_branch == "feature/oio-backend" or build_only == "true")
+        return clean_only ~= "true" and (cds_manual == "true" or with_build == "true")
 
   tests-unit:
     pipeline: swift-tests
@@ -56,7 +56,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   oio-tests-unit:
     pipeline: swift-oio-tests
@@ -66,7 +66,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   oio-tests-s3:
     pipeline: swift-oio-tests
@@ -76,7 +76,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   oio-tests-s3-basic:
     pipeline: swift-oio-tests
@@ -86,7 +86,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   oio-tests-iam:
     pipeline: swift-oio-tests
@@ -96,7 +96,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   oio-tests-cold-archive:
     pipeline: swift-oio-tests
@@ -106,7 +106,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   oio-tests-encryption:
     pipeline: swift-oio-tests
@@ -116,7 +116,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   ceph-s3-tests:
     pipeline: swift-oio-tests
@@ -126,7 +126,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
     optional: true
 
   tests-reports:
@@ -143,7 +143,7 @@ workflow:
       - oio-tests-encryption
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   clean-artifacts:
     pipeline: swift-clean-artifacts
