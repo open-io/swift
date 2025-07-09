@@ -216,8 +216,10 @@ class DecrypterObjContext(BaseDecrypterContext):
 
         :param put_keys: a dict of decryption keys used for object PUT.
         :param post_keys: a dict of decryption keys used for object POST.
-        :return: A list of headers with any encrypted headers replaced by their
-                 decrypted values.
+        :return: A tuple with:
+                 - A list of headers with any encrypted headers replaced by
+                   their decrypted values.
+                 - decoded crypto_body_meta.
         :raises HTTPInternalServerError: if any error occurs while decrypting
                                          headers
         """
@@ -239,6 +241,7 @@ class DecrypterObjContext(BaseDecrypterContext):
             etag_header = 'X-Object-Sysmeta-Crypto-Etag'
             encrypted_etag = self._response_header_value(etag_header)
             decrypted_etag = None
+            key_id = crypto_body_meta.get("key_id", {})
             if encrypted_etag and 'object' in put_keys:
                 if (is_customer_key_required
                         and not is_customer_provided_key(put_keys.get('id'))
@@ -247,16 +250,35 @@ class DecrypterObjContext(BaseDecrypterContext):
                         "SSE-C object but no key in request: not checking ETag"
                     )
                 else:
+                    key = put_keys["object"]
+                    fallback = put_keys.get("root_key_fallback", {}).\
+                        get("object")
+                    if fallback:
+                        if not key_id.get("ssec", False) and \
+                                not key_id.get("sses3", False):
+                            # If the object is not in ssec nor sses3, fallback
+                            # to root key.
+                            key = fallback
+
                     decrypted_etag = self._decrypt_header(
-                        etag_header, encrypted_etag, put_keys['object'],
-                        required=True)
+                        etag_header, encrypted_etag, key, required=True)
                     mod_hdr_pairs.append(('Etag', decrypted_etag))
 
             etag_header = get_container_update_override_key('etag')
             encrypted_etag = self._response_header_value(etag_header)
             if encrypted_etag and 'container' in put_keys:
+                key = put_keys["container"]
+                fallback = put_keys.get("root_key_fallback", {}).\
+                    get("container")
+                if fallback:
+                    if not key_id.get("ssec", False) and \
+                            not key_id.get("sses3", False):
+                        # If the object is not in ssec nor sses3, fallback
+                        # to root key.
+                        key = fallback
+
                 decrypted_etag_ct = self._decrypt_header(
-                    etag_header, encrypted_etag, put_keys['container'])
+                    etag_header, encrypted_etag, key)
 
                 # Remove any field used for Checksum Algorithm (like s3_crc32c)
                 decrypted_etag_ct = decrypted_etag_ct.split(";", 1)[0]
@@ -306,7 +328,7 @@ class DecrypterObjContext(BaseDecrypterContext):
                                   if h.lower() not in mod_hdr_names])
         except KeyError:
             self.app.logger.debug('Not able to decrypt user metadata')
-        return mod_hdr_pairs
+        return mod_hdr_pairs, crypto_body_meta
 
     def multipart_response_iter(self, resp, boundary, body_key, crypto_meta):
         """
@@ -411,7 +433,7 @@ class DecrypterObjContext(BaseDecrypterContext):
                 body='Error decrypting object',
                 content_type='text/plain')
 
-        mod_resp_headers = self.decrypt_resp_headers(
+        mod_resp_headers, crypto_body_meta = self.decrypt_resp_headers(
             put_keys, post_keys, req.environ,
         )
         # Some middlewares need to know the object is encrypted with a
@@ -427,8 +449,16 @@ class DecrypterObjContext(BaseDecrypterContext):
         if put_crypto_meta and req.method == 'GET' and \
                 is_success(self._get_status_int()):
             # 2xx response and encrypted body
-            body_key = self.get_unwrapped_key(
-                put_crypto_meta, put_keys['object'])
+            key = put_keys["object"]
+            fallback = put_keys.get("root_key_fallback", {}).get("object")
+            if fallback:
+                key_id = crypto_body_meta.get("key_id", {})
+                if not key_id.get("ssec", False) and \
+                        not key_id.get("sses3", False):
+                    # If the object is not in ssec nor sses3, fallback
+                    # to root key.
+                    key = fallback
+            body_key = self.get_unwrapped_key(put_crypto_meta, key)
             content_type, content_type_attrs = parse_content_type(
                 self._response_header_value('Content-Type'))
 

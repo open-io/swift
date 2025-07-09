@@ -348,6 +348,18 @@ class SsecKeyMasterContext(KeyMasterContext):
                     ):
                         raise
 
+        if self._keys["id"].get("sses3", False):
+            # No key were provided, so it is whether sses3 or root key.
+            # As we can't now at this point, also get info from root key if
+            # possible.
+            try:
+                self._keys["root_key_fallback"] = super().fetch_crypto_keys(
+                    *args, key_id=key_id, **kwargs)
+            except Exception:
+                # Best effort, if it is not possible, it might not be
+                # necessary and things will fail properly later.
+                pass
+
         return self._keys
 
     def handle_request(self, req, start_response):

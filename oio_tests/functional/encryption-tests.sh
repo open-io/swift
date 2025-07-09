@@ -120,14 +120,24 @@ check_crypto_resiliency() {
 check_crypto_resiliency "obj_1"
 check_crypto_resiliency "obj_2"
 
-echo "Removing it"
-${AWS} s3 rm "s3://$BUCKET/obj_1"
+echo "Enable SSES3 on bucket"
+${AWS} s3api put-bucket-encryption --bucket $BUCKET --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+# Check that the object is still accessible even with a key on the bucket
+echo "Downloading obj_1 again"
+${AWS} s3 cp "s3://$BUCKET/obj_1" ./
+
+echo "Checking downloaded object"
+echo "$OBJ_1_CHECKSUM obj_1" | md5sum -c -
 
 echo "Downloading obj_2"
 ${AWS} s3 cp "s3://$BUCKET/obj_2" ./
 
 echo "Checking downloaded object"
 echo "$OBJ_2_CHECKSUM obj_2" | md5sum -c -
+
+echo "Removing obj1"
+${AWS} s3 rm "s3://$BUCKET/obj_1"
 
 echo "Removing obj2"
 ${AWS} s3 rm "s3://$BUCKET/obj_2"
