@@ -391,15 +391,17 @@ SSEC_SRC_ALGO_ENV_KEY = header_to_environ_key(SSEC_SRC_ALGO_HEADER)
 SSEC_SRC_KEY_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_HEADER)
 SSEC_SRC_KEY_MD5_ENV_KEY = header_to_environ_key(SSEC_SRC_KEY_MD5_HEADER)
 
-MISSING_KEY_MSG = 'Requests specifying Server Side Encryption with Customer \
-provided keys must provide an appropriate secret key.'
-MISSING_ALGO_MSG = 'Requests specifying Server Side Encryption with Customer \
-provided keys must provide a valid encryption algorithm.'
-MISSING_KEY_ALGO_MSG = 'The object was stored using a form of Server Side \
-Encryption. The correct parameters must be provided to retrieve \
-the object.'
+MISSING_KEY_MSG = 'Requests specifying Server Side Encryption with Customer ' \
+    'provided keys must provide an appropriate secret key.'
+MISSING_ALGO_MSG = 'Requests specifying Server Side Encryption with ' \
+    'Customer provided keys must provide a valid encryption algorithm.'
+MISSING_KEY_ALGO_MSG = 'The object was stored using a form of Server Side ' \
+    'Encryption. The correct parameters must be provided to retrieve ' \
+    'the object.'
 INVALID_KEY = 'The secret key was invalid for the specified algorithm.'
-INVALID_MD5_VALUE = 'The MD5 hash of the secret key was improperly encoded. \
-The MD5 hash must be Base64 encoded.'
-WRONG_MD5_VALUE = 'The calculated MD5 hash of the key did not match the hash \
-that was provided.'
+INVALID_MD5_VALUE = 'The MD5 hash of the secret key was improperly encoded. ' \
+    'The MD5 hash must be Base64 encoded.'
+WRONG_KEY_MSG = 'Requests specifying Server Side Encryption with Customer ' \
+    'provided keys must provide the correct secret key.'
+WRONG_MD5_VALUE = 'The calculated MD5 hash of the key did not match the ' \
+    'hash that was provided.'

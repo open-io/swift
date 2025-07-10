@@ -23,7 +23,8 @@ from swift.common.http import is_success
 from swift.common.middleware.crypto.crypto_utils import CryptoWSGIContext, \
     is_customer_provided_key, \
     load_crypto_meta, extract_crypto_meta, Crypto, \
-    requires_customer_provided_key, MISSING_KEY_MSG, CIPHER_NAME
+    requires_customer_provided_key, CIPHER_NAME, WRONG_KEY_MSG, \
+    MISSING_KEY_ALGO_MSG
 from swift.common.exceptions import EncryptionException, UnknownSecretIdError
 from swift.common.request_helpers import get_object_transient_sysmeta, \
     get_sys_meta_prefix, get_user_meta_prefix, \
@@ -292,15 +293,16 @@ class DecrypterObjContext(BaseDecrypterContext):
                             # whereas it should have been provided by the
                             # client.
                             reason = " (no SSE-C key)"
-                            error = HTTPBadRequest(MISSING_KEY_MSG)
+                            error = HTTPBadRequest()
+                            environ["err_msg_body"] = MISSING_KEY_ALGO_MSG
                         else:
                             reason = " (invalid key from bucket)"
-                            error = HTTPInternalServerError(
-                                "Invalid key from bucket."
-                            )
+                            error = HTTPInternalServerError()
                     else:
                         reason = " (invalid key?)"
-                        error = HTTPForbidden('Invalid key')
+                        error = HTTPForbidden()
+                        if is_customer_key_required:
+                            environ["err_msg_body"] = WRONG_KEY_MSG
 
                     self.logger.warning(
                         "Failed ETag verification%s: obj=%s ct=%s",

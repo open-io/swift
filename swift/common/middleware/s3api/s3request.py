@@ -2655,6 +2655,9 @@ class S3Request(swob.Request):
             return resp
 
         err_msg = resp.body
+        # Head requests does not have any body, err_msg may be given in environ
+        if resp.environ.get("err_msg_body"):
+            err_msg = resp.environ.get("err_msg_body").encode("utf-8")
 
         if status in error_codes:
             err_resp = \
@@ -2683,7 +2686,13 @@ class S3Request(swob.Request):
                         err_msg.decode('utf8')))
             raise BadDigest()
         if status == HTTP_FORBIDDEN:
-            raise AccessDenied(reason='forbidden')
+            reason = 'forbidden'
+            if err_msg:
+                err_msg_decoded = err_msg.decode('utf-8')
+                # Do not expose html responses from body
+                if "<html>" not in err_msg_decoded:
+                    raise AccessDenied(err_msg_decoded)
+            raise AccessDenied(reason=reason)
         if status == HTTP_SERVICE_UNAVAILABLE:
             raise ServiceUnavailable(
                 headers={
@@ -3016,6 +3025,8 @@ class S3Request(swob.Request):
         info = get_object_info(sw_req.environ, app, swift_source='S3')
         if is_success(info['status']):
             return info
+        elif info['status'] == 403:
+            raise AccessDenied()
         elif info['status'] == 404:
             raise NoSuchKey(self.object_name)
         elif (info['status'] == 405

@@ -24,7 +24,7 @@ from swift.common.middleware.crypto.keymaster import KeyMaster, \
     KeyMasterContext
 from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
-    wsgi_to_str
+    wsgi_to_str, HTTPForbidden
 from swift.common.utils import config_positive_int_value, config_true_value, \
     non_negative_int, config_auto_int_value, strict_b64decode
 from swift.common import wsgi
@@ -211,7 +211,12 @@ class SsecKeyMasterContext(KeyMasterContext):
         try:
             secret = crypto_utils.decode_secret(b64_secret)
         except ValueError:
-            raise HTTPBadRequest(crypto_utils.INVALID_KEY)
+            if self.req.method == "HEAD":
+                self.req.environ["err_msg_body"] = crypto_utils.WRONG_KEY_MSG
+                raise HTTPForbidden(crypto_utils.WRONG_KEY_MSG)
+            else:
+                self.req.environ["err_msg_body"] = crypto_utils.INVALID_KEY
+                raise HTTPBadRequest(crypto_utils.INVALID_KEY)
         # Verify the encryption key md5
         if md5_secret:
             # validate given md5 value is base64 encoded

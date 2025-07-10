@@ -153,7 +153,11 @@ class ObjectController(Controller):
             Make some checking to find out if a 404 Not Found can be returned
             to the customer.
             """
-            object_info = req.get_object_info(self.app)
+            try:
+                object_info = req.get_object_info(self.app)
+            except Exception:
+                # Not able to get object info, reraise the original exception
+                raise exc
             obj_version_id = object_info.get('sysmeta', {}).get('version-id')
             if not obj_version_id:
                 raise exc

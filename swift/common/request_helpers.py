@@ -33,7 +33,8 @@ from swift.common.constraints import AUTO_CREATE_ACCOUNT_PREFIX, \
     CONTAINER_LISTING_LIMIT
 from swift.common.storage_policy import POLICIES
 from swift.common.exceptions import ListingIterError, SegmentError
-from swift.common.http import is_success, is_server_error
+from swift.common.http import is_success, is_server_error, HTTP_BAD_REQUEST, \
+    HTTP_FORBIDDEN
 from swift.common.swob import HTTPBadRequest, HTTPForbidden, \
     HTTPNotFound, HTTPPartNotFound, HTTPServiceUnavailable, \
     Range, is_chunked, multi_range_iterator, HTTPPreconditionFailed, \
@@ -605,6 +606,13 @@ class SegmentedIterable(object):
                 if not six.PY2:
                     body = body.decode('utf8')
                 encryption_error = ENCRYPTION_ERROR
+                err_msg = data_or_req.environ.get("err_msg_body")
+                if seg_resp.status_int == HTTP_BAD_REQUEST:
+                    if err_msg:
+                        raise HTTPBadRequest(err_msg)
+                if seg_resp.status_int == HTTP_FORBIDDEN:
+                    if err_msg:
+                        raise HTTPForbidden(err_msg)
                 if not encryption_error.search(body):
                     body = body if len(body) <= 60 else body[:57] + '...'
                 msg = 'While processing manifest %s, got %d (%s) ' \
