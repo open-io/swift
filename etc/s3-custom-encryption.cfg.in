@@ -114,8 +114,6 @@ use = egg:swift#ssec_keymaster
 meta_version_to_write = 3
 fallback_on_keymaster = %FALLBACK_ON_KEYMASTER%
 use_oio_kms = %OIO_KMS_ENABLED%
-# Enable encryption for these accounts only. Empty whitelist will be ignored.
-account_whitelist = %ACCOUNT_WHITELIST%
 # How long (seconds) to keep in cache the bucket secret
 # (defaults to 1 day)
 secret_cache_time = 30

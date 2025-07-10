@@ -26,7 +26,7 @@ from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.swob import Request, HTTPBadRequest, HTTPException, \
     wsgi_to_str
 from swift.common.utils import config_positive_int_value, config_true_value, \
-    non_negative_int, list_from_csv, config_auto_int_value, strict_b64decode
+    non_negative_int, config_auto_int_value, strict_b64decode
 from swift.common import wsgi
 
 from oio.account.kms_client import KmsClient
@@ -271,20 +271,17 @@ class SsecKeyMasterContext(KeyMasterContext):
 
     def _create_bucket_secret(self, force=False):
         account, bucket = self.req_account_and_bucket()
-        # Create secret if whitelist is empty OR account is whitelisted
-        if (not self.keymaster.account_whitelist
-                or account in self.keymaster.account_whitelist):
-            self.keymaster.logger.debug("Creating secret for %s/%s",
-                                        account, bucket)
-            return self.kms.create_bucket_secret(
-                bucket,
-                account=account,
-                secret_id=self.keymaster.active_secret_id,
-                secret_bytes=self.keymaster.sses3_secret_bytes,
-                force=force,
-                reqid=self.trans_id
-            )
-        return None
+        self.keymaster.logger.debug(
+            "Creating secret for %s/%s", account, bucket
+        )
+        return self.kms.create_bucket_secret(
+            bucket,
+            account=account,
+            secret_id=self.keymaster.active_secret_id,
+            secret_bytes=self.keymaster.sses3_secret_bytes,
+            force=force,
+            reqid=self.trans_id
+        )
 
     def fetch_crypto_keys(self, key_id=None, *args, **kwargs):
         """
@@ -412,7 +409,6 @@ class SsecKeyMaster(KeyMaster):
             conf.get('sses3_secret_bytes', 32))
         self.use_oio_kms = config_true_value(
             conf.get('use_oio_kms', False))
-        self.account_whitelist = list_from_csv(conf.get('account_whitelist'))
         refresh_delay = config_auto_int_value(
             conf.get("sds_endpoint_refresh_delay"), 60)
         self.kms = KmsClient({"namespace": conf["sds_namespace"]},

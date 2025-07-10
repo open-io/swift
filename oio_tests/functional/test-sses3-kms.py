@@ -34,8 +34,6 @@ from swift.common.utils import MD5_OF_EMPTY_STRING, config_true_value
 
 
 CRYPTO_META_KEY = "x-object-sysmeta-crypto-body-meta"
-BOTO_PROFILE = os.getenv("BOTO_PROFILE", "default")
-ACCOUNT_WHITELIST = os.getenv("ACCOUNT_WHITELIST")
 DEFAULT_SSE_CONF = os.getenv("DEFAULT_SSE_CONF")
 FALLBACK_ON_ROOT_SECRET = config_true_value(
     os.getenv("FALLBACK_ON_ROOT_SECRET"))
@@ -45,7 +43,7 @@ class TestSses3Kms(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.boto = get_boto3_client(profile=BOTO_PROFILE)
+        cls.boto = get_boto3_client()
 
     def setUp(self):
         super().setUp()
@@ -58,19 +56,19 @@ class TestSses3Kms(unittest.TestCase):
         for bucket in self._buckets_to_delete:
             try:
                 # FIXME(FVE): use boto
-                run_awscli_s3("rb", "--force", bucket=bucket, profile=BOTO_PROFILE)
+                run_awscli_s3("rb", "--force", bucket=bucket)
             except CliError as exc:
                 if "NoSuchBucket" not in str(exc):
                     raise
         super().tearDown()
 
     @unittest.skipIf(
-        # Skip if there is a default encryption for buckets
-        (DEFAULT_SSE_CONF
-        # Skip if there is a default encryption for everything
-         or FALLBACK_ON_ROOT_SECRET
-        # Skip if there our account is not allowed to do encryption
-         or (ACCOUNT_WHITELIST and OIO_ACCOUNT not in ACCOUNT_WHITELIST)),
+        (
+            # Skip if there is a default encryption for buckets
+            DEFAULT_SSE_CONF
+            # Skip if there is a default encryption for everything
+            or FALLBACK_ON_ROOT_SECRET
+        ),
         "Requires no default SSE configuration")
     def test_encrypted_empty_object_copy_unencrypted(self):
         """
@@ -120,12 +118,6 @@ class TestSses3Kms(unittest.TestCase):
         meta = self.oio.object_get_properties(self.account, self.bucket, key)
         # When an object is encrypted, there is extra metadata.
         raw_crypto_meta = meta["properties"].get(CRYPTO_META_KEY)
-        if ACCOUNT_WHITELIST:
-            whitelist = [x.strip() for x in ACCOUNT_WHITELIST.split(",")]
-            if self.account not in whitelist:
-                # Encryption is not enabled for this account
-                self.assertIsNone(raw_crypto_meta)
-                return
         self.assertIsNotNone(raw_crypto_meta)
         crypto_meta = json.loads(unquote_plus(raw_crypto_meta))
         # Ensure the object has been encrypted with the bucket secret, and

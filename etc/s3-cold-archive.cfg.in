@@ -232,8 +232,6 @@ fallback_on_keymaster = true
 # but new buckets won't get a key.
 # Both use_oio_kms and enable_encryption must be set to True to enable SSE-S3.
 use_oio_kms = true
-# Activate encryption for these accounts. Empty whitelist will be ignored.
-account_whitelist = 
 # How long (seconds) to keep in cache the bucket secret
 secret_cache_time = 1
 # How long (seconds) to keep in cache the fact that there is no bucket secret
