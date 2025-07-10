@@ -182,6 +182,9 @@ retry_after = 1
 #enable_beta_features = true
 enable_encryption = true
 backup_pepper = this-is-not-really-a-random-string-but-should-be-in-prod
+# Force SSE-S3 mode. Only one value is currently supported: AES256
+# If commented: root key if fallback_on_keymaster is True
+#default_sse_configuration = AES256
 
 [filter:tempauth]
 use = egg:swift#tempauth

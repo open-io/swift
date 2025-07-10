@@ -3,6 +3,10 @@
 source "$(pwd)"/"$(dirname "$0")"/common.sh
 
 # This script expects a swift gateway with OIO's custom encryption middleware.
+# SSEC tests will be performed, tests should be OK with or without SSES3
+# activated by default.
+# If SSES3 is enabled by default, DEFAULT_SSE_CONF should be set in the
+# environment.
 
 export OIO_NS="${OIO_NS:-OPENIO}"
 # We suppose the gateway is using tempauth and the user is "demo:demo"
@@ -16,6 +20,7 @@ MISSING_ALGO_MSG="Requests specifying Server Side Encryption with Customer provi
 MISSING_KEY_ALGO_MSG="The object was stored using a form of Server Side Encryption. The correct parameters must be provided to retrieve the object."
 INVALID_KEY="The secret key was invalid for the specified algorithm."
 INVALID_MD5_VALUE="The MD5 hash of the secret key was improperly encoded. The MD5 hash must be Base64 encoded."
+WRONG_KEY_VALUE="Requests specifying Server Side Encryption with Customer provided keys must provide the correct secret key"
 WRONG_MD5_VALUE="The calculated MD5 hash of the key did not match the hash that was provided."
 
 # Do not store the binary secret in a bash variable: it may contain '\0' bytes
@@ -28,11 +33,11 @@ rm -f "$GENERATED_SECRET"
 
 PORT=${PORT:-5000}
 AWS="aws --endpoint-url http://${STORAGE_DOMAIN}:${PORT} --no-verify-ssl"
-ENC_OPTS="--sse-c ${ALGO} --sse-c-key $SECRET"
-ENC_OPTS_b64="--sse-customer-key YWJjZGVmMDEyMzQ1Njc4OUFCQ0RFRjAxMjM0NTY3ODk= --sse-customer-algorithm AES256 --sse-customer-key-md5 HJEY8ELYiHY/RlFGL4qvng=="
-ENC_OPTS_EXT="--sse-customer-algorithm ${ALGO} --sse-customer-key $SECRET"
-COPY_ENC_OPTS_EXT="--copy-source-sse-customer-algorithm ${ALGO} --copy-source-sse-customer-key $SECRET"
-ENC_OPTS_BIS="--sse-customer-key ${ENCKEY}  --sse-customer-algorithm ${ALGO}"
+ENC_OPTS="--sse-c ${ALGO} --sse-c-key ${SECRET}"
+ENC_OPTS_b64="--sse-customer-key YWJjZGVmMDEyMzQ1Njc4OUFCQ0RFRjAxMjM0NTY3ODk= --sse-customer-algorithm ${ALGO} --sse-customer-key-md5 HJEY8ELYiHY/RlFGL4qvng=="
+ENC_OPTS_EXT="--sse-customer-algorithm ${ALGO} --sse-customer-key ${SECRET}"
+COPY_ENC_OPTS_EXT="--copy-source-sse-customer-algorithm ${ALGO} --copy-source-sse-customer-key ${SECRET}"
+ENC_OPTS_BIS="--sse-customer-key ${ENCKEY} --sse-customer-algorithm ${ALGO}"
 
 BUCKET=bucket-$RANDOM
 ETAG_REGEX='s/(.*ETag.*)([[:xdigit:]]{32})(.*)/\2/p'
@@ -41,7 +46,7 @@ WORKDIR=$(mktemp -d -t encryption-tests-XXXX)
 OBJ_1_SRC="/etc/magic"
 OBJ_2_SRC="${WORKDIR}/bigfile_src"
 OBJ_3_SRC="${WORKDIR}/empty_file"
-dd if=/dev/urandom of="${OBJ_2_SRC}" bs=1k count=20480
+dd if=/dev/urandom of="${OBJ_2_SRC}" bs=1k count=6789
 touch "${OBJ_3_SRC}"
 OBJ_1_CHECKSUM=$(md5sum "${OBJ_1_SRC}" | cut -d ' ' -f 1)
 OBJ_2_CHECKSUM=$(md5sum "${OBJ_2_SRC}" | cut -d ' ' -f 1)
@@ -52,22 +57,23 @@ cd "${WORKDIR}"
 echo "Creating bucket ${BUCKET}"
 ${AWS} s3 mb "s3://${BUCKET}"
 
+# Note that this PUT will create a bucket secret if SSES3 is enabled by default.
 echo "Uploading ${OBJ_1_SRC}"
 ${AWS} s3 cp "${OBJ_1_SRC}" "s3://${BUCKET}/obj_1"
 
-echo "Uploading ${OBJ_1_SRC}, with encryption"
+echo "Uploading ${OBJ_1_SRC}, with SSEC"
 ${AWS} s3 cp "${OBJ_1_SRC}" "s3://${BUCKET}/obj_1_cyphered" ${ENC_OPTS}
 
 echo "Uploading a bigger file"
 ${AWS} s3 cp "${OBJ_2_SRC}" "s3://${BUCKET}/obj_2"
 
-echo "Uploading a bigger file, with encryption"
+echo "Uploading a bigger file, with SSEC"
 ${AWS} s3 cp "${OBJ_2_SRC}" "s3://${BUCKET}/obj_2_cyphered" ${ENC_OPTS}
 
-echo "Uploading a big file with encryption and metadata"
-${AWS} s3api put-object --body "${OBJ_2_SRC}" --bucket "${BUCKET}" --key "obj_2_bis_cyphered" ${ENC_OPTS_BIS} --sse-customer-key-md5 "${MD5KEY}" --metadata="test=toto"
+echo "Uploading a big file with SSEC and metadata"
+${AWS} s3api put-object --body "${OBJ_2_SRC}" --bucket "${BUCKET}" --key "obj_2_cyphered_with_metadata" ${ENC_OPTS_BIS} --sse-customer-key-md5 "${MD5KEY}" --metadata="test=toto"
 
-echo "Uploading an empty file with encryption and metadata"
+echo "Uploading an empty file with SSEC and metadata"
 ${AWS} s3api put-object --body "${OBJ_3_SRC}" --bucket "${BUCKET}" --key "obj_3_cyphered" ${ENC_OPTS_BIS} --sse-customer-key-md5 "${MD5KEY}" --metadata="test=toto"
 
 PART_SIZE=5242880  # 5 MB
@@ -160,14 +166,14 @@ check_head_with_encryption_error_messages () {
     echo "$OUT" | grep -E "Bad ?Request"
 }
 
-KEYS=("obj_2_bis_cyphered" "obj_3_cyphered" "mpu_cyphered")
+KEYS=("obj_1_cyphered" "obj_2_cyphered_with_metadata" "obj_3_cyphered" "mpu_cyphered")
 for KEY in "${KEYS[@]}"; do
     check_head_with_encryption_error_messages "${KEY}"
 done
 
 check_get_with_encryption_error_messages() {
 
-    echo "Checking message error when downloading encrypted object with wrong md5 key: $1"
+    echo "Checking message error when downloading encrypted object without md5 key: $1"
     OUT=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "$1" "${WORKDIR}/obj_3" 2>&1 | tail -n 1)
     echo "$OUT" | grep -E "$MISSING_KEY_ALGO_MSG"
 
@@ -179,9 +185,9 @@ check_get_with_encryption_error_messages() {
     OUT=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "$1" "${WORKDIR}/obj_3" --sse-customer-key "${ENCKEY}" 2>&1 | tail -n 1)
     echo "$OUT" | grep -E "$MISSING_ALGO_MSG"
 
-    echo "Checking message error when downloading encrypted object without md5 key: $1"
+    echo "Checking message error when downloading encrypted object with wrong key: $1"
     OUT=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "$1" "${WORKDIR}/obj_3" ${ENC_OPTS_BIS} 2>&1 | tail -n 1)
-    echo "$OUT" | grep -E "$INVALID_KEY"
+    echo "$OUT" | grep -E "$WRONG_KEY_VALUE"
 
     echo "Checking message error when downloading encrypted object with invalid md5 key: $1"
     OUT=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "$1" "${WORKDIR}/obj_3" ${ENC_OPTS_BIS} --sse-customer-key-md5 "AAAAAAAAA=" 2>&1 | tail -n 1)
@@ -196,8 +202,8 @@ for KEY in "${KEYS[@]}"; do
     check_get_with_encryption_error_messages "${KEY}"
 done
 
-echo "Removing obj_2_bis_cyphered and   obj_3_cyphered"
-${AWS} s3 rm "s3://${BUCKET}/obj_2_bis_cyphered"
+echo "Removing obj_2_cyphered_with_metadata and obj_3_cyphered"
+${AWS} s3 rm "s3://${BUCKET}/obj_2_cyphered_with_metadata"
 ${AWS} s3 rm "s3://${BUCKET}/obj_3_cyphered"
 ${AWS} s3 rm "s3://${BUCKET}/mpu_cyphered"
 
@@ -213,11 +219,13 @@ echo "Checking reported checksum of obj_1"
 OBJ_1_ETAG=$(${AWS} s3api head-object --bucket "${BUCKET}" --key "obj_1" | sed -n -E -e "${ETAG_REGEX}")
 [ "$OBJ_1_ETAG" == "$OBJ_1_CHECKSUM" ]
 
-OBJ_1_SSE=$(${AWS} s3api head-object --bucket "${BUCKET}" --key "obj_1" | sed -n -E -e "${SSE_S3_REGEX}")
-[ "$OBJ_1_SSE" == "${ALGO}" ]
+if [ -n "$DEFAULT_SSE_CONF" ]; then
+    OBJ_1_SSE=$(${AWS} s3api head-object --bucket "${BUCKET}" --key "obj_1" | sed -n -E -e "${SSE_S3_REGEX}")
+    [ "$OBJ_1_SSE" == "${ALGO}" ]
 
-OBJ_1_SSE=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "obj_1" ./ob1_copy | sed -n -E -e "${SSE_S3_REGEX}")
-[ "$OBJ_1_SSE" == "${ALGO}" ]
+    OBJ_1_SSE=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "obj_1" ./ob1_copy | sed -n -E -e "${SSE_S3_REGEX}")
+    [ "$OBJ_1_SSE" == "${ALGO}" ]
+fi
 
 echo "Downloading it"
 ${AWS} s3 cp "s3://${BUCKET}/obj_1" ./
@@ -251,8 +259,10 @@ echo "$OBJ_1_CHECKSUM obj_1_cyphered" | md5sum -c -
 echo "Downloading same object with openio CLI"
 openio object save "${BUCKET}" "obj_1_cyphered" --file "./obj_1_cyphered.openio"
 
-echo "Checking it is different (because it is cyphered)"
-[ "$OBJ_1_CHECKSUM" != "$(md5sum ./obj_1_cyphered.openio | cut -d ' ' -f 1)" ]
+if [ -n "$DEFAULT_SSE_CONF" ]; then
+    echo "Checking it is different (because it is cyphered)"
+    [ "$OBJ_1_CHECKSUM" != "$(md5sum ./obj_1_cyphered.openio | cut -d ' ' -f 1)" ]
+fi
 
 echo "Checking its hash"
 OBJ_1_HASH=$(openio object show -f value -c hash "${BUCKET}" "obj_1_cyphered")
@@ -284,11 +294,58 @@ SECRET2="ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 # used as new key during Server Side Copy
 SECRET3="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
+
+# Empty object
+echo "Upload empty object"
+${AWS} s3 cp ${OBJ_3_SRC} s3://${BUCKET}/empty \
+    --sse-c-key "${SECRET}" --sse-c ${ALGO}
+
+echo "Download empty object without key"
+rm -f "${WORKDIR}/empty"
+OUT=$(${AWS} s3 cp "s3://${BUCKET}/empty" "${WORKDIR}/empty" 2>&1 | tail -n 1)
+echo "$OUT" | grep -E "Bad ?Request"
+if [ -f "${WORKDIR}/magic" ]; then
+    echo "(E) Read should fail with a bad key"
+    RET=1
+fi
+
+# FIXME
+# echo "Download empty object with nonmatching key"
+# rm -f "${WORKDIR}/empty"
+# OUT=$(${AWS} s3 cp "s3://${BUCKET}/empty" "${WORKDIR}/empty" \
+#   --sse-c-key "${SECRET2}" --sse-c ${ALGO} 2>&1 | tail -n 1)
+# echo "$OUT" | grep "Forbidden"
+# if [ -f "${WORKDIR}/empty" ]; then
+#     echo "(E) Invalid read, it should be forbidden (bad key)"
+#     RET=1
+# fi
+
+echo "Copy empty object to unprotected one"
+${AWS} s3 cp "s3://${BUCKET}/empty" "s3://${BUCKET}/empty_copy" \
+    --sse-c-copy-source-key "${SECRET}" --sse-c-copy-source ${ALGO}
+
+echo "Retrieve unprotected empty object"
+${AWS} s3 cp "s3://${BUCKET}/empty_copy" "${WORKDIR}/empty_copy"
+cmp "${WORKDIR}/empty_copy" "${OBJ_3_SRC}"
+
+echo "Copy empty object on bucket with a new key"
+${AWS} s3 cp "s3://${BUCKET}/empty" "s3://${BUCKET}/empty_copy2" \
+    --sse-c-copy-source-key "${SECRET}" --sse-c-copy-source ${ALGO} \
+    --sse-c-key "${SECRET3}" --sse-c ${ALGO}
+
+echo "Download copied empty object with new key"
+rm -f "${WORKDIR}/empty_copy2"
+${AWS} s3 cp "s3://${BUCKET}/empty_copy2" "${WORKDIR}/empty_copy2" \
+    --sse-c-key "${SECRET3}" --sse-c ${ALGO}
+cmp "${WORKDIR}/empty_copy2" "${OBJ_3_SRC}"
+
+
+# Small object
 echo "Upload small object"
 ${AWS} s3 cp ${OBJ_1_SRC} s3://${BUCKET}/magic \
-    --sse-c-key $SECRET --sse-c AES256
+    --sse-c-key "${SECRET}" --sse-c ${ALGO}
 
-echo "Download object without key"
+echo "Download small object without key"
 rm -f "${WORKDIR}/magic"
 OUT=$(${AWS} s3 cp "s3://${BUCKET}/magic" "${WORKDIR}/magic" 2>&1 | tail -n 1)
 echo "$OUT" | grep -E "Bad ?Request"
@@ -297,32 +354,39 @@ if [ -f "${WORKDIR}/magic" ]; then
     RET=1
 fi
 
-echo "Download object with nonmatching key"
+echo "Download small object with nonmatching key"
 rm -f "${WORKDIR}/magic"
 OUT=$(${AWS} s3 cp "s3://${BUCKET}/magic" "${WORKDIR}/magic" \
-  --sse-c-key "${SECRET2}" --sse-c AES256 2>&1 | tail -n 1)
+  --sse-c-key "${SECRET2}" --sse-c ${ALGO} 2>&1 | tail -n 1)
 echo "$OUT" | grep "Forbidden"
 if [ -f "${WORKDIR}/magic" ]; then
     echo "(E) Invalid read, it should be forbidden (bad key)"
     RET=1
 fi
 
-echo "Copy object to unprotect one"
+echo "Copy small object to unprotect one"
 ${AWS} s3 cp "s3://${BUCKET}/magic" "s3://${BUCKET}/magic_copy" \
-    --sse-c-copy-source-key "$SECRET" --sse-c-copy-source AES256
+    --sse-c-copy-source-key "${SECRET}" --sse-c-copy-source ${ALGO}
 
-echo "Retrieve unprotected object"
+echo "Retrieve unprotected small object"
 ${AWS} s3 cp "s3://${BUCKET}/magic_copy" "${WORKDIR}/magic_copy"
-if ! cmp "${WORKDIR}/magic_copy" "${OBJ_1_SRC}"; then
-    echo "(E) Invalid server-side copy, file is not same as source"
-    RET=1
-fi
+cmp "${WORKDIR}/magic_copy" "${OBJ_1_SRC}"
 
+echo "Copy small object on bucket with a new key"
+${AWS} s3 cp "s3://${BUCKET}/magic" "s3://${BUCKET}/magic_copy2" \
+    --sse-c-copy-source-key "${SECRET}" --sse-c-copy-source ${ALGO} \
+    --sse-c-key "${SECRET3}" --sse-c ${ALGO}
+
+echo "Download copied small object with new key"
+rm -f "${WORKDIR}/magic_copy2"
+${AWS} s3 cp "s3://${BUCKET}/magic_copy2" "${WORKDIR}/magic_copy2" \
+    --sse-c-key "${SECRET3}" --sse-c ${ALGO}
+cmp "${WORKDIR}/magic_copy2" "${OBJ_1_SRC}"
 
 ### SLO
 echo "Upload SLO object"
 ${AWS} s3 cp "${OBJ_2_SRC}" "s3://${BUCKET}/32M" \
-    --sse-c-key "$SECRET" --sse-c AES256
+    --sse-c-key "${SECRET}" --sse-c ${ALGO}
 
 OBJ_2_SSE=$(${AWS} s3api head-object --bucket "${BUCKET}" --key "32M" ${ENC_OPTS_b64} | jq -r '.SSECustomerAlgorithm')
 [ "$OBJ_2_SSE" == "${ALGO}" ]
@@ -332,23 +396,23 @@ OBJ_2_PART_SSE=$(${AWS} s3api head-object --bucket "${BUCKET}" --key "32M" --par
 
 echo "Download object and check Encryption field"
 OUT=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "32M" "${WORKDIR}/32M_1" \
-    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 |  jq -r '.SSECustomerAlgorithm')
+    --sse-customer-key "${SECRET}" --sse-customer-algorithm ${ALGO} |  jq -r '.SSECustomerAlgorithm')
 [ "$OUT" == "${ALGO}" ]
 
 echo "Download part and check Encryption field"
 OUT=$(${AWS} s3api get-object --bucket "${BUCKET}" --key "32M" --part-number 1 "${WORKDIR}/32M_1" \
-    --sse-customer-key "$SECRET" --sse-customer-algorithm AES256 |  jq -r '.SSECustomerAlgorithm')
+    --sse-customer-key "${SECRET}" --sse-customer-algorithm ${ALGO} |  jq -r '.SSECustomerAlgorithm')
 [ "$OUT" == "${ALGO}" ]
 
 echo "Download object with proper key"
 ${AWS} s3 cp "s3://${BUCKET}/32M" "${WORKDIR}/32M" \
-    --sse-c-key "$SECRET" --sse-c AES256
+    --sse-c-key "${SECRET}" --sse-c ${ALGO}
 cmp "${WORKDIR}/32M" "${OBJ_2_SRC}"
 
 echo "Download object with other key"
 rm -f "${WORKDIR}/32M"
 OUT=$(${AWS} s3 cp "s3://${BUCKET}/32M" "${WORKDIR}/32M" \
-    --sse-c-key "${SECRET2}" --sse-c AES256 2>&1 | tail -n 1)
+    --sse-c-key "${SECRET2}" --sse-c ${ALGO} 2>&1 | tail -n 1)
 echo "$OUT" | grep -E "AccessDenied|Forbidden"
 
 echo "Download object without key"
@@ -359,7 +423,7 @@ echo "$OUT" | grep -E "Bad ?Request"
 echo "Copy object to unciphered new object"
 rm -f "${WORKDIR}/32M_copy"
 ${AWS} s3 cp s3://${BUCKET}/32M s3://${BUCKET}/32M_copy \
-    --sse-c-copy-source-key "$SECRET" --sse-c-copy-source AES256
+    --sse-c-copy-source-key "${SECRET}" --sse-c-copy-source ${ALGO}
 
 echo "Downloading unciphered copy object"
 rm -f "${WORKDIR}/32M_copy"
@@ -372,14 +436,14 @@ else
 fi
 
 echo "Copy object on bucket with a new key"
-${AWS} s3 cp s3://${BUCKET}/32M s3://${BUCKET}/32M_copy2 \
-    --sse-c-copy-source-key "$SECRET" --sse-c-copy-source AES256 \
-    --sse-c-key "$SECRET3" --sse-c AES256
+${AWS} s3 cp "s3://${BUCKET}/32M" "s3://${BUCKET}/32M_copy2" \
+    --sse-c-copy-source-key "${SECRET}" --sse-c-copy-source ${ALGO} \
+    --sse-c-key "${SECRET3}" --sse-c ${ALGO}
 
 echo "Download copied object with new key"
 rm -f "${WORKDIR}/32M_copy2"
 ${AWS} s3 cp "s3://${BUCKET}/32M_copy2" "${WORKDIR}/32M_copy2" \
-    --sse-c-key "$SECRET3" --sse-c AES256
+    --sse-c-key "${SECRET3}" --sse-c ${ALGO}
 cmp "${WORKDIR}/32M_copy2" "${OBJ_2_SRC}"
 
 echo "Cleaning objects"
@@ -388,6 +452,10 @@ ${AWS} s3 rm "s3://${BUCKET}/32M_copy"
 ${AWS} s3 rm "s3://${BUCKET}/32M"
 ${AWS} s3 rm "s3://${BUCKET}/magic"
 ${AWS} s3 rm "s3://${BUCKET}/magic_copy"
+${AWS} s3 rm "s3://${BUCKET}/magic_copy2"
+${AWS} s3 rm "s3://${BUCKET}/empty"
+${AWS} s3 rm "s3://${BUCKET}/empty_copy"
+${AWS} s3 rm "s3://${BUCKET}/empty_copy2"
 
 echo "Removing bucket ${BUCKET}"
 ${AWS} s3 rb "s3://${BUCKET}"

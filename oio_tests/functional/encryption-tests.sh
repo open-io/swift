@@ -27,6 +27,24 @@ ${AWS} s3 mb "s3://$BUCKET"
 echo "Uploading $OBJ_1_SRC"
 ${AWS} s3 cp "${OBJ_1_SRC}" "s3://$BUCKET/obj_1"
 
+# Check bucket secret exists if it should
+SECRET_FROM_ACCOUNT=$(curl -s -X GET "http://127.0.0.1:6001/v1.0/kms/get-secret?account=${OIO_ACCOUNT}&bucket=${BUCKET}&secret_id=0")
+if [ -n "$DEFAULT_SSE_CONF" ]; then
+    echo "Checking that bucket secret exists: ${SECRET_FROM_ACCOUNT}"
+    echo "$SECRET_FROM_ACCOUNT" | grep -v "No secret for"
+else
+    echo "Checking that bucket secret does not exist: ${SECRET_FROM_ACCOUNT}"
+    echo "$SECRET_FROM_ACCOUNT" | grep "No secret for"
+    if [ -z "$DO_NOT_USE_KMS" ]; then
+        echo "Enable SSES3 on the bucket"
+        ${AWS} s3api put-bucket-encryption --bucket $BUCKET --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+    fi
+fi
+
+# Overwrite the object (to encrypt it in every cases)
+echo "Re-Uploading $OBJ_1_SRC"
+${AWS} s3 cp "${OBJ_1_SRC}" "s3://$BUCKET/obj_1"
+
 echo "Uploading a bigger file"
 ${AWS} s3 cp "${OBJ_2_SRC}" "s3://$BUCKET/obj_2"
 
@@ -120,8 +138,12 @@ check_crypto_resiliency() {
 check_crypto_resiliency "obj_1"
 check_crypto_resiliency "obj_2"
 
-echo "Enable SSES3 on bucket"
-${AWS} s3api put-bucket-encryption --bucket $BUCKET --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+if [ -z "$DO_NOT_USE_KMS" ]; then
+    # Check bucket secret exists for sure
+    SECRET_FROM_ACCOUNT=$(curl -s -X GET "http://127.0.0.1:6001/v1.0/kms/get-secret?account=${OIO_ACCOUNT}&bucket=${BUCKET}&secret_id=0")
+    echo "Checking that bucket secret exists: ${SECRET_FROM_ACCOUNT}"
+    echo "$SECRET_FROM_ACCOUNT" | grep -v "No secret for"
+fi
 
 # Check that the object is still accessible even with a key on the bucket
 echo "Downloading obj_1 again"

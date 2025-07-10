@@ -72,6 +72,7 @@ allow_anonymous_path_requests = true
 s3_only = true
 landing_page = https://www.ovhcloud.com/en/public-cloud/object-storage/
 replicator_ids = s3-replication
+enable_encryption = true
 
 [filter:tempauth]
 use = egg:swift#tempauth
@@ -98,10 +99,12 @@ use = egg:swift#symlink
 # symloop_max = 2
 
 [filter:keymaster]
-use = egg:swift#keymaster
+use = egg:swift#ssec_keymaster
 # Sets the path from which the keymaster config options should be read.
 #keymaster_config_path =
 meta_version_to_write = 3
+fallback_on_keymaster = true
+use_oio_kms = true
 
 # echo "Next-Gen Object Storage & Serverless Computing" | base64
 encryption_root_secret_0 = TmV4dC1HZW4gT2JqZWN0IFN0b3JhZ2UgJiBTZXJ2ZXJsZXNzIENvbXB1dGluZwo=
