@@ -126,7 +126,7 @@ workflow:
       - root
     conditions:
       script: |+
-        return clean_only ~= "true" and build_only ~= "true"
+        return clean_only ~= "true"
 
   ceph-s3-tests:
     pipeline: swift-oio-tests

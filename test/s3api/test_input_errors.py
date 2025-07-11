@@ -1529,31 +1529,57 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
                 'x-amz-decoded-content-length': str(len(TEST_BODY))})
         self.assertIncompleteBody(resp)
 
-    def test_no_md5_streaming_unsigned_encoding_declared_but_not_encoded(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
-            headers={
+    def _get_put_resp(
+        self, body, obj_name='test-obj', trailer=None, headers=None
+    ):
+        if not trailer:
+            trailer = 'x-amz-checksum-crc32'
+        if not headers:
+            headers = {
                 'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
                 'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+                'x-amz-decoded-content-length': str(len(TEST_BODY)),
+                'x-amz-trailer': trailer}
+        resp = self.conn.make_request(
+            self.bucket_name,
+            obj_name,
+            method='PUT',
+            body=body,
+            headers=headers)
+        return resp
+
+    def _get_put_resp_no_trailer(
+        self,
+        body,
+        content_encoding=None,
+        content_sha256=None,
+        body_to_length=None,
+        headers=None
+    ):
+        if not content_sha256:
+            content_sha256 = 'STREAMING-UNSIGNED-PAYLOAD-TRAILER'
+        if not content_encoding:
+            content_encoding = 'aws-chunked'
+        if not body_to_length:
+            body_to_length = TEST_BODY
+        if not headers:
+            headers = {
+                'x-amz-content-sha256': content_sha256,
+                'content-encoding': content_encoding,
+                'x-amz-decoded-content-length': str(len(body_to_length))}
+        return self._get_put_resp(body, headers=headers)
+
+    def test_no_md5_streaming_unsigned_encoding_declared_but_not_encoded(self):
+        resp = self._get_put_resp_no_trailer(
+            TEST_BODY, body_to_length=TEST_BODY
+        )
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -1570,16 +1596,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body += ''.join([
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_no_cr(self):
@@ -1589,16 +1606,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body += ''.join([
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_no_lf(self):
@@ -1608,16 +1616,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body += ''.join([
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_no_crlf(self):
@@ -1627,16 +1626,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body += ''.join([
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_crlf(self):
@@ -1647,16 +1637,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             '\r\n',
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertMalformedTrailer(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_extra_line_after(self):
@@ -1667,35 +1648,16 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r\n',
             '\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_extra_line_before(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])[:-2]
-        chunked_body += ''.join([
-            f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\n\r\n',
-        ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        chunked_body += (
+            f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\n\r\n').encode('ascii')
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)
 
     def test_no_md5_streaming_with_trailer_signature_extra_line_before(self):
@@ -1710,20 +1672,10 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])[:-2]
-        chunked_body += ''.join([
+        chunked_body += (
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\n\r\n'
-            'x-amz-trailer-signature:toto\r\n',
-        ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+            'x-amz-trailer-signature:toto\r\n').encode('ascii')
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)
 
     def test_no_md5_streaming_unsigned_with_trailer_extra_line_and_junk(self):
@@ -1735,16 +1687,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             '\r\n',
             '\xff\xde\xad\xbe\xef\xff',
         ]).encode('latin1')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)  # really??
 
     def test_no_md5_streaming_unsigned_with_trailer_extra_lines_after(self):
@@ -1756,32 +1699,14 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             '\r\n',
             '\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)
 
     def test_no_md5_streaming_unsigned_missing_trailer(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertMalformedTrailer(resp)
 
     def test_no_md5_streaming_unsigned_wrong_trailer(self):
@@ -1791,16 +1716,8 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body += ''.join([
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32c'})
+        resp = self._get_put_resp(
+            chunked_body, trailer='x-amz-checksum-crc32c')
         self.assertMalformedTrailer(resp)
 
     def test_no_md5_streaming_unsigned_extra_trailer(self):
@@ -1811,16 +1728,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             f'x-amz-checksum-crc32: {_crc32(TEST_BODY)}\r\n',
             'bonus: trailer\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertMalformedTrailer(resp)
 
     def test_no_md5_streaming_unsigned_extra_line_then_trailer(self):
@@ -1832,46 +1740,21 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             '\r\n',
             'bonus: trailer\r\n',
         ]).encode('ascii')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY)),
-                'x-amz-trailer': 'x-amz-checksum-crc32'})
+        resp = self._get_put_resp(chunked_body)
         self.assertOK(resp)  # ???
 
     def test_no_md5_streaming_unsigned_no_cr(self):
         chunked_body = b''.join(
             b'%x\n%s\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_no_lf(self):
         chunked_body = b''.join(
             b'%x\r%s\r' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_no_trailing_lf(self):
@@ -1879,15 +1762,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
         chunked_body = chunked_body[:-1]
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_no_trailing_crlf(self):
@@ -1895,15 +1770,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
         chunked_body = chunked_body[:-2]
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         # dafuk?
         self.assertOK(resp)
 
@@ -1918,60 +1785,28 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(chunked_body))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_no_zero_chunk(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_unsigned_zero_chunk_mid_stream(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY[:4], b'', TEST_BODY[4:], b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp, 4, len(TEST_BODY))
 
     def test_no_md5_streaming_unsigned_too_many_bytes(self):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY * 2, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(chunked_body)
         self.assertIncompleteBody(resp, 2 * len(TEST_BODY), len(TEST_BODY))
 
     def test_no_md5_streaming_unsigned_no_encoding(self):
@@ -2003,15 +1838,10 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'foo, aws-chunked, bar',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_encoding='foo, aws-chunked, bar'
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -2027,15 +1857,11 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [alt_body, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'gzip',
-                'x-amz-decoded-content-length': str(len(alt_body))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_encoding='gzip',
+            body_to_length=alt_body,
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -2055,15 +1881,11 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [alt_body, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'aws-chunked, gzip',
-                'x-amz-decoded-content-length': str(len(alt_body))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_encoding='aws-chunked, gzip',
+            body_to_length=alt_body,
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -2083,15 +1905,11 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [alt_body, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-UNSIGNED-PAYLOAD-TRAILER',
-                'content-encoding': 'gzip, aws-chunked',
-                'x-amz-decoded-content-length': str(len(alt_body))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_encoding='gzip, aws-chunked',
+            body_to_length=alt_body,
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -2110,73 +1928,62 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         chunked_body = b''.join(
             b'%x\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_sha256='STREAMING-AWS4-HMAC-SHA256-PAYLOAD'
+        )
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_signed_blank_signatures(self):
         chunked_body = b''.join(
             b'%x;chunk-signature=\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_sha256='STREAMING-AWS4-HMAC-SHA256-PAYLOAD'
+        )
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_signed_invalid_signatures(self):
         chunked_body = b''.join(
             b'%x;chunk-signature=invalid\r\n%s\r\n' % (len(chunk), chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_sha256='STREAMING-AWS4-HMAC-SHA256-PAYLOAD'
+        )
         self.assertSignatureMismatch(resp, 'AWS4-HMAC-SHA256-PAYLOAD')
 
     def test_no_md5_streaming_signed_bad_signatures(self):
         chunked_body = b''.join(
             b'%x;chunk-signature=%064x\r\n%s\r\n' % (len(chunk), 0, chunk)
             for chunk in [TEST_BODY, b''])
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=chunked_body,
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+        resp = self._get_put_resp_no_trailer(
+            chunked_body,
+            content_sha256='STREAMING-AWS4-HMAC-SHA256-PAYLOAD'
+        )
         self.assertSignatureMismatch(resp, 'AWS4-HMAC-SHA256-PAYLOAD')
 
-    def test_no_md5_streaming_signed_good_signatures(self):
-        req = self.conn.build_request(
+    def _build_put_req(self, body_length=None):
+        if not body_length:
+            body_length = str(len(TEST_BODY))
+        return self.conn.build_request(
             self.bucket_name,
             'test-obj',
             method='PUT',
             headers={
                 'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
                 'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
+                'x-amz-decoded-content-length': body_length})
+
+    def _build_signed_req(self, body_length=None):
+        req = self._build_put_req(body_length=body_length)
         prev_sig = self.conn.sign_v4(req)['signature']
         self.conn.sign_request(req)
+        return req, prev_sig
+
+    def test_no_md5_streaming_signed_good_signatures(self):
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2187,16 +1994,9 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertOK(resp)
 
     def test_no_md5_streaming_signed_ragged_chunk_lengths(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str((15 + 8 + 16) * 1024)})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req(
+            body_length=str((15 + 8 + 16) * 1024)
+        )
         body_parts = []
         for chunk in [
                 b'x' * 15 * 1024,
@@ -2212,16 +2012,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertOK(resp)
 
     def test_no_md5_streaming_signed_no_zero_chunk(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY]:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2232,16 +2023,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_signed_negative_chunk_length(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2253,16 +2035,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertNotEqual(resp.status_code, 200)
 
     def test_no_md5_streaming_signed_too_small_chunks(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(9 * 1024)})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req(body_length=str(9 * 1024))
         body_parts = []
         for chunk in [b'x' * 1024, b'y' * 4 * 1024, b'z' * 3 * 1024, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2285,16 +2058,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
                       respbody)
 
     def test_no_md5_streaming_signed_spaced_out_param(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2305,16 +2069,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertOK(resp)
 
     def test_no_md5_streaming_signed_spaced_out_param_value(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2325,16 +2080,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertOK(resp)
 
     def test_no_md5_streaming_signed_bad_final_signature(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(
@@ -2346,16 +2092,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertSignatureMismatch(resp, 'AWS4-HMAC-SHA256-PAYLOAD')
 
     def test_no_md5_streaming_signed_extra_param_before(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2367,16 +2104,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertSignatureMismatch(resp, 'AWS4-HMAC-SHA256-PAYLOAD')
 
     def test_no_md5_streaming_signed_extra_param_after(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         body_parts = []
         for chunk in [TEST_BODY, b'']:
             chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(chunk))
@@ -2388,16 +2116,7 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertIncompleteBody(resp)
 
     def test_no_md5_streaming_signed_missing_final_chunk(self):
-        req = self.conn.build_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            headers={
-                'x-amz-content-sha256': 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD',
-                'content-encoding': 'aws-chunked',
-                'x-amz-decoded-content-length': str(len(TEST_BODY))})
-        prev_sig = self.conn.sign_v4(req)['signature']
-        self.conn.sign_request(req)
+        req, prev_sig = self._build_signed_req()
         chunk_sig = self.conn.sign_chunk(req, prev_sig, _sha256(TEST_BODY))
         body = b'%x;chunk-signature=%s\r\n%s\r\n' % (
             len(TEST_BODY), chunk_sig.encode('ascii'), TEST_BODY)
@@ -2405,74 +2124,61 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
         self.assertIncompleteBody(resp)
 
     def test_invalid_md5_no_sha(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
-            headers={'content-md5': 'invalid'})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            headers={'content-md5': 'invalid'}
+        )
         self.assertMissingSHA256(resp)
 
     def test_invalid_md5_invalid_sha(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
+        resp = self._get_put_resp(
+            TEST_BODY,
             headers={'content-md5': 'invalid',
-                     'x-amz-content-sha256': 'invalid'})
+                     'x-amz-content-sha256': 'invalid'}
+        )
         # Both invalid; sha256 trumps
         self.assertInvalidSHA256(resp, 'invalid')
 
     def test_bad_md5_no_sha(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
-            headers={'content-md5': _md5(b'')})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            headers={'content-md5': _md5(b'')}
+        )
         self.assertMissingSHA256(resp)
 
     def test_bad_md5_invalid_sha(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
+        resp = self._get_put_resp(
+            TEST_BODY,
             headers={
                 'content-md5': _md5(b''),
-                'x-amz-content-sha256': 'invalid'})
+                'x-amz-content-sha256': 'invalid'}
+        )
         # Neither is right; invalid sha256 trumps
         self.assertInvalidSHA256(resp, 'invalid')
 
     def test_good_md5_no_sha(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
-            headers={'content-md5': _md5(TEST_BODY)})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            headers={'content-md5': _md5(TEST_BODY)}
+        )
         self.assertMissingSHA256(resp)
 
     def test_good_md5_invalid_sha(self):
-        resp = self.conn.make_request(
-            self.bucket_name,
-            'test-obj',
-            method='PUT',
-            body=TEST_BODY,
+        resp = self._get_put_resp(
+            TEST_BODY,
             headers={
                 'content-md5': _md5(TEST_BODY),
-                'x-amz-content-sha256': 'invalid'})
+                'x-amz-content-sha256': 'invalid'}
+        )
         self.assertInvalidSHA256(resp, 'invalid')
 
     def test_get_object_no_sha(self):
         obj_name = self.create_name('get-object')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            obj_name,
-            method='PUT',
-            body=TEST_BODY,
-            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            obj_name=obj_name,
+            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'}
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(self.bucket_name, obj_name)
@@ -2480,12 +2186,11 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
 
     def test_get_object_invalid_sha(self):
         obj_name = self.create_name('get-object')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            obj_name,
-            method='PUT',
-            body=TEST_BODY,
-            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            obj_name=obj_name,
+            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'}
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -2496,12 +2201,11 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
 
     def test_head_object_no_sha(self):
         obj_name = self.create_name('get-object')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            obj_name,
-            method='PUT',
-            body=TEST_BODY,
-            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            obj_name=obj_name,
+            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'}
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
@@ -2515,12 +2219,11 @@ class TestV4AuthHeaders(InputErrorsMixin, BaseS3TestCaseWithBucket):
 
     def test_head_object_invalid_sha(self):
         obj_name = self.create_name('get-object')
-        resp = self.conn.make_request(
-            self.bucket_name,
-            obj_name,
-            method='PUT',
-            body=TEST_BODY,
-            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'})
+        resp = self._get_put_resp(
+            TEST_BODY,
+            obj_name=obj_name,
+            headers={'x-amz-content-sha256': 'UNSIGNED-PAYLOAD'}
+        )
         self.assertOK(resp)
 
         resp = self.conn.make_request(
