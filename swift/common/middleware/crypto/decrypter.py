@@ -243,7 +243,9 @@ class DecrypterObjContext(BaseDecrypterContext):
             encrypted_etag = self._response_header_value(etag_header)
             decrypted_etag = None
             key_id = crypto_body_meta.get("key_id", {})
+
             if encrypted_etag and 'object' in put_keys:
+                # Note that we don't reach this code for an empty object
                 if (is_customer_key_required
                         and not is_customer_provided_key(put_keys.get('id'))
                         and not self.fail_if_no_key(environ)):
@@ -264,6 +266,13 @@ class DecrypterObjContext(BaseDecrypterContext):
                     decrypted_etag = self._decrypt_header(
                         etag_header, encrypted_etag, key, required=True)
                     mod_hdr_pairs.append(('Etag', decrypted_etag))
+
+            # Special check for empty objects (object is SSEC but no key
+            # provided).
+            if encrypted_etag is None and is_customer_key_required and \
+                    not is_customer_provided_key(put_keys.get('id')):
+                environ["err_msg_body"] = MISSING_KEY_ALGO_MSG
+                raise HTTPBadRequest()
 
             etag_header = get_container_update_override_key('etag')
             encrypted_etag = self._response_header_value(etag_header)
