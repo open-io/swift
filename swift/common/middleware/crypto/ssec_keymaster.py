@@ -187,7 +187,7 @@ class SsecKeyMasterContext(KeyMasterContext):
         return account, bucket
 
     def _fetch_object_secret(self):
-        if (self.req.method == 'GET' and
+        if (self.req.method in ('GET', 'HEAD') and
                 crypto_utils.SSEC_SRC_KEY_HEADER in self.req.headers):
             b64_secret = self.req.headers.get(crypto_utils.SSEC_SRC_KEY_HEADER)
             has_algo_encryption = (
