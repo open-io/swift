@@ -82,6 +82,29 @@ class TestS3Iam(TestCase):
         self.assertEqual((None, None),
                          check(forbidden, "s3:GetObject"))
 
+    def test_minimal_rule_without_sid(self):
+        rules = json.loads("""{
+            "Statement": [
+                {
+                    "Action": ["s3:GetObject"],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::customer/dede"
+                    ]
+                }
+            ],
+            "Version": "2012-10-17"
+        }
+        """)
+        rsc = IamResource("customer/dede")
+        check = IamRulesMatcher(rules)
+        # default Sid is statement-id-X
+        self.assertEqual((EXPLICIT_ALLOW, 'statement-id-0'),
+                         check(rsc, "s3:GetObject"))
+        forbidden = IamResource("customer/somefile")
+        self.assertEqual((None, None),
+                         check(forbidden, "s3:GetObject"))
+
     def test_explicit_deny(self):
         rules = json.loads("""{
             "Statement": [

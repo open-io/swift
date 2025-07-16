@@ -68,7 +68,7 @@ class BucketQuotaMiddleware(object):
         for rule in rules_to_add['Statement']:
             # Recreate the list without this specific rule
             matcher_rules = [mrule for mrule in matcher_rules
-                             if mrule['Sid'] != rule['Sid']]
+                             if mrule.get('Sid') != rule['Sid']]
             matcher_rules.append(rule)
         matcher._rules['Statement'] = matcher_rules
 
