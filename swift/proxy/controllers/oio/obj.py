@@ -171,7 +171,8 @@ class SizeCheckerReader(object):
 
 class ObjectController(BaseObjectController):
     allowed_headers = {'cache-control', 'content-disposition',
-                       'content-encoding', 'x-delete-at', 'x-object-manifest',
+                       'content-encoding', 'content-language',
+                       'x-delete-at', 'x-object-manifest',
                        'x-static-large-object'}
 
     @public

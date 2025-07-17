@@ -57,6 +57,17 @@ class _TestS3BasicTestMixin:
                 raise
         super(_TestS3BasicTestMixin, self).tearDown()
 
+    def test_content_language(self):
+        key = "content-language-" + random_str(3)
+        self.boto_client.put_object(
+            Bucket=self.bucket, Key=key, Body=b'', ContentLanguage="fr",
+        )
+        meta = self.boto_client.head_object(Bucket=self.bucket, Key=key)
+        self.assertEqual(meta["ContentLanguage"], "fr")
+
+        data = self.boto_client.get_object(Bucket=self.bucket, Key=key)
+        self.assertEqual(data["ContentLanguage"], "fr")
+
     def test_last_modified(self):
         key = "file"
         self.boto_client.put_object(Bucket=self.bucket, Key=key, Body=b'')
