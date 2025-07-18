@@ -47,6 +47,8 @@ class S3AclController(Controller):
         """
         Handles GET Bucket acl and GET Object acl.
         """
+        if req.is_object_request:
+            req.environ['swift.crypto.override'] = 'true'
         resp = req.get_response(self.app, method='HEAD')
 
         acl = resp.object_acl if req.is_object_request else resp.bucket_acl
@@ -69,6 +71,7 @@ class S3AclController(Controller):
         """
         # ACLs will be set as sysmeta
         if req.is_object_request:
+            req.environ['swift.crypto.override'] = 'true'
             replication_resolve_rules(
                 self.app,
                 req,

@@ -14,10 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import unittest
 
 from oio_tests.functional.common import CliError, random_str, run_awscli_s3, \
-    run_awscli_s3api
+    run_awscli_s3api, get_boto3_client
 
 
 A1ADM = 'default'
@@ -38,6 +39,7 @@ class TestS3Acl(unittest.TestCase):
     def setUp(self):
         super(TestS3Acl, self).setUp()
         self.bucket = f'test-s3-acl-{random_str(8)}'
+        self.boto = get_boto3_client()
         run_awscli_s3('mb', profile=A1ADM, bucket=self.bucket)
         self.objects = {}
 
@@ -119,6 +121,42 @@ class TestS3Acl(unittest.TestCase):
             profile=A2ADM, bucket=self.bucket)
         self.assertDictEqual({'Deleted': [{'Key': key}]}, res)
 
+    def test_object_sses3_ssec(self):
+        # Create a bucket with SSE-S3 encryption
+        self.boto.put_bucket_encryption(
+            Bucket=self.bucket,
+            ServerSideEncryptionConfiguration={
+                'Rules': [{
+                    'ApplyServerSideEncryptionByDefault': {
+                        'SSEAlgorithm': 'AES256'
+                    }
+                }]
+            }
+        )
+
+        # Put an object with SSE-C encryption
+        key = random_str(8)
+        customer_key = os.urandom(32)
+        user_metadata = {"key": "value"}
+        resp = self.boto.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=b"foobar",
+            Metadata=user_metadata,
+            SSECustomerKey=customer_key,
+            SSECustomerAlgorithm='AES256'
+        )
+        self.assertEqual(resp["ResponseMetadata"]["HTTPStatusCode"], 200)
+        self.objects.setdefault(A1ADM, []).append(key)
+
+        run_awscli_s3api(
+            'put-object-acl',
+            '--acl', 'public-read',
+            profile=A1ADM, bucket=self.bucket, key=key)
+
+        run_awscli_s3api(
+            'get-object-acl',
+            bucket=self.bucket, key=key)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

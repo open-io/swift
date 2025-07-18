@@ -343,6 +343,7 @@ class ObjectLockLegalHoldController(Controller):
     def GET(self, req):
         objectlock_id = 'legal-hold'
         key_filter = OBJECT_HOLD_META_PREFIX
+        req.environ['swift.crypto.override'] = 'true'
 
         info = req.get_container_info(self.app)
         info_sysmeta = info['sysmeta']
@@ -386,6 +387,7 @@ class ObjectLockLegalHoldController(Controller):
     def PUT(self, req):
         lock_id = 'legal-hold'
         body = req.xml(10000)
+        req.environ['swift.crypto.override'] = 'true'
         info = req.get_container_info(self.app)
         sysmeta_info = info.get("sysmeta", {})
         try:
@@ -454,6 +456,7 @@ class ObjectLockRetentionController(Controller):
         if 'object-lock-enabled' not in global_lock.keys() or \
            global_lock['object-lock-enabled'] == 'False':
             raise InvalidRequest(MISSING_LOCK_CONFIGURATION)
+        req.environ['swift.crypto.override'] = 'true'
         resp = req.get_response(self.app, 'HEAD', req.container_name,
                                 req.object_name)
         objectlock_id = 'retention'
@@ -487,6 +490,7 @@ class ObjectLockRetentionController(Controller):
         lock_id = 'retention'
 
         body = req.xml(10000)
+        req.environ['swift.crypto.override'] = 'true'
         info = req.get_container_info(self.app)
         sysmeta_info = info.get("sysmeta", {})
         try:
