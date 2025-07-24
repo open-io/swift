@@ -516,7 +516,9 @@ class PartController(Controller):
         def _on_success(full_resp):
             if is_server_side_copy:
                 extra = {}
-                if algo:
+                # If the part was copied from a range, the checksum
+                # is different from the source, we cannot copy it.
+                if algo and not req.range:
                     # Add the checksum from source object
                     extra = {
                         f"Checksum{algo.upper()}":
@@ -1090,9 +1092,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             SubElement(part_elem, 'Size').text = str(i['bytes'])
             if algo:
                 checksum_info = CHECKSUMS_BY_NAME[algo]
-                SubElement(
-                    part_elem, checksum_info.client_listing_name
-                ).text = i[checksum_info.listing_param_name]
+                # If the part was copied from a range of another object,
+                # we may not have the appropriate checksum.
+                if checksum_info.listing_param_name in i:
+                    SubElement(
+                        part_elem, checksum_info.client_listing_name
+                    ).text = i[checksum_info.listing_param_name]
 
         body = finalize_xml_texts(tostring(result_elem))
 

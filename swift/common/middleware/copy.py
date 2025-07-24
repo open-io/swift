@@ -114,7 +114,6 @@ greater than 5GB.
 
 """
 
-from swift.common.oio_utils import MULTIUPLOAD_SUFFIX
 from swift.common.utils import DEFAULT_YIELD_FREQUENCY, get_logger, \
     config_true_value, FileLikeIter, close_if_possible, HeartbeatMixin
 from swift.common.swob import Request, HTTPPreconditionFailed, \
@@ -382,8 +381,9 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
             # source to the sink, apart from headers that are conditionally
             # copied below and timestamps.
             checksum_headers = {}
-            # Do not exclude checksum header in case of upload part copy
-            if not bucket.endswith(MULTIUPLOAD_SUFFIX):
+            # Exclude checksum headers if we are asked for a range
+            # (the checksum would be invalid).
+            if req.range:
                 checksum_headers = _checksum_headers
             exclude_headers = {'x-static-large-object', 'x-object-manifest',
                                'etag', 'content-type', 'x-timestamp',

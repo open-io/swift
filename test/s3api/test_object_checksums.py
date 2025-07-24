@@ -3357,3 +3357,63 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         self._test_multipart_mpu_with_upload_part_copy_diff_checksum_algo(
             cs_type='FULL_OBJECT'
         )
+
+    def test_upload_part_copy_range(self):
+        # Create a large(ish) source object, with TEST_BODY as prefix
+        obj_name = self.create_name('upload-part-copy-source')
+        resp = self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=obj_name,
+            Body=TEST_BODY * 1048576,
+            ChecksumAlgorithm='CRC32C',
+        )
+        self.assertEqual(200, resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertIn('x-amz-checksum-crc32c',
+                      resp['ResponseMetadata']['HTTPHeaders'])
+
+        # Initialize an MPU
+        mpu_obj_name = self.create_name('multipart-mpu-with-upload-part-copy')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            ChecksumAlgorithm='CRC32C')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        upload_id = create_mpu_resp['UploadId']
+
+        # Upload part, copy a range
+        copy_resp = self.client.upload_part_copy(
+            Bucket=self.bucket_name,
+            Key=mpu_obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            CopySource={"Bucket": self.bucket_name, "Key": obj_name},
+            CopySourceRange=f"bytes=0-{len(TEST_BODY)-1}",
+        )
+        self.assertEqual(200, copy_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        # If there is a checksum, ensure it is the right one
+        if 'ChecksumCRC32C' in copy_resp['CopyPartResult']:
+            self.assertEqual(
+                copy_resp['CopyPartResult']['ChecksumCRC32C'],
+                TestObjectChecksumCRC32C.EXPECTED,
+            )
+
+        # List parts, do some checks
+        list_parts_resp = self.client.list_parts(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            UploadId=upload_id,
+        )
+        self.assertEqual(200, list_parts_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+
+        # Ensure the part has the right size
+        self.assertEqual(list_parts_resp['Parts'][0]['Size'], len(TEST_BODY))
+
+        # If there is a checksum, ensure it is the right one
+        if 'ChecksumCRC32C' in list_parts_resp['Parts'][0]:
+            self.assertEqual(
+                list_parts_resp['Parts'][0]['ChecksumCRC32C'],
+                TestObjectChecksumCRC32C.EXPECTED,
+            )
