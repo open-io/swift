@@ -127,6 +127,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             force_master=True,
             marker=marker,
             reqid=self.reqid(),
+            request_attempts=3,
         )
         try:
             yield next(objs_gen)
@@ -164,6 +165,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             versions=True,
             reqid=reqid,
             force_master=True,
+            request_attempts=3,
         )
         mf_versions = [
             mf["version"]
@@ -189,6 +191,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 obj,
                 reqid=reqid,
                 force_master=True,
+                request_attempts=3,
             )
         except NoSuchObject:
             return {}
@@ -200,7 +203,12 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         """
         try:
             meta = self.api.object_get_properties(
-                self.account, self.bucket, obj_name, reqid=reqid, force_master=True
+                self.account,
+                self.bucket,
+                obj_name,
+                reqid=reqid,
+                force_master=True,
+                request_attempts=3,
             )
             return meta["version"]
         except NoSuchObject:
@@ -239,6 +247,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
                 reqid=reqid,
                 # When asking for no cache, make sure to get up-to-date info
                 force_master=not use_cache,
+                request_attempts=3,
             )
             data = b"".join(stream)
             if "x-static-large-object" not in meta["properties"]:
@@ -296,6 +305,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
             meta = self.api.object_get_properties(
                 self.account, self.bucket, mf_name,
                 version=mf_version, reqid=reqid, force_master=True,
+                request_attempts=3,
             )
             return meta["properties"].get(UPLOAD_ID_KEY) == upload_id
         except NoSuchObject:
