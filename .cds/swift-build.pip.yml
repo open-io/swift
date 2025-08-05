@@ -32,7 +32,7 @@ jobs:
           # dev or prod release
           export REPO_SUBREPO=main
           export REPO_LIMIT=0
-          if [[ "{{ .git.branch }}" =~ ^dev/[a-z0-9]+/feature_ || "{{ .git.branch }}" =~ ^feature/ ]];
+          if [[ "{{ .git.branch }}" =~ ^dev/[a-z0-9]+/feature_ ]];
           then
             export VERSION=1.${CDS_VERSION}-focal
             PACKAGE="{{ .git.branch }}"
