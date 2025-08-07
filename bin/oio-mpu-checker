@@ -51,7 +51,7 @@ class MpuChecker(CrawlerWorkerMarkerMixin):
         double_check=False,
         logger=None,
         tmpdir="/tmp",
-        cache_size=100,
+        cache_size=1024,
     ):
         ns_conf = load_namespace_conf(namespace)
         self.bucket = bucket
@@ -676,6 +676,16 @@ parts which have been checked two times remains (in case you want to check it).
             '"none":   do nothing (just print logs)'
         ),
     )
+    parser.add_argument(
+        "--cache-size",
+        default=1024,
+        help=(
+            "Set the size of the cache of object versions and parts lists. "
+            "Increase this especially if you know there are MPUs with a lot "
+            "of versions."
+        ),
+        type=int,
+    )
     parser.add_argument("--debug", action="store_true")
     parser.add_argument(
         "--double-check",
@@ -716,6 +726,7 @@ if __name__ == "__main__":
         args.bucket,
         account=args.account,
         logger=LOGGER,
+        cache_size=args.cache_size,
         double_check=args.double_check,
         tmpdir=args.tmpdir,
     )
