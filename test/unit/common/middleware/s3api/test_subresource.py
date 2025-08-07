@@ -132,6 +132,7 @@ class TestS3ApiSubresource(unittest.TestCase):
                                                'READ_ACP'))
         self.assertFalse(self.check_permission(acl, 'test:tester2',
                                                'WRITE_ACP'))
+        self.assertFalse(self.check_permission(acl, None, 'READ'))
 
     def test_acl_bucket_owner_read(self):
         acl = ACLBucketOwnerRead(

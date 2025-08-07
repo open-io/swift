@@ -324,8 +324,9 @@ class AuthenticatedUsers(Group):
     uri = 'http://acs.amazonaws.com/groups/global/AuthenticatedUsers'
 
     def __contains__(self, key):
-        # s3api handles only signed requests.
-        return True
+        if key:  # if the user is authenticated
+            return True
+        return False
 
 
 class AllUsers(Group):
