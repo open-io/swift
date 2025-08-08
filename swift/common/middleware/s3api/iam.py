@@ -15,13 +15,12 @@
 
 from fnmatch import fnmatchcase
 from functools import wraps
-import ipaddress
 
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.exception import IAMException
 from swift.common.middleware.s3api.s3response import AccessDenied
-from swift.common.utils import config_auto_int_value, get_logger, \
-    get_remote_client, tlru_cache, REPLICATOR_EXPLICIT_ALLOW
+from swift.common.utils import config_auto_int_value, get_logger, tlru_cache, \
+    REPLICATOR_EXPLICIT_ALLOW
 
 
 ARN_AWS_PREFIX = "arn:aws:"
@@ -211,33 +210,15 @@ def string_like(actual, expected):
     return False
 
 
-def is_ip_allowed_by_policy(ip, ip_list):
-    try:
-        if isinstance(ip_list, str):
-            ip_list = [ip_list]
-        ip_list = [
-            ipaddress.ip_network(ip, strict=False)
-            for ip in ip_list
-        ]
-        ip_obj = ipaddress.ip_address(ip)
-        return any(ip_obj in network for network in ip_list)
-    except ValueError:
-        return False
-
-
-def is_ip_denied_by_policy(ip, ip_list):
-    return not is_ip_allowed_by_policy(ip, ip_list)
-
-
 # See iam-ug.pdf document, page 569.
 IamConditionOp = {
     "StringEquals": string_equals,
     "StringNotEquals": lambda a, e: not string_equals(a, e),
     "StringLike": string_like,
     "StringNotLike": lambda a, e: not string_like(a, e),
-    "IpAddress": is_ip_allowed_by_policy,
-    "NotIpAddress": is_ip_denied_by_policy,
     # TODO(IAM): implement the following functions
+    "IpAddress": None,
+    "NotIpAddress": None,
     "StringEqualsIgnoreCase": None,
     "StringNotEqualsIgnoreCase": None,
 }
@@ -251,7 +232,7 @@ IamConditionKey = {
     # TODO(IAM): implement the following keys
     "aws:CurrentTime": None,
     "aws:EpochTime": None,
-    "aws:SourceIp": get_remote_client,
+    "aws:SourceIp": None,
     "aws:UserAgent": None,
     "aws:userid": None,
     "s3:VersionId": None,

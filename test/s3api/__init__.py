@@ -54,10 +54,7 @@ def load_aws_config(conf_file):
         'region': 'us-east-1',
         'access_key1': conf.get('aws_access_key_id'),
         'secret_key1': conf.get('aws_secret_access_key'),
-        'session_token1': conf.get('aws_session_token'),
-        'access_key4': conf.get('aws_access_key_id'),
-        'secret_key4': conf.get('aws_secret_access_key'),
-        'proxy_addr': conf.get('proxy_addr')
+        'session_token1': conf.get('aws_session_token')
     }
 
 
@@ -74,7 +71,7 @@ def get_opt_or_error(option):
 
     value = _CONFIG.get(option)
     if not value:
-        raise ConfigError('must supply [s3api_test] %s' % option)
+        raise ConfigError('must supply [s3api_test]%s' % option)
     return value
 
 
@@ -85,16 +82,7 @@ def get_opt(option, default=None):
         return default
 
 
-def get_proxy_addr():
-    return get_opt_or_error('proxy_addr')
-
-
-def get_s3_client(
-    user=1,
-    signature_version='s3v4',
-    addressing_style='path',
-    proxy_config=None
-):
+def get_s3_client(user=1, signature_version='s3v4', addressing_style='path'):
     '''
     Get a boto3 client to talk to an S3 endpoint.
 
@@ -139,14 +127,6 @@ def get_s3_client(
             os.stat(ca_cert)
         except OSError as e:
             raise ConfigError(str(e))
-    params = {
-        "s3": {
-            'signature_version': signature_version,
-            'addressing_style': addressing_style,
-        }
-    }
-    if proxy_config:
-        params["proxies"] = proxy_config
 
     return boto3.client(
         's3',
@@ -154,7 +134,10 @@ def get_s3_client(
         region_name=region,
         use_ssl=(scheme == 'https'),
         verify=ca_cert,
-        config=boto3.session.Config(**params),
+        config=boto3.session.Config(s3={
+            'signature_version': signature_version,
+            'addressing_style': addressing_style,
+        }),
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         aws_session_token=session_token
@@ -181,16 +164,8 @@ class BaseS3Mixin(object):
     signature_version = 's3v4'
 
     @classmethod
-    def get_s3_client(cls, user, proxy_config=None):
-        return get_s3_client(
-            user, cls.signature_version, proxy_config=proxy_config)
-
-    @classmethod
-    def get_proxy_addr(cls, is_aws=False):
-        if is_aws:
-            return get_proxy_addr()
-        else:
-            return "http://localhost:8899"
+    def get_s3_client(cls, user):
+        return get_s3_client(user, cls.signature_version)
 
     @classmethod
     def _remove_all_object_versions_from_bucket(cls, client, bucket_name):

@@ -6,7 +6,7 @@ export SWIFT_TEST_CONFIG_FILE=test/sample.conf
 
 install_deps || exit 1
 compile_sds || exit 1
-run_sds "-f third_party/oio-sds/etc/bootstrap-preset-tinyproxy.yml" || exit 1
+run_sds || exit 1
 configure_aws
 configure_rclone
 configure_s3cmd
