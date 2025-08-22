@@ -178,6 +178,108 @@
             }
         ]
     },
+    "demo:user3": {
+        "Statement": [
+            {
+                "Sid": "AllowAllFromWhitelistedIp",
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": [
+                    "arn:aws:s3:::s3api-test-bkt-a-listed-ip*",
+                    "arn:aws:s3:::s3api-test-bkt-a-listed-ip*/*"
+                ],
+                "Condition": {
+                    "IpAddress": {
+                        "aws:SourceIp": "127.0.0.1"
+                    }
+                }
+            },
+            {
+                "Sid": "DenyAllFromBlacklistedIp",
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": [
+                    "arn:aws:s3:::s3api-test-bkt-a-nb-listed-ip*",
+                    "arn:aws:s3:::s3api-test-bkt-a-nb-listed-ip*/*"
+                ],
+                "Condition": {
+                    "NotIpAddress": {
+                        "aws:SourceIp": "127.0.0.88"
+                    }
+                }
+            },
+            {
+                "Sid": "DenyNonWhitelistedIp",
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": [
+                    "arn:aws:s3:::s3api-test-bkt-d-nw-listed-ip*",
+                    "arn:aws:s3:::s3api-test-bkt-d-nw-listed-ip*/*"
+                ],
+                "Condition": {
+                    "NotIpAddress": {
+                        "aws:SourceIp": [
+                            "127.0.0.1"
+                    ]
+                    }
+                }
+            },
+            {
+                "Sid": "ExplicitDenyFromIp",
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": [
+                    "arn:aws:s3:::s3api-test-bkt-d-listed-ip*",
+                    "arn:aws:s3:::s3api-test-bkt-d-listed-ip*/*"
+                ],
+                "Condition": {
+                    "IpAddress": {
+                        "aws:SourceIp": "127.0.0.88"
+                    }
+                }
+            },
+            {
+                "Sid": "ExplicitAllowAndDenyFromIp",
+                "Effect": "allow",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": [
+                    "arn:aws:s3:::s3api-test-bkt-ad-listed-ip*",
+                    "arn:aws:s3:::s3api-test-bkt-ad-listed-ip*/*"
+                ],
+                "Condition": {
+                    "IpAddress": {
+                        "aws:SourceIp": "127.0.0.1"
+                    },
+                    "NotIpAddress": {
+                        "aws:SourceIp": "127.0.0.88"
+                    }
+                }
+            },
+            {
+                "Sid": "ExplicitDenyAndAllowFromIp",
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": [
+                    "arn:aws:s3:::s3api-test-bkt-da-listed-ip*",
+                    "arn:aws:s3:::s3api-test-bkt-da-listed-ip*/*"
+                ],
+                "Condition": {
+                    "IpAddress": {
+                        "aws:SourceIp": "127.0.0.88"
+                    },
+                    "NotIpAddress": {
+                        "aws:SourceIp": "127.0.0.1"
+                    }
+                }
+            }
+        ]
+    },
     "account2:admin": {
         "Statement": [
             {
