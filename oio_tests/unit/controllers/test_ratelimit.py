@@ -44,18 +44,7 @@ RATELIMIT_MIDDLEWARE = "swift.common.middleware.s3api.ratelimit_utils." \
         "RateLimitMiddleware"
 
 
-class FakeObjectReq():
-
-    def __init__(self, method, bucket, key):
-        self.method = method
-        self.bucket = bucket
-        self.key = key
-        self.environ = {}
-
-    @property
-    def is_object_request(self):
-        return True
-
+class FakeReq():
     def from_replicator(self):
         return False
 
@@ -154,14 +143,17 @@ class TestObjectController(unittest.TestCase):
         mock_memcache = Mock()
 
         conf = {
-            "group.READ": "REST.HEAD.OBJECT,CUSTOM.TEST",
+            "group.READ": "REST.HEAD.BUCKET,CUSTOM.TEST",
             "ratelimit.READ": "600",
             "backup_ratelimit.HEAD": 100,
         }
         middleware = RateLimitMiddleware(None, conf=conf)
         middleware.memcache_client = mock_memcache
 
-        fake_req = FakeObjectReq("HEAD", "mybucket", "mykey")
+        fake_req = FakeReq()
+        fake_req.bucket = "mybucket"
+        fake_req.environ = {}
+        fake_req.method = "HEAD"
 
         # "mock_memcache.get_multi.return_value" is defined as follow
         # [{specific_ratelimit}, b"current_counter", b"previous_counter"]
@@ -173,61 +165,61 @@ class TestObjectController(unittest.TestCase):
         mock_memcache.get_multi.return_value = [
             {"backup_bucket": "foo"}, b"0", b"99"
         ]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         # Check +1 -> SlowDown
         mock_memcache.get_multi.return_value = [
             {"backup_bucket": "foo"}, b"0", b"100"
         ]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         # On a specific ratelimit at 0 -> SlowDown
         mock_memcache.get_multi.return_value = [
             {"backup_bucket": "foo", "READ": 0}, b"0", b"99"
         ]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # max-1 req in last period
         mock_memcache.get_multi.return_value = [{}, b"0", b"599"]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         # Check +1 -> SlowDown
         mock_memcache.get_multi.return_value = [{}, b"0", b"600"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"1", b"599"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         # On a backup bucket -> SlowDown
         mock_memcache.get_multi.return_value = [
             {"backup_bucket": "foo"}, b"0", b"599"
         ]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         # On a specific ratelimit at 0 -> SlowDown
         mock_memcache.get_multi.return_value = [{"READ": 0}, b"0", b"599"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # max-1 req in current period
         mock_memcache.get_multi.return_value = [{}, b"599", b"0"]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         # Check "+1" -> SlowDown
         mock_memcache.get_multi.return_value = [{}, b"600", b"0"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"599", b"1"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # 100 for current and max-1-100 for last period
         mock_memcache.get_multi.return_value = [{}, b"100", b"499"]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"101", b"499"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"100", b"500"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # Mock MIDDLE OF A SECOND
         mock_time_ns.return_value = MIDDLE_OF_A_SECOND_NS
@@ -235,30 +227,30 @@ class TestObjectController(unittest.TestCase):
         # 2*max-1 req in last period
         # specific_ratelimit / current_counter / previous_counter
         mock_memcache.get_multi.return_value = [{}, b"0", b"1199"]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"1", b"1199"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"0", b"1200"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # max-1 req in current period
         mock_memcache.get_multi.return_value = [{}, b"599", b"0"]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"600", b"0"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"599", b"2"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
 
         # 100 for current and 2*(max-100)-1 for last period
         mock_memcache.get_multi.return_value = [{}, b"100", b"999"]
-        middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+        middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"101", b"999"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
         mock_memcache.get_multi.return_value = [{}, b"100", b"1000"]
         with self.assertRaises(SlowDown):
-            middleware.ratelimit_callback(fake_req, "REST.HEAD.OBJECT")
+            middleware.ratelimit_callback(fake_req, "REST.HEAD.BUCKET")
