@@ -110,11 +110,6 @@ io_timeout = 0.1
 pool_timeout = 0.1
 error_suppression_interval = 30
 error_suppression_limit = 10
-backup_ratelimit.DELETE = -1
-backup_ratelimit.GET = 1
-backup_ratelimit.HEAD = 1
-backup_ratelimit.POST = 0
-backup_ratelimit.PUT = 0
 
 [filter:cache]
 use = egg:swift#oiomemcache

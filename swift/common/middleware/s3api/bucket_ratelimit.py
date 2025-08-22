@@ -45,25 +45,17 @@ class BucketRateLimitMiddleware(RateLimitMiddleware):
         self.logger.debug(
             "[%s] Fetch the bucket info of %s "
             "to extract ratelimit info", self.NAME, req.bucket)
-        bucket_info = None
-        backup_bucket = None
         try:
             bucket_info = req.get_bucket_info(self.app)
-            container_info = req.get_container_info(self.app)
-            backup_bucket = container_info.get('sysmeta', {})\
-                .get('s3api-bucket-backup')
         except NoSuchBucket:
             # If a client wants to aggressively access a bucket
             # that does not exist, that client must also be rate limited
-            pass
+            bucket_info = None
         bucket_ratelimit = None
         if bucket_info is not None:
             bucket_ratelimit = bucket_info.get("ratelimit")
         if bucket_ratelimit is None:
             bucket_ratelimit = {}
-        if backup_bucket is not None:
-            # here bucket_ratelimit is a dict (it may be empty)
-            bucket_ratelimit["backup_bucket"] = backup_bucket
         return bucket_ratelimit
 
     def _compute_key_prefix(self, req):

@@ -641,14 +641,6 @@ use = egg:swift#bucket_ratelimit
 # Accepts all requests, but indicates in the access logs (with bucket-logging)
 # if the request should have been ratelimited
 #log_only_on_global_ratelimiting = false
-# Ratelimit for backup buckets (all operations through the HTTP verb are
-# ratelimited if a limit is set). Note that the replicator is not concerned
-# (hence the specific filter for the replicator).
-backup_ratelimit.DELETE = -1
-backup_ratelimit.GET = 1
-backup_ratelimit.HEAD = 1
-backup_ratelimit.POST = 0
-backup_ratelimit.PUT = 0
 
 [filter:replicator_ratelimit]
 use = egg:swift#replicator_ratelimit
