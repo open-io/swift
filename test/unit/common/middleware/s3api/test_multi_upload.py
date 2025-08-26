@@ -2493,8 +2493,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertEqual([
             path for method, path in self.swift.calls if method == 'DELETE'
         ], [
-            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
             '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/2',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
             '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
         ])
 

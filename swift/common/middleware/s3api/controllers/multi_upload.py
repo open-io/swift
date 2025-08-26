@@ -1157,7 +1157,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
         # The marker was found so this
         # must be a multipart upload abort.
-        # We must delete any uploaded segments for this UploadID
+        # We must delete any uploaded segments for this UploadID.
+        # To prevent conflicts between abort and complete operations,
+        # MPU parts are deleted in reverse order. This ensures that an abort
+        # can always remove parts before a complete, causing the complete
+        # to fail safely if necessary.
+
         object_name = wsgi_to_str(req.object_name)
         query = {
             'format': 'json',
@@ -1172,22 +1177,20 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             '',
             query=query,
         )
-
-        #  Iterate over the segment objects and delete them individually
+        total_objects = []
         objects = json.loads(resp.body)
         while objects:
-            for o in objects:
-                obj = bytes_to_wsgi(o['name'].encode('utf-8'))
-                req.get_response(self.app, container=segment_container,
-                                 obj=obj)
-            if six.PY2:
-                query['marker'] = objects[-1]['name'].encode('utf-8')
-            else:
-                query['marker'] = objects[-1]['name']
+            total_objects.extend(objects)
+            query['marker'] = objects[-1]['name']
             resp = req.get_response(self.app, 'GET', segment_container, '',
                                     query=query)
             objects = json.loads(resp.body)
-
+        # Iterate over the segment objects in reversed order
+        # and delete them individually
+        for o in reversed(total_objects):
+            obj = bytes_to_wsgi(o['name'].encode('utf-8'))
+            req.get_response(
+                self.app, container=segment_container, obj=obj)
         req.get_response(self.app, container=segment_container, obj=marker)
         return HTTPNoContent()
 
