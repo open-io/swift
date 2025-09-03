@@ -45,15 +45,19 @@ test_mpu_abort__with_parts() {
 
   echo "Creating multipart 'second' with 2 parts"
   UPLOAD_ID=$(${AWS} s3api create-multipart-upload --bucket ${BUCKET} --key second | jq -r .UploadId)
-  ${AWS} s3api upload-part --bucket ${BUCKET} --key second --part-number 1 --upload-id "${UPLOAD_ID}" \
-    --body "${MULTI_FILE}"
-  ${AWS} s3api upload-part --bucket ${BUCKET} --key second --part-number 2 --upload-id "${UPLOAD_ID}" \
-    --body "${MULTI_FILE}"
-  echo "Counting segments with openio CLI (should be 3)"
+  for i in $(seq 1 1002); do ${AWS} s3api upload-part --bucket ${BUCKET} --key second --part-number $i --upload-id "${UPLOAD_ID}" \
+    --body "${MULTI_FILE}"; done
+  echo "Counting segments with openio CLI with default limit to 1000 (should be 1000)"
   SEGS=$(openio object list ${BUCKET}+segments -f value)
   [ -n "$SEGS" ]
   SEG_COUNT=$(echo "${SEGS}" | wc -l)
-  [ "$SEG_COUNT" -eq 3 ]
+  [ "$SEG_COUNT" -eq 1000 ]
+
+  echo "Counting segments with openio CLI (should be 1003)"
+  SEGS=$(openio object list ${BUCKET}+segments -f value --full)
+  [ -n "$SEGS" ]
+  SEG_COUNT=$(echo "${SEGS}" | wc -l)
+  [ "$SEG_COUNT" -eq 1003 ]
 
   echo "Aborting multipart 'second'"
   ${AWS} s3api abort-multipart-upload --bucket ${BUCKET} --key second --upload-id "${UPLOAD_ID}" 2>&1 | tail -n 1
