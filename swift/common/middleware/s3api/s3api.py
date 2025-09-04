@@ -881,7 +881,7 @@ class S3ApiMiddleware(object):
         try:
             controller = req.controller(self.app, self.conf, self.logger)
         except S3NotImplemented:
-            self.logger.info(
+            self.logger.debug(
                 'User requested for a not yet implemented subresource')
             raise
 

@@ -152,7 +152,7 @@ class OioBucketDb(object):
             if isinstance(exc, BadRequest) and 'Too many buckets' in str(exc):
                 raise TooManyBuckets from exc
             if self.logger:
-                self.logger.warning(
+                self.logger.debug(
                     'Failed to reserve bucket %s with owner %s: %s',
                     bucket, owner, exc)
             return False
