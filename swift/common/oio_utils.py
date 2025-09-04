@@ -254,9 +254,6 @@ def get_object_etag(metadata, logger):
             'x-object-sysmeta-container-update-override-etag' not in
             properties
         ):
-            logger.warning(
-                'The object checksum is not MD5 '
-                'and there is no override for the Etag')
             # The ETag will not be correct, but we need to return an etag
             etag = metadata.get('hash')
         else:
