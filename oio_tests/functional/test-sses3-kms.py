@@ -241,6 +241,35 @@ class TestSses3Kms(unittest.TestCase):
         secrets = self.oio.kms.list_secrets(self.account, self.bucket)
         self.assertEqual(len(secrets["secrets"]), 0)
 
+    @unittest.skipIf(
+        DEFAULT_SSE_CONF is None, "Requires a default SSE configuration")
+    def test_4_delete_bucket_with_incomplete_mpu_deletes_secret(self):
+        """
+        Checks bucket deletion with incomplete MPU.
+        All +segment containers must be flushed and deleted
+        then the main container and after that the bucket secret.
+        The test does not check when the bucket secret is deleted.
+        """
+        key = "encrypted_incomplete_mpu"
+        self.boto.create_bucket(Bucket=self.bucket)
+        resp = self.boto.create_multipart_upload(Bucket=self.bucket, Key=key)
+        upload_id = resp["UploadId"]
+        pdata = key.encode("utf-8") * 1024 * 1024
+        for pnum in range(1, 3):
+            self.boto.upload_part(
+                Bucket=self.bucket,
+                Key=key,
+                UploadId=upload_id,
+                PartNumber=pnum,
+                Body=pdata,
+            )
+        # No more secret after the bucket is deleted
+        resp = self.boto.delete_bucket(Bucket=self.bucket)
+        self.assertEqual(
+            204, resp.get('ResponseMetadata', {}).get('HTTPStatusCode'))
+        secrets = self.oio.kms.list_secrets(self.account, self.bucket)
+        self.assertEqual(len(secrets["secrets"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

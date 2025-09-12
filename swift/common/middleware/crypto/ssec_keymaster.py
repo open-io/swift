@@ -385,9 +385,11 @@ class SsecKeyMasterContext(KeyMasterContext):
                 self._delete_bucket_secret()
             raise exc
         success = is_success(self._get_status_int())
+        _, _, container, _ = req.split_path(2, 4, True)
         if ((secret_created and not success and operation == "REST.PUT.BUCKET")
                 or (operation == "REST.DELETE.BUCKET"
-                    and req.method == 'DELETE' and success)):
+                    and req.method == 'DELETE' and success
+                    and not container.endswith(MULTIUPLOAD_SUFFIX))):
             self._delete_bucket_secret()
         return resp
 
