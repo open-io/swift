@@ -927,7 +927,6 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             upload_id)
         sse_c_algo = req.headers.get(
             'x_amz_server_side_encryption_customer_algorithm')
-        headers = {}
         if sse_c_algo:  # SSE-C algorithm provided
             headers['x-amz-server-side-encryption-customer-algorithm'] = \
                 sse_c_algo
