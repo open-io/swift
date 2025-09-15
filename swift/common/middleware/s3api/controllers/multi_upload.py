@@ -65,6 +65,7 @@ import copy
 import functools
 import os
 import time
+from datetime import datetime
 
 import six
 
@@ -96,7 +97,7 @@ from swift.common.middleware.s3api.s3response import InvalidArgument, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
-    PreconditionFailed
+    PreconditionFailed, OperationAborted
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
@@ -116,6 +117,8 @@ from swift.common.middleware.s3api.multi_upload_utils import \
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 from swift.common.middleware.s3api.controllers.lifecycle import \
     get_mpu_abortion
+from swift.common.oio_utils import extract_oio_headers, \
+    swift_versionid_to_oio_versionid
 
 from oio.common import exceptions
 
@@ -301,6 +304,11 @@ class MpuAborted(exceptions.ClientPreconditionFailed):
 class MpuAlreadyCompleted(exceptions.ClientPreconditionFailed):
     def __init__(self, http_status=412, status=None, message=None):
         super(MpuAlreadyCompleted, self).__init__(http_status, status, message)
+
+
+class MpuAlreadyStarted(exceptions.ClientPreconditionFailed):
+    def __init__(self, http_status=412, status=None, message=None):
+        super(MpuAlreadyStarted, self).__init__(http_status, status, message)
 
 
 class PartController(Controller):
@@ -798,6 +806,7 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         return HTTPOk(body=body, content_type='application/xml')
 
     @set_s3_operation_rest('UPLOADS')
+    @extract_oio_headers
     @ratelimit
     @public
     @fill_cors_headers
@@ -814,7 +823,7 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         req.check_checksum_mismatch(False)
 
         # Create a unique S3 upload id from UUID to avoid duplicates.
-        upload_id = unique_id()
+        new_upload_id = unique_id()
         object_lock_validate_headers(req.headers)
 
         seg_container = req.container_name + MULTIUPLOAD_SUFFIX
@@ -896,7 +905,7 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             except (BucketAlreadyExists, BucketAlreadyOwnedByYou):
                 pass
 
-        obj = '%s/%s' % (req.object_name, upload_id)
+        obj = '%s/%s' % (req.object_name, new_upload_id)
 
         if HTTP_HEADER_TAGGING_KEY in req.headers:
             tagging = tagging_header_to_xml(
@@ -907,17 +916,81 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)
 
+        upload_id = None
+        last_modified = None
+
+        def get_existing_marker_with_version(with_raise=True):
+            upload_id_from_marker = None
+            last_modified_from_marker = None
+            seg_req.key = None
+            seg_req.object_name = None
+            new_version = req.environ.get('oio.query', {}).get('new_version')
+            if not new_version:
+                raise InvalidRequest(
+                    "Replicator must create a MPU with a version"
+                )
+            new_version = swift_versionid_to_oio_versionid(new_version)
+            list_resp = seg_req.get_response(
+                self.app,
+                'GET',
+                seg_container,
+                query={
+                    "prefix": f"{req.object_name}/",
+                    "mpu_marker_only": True,
+                    "version": new_version,
+                }
+            )
+            objs = json.loads(list_resp.body)
+            if objs:
+                # We should only have one object but may have more before this
+                # implementation.
+                # As we list MPU markers only, upload id is always after
+                # the last /.
+                upload_id_from_marker = objs[0]["name"].split("/")[-1]
+                last_modified_from_marker = datetime.fromisoformat(
+                    objs[0]["last_modified"]
+                )
+                if with_raise:
+                    raise MpuAlreadyStarted()
+            return upload_id_from_marker, last_modified_from_marker
+
+        if req.from_replicator():
+            req.environ['swift.callback.pre_commit_hook'] = \
+                get_existing_marker_with_version
+
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
         object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
-        resp = req.get_response(self.app, 'PUT', seg_container, obj, body='')
+        try:
+            # Create the marker
+            put_resp = req.get_response(
+                self.app,
+                'PUT',
+                seg_container,
+                obj,
+                body='',
+            )
+            upload_id = new_upload_id
+            last_modified = put_resp.last_modified
+        except PreconditionFailed:
+            # FIXME: should be able to get those values from the callback..
+            upload_id, last_modified = get_existing_marker_with_version(
+                with_raise=False
+            )
+            if not upload_id or not last_modified:
+                # If the callback raises that a MPU has already started but
+                # calling it here returns nothing, then the marker has been
+                # deleted.
+                # Just return an error, s3-replicator will be responsible
+                # to retry or not.
+                raise OperationAborted()
 
         encryption_set_env_variable(req, self.conf, sysmeta_info)
 
         escape_xml_text, finalize_xml_texts = init_xml_texts()
 
         headers = self.get_lifecycle_headers(
-            req, sysmeta_info, req.object_name, resp.last_modified)
+            req, sysmeta_info, req.object_name, last_modified)
 
         result_elem = Element('InitiateMultipartUploadResult')
         SubElement(result_elem, 'Bucket').text = req.container_name

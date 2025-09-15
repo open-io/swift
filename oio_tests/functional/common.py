@@ -36,17 +36,30 @@ OIO_NS = os.getenv("OIO_NS", "OPENIO")
 OIO_ACCOUNT = os.getenv("OIO_ACCOUNT", "AUTH_demo")
 
 
-def get_boto3_client(endpoint_url=ENDPOINT_URL,
-                     signature_version='s3v4',
-                     addressing_style='virtual',
-                     region_name='RegionOne',
-                     profile='default'):
-    client_config = Config(signature_version=signature_version,
-                           region_name=region_name,
-                           s3={'addressing_style': addressing_style})
+def get_boto3_client(
+    endpoint_url=ENDPOINT_URL,
+    signature_version='s3v4',
+    addressing_style='virtual',
+    region_name='RegionOne',
+    profile='default',
+    user_agent_extra=None,
+):
+    config_kwargs = {
+        "signature_version": signature_version,
+        "region_name": region_name,
+        "s3": {
+            "addressing_style": addressing_style,
+        }
+    }
+    if user_agent_extra:
+        config_kwargs["user_agent_extra"] = user_agent_extra
+
     session = boto3.Session(profile_name=profile)
-    client = session.client(service_name='s3', endpoint_url=endpoint_url,
-                            config=client_config)
+    client = session.client(
+        service_name="s3",
+        endpoint_url=endpoint_url,
+        config=Config(**config_kwargs),
+    )
     return client
 
 

@@ -529,6 +529,8 @@ ACL_MAP = {
     # Initiate Multipart Upload
     ('POST', 'HEAD', 'container'):
     {'Permission': 'WRITE'},
+    ('POST', 'GET', 'container'):
+    {'Permission': 'READ'},
     # Versioning
     ('PUT', 'POST', 'container'):
     {'Permission': 'WRITE'},

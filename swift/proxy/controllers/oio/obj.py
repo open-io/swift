@@ -31,7 +31,7 @@ from swift.common.middleware.versioned_writes.legacy \
     import DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.middleware.s3api.controllers.multi_upload import (
-    MpuAlreadyCompleted, MpuAborted
+    MpuAlreadyCompleted, MpuAborted, MpuAlreadyStarted
 )
 from swift.common.oio_utils import check_if_none_match, get_object_etag, \
     handle_not_allowed, handle_oio_timeout, handle_service_busy, \
@@ -869,7 +869,7 @@ class ObjectController(BaseObjectController):
             raise  # see handle_oio_timeout
         except exceptions.NoSuchContainer:
             raise HTTPNotFound(request=req)
-        except (MpuAlreadyCompleted, MpuAborted) as err:
+        except (MpuAlreadyCompleted, MpuAborted, MpuAlreadyStarted) as err:
             return HTTPPreconditionFailed(
                 request=req, body=type(err).__name__.encode()
             )

@@ -79,7 +79,7 @@ enable_encryption = true
 [filter:tempauth]
 use = egg:swift#tempauth
 log_level = DEBUG
-user_demo_demo = DEMO_PASS .admin
+user_demo_demo = DEMO_PASS .admin .reseller_admin
 
 user_tester2_tester2 = TESTER2 .admin
 

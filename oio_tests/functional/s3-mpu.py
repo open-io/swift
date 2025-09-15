@@ -802,7 +802,7 @@ class TestS3Mpu(unittest.TestCase):
         # Upload Part
         resp = requests.put(
             f'http://{self.bucket}.{STORAGE_DOMAIN}:5000/{urlencoded_key}?uploadId={upload_id}&partNumber=1',
-            data=b'a'*5242880)
+            data=b'a' * 5242880)
         self.assertEqual(200, resp.status_code)
 
         # List Parts
@@ -1252,6 +1252,54 @@ class TestS3Mpu(unittest.TestCase):
         cmd = ["bin/oio-mpu-checker", "-v", "--action", "delete", OIO_NS, self.bucket]
         out = run_with_coverage(cmd, stderr=subprocess.STDOUT, encoding="utf-8")
         self.assertIn("0 parts cleaned", out)
+
+    def test_second_create_as_replicator(self):
+        # Default profile is a reseller, only need to use the user agent.
+        boto_client_replicator = get_boto3_client(
+            user_agent_extra="s3-replicator"
+        )
+        key = "test-second-create-as-replicator" + random_str(3)
+
+        # Replicator cannot create a MPU without a version
+        with self.assertRaises(ClientError) as err:
+            boto_client_replicator.create_multipart_upload(
+                Bucket=self.bucket_versioning,
+                Key=key,
+            )
+        self.assertIn(
+            "Replicator must create a MPU with a version",
+            str(err.exception),
+        )
+        metadata = {
+            "x-oio-?replication-status": "REPLICA",
+            "x-oio-?version-id": "1234567890.123456",
+        }
+
+        # Replicator can create a new MPU (aka create a new marker)
+        meta = boto_client_replicator.create_multipart_upload(
+            Bucket=self.bucket_versioning,
+            Key=key,
+            Metadata=metadata,
+        )
+        upload_id = meta["UploadId"]
+
+        # If replicator try to create a MPU with the same name/version, the
+        # same upload_id is returned.
+        meta = boto_client_replicator.create_multipart_upload(
+            Bucket=self.bucket_versioning,
+            Key=key,
+            Metadata=metadata,
+        )
+        self.assertEqual(upload_id, meta["UploadId"])
+
+        # Customer can create a MPU and version-id is ignored (a new UploadId
+        # is returned).
+        meta = self.boto_client.create_multipart_upload(
+            Bucket=self.bucket_versioning,
+            Key=key,
+            Metadata=metadata,
+        )
+        self.assertNotEqual(upload_id, meta["UploadId"])
 
 
 if __name__ == "__main__":
