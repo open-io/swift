@@ -856,6 +856,30 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(self._get_error_code(body), 'InvalidURI')
 
+    def test_req_keystone_timeout(self):
+        self.swift = FakeSwift()
+        self.keystone_auth = KeystoneAuth(
+            self.swift, {'operator_roles': 'swift-user'})
+        self.s3_token = S3Token(
+            self.keystone_auth, {'auth_uri': 'https://fakehost/identity'})
+        self.s3api = S3ApiMiddleware(self.s3_token, self.conf)
+        self.s3api.logger = debug_logger()
+        req = Request.blank(
+            '/bucket',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS access:signature',
+                     'Date': self.get_date_header()})
+        self.swift.register('PUT', '/v1/AUTH_TENANT_ID/bucket',
+                            swob.HTTPCreated, {}, None)
+        self.swift.register('HEAD', '/v1/AUTH_TENANT_ID',
+                            swob.HTTPOk, {}, None)
+        with patch.object(self.s3_token, '_json_request') as mock_req:
+            mock_req.side_effect = self.s3_token._deny_request(
+                'RequestTimeout'
+            )
+            _, _, body = self.call_s3api(req)
+            self.assertEqual(self._get_error_code(body), 'ServiceUnavailable')
+
     def test_object_create_bad_md5_unreadable(self):
         req = Request.blank('/bucket/object',
                             environ={'REQUEST_METHOD': 'PUT',

@@ -67,8 +67,8 @@ import requests
 import six
 from six.moves import urllib
 
-from swift.common.swob import Request, HTTPBadRequest, HTTPUnauthorized, \
-    HTTPException
+from swift.common.swob import Request, HTTPBadRequest, \
+    HTTPUnauthorized, HTTPException, HTTPServiceUnavailable
 from swift.common.utils import config_true_value, split_path, get_logger, \
     item_from_env, append_underscore
 from swift.common.wsgi import ConfigFileError
@@ -242,6 +242,7 @@ class S3Token(object):
             'AccessDenied': (HTTPUnauthorized, 'Access denied'),
             'InvalidURI': (HTTPBadRequest,
                            'Could not parse the specified URI'),
+            'RequestTimeout': (HTTPServiceUnavailable, 'Connection error')
         }[code]
         resp = error_cls(content_type='text/xml')
         error_msg = ('<?xml version="1.0" encoding="UTF-8"?>\r\n'
@@ -252,6 +253,8 @@ class S3Token(object):
             error_msg = error_msg.encode()
         resp.body = error_msg
         resp.message = reason
+        if not reason:
+            resp.message = message
         return resp
 
     def _json_request(self, creds_json, trans_id):
@@ -269,6 +272,13 @@ class S3Token(object):
             # The message may have spaces, send the exception type instead
             metric_name += "%s.timing" % (type(e),)
             self._logger.info('HTTP connection exception: %s', e)
+            if isinstance(
+                e, (
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                )
+            ):
+                raise self._deny_request('RequestTimeout')
             raise self._deny_request('InvalidURI')
         finally:
             self._logger.timing(metric_name, (time.monotonic() - start) * 1000)

@@ -715,6 +715,19 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
         self.assertEqual(resp.status_int, 200)  # pylint: disable-msg=E1101
         self.assertEqual(1, self.middleware._app.calls)
 
+    @mock.patch.object(requests, 'post')
+    def test_keystone_connection_timeout(self, MOCK_POST):
+        MOCK_POST.side_effect = requests.exceptions.ConnectTimeout()
+        req = Request.blank('/v1/AUTH_cfa/c/o')
+        req.environ['s3api.auth_details'] = {
+            'access_key': u'access',
+            'signature': u'signature',
+            'string_to_sign': u'token',
+        }
+        invalid_resp = self.middleware._deny_request('RequestTimeout')
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.body, invalid_resp.body)
+
     def test_fail_to_connect_to_keystone(self):
         with mock.patch.object(self.middleware, '_json_request') as o:
             s3_invalid_resp = self.middleware._deny_request('InvalidURI')

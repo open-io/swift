@@ -3206,6 +3206,8 @@ class S3AclRequest(S3Request):
         if auth_resp:
             if (auth_resp.body.decode("utf-8") == "Account not found"):
                 raise InvalidAccessKeyId(self.access_key)
+            if (auth_resp.body.decode("utf-8") == "Connection error"):
+                raise ServiceUnavailable()
 
         if not sw_req.remote_user:
             raise SignatureDoesNotMatch(

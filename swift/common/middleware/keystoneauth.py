@@ -608,6 +608,8 @@ class KeystoneAuth(object):
             if req.environ.get("s3token.error"):
                 if "Not Found" in req.environ.get("s3token.error"):
                     err_body = "Account not found"
+                if "Connection error" in req.environ.get("s3token.error"):
+                    err_body = "Connection error"
             return self.denied_response(req, body=err_body)
 
         referrers, roles = swift_acl.parse_acl(getattr(req, 'acl', None))
