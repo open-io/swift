@@ -42,8 +42,13 @@ from s3transfer.futures import TransferCoordinator
 from s3transfer.bandwidth import BandwidthLimiter, LeakyBucket
 from s3transfer.utils import signal_not_transferring, signal_transferring
 
+from swift.common.utils import config_true_value
+
 
 ALL_USERS = 'http://acs.amazonaws.com/groups/global/AllUsers'
+DEFAULT_SSE_CONF = os.getenv("DEFAULT_SSE_CONF")
+FALLBACK_ON_ROOT_SECRET = config_true_value(
+    os.getenv("FALLBACK_ON_ROOT_SECRET"))
 
 
 class TestS3Mpu(unittest.TestCase):
@@ -1165,6 +1170,52 @@ class TestS3Mpu(unittest.TestCase):
             VersionId=version_id,
         )
         self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+
+    @unittest.skipIf(FALLBACK_ON_ROOT_SECRET and not DEFAULT_SSE_CONF, "SSES3 should be enabled")
+    def test_encryption_no_first_part(self):
+        path = "test_encryption_no_first_part" + random_str(3)
+        self.boto_client.put_bucket_encryption(
+            Bucket=self.bucket,
+            ServerSideEncryptionConfiguration={
+                "Rules": [
+                    {
+                        "ApplyServerSideEncryptionByDefault": {
+                            "SSEAlgorithm": "AES256",
+                        },
+                        "BucketKeyEnabled": False,
+                    }
+                ]
+            }
+        )
+        meta = self.boto_client.create_multipart_upload(
+            Bucket=self.bucket,
+            Key=path,
+        )
+        upload_id = meta['UploadId']
+        # Start by part number 2 (skip the 1)
+        resp = self.boto_client.upload_part(
+            Bucket=self.bucket,
+            Key=path,
+            PartNumber=2,
+            UploadId=upload_id,
+            Body=b"whatever",
+        )
+        mpu_parts = [{"ETag": resp['ETag'], "PartNumber": 2}]
+        self.boto_client.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=path,
+            MultipartUpload={
+                'Parts': mpu_parts,
+            },
+            UploadId=upload_id
+        )
+        # FIXME: ServerSideEncryption is missing in the complete response
+        head_resp = self.boto_client.head_object(
+            Bucket=self.bucket,
+            Key=path,
+        )
+        self.assertIn("ServerSideEncryption", head_resp)
+        self.assertEqual(head_resp["ServerSideEncryption"], "AES256")
 
     def _create_complete_mpu(self, bucket, path):
         """Create and complete a multipart-upload"""

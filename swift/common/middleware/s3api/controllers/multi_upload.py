@@ -1291,7 +1291,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             force_master=True,
         )
         # Used to gather and check encryption properties
-        part1_head_response = None
+        first_part_number_used = None
+        part_nth_head_response = None
 
         def get_nth_part_info(app, req, upload_id, part_number):
             container = req.container_name + MULTIUPLOAD_SUFFIX
@@ -1396,6 +1397,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 xml, 'CompleteMultipartUpload', self.logger)
             for part_elem in complete_elem.iterchildren('Part'):
                 part_number = int(part_elem.find('./PartNumber').text)
+                if not first_part_number_used:
+                    first_part_number_used = part_number
 
                 if part_number <= previous_number:
                     raise InvalidPartOrder(upload_id=upload_id)
@@ -1461,10 +1464,10 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                         # the backend.
                         part_info_resp = get_nth_part_info(
                             self.app, req, upload_id, part_number)
-                        if not part1_head_response and part_number == 1:
-                            # Saving first part metadata used later
+                        if not part_nth_head_response:
+                            # Saving part metadata used later
                             # to check encryption properties
-                            part1_head_response = part_info_resp
+                            part_nth_head_response = part_info_resp
                         part_checksum = int(
                             binascii.hexlify(
                                 strict_b64decode(
@@ -1592,13 +1595,13 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 metadata=headers,
             )
 
-        if not part1_head_response:
-            part1_head_response = get_nth_part_info(
-                self.app, req, upload_id, 1)
-        if part1_head_response:
-            encryption_sse_s3_header = part1_head_response.headers.get(
+        if not part_nth_head_response:
+            part_nth_head_response = get_nth_part_info(
+                self.app, req, upload_id, first_part_number_used)
+        if part_nth_head_response:
+            encryption_sse_s3_header = part_nth_head_response.headers.get(
                 'x-amz-server-side-encryption')
-            encryption_sse_c_header = part1_head_response.headers.get(
+            encryption_sse_c_header = part_nth_head_response.headers.get(
                 'x-amz-server-side-encryption-customer-algorithm')
             if encryption_sse_s3_header or encryption_sse_c_header:
                 headers[sysmeta_header('object', 'cipher-name')] = \
