@@ -1110,7 +1110,7 @@ class TestS3Mpu(unittest.TestCase):
         # Get MPU
         self.assertRaisesRegex(
             CliError,
-            "Service is unable to handle request.",
+            "Multipart upload has broken segment data.",
             run_awscli_s3api,
             "get-object",
             "/tmp/magic",

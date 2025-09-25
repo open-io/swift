@@ -337,6 +337,7 @@ from swift.cli.container_deleter import make_delete_jobs
 from swift.common.exceptions import ListingIterError, SegmentError
 from swift.common.middleware.listing_formats import \
     MAX_CONTAINER_LISTING_CONTENT_LENGTH
+from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.swob import Request, HTTPBadRequest, HTTPServerError, \
     HTTPMethodNotAllowed, HTTPRequestEntityTooLarge, HTTPLengthRequired, \
     HTTPOk, HTTPPreconditionFailed, HTTPException, HTTPNotFound, \
@@ -1076,6 +1077,39 @@ class SloGetContext(WSGIContext):
             # will drop. In this case a 409 Conflict will be logged in
             # the proxy logs and the user will receive incomplete results.
             return HTTPConflict(request=req)
+        except HTTPException as exc:
+            # Part not found
+            if exc.status_int == 434:
+                # Check if the manifest still exists
+                # Extract oio_cache and remove it from req if exists
+                oio_cache = req.environ.pop('oio.cache', None)
+                try:
+                    # Check if manifest is still there
+                    sub_req = make_subrequest(
+                        req.environ, path=req.path,
+                        method='HEAD',
+                        headers={'x-auth-token': req.headers.get(
+                            'x-auth-token')},
+                        swift_source="SLO")
+                    sub_req_resp = sub_req.get_response(self.app)
+                finally:
+                    # Put oio_cache again if exists (further request may
+                    # benefit of the cache)
+                    if oio_cache is not None:
+                        req.environ['oio.cache'] = oio_cache
+                drain_and_close(sub_req_resp)
+                if sub_req_resp.status_int == 200:
+                    s3api_etag = sub_req_resp.headers.get(
+                        sysmeta_header("object", "etag"), "")
+                    if "-" in s3api_etag:
+                        # The manifest is present, we have a broken MPU
+                        return HTTPConflict(request=req)
+                    # MPU overwritten by new object
+                    return HTTPNotFound(request=req)
+                elif sub_req_resp.status_int == 404:
+                    # Object deleted
+                    return HTTPNotFound(request=req)
+            raise
 
         conditional_etag = resolve_etag_is_at_header(req, response_headers)
         response = Response(request=req, content_length=content_length,

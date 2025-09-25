@@ -27,6 +27,7 @@ from io import BytesIO
 from swift.common import swob, registry
 from swift.common.header_key_dict import HeaderKeyDict
 from swift.common.middleware import slo
+from swift.common.middleware.s3api.utils import sysmeta_header
 from swift.common.swob import Request, HTTPException, str_to_wsgi, \
     bytes_to_wsgi
 from swift.common.utils import quote, closing_if_possible, close_if_possible, \
@@ -3885,7 +3886,7 @@ class TestSloGetManifest(SloTestCase):
             ('GET', '/v1/AUTH_test/gettest/b_10?multipart-manifest=get'),
             ('GET', '/v1/AUTH_test/gettest/c_15?multipart-manifest=get')])
 
-    def test_first_segment_not_exists(self):
+    def _register_req_first_segment_missing_test(self):
         self.app.register('GET', '/v1/AUTH_test/gettest/not_exists_obj',
                           swob.HTTPNotFound, {}, None)
         self.app.register('GET', '/v1/AUTH_test/gettest/manifest-not-exists',
@@ -3897,11 +3898,57 @@ class TestSloGetManifest(SloTestCase):
                                        'bytes': '%d' % len('not_exists_obj')
                                        }]))
 
+    def test_first_segment_not_exists_manifest_exists(self):
+        self._register_req_first_segment_missing_test()
+        self.app.register(
+            'HEAD', '/v1/AUTH_test/gettest/manifest-not-exists',
+            swob.HTTPOk,
+            {
+                'Content-Type': 'application/json',
+                'X-Static-Large-Object': 'true',
+                sysmeta_header("object", "etag"): "skjdfkjqgdf-7"
+            }
+        )
+
         req = Request.blank('/v1/AUTH_test/gettest/manifest-not-exists',
                             environ={'REQUEST_METHOD': 'GET'})
         status, headers, body = self.call_slo(req)
 
-        self.assertEqual('434 Part Not Found', status)
+        self.assertEqual('409 Conflict', status)
+        self.assertEqual(self.app.unread_requests, {})
+
+    def test_first_segment_not_exists_MPU_overwritten(self):
+        self._register_req_first_segment_missing_test()
+        self.app.register(
+            'HEAD', '/v1/AUTH_test/gettest/manifest-not-exists',
+            swob.HTTPOk,
+            {
+                'Content-Type': 'application/json',
+                'X-Static-Large-Object': 'true',
+                sysmeta_header("object", "etag"): "skjdfkjqgdf"
+            }
+        )
+
+        req = Request.blank('/v1/AUTH_test/gettest/manifest-not-exists',
+                            environ={'REQUEST_METHOD': 'GET'})
+        status, headers, body = self.call_slo(req)
+
+        self.assertEqual('404 Not Found', status)
+        self.assertEqual(self.app.unread_requests, {})
+
+    def test_first_segment_not_exists_manifest_deleted(self):
+        self._register_req_first_segment_missing_test()
+        self.app.register(
+            'HEAD', '/v1/AUTH_test/gettest/manifest-not-exists',
+            swob.HTTPNotFound,
+            {}
+        )
+
+        req = Request.blank('/v1/AUTH_test/gettest/manifest-not-exists',
+                            environ={'REQUEST_METHOD': 'GET'})
+        status, headers, body = self.call_slo(req)
+
+        self.assertEqual('404 Not Found', status)
         self.assertEqual(self.app.unread_requests, {})
 
     def test_first_segment_not_available(self):
