@@ -2227,6 +2227,69 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             'Expecting a single x-amz-checksum- header. '
             'Multiple checksum Types are not allowed.')
 
+    def test_copy_mpu_to_regular(self):
+        """
+        Ensure the copied object has the right checksum metadata
+        (or no checksum at all).
+        """
+        # Initialize and complete a MPU
+        mpu_obj_name = self.create_name('mpu-to-regular')
+        create_mpu_resp = self.client.create_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            ChecksumAlgorithm='CRC32C')
+        self.assertEqual(200, create_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
+        upload_id = create_mpu_resp['UploadId']
+
+        part_resp = self.client.upload_part(
+            Bucket=self.bucket_name,
+            Key=mpu_obj_name,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=TEST_BODY,
+            ChecksumCRC32C=TestObjectChecksumCRC32C.EXPECTED,
+        )
+        self.assertEqual(200, part_resp['ResponseMetadata']['HTTPStatusCode'])
+        complete_mpu_resp = self.client.complete_multipart_upload(
+            Bucket=self.bucket_name, Key=mpu_obj_name,
+            MultipartUpload={
+                'Parts': [
+                    {
+                        'ETag': part_resp['ETag'],
+                        'PartNumber': 1,
+                        'ChecksumCRC32C':
+                            TestObjectChecksumCRC32C.EXPECTED,
+                    },
+                ],
+            },
+            UploadId=upload_id,
+        )
+        self.assertEqual(200, complete_mpu_resp[
+            'ResponseMetadata']['HTTPStatusCode'])
+
+        # Copy the MPU to a regular object
+        copy_name = self.create_name("mpu-to-regular-copy")
+        copy_resp = self.client.copy_object(
+            Bucket=self.bucket_name, Key=copy_name,
+            CopySource=f"{self.bucket_name}/{mpu_obj_name}"
+        )
+        if "ChecksumCRC32C" in copy_resp["CopyObjectResult"]:
+            self.assertEqual(
+                copy_resp["CopyObjectResult"]["ChecksumCRC32C"],
+                TestObjectChecksumCRC32C.EXPECTED,
+            )
+
+        # Ensure that if there is a checksum, it is the right one
+        head_resp = self.client.head_object(
+            Bucket=self.bucket_name, Key=copy_name, ChecksumMode="ENABLED")
+        self.assertEqual(200, head_resp["ResponseMetadata"]["HTTPStatusCode"])
+        if "ChecksumCRC32C" in head_resp:
+            self.assertEqual(
+                head_resp["ChecksumCRC32C"],
+                TestObjectChecksumCRC32C.EXPECTED,
+            )
+
     def test_different_checksum_requested(self):
 
         def replace_crc32_headers(request, **_kwargs):
@@ -3359,6 +3422,10 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         )
 
     def test_upload_part_copy_range(self):
+        """
+        Ensure the copied parts of a MPU have the right checksum metadata
+        (or no checksum at all).
+        """
         # Create a large(ish) source object, with TEST_BODY as prefix
         obj_name = self.create_name('upload-part-copy-source')
         resp = self.client.put_object(

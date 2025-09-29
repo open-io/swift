@@ -382,8 +382,8 @@ class ServerSideCopyMiddleware(HeartbeatMixin):
             # copied below and timestamps.
             checksum_headers = {}
             # Exclude checksum headers if we are asked for a range
-            # (the checksum would be invalid).
-            if req.range:
+            # (the checksum would be invalid) or if the source is a SLO.
+            if req.range or 'x-static-large-object' in source_resp.headers:
                 checksum_headers = _checksum_headers
             exclude_headers = {'x-static-large-object', 'x-object-manifest',
                                'etag', 'content-type', 'x-timestamp',
