@@ -92,8 +92,8 @@ from swift.common.middleware.s3api.controllers.replication import \
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.exception import S3InputChecksumMismatch
-from swift.common.middleware.s3api.s3response import InvalidArgument, \
-    ErrorResponse, MalformedXML, BadDigest, \
+from swift.common.middleware.s3api.s3response import BrokenMPU, \
+    InvalidArgument, ErrorResponse, MalformedXML, BadDigest, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
@@ -124,6 +124,7 @@ from oio.common import exceptions
 
 # 10000 parts about 200 bytes each, plus envelope
 MAX_COMPLETE_UPLOAD_BODY_SIZE = 3 * 1024 * 1024
+MPU_ABORTED_METADATA = sysmeta_header('object', 'mpu-aborted')
 
 
 def _get_upload_id(req):
@@ -357,10 +358,17 @@ class PartController(Controller):
         part_number = self.parse_part_number(req)
 
         upload_id = _get_upload_id(req)
-        resp = _get_upload_info(req, self.app, upload_id)
+        resp = _get_upload_info(req, self.app, upload_id, force_master=True)
         # We cannot add a part to an already completed MPU
         if resp.sw_headers.get('X-Static-Large-Object'):
             raise NoSuchUpload(upload_id=upload_id)
+        # On MPU abort, segments are deleted in reverse order and
+        # the marker is removed last. To avoid accepting new part uploads
+        # while deletions are still in progress, we verify that the aborted
+        # property is not already set on the marker.
+        if resp.sysmeta_headers.get(MPU_ABORTED_METADATA):
+            # MPU has been aborted
+            raise BrokenMPU()
 
         seg_container_name = req.container_name + MULTIUPLOAD_SUFFIX
         seg_object_name = '%s/%s/%d' % (req.object_name, upload_id,
@@ -462,12 +470,19 @@ class PartController(Controller):
             try:
                 container = req.container_name + MULTIUPLOAD_SUFFIX
                 obj = '%s/%s' % (req.object_name, upload_id)
-                req.get_response(
+                check_resp = req.get_response(
                     self.app,
                     "HEAD",
                     container=container,
                     obj=obj,
                 )
+                # On MPU abort, segments are deleted in reverse order and
+                # the marker is removed last. To avoid accepting new part
+                # uploads while deletions are still in progress, we verify
+                # that the aborted property is not already set on the marker.
+                if check_resp.sysmeta_headers.get(MPU_ABORTED_METADATA):
+                    # MPU has been aborted
+                    raise BrokenMPU()
             except NoSuchKey:
                 try:
                     req.get_response(self.app, "HEAD")
@@ -1226,6 +1241,20 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         except NoSuchUpload:
             # Manifest does not exist, abort can be performed.
             pass
+        except NoSuchKey:  # From delete marker request above
+            # Attempted to delete the marker, but it was already deleted.
+            raise
+        try:
+            # Add metadata to mark the MPU as aborted.
+            req.get_response(
+                self.app,
+                method="POST",
+                container=segment_container,
+                obj=marker,
+                headers={MPU_ABORTED_METADATA: "true"}
+            )
+        except NoSuchKey:
+            raise NoSuchUpload(upload_id=upload_id)
 
         # The marker was found so this
         # must be a multipart upload abort.
@@ -1263,7 +1292,19 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             obj = bytes_to_wsgi(o['name'].encode('utf-8'))
             req.get_response(
                 self.app, container=segment_container, obj=obj)
-        req.get_response(self.app, container=segment_container, obj=marker)
+        try:
+            req.get_response(self.app, container=segment_container, obj=marker)
+        except NoSuchKey as exc:
+            self.logger.warning(
+                "Failed to delete MPU marker %s in %s. It was likely removed "
+                "by another concurrent request. This suggests a possible race "
+                "condition (ABORT) or unexpected concurrent MPU completion. "
+                "Reason: %s",
+                marker,
+                segment_container,
+                exc
+            )
+            raise
         return HTTPNoContent()
 
     @set_s3_operation_rest('UPLOAD')
@@ -1290,6 +1331,14 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             upload_id,
             force_master=True,
         )
+        # When an MPU is aborted, segment objects are deleted in reverse
+        # order. To prevent a successful MPU completion while segments are
+        # still being deleted after an abort, we added a property to the
+        # marker to indicate the aborted state, which can be checked
+        # at different level of the complete MPU call.
+        if upload_resp.sysmeta_headers.get(MPU_ABORTED_METADATA):
+            # MPU has been aborted
+            raise BrokenMPU()
         # Used to gather and check encryption properties
         first_part_number_used = None
         part_nth_head_response = None
@@ -1612,6 +1661,24 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                         'object', 'requires-encryption-key')] = 'True'
 
         def size_checker(manifest):
+            # Before checking the size of each segment
+            # verify MPU has not been aborted.
+            # This will prevent manifest creation
+            # if there is an ongoing MPU abort.
+            upload_resp = _get_upload_info(
+                req,
+                self.app,
+                upload_id,
+                force_master=True,
+            )
+            # When an MPU is aborted, segment objects are deleted in reverse
+            # order. To prevent a successful MPU completion while segments are
+            # still being deleted after an abort, we added a property to the
+            # marker to indicate the aborted state, which can be checked
+            # at different level of the complete MPU call.
+            if upload_resp.sysmeta_headers.get(MPU_ABORTED_METADATA):
+                # MPU has been aborted
+                raise BrokenMPU()
             # Check the size of each segment except the last and make sure
             # they are all more than the minimum upload chunk size.
             # Note that we need to use the *internal* keys, since we're
@@ -1695,7 +1762,16 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     # Remove replication rules added previously
                     replication_drop_rules(req)
                     req.get_response(self.app, 'DELETE', container, obj)
-                except NoSuchKey:
+                except NoSuchKey as exc:
+                    self.logger.warning(
+                        "Failed to delete MPU marker %s in %s. It was likely "
+                        "removed by another concurrent request. This suggests "
+                        "a possible race condition (COMPLETE) or unexpected "
+                        "concurrent MPU abort. Reason: %s",
+                        obj,
+                        container,
+                        exc
+                    )
                     # The important thing is that we wrote out a tombstone to
                     # make sure the marker got cleaned up. If it's already
                     # gone (e.g., because of concurrent completes or a retried

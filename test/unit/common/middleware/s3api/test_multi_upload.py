@@ -191,6 +191,12 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
              'content-type': 'application/octet-stream',
              'content-length': '11'},
             None)
+        self.swift.register(
+            'POST', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPAccepted,
+            {sysmeta_header('object', 'mpu-aborted'): "true"},
+            None
+        )
 
     @s3acl
     def test_bucket_upload_part(self):
@@ -1505,6 +1511,29 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
              '/v1/AUTH_test/bucket+segments/heartbeat-ok/VXBsb2FkIElE'),
         ])
 
+    def test_object_multipart_upload_complete_already_aborted(self):
+        self.swift.register(
+            'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPOk,
+            {
+                'x-object-meta-foo': 'bar',
+                'content-type': 'application/directory',
+                'x-object-sysmeta-s3api-has-content-type': 'yes',
+                sysmeta_header('object', 'mpu-aborted'): 'true',
+            },
+            None
+        )
+        content_md5 = base64.b64encode(md5(
+            XML.encode('ascii'), usedforsecurity=False).digest())
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
+                            environ={'REQUEST_METHOD': 'POST'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header(),
+                                     'Content-MD5': content_md5, },
+                            body=XML)
+        status, _, _ = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '409')
+
     @patch('swift.common.middleware.s3api.controllers.multi_upload.time')
     def test_object_multipart_upload_complete_failure_with_heartbeat(
             self, mock_time):
@@ -1981,6 +2010,29 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                                      'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '204')
+
+    @s3acl
+    def test_upload_part_aborted_mpu(self):
+        self.swift.register(
+            'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPOk,
+            {
+                'x-object-meta-foo': 'bar',
+                'content-type': 'application/directory',
+                'x-object-sysmeta-s3api-has-content-type': 'yes',
+                'x-object-sysmeta-s3api-content-type': 'baz/quux',
+                sysmeta_header('object', 'mpu-aborted'): 'true',
+            },
+            None
+        )
+        req = Request.blank(
+            '/bucket/object?partNumber=1&uploadId=VXBsb2FkIElE',
+            environ={'REQUEST_METHOD': 'PUT'},
+            headers={'Authorization': 'AWS test:tester:hmac',
+                     'Date': self.get_date_header()},
+            body='part object')
+        status, _, _ = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '409')
 
     @s3acl
     @patch('swift.common.middleware.s3api.s3request.get_container_info',
@@ -2575,6 +2627,27 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             'X-Object-Sysmeta-Swift3-Etag',
         ):
             self.assertEqual(headers[header], '')
+
+    @s3acl
+    def test_upload_part_copy_mpu_aborted(self):
+        date_header = self.get_date_header()
+        timestamp = mktime(date_header)
+        self.swift.register(
+            'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPOk,
+            {
+                'x-object-meta-foo': 'bar',
+                'content-type': 'application/directory',
+                'x-object-sysmeta-s3api-has-content-type': 'yes',
+                'x-object-sysmeta-s3api-content-type': 'baz/quux',
+                sysmeta_header('object', 'mpu-aborted'): 'true',
+            },
+            None
+        )
+        status, _, _ = self._test_copy_for_s3acl(
+            'test:tester', put_header={'Date': date_header},
+            timestamp=timestamp)
+        self.assertEqual(status.split()[0], '409')
 
     @s3acl(s3acl_only=True)
     def test_upload_part_copy_acl_with_owner_permission(self):
