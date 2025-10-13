@@ -18,12 +18,13 @@ from datetime import datetime
 from hashlib import sha256
 from uuid import UUID
 from mock import patch
+
 from swift.common.middleware.s3api.etree import fromstring, tostring
 from swift.common.middleware.s3api.bucket_db import BucketDbWrapper, \
     get_bucket_db
 from swift.common.middleware.s3api.controllers.replication import \
-    BUCKET_REPLICATION_HEADER, dict_conf_to_xml, replication_xml_conf_to_dict,\
-    _optimize_replication_conf, MAX_PRIORITY_NUMBER, MIN_PRIORITY_NUMBER
+    BUCKET_REPLICATION_HEADER, dict_conf_to_xml, \
+    replication_xml_conf_to_dict, MAX_PRIORITY_NUMBER, MIN_PRIORITY_NUMBER
 from swift.common.middleware.s3api.utils import \
     OBJECT_LOCK_ENABLED_HEADER
 from swift.common.middleware.versioned_writes.object_versioning import \
@@ -457,77 +458,6 @@ class TestS3ApiReplication(S3ApiTestCase):
         xml_conf = dict_conf_to_xml(conf_dict_test)
         self.assertEqual(tostring(fromstring(EXPECTED_WITH_STORAGE_CLASS)),
                          xml_conf)
-
-    def test_optimize_configuration(self):
-        conf = {
-            "Role": "arn:aws:iam::012345678942:role/s3-replication",
-            "Rules": [
-                {
-                    "ID": "rule1",
-                    "Status": "Enabled",
-                    "DeleteMarkerReplication": {"Status": "Disabled"},
-                    "Filter": {
-                        "And": {
-                            "Prefix": "string",
-                            "Tags": [
-                                {"Key": "string", "Value": "string"},
-                                {"Key": "string", "Value": "string"},
-                            ],
-                        },
-                    },
-                    "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
-                },
-                {
-                    "ID": "rule2",
-                    "Priority": 4,
-                    "Status": "Enabled",
-                    "DeleteMarkerReplication": {"Status": "Enabled"},
-                    "Filter": {
-                        "Prefix": "string",
-                    },
-                    "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
-                },
-                {
-                    "ID": "rule3",
-                    "Status": "Disabled",
-                    "DeleteMarkerReplication": {"Status": "Disabled"},
-                    "Filter": {
-                        "Tag": {"Key": "key", "Value": "value"},
-                    },
-                    "Destination": {"Bucket": "arn:aws:s3:::bucket2"},
-                },
-                {
-                    "ID": "rule4",
-                    "Status": "Enabled",
-                    "Priority": 42,
-                    "DeleteMarkerReplication": {"Status": "Disabled"},
-                    "Filter": {
-                        "And": {
-                            "Prefix": "string",
-                            "Tags": [
-                                {"Key": "string", "Value": "string"},
-                                {"Key": "string", "Value": "string"},
-                            ],
-                        },
-                    },
-                    "Destination": {"Bucket": "arn:aws:s3:::bucket1"},
-                },
-            ],
-            "UseStorageClass": False,
-        }
-        optimized = _optimize_replication_conf(conf)
-        self.assertIn("role", optimized)
-        self.assertEqual(optimized["role"],
-                         "arn:aws:iam::012345678942:role/s3-replication")
-        self.assertIn("replications", optimized)
-        self.assertEqual(optimized["replications"],
-                         {"arn:aws:s3:::bucket1": ["rule4", "rule2", "rule1"]})
-        self.assertIn("deletions", optimized)
-        self.assertEqual(optimized["deletions"],
-                         {"arn:aws:s3:::bucket1": ["rule4", "rule2"]})
-        self.assertIn("use_tags", optimized)
-        self.assertEqual(optimized["use_tags"], True)
-        self.assertEqual(optimized["use_storage_class"], False)
 
     def test_GET_no_configuration(self):
         req = Request.blank('/test-replication-no-conf?replication',

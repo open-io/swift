@@ -16,6 +16,9 @@
 import json
 import re
 import uuid
+
+from oio.common.replication import optimize_replication_conf
+
 from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_access, check_container_existence, \
@@ -235,71 +238,6 @@ def replication_xml_conf_to_dict(
             out["UseStorageClass"] = True
         out["Rules"].append(rule_dict)
     return out
-
-
-def _optimize_replication_conf(configuration):
-    rules = {}
-    replications = {}
-    deletions = {}
-    use_tags_all_rules = False
-
-    dest_priorities = {}
-
-    for rule in configuration["Rules"]:
-        rule_id = rule["ID"]
-        rules[rule_id] = rule
-        if rule["Status"] != "Enabled":
-            continue
-
-        destination = rule["Destination"]
-        bucket = destination["Bucket"]
-        priority = rule.get("Priority", -1)
-        dest_rules = replications.setdefault(bucket, [])
-        deletion_marker = \
-            rule["DeleteMarkerReplication"]["Status"] == "Enabled"
-        dest_rules.append((rule_id, priority, deletion_marker))
-
-        rule_filter = rule.get("Filter", {})
-        and_filter = rule_filter.get("And", {})
-        use_tags = "Tag" in rule_filter or "Tags" in and_filter
-        use_tags_all_rules |= use_tags
-
-        if deletion_marker and use_tags:
-            raise InvalidRequest(
-                "Delete marker replication is not supported "
-                "if any Tag filter is specified. Please refer to S3 Developer "
-                "Guide for more information."
-            )
-
-        # Ensure all priorities are unique
-        priorities = dest_priorities.setdefault(bucket, set())
-        if priority >= 0:
-            if priority in priorities:
-                raise InvalidRequest(f"Found duplicate priority {priority}.")
-            priorities.add(priority)
-
-    for dest, dest_rules in replications.items():
-        # sort rules per priority
-        dest_rules.sort(key=lambda rule: rule[1], reverse=True)
-
-        # Get all rules until the last one enabling delete marker replication
-        for idx, rule in reversed(list(enumerate(dest_rules))):
-            if rule[2]:
-                deletions[dest] = [r[0] for r in dest_rules[:idx + 1]]
-                break
-
-        replications[dest] = [r[0] for r in dest_rules]
-
-    optimized = {
-        "role": configuration["Role"],
-        "rules": rules,
-        "replications": replications,
-        "deletions": deletions,
-        "use_tags": use_tags_all_rules,
-        "use_storage_class": configuration["UseStorageClass"],
-    }
-
-    return optimized
 
 
 def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
@@ -614,7 +552,10 @@ class ReplicationController(Controller):
         )
         self._validate_role(dict_conf.get("Role"), req)
 
-        dict_conf = _optimize_replication_conf(dict_conf)
+        try:
+            dict_conf = optimize_replication_conf(dict_conf)
+        except ValueError as exc:
+            raise InvalidRequest(str(exc))
         json_conf = json.dumps(dict_conf, separators=(',', ':'))
         req.headers[BUCKET_REPLICATION_HEADER] = json_conf
         resp = req.get_response(self.app, method="POST")
