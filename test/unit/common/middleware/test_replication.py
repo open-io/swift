@@ -20,7 +20,7 @@ from swift.common.middleware.s3api.controllers.replication import \
     OBJECT_REPLICATION_REPLICA
 from swift.common.swob import Request, HTTPNoContent
 from swift.common.middleware.replication import \
-    ReplicationMiddleware, REPLICATION_CALLBACK
+    ReplicationMiddleware, REPLICATION_CALLBACK, get_destination_for_object
 
 
 class TestReplication(unittest.TestCase):
@@ -91,7 +91,7 @@ class TestReplication(unittest.TestCase):
             resp = req.get_response(self.app)
             self.assertEqual('204 No Content', resp.status)
             self.assertEqual(req.environ[REPLICATION_CALLBACK],
-                             self.app.replication_callback)
+                             get_destination_for_object)
 
         # No callback for request issued by replicator
         for method in ('DELETE', 'POST', 'PUT'):
@@ -102,11 +102,11 @@ class TestReplication(unittest.TestCase):
             self.assertEqual('204 No Content', resp.status)
             self.assertNotIn(REPLICATION_CALLBACK, req.environ)
 
-    def test_replication_callback_no_conf(self):
-        dests = self.app.replication_callback({}, 'test_key', {})
+    def test_get_destination_for_object_no_conf(self):
+        dests = get_destination_for_object({}, 'test_key', {})
         self.assertCountEqual(dests, (None, None))
 
-    def test_replication_callback_replications(self):
+    def test_get_destination_for_object_replications(self):
         rules = '''
         {
             "role": "role1",
@@ -183,46 +183,47 @@ class TestReplication(unittest.TestCase):
         }
         '''
         # Match prefix "/test/"
-        dests = self.app.replication_callback(rules, "/test/key")
+        dests = get_destination_for_object(rules, "/test/key")
         self.assertEqual(dests, ("bucket1;bucket2", "role1"))
 
         # Match no rules
-        dests = self.app.replication_callback(rules, "/tes/key")
+        dests = get_destination_for_object(rules, "/tes/key")
         self.assertEqual(dests, (None, "role1"))
 
         # Match no rule for deletion
-        dests = self.app.replication_callback(rules, "/test/key",
-                                              is_deletion=True)
+        dests = get_destination_for_object(
+            rules, "/test/key", is_deletion=True
+        )
         self.assertEqual(dests, (None, "role1"))
 
         # Match rule with tags
-        dests = self.app.replication_callback(
+        dests = get_destination_for_object(
             rules, 'key',
             metadata={"s3api-tagging": self.TAGGING_BODY})
         self.assertEqual(dests, ("bucket2", "role1"))
 
         # Match rule with tags for deletion but higher priority rule has
         # deletion marker replication disabled
-        dests = self.app.replication_callback(
+        dests = get_destination_for_object(
             rules, '/test1/key',
             metadata={"s3api-tagging": self.TAGGING_BODY},
             is_deletion=True)
         self.assertEqual(dests, (None, "role1"))
 
         # Match rule with tags for deletion
-        dests = self.app.replication_callback(
+        dests = get_destination_for_object(
             rules, '/test3/key',
             metadata={"s3api-tagging": self.TAGGING_BODY},
             is_deletion=True)
         self.assertEqual(dests, ("bucket3", "role1"))
 
         # Match prefix "/test/" but is a replica
-        dests = self.app.replication_callback(
+        dests = get_destination_for_object(
             rules, "/test/key",
             metadata={"s3api-replication-status": OBJECT_REPLICATION_REPLICA})
         self.assertEqual(dests, (None, None))
 
-    def test_replication_callback_deletemarker_one_tag_only(self):
+    def test_get_destination_for_object_deletemarker_one_tag_only(self):
         rules = '''
         {
             "role": "role1",
@@ -254,7 +255,7 @@ class TestReplication(unittest.TestCase):
         '''
         # This test is the same as in the method above, except that the
         # tagging document lack one expected tag.
-        dests = self.app.replication_callback(
+        dests = get_destination_for_object(
             rules, '/test3/key',
             metadata={"s3api-tagging": self.TAGGING_BODY_ONE_TAG},
             is_deletion=True)

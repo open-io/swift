@@ -94,6 +94,80 @@ def _object_matches(rule, key, obj_tags={}, is_delete=False):
     return True, False
 
 
+def get_destination_for_object(
+    configuration,
+    key,
+    metadata={},
+    xml_tags=None,
+    is_deletion=False,
+    ensure_replicated=False,
+):
+    """
+    Compute the replication destinations for an object according to its
+    metadata.
+    :param configuration: async replication configuration
+    :param key: object key
+    :param metadata: object metadata
+    :param xml_tags: object tags if any
+    :param is_deletion: indicate if the object is being delete
+    :param ensure_replicated: indicated the object must have been
+    replicated. (Used for metadata updates)
+    :returns: String representing the list of destination buckets
+                the object must be replicated (";" separated) to and the role
+    """
+    if not configuration:
+        return None, None
+
+    # Ensure we are not dealing with a replica
+    replication_status = metadata.get("s3api-replication-status", "")
+    if replication_status == OBJECT_REPLICATION_REPLICA:
+        return None, None
+
+    # Ensure we are dealing with an already replicated object if required
+    if ensure_replicated and not replication_status:
+        return None, None
+
+    if isinstance(configuration, str):
+        configuration = json.loads(configuration)
+    category = "deletions" if is_deletion else "replications"
+    rules_per_destination = configuration.get(category, {})
+
+    # Retrieve object tags if required
+    tags = {}
+    if configuration.get("use_tags", False):
+        if not xml_tags:
+            xml_tags = metadata.get("s3api-tagging")
+
+        tags = (_tagging_obj_to_dict(xmltodict.parse(xml_tags))
+                if xml_tags else {})
+
+    destinations = None
+    ruleset = configuration.get("rules", {})
+    for destination, rules in rules_per_destination.items():
+        for rule_name in rules:
+            rule = ruleset.get(rule_name)
+            if not rule:
+                continue
+            r_match, r_continue = _object_matches(
+                rule, key, tags, is_deletion)
+            if r_match:
+                # Remove 'arn:aws:s3:::' prefix from bucket name
+                if destination.startswith(DEST_BUCKET_PREFIX):
+                    destination = destination[len(DEST_BUCKET_PREFIX):]
+                # Add storage class to the destination
+                storage_class = rule["Destination"].get("StorageClass")
+                if storage_class:
+                    destination = f"{destination}:{storage_class}"
+
+                if not destinations:
+                    destinations = destination  # first element of the list
+                else:
+                    destinations = f"{destinations};{destination}"
+            if not r_continue:
+                break
+    return destinations, configuration.get("role")
+
+
 class ReplicationMiddleware(object):
     """
     Middleware that deals with Async Replication.
@@ -112,81 +186,8 @@ class ReplicationMiddleware(object):
         # replication
         if (req.method in ("DELETE", "POST", "PUT")
                 and req.user_agent != self.replicator_user_agent):
-            env[REPLICATION_CALLBACK] = self.replication_callback
+            env[REPLICATION_CALLBACK] = get_destination_for_object
         return self.app(env, msg)
-
-    def replication_callback(
-        self,
-        configuration,
-        key,
-        metadata={},
-        xml_tags=None,
-        is_deletion=False,
-        ensure_replicated=False,
-    ):
-        """
-        Compute the replication destinations for an object according to its
-        metadata
-        :param configuration: async replication configuration
-        :param key: object key
-        :param metadata: object metadata
-        :param xml_tags: object tags if any
-        :param is_deletion: indicate if the object is being delete
-        :param ensure_replicated: indicated the object must have been
-        replicated. (Used for metadata updates)
-        :returns: String representing the list of destination buckets
-                  the object must be replicated to and the role
-        """
-        if not configuration:
-            return None, None
-
-        # Ensure we are not dealing with a replica
-        replication_status = metadata.get("s3api-replication-status", "")
-        if replication_status == OBJECT_REPLICATION_REPLICA:
-            return None, None
-
-        # Ensure we are dealing with an already replicated object if required
-        if ensure_replicated and not replication_status:
-            return None, None
-
-        configuration = json.loads(configuration)
-        category = "deletions" if is_deletion else "replications"
-        rules_per_destination = configuration.get(category, {})
-
-        # Retrieve object tags if required
-        tags = {}
-        if configuration.get("use_tags", False):
-            if not xml_tags:
-                xml_tags = metadata.get("s3api-tagging")
-
-            tags = (_tagging_obj_to_dict(xmltodict.parse(xml_tags))
-                    if xml_tags else {})
-
-        destinations = None
-        ruleset = configuration.get("rules", {})
-        for destination, rules in rules_per_destination.items():
-            for rule_name in rules:
-                rule = ruleset.get(rule_name)
-                if not rule:
-                    continue
-                r_match, r_continue = _object_matches(
-                    rule, key, tags, is_deletion)
-                if r_match:
-                    # Remove 'arn:aws:s3:::' prefix from bucket name
-                    if destination.startswith(DEST_BUCKET_PREFIX):
-                        destination = destination[len(DEST_BUCKET_PREFIX):]
-                    # Add storage class to the destination
-                    storage_class = rule["Destination"].get("StorageClass")
-                    if storage_class:
-                        destination = f"{destination}:{storage_class}"
-
-                    if not destinations:
-                        destinations = destination  # first element of the list
-                    else:
-                        destinations = f"{destinations};{destination}"
-                if not r_continue:
-                    break
-        return destinations, configuration.get("role")
 
 
 def filter_factory(global_conf, **local_config):
