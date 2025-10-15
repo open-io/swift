@@ -17,7 +17,8 @@ import json
 import re
 import uuid
 
-from oio.common.replication import optimize_replication_conf
+from oio.common.replication import optimize_replication_conf, \
+    DEFAULT_USE_STORAGE_CLASS, DEFAULT_DELETE_MARKER_REPLICATION_VALUE
 
 from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
 from swift.common.middleware.s3api.controllers.base import Controller, \
@@ -201,7 +202,7 @@ def replication_xml_conf_to_dict(
     out = {
         "Role": replication_conf.find("Role").text,
         "Rules": [],
-        "UseStorageClass": False,
+        "UseStorageClass": DEFAULT_USE_STORAGE_CLASS,
     }
     IDs = set()
     for rule_xml in replication_conf.findall("Rule"):
@@ -221,7 +222,7 @@ def replication_xml_conf_to_dict(
             "DeleteMarkerReplication": {
                 "Status": deleteMarkerReplication.find("Status").text
                 if deleteMarkerReplication is not None
-                else "Disabled",
+                else DEFAULT_DELETE_MARKER_REPLICATION_VALUE,
             },
             "Filter": get_filters(rule_xml.find("Filter")),
             "Destination": {
