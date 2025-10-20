@@ -217,7 +217,8 @@ class ObjectController(Controller):
                 resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
 
         # Check if object is not archived
-        req.validate_restore_state(resp)
+        storage_pol = resp.sw_headers.get("x-object-sysmeta-storage-policy")
+        req.validate_restore_state(resp, storage_pol)
 
         if version_id in ('null', None):
             if (self.conf.enable_lifecycle or

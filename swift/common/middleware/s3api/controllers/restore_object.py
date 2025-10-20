@@ -104,7 +104,11 @@ class RestoreObjectController(Controller):
             if not self.bypass_feature_disabled(req, "restore_object"):
                 raise S3NotImplemented()
         # Check if object has restorable storage class
-        if not is_storage_class_restorable(req.storage_class):
+        object_info = req.get_object_info(self.app)
+        object_meta = object_info.get("sysmeta", {})
+        storage_class, _ = req.storage_policy_to_class(
+            object_meta.get("storage-policy"), update=False)
+        if not is_storage_class_restorable(storage_class):
             raise InvalidObjectState(
                 "Restore is not allowed for the object's current storage class"
             )
@@ -122,9 +126,7 @@ class RestoreObjectController(Controller):
         restore_prop = None
 
         # Check if object is being/has been restored
-        object_info = req.get_object_info(self.app)
-        metadata = object_info.get("sysmeta", {})
-        current_restore_prop = metadata.get("s3api-restore")
+        current_restore_prop = object_meta.get("s3api-restore")
         if not current_restore_prop:
             restore_prop = RestoreProperty()
             restore_prop.ongoing = True

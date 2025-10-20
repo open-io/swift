@@ -1900,7 +1900,9 @@ class S3Request(swob.Request):
                                  "location or encryption "
                                  "attributes.")
         # Check if object is not archived
-        self.validate_restore_state(src_resp, method="GET")
+        storage_pol = src_resp.sw_headers.get(
+            "x-object-sysmeta-storage-policy")
+        self.validate_restore_state(src_resp, storage_pol, method="GET")
         self.headers['X-Amz-Copy-Source'] = quote(src_path)
         if query:
             self.headers['X-Amz-Copy-Source'] += \
@@ -1919,7 +1921,7 @@ class S3Request(swob.Request):
         })
         return src_resp
 
-    def validate_restore_state(self, resp, method=None):
+    def validate_restore_state(self, resp, storage_policy, method=None):
         """Validate the source copy object restore state
 
         :param resp: response object
@@ -1933,7 +1935,9 @@ class S3Request(swob.Request):
         if method is None:
             method = self.method
 
-        obj_available = not is_storage_class_restorable(self.storage_class)
+        storage_class, _ = self.storage_policy_to_class(
+            storage_policy, update=False)
+        obj_available = not is_storage_class_restorable(storage_class)
 
         if RESTORE_OBJECT_HEADER in resp.sysmeta_headers:
             resp_header_fields = []
@@ -2346,7 +2350,7 @@ class S3Request(swob.Request):
             query=query, body=body, headers=headers,
             force_swift_request_proxy_log=force_swift_request_proxy_log)
 
-    def storage_policy_to_class(self, storage_policy):
+    def storage_policy_to_class(self, storage_policy, update=True):
         """
         Return the actual (billed) storage class
         and the storage class visible from the storage domain.
@@ -2361,7 +2365,7 @@ class S3Request(swob.Request):
         storage_class_domain = self.conf.storage_classes_mappings_read[
             storage_domain
         ].get(storage_class or "", STANDARD_STORAGE_CLASS)
-        if self.object_name:
+        if update and self.object_name:
             self.storage_class_domain = storage_class_domain
             self.storage_class = storage_class
         return storage_class, storage_class_domain
