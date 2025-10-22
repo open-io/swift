@@ -77,7 +77,7 @@ class EncryptionController(Controller):
         """
         Return the SSEAlgorithm string value from XML payload
         Parsing is safe since payload has already been validated earlier
-        Only AES256 SSEAlgorithm is currenly supported
+        Only AES256 SSEAlgorithm is currently supported
         Multiple configuration rules are not supported
         """
         sse_dict = xmltodict.parse(payload)
@@ -92,7 +92,9 @@ class EncryptionController(Controller):
         if ("BucketKeyEnabled" in sse_rule
                 and sse_rule['BucketKeyEnabled'].lower() != 'false'):
             raise S3NotImplemented()
-        sse_default = sse_rule['ApplyServerSideEncryptionByDefault']
+        sse_default = sse_rule.get('ApplyServerSideEncryptionByDefault')
+        if not sse_default:
+            return None
         if "KMSMasterKeyID" in sse_default:
             raise S3NotImplemented()
         sse_algo = sse_default['SSEAlgorithm']
@@ -103,7 +105,7 @@ class EncryptionController(Controller):
     def _create_xml_payload_from_sse_algorithm(self, sse_algo):
         """
         Return a valid xml body from the provided SSEAlgorithm value
-        Only AES256 is currenly supported
+        Only AES256 is currently supported
         """
         return dict2xml({
             'ServerSideEncryptionConfiguration': {
@@ -114,6 +116,18 @@ class EncryptionController(Controller):
                 },
             },
         })
+
+    def _disable_encryption(self, req):
+        """
+        Disable encryption. If sse encryption is set by default, raise
+        AccessDenied.
+        """
+        # FIXME: Remove this when default sse configuration is set to
+        # match AWS current value (AES256) everywhere
+        if self.conf.default_sse_configuration == 'AES256':
+            raise AccessDenied()
+        req.headers[BUCKET_ENCRYPTION_HEADER] = ""
+        return req.get_response(self.app, method="POST")
 
     @set_s3_operation_rest('ENCRYPTION')
     @ratelimit
@@ -159,16 +173,14 @@ class EncryptionController(Controller):
         except (DocumentInvalid, XMLSyntaxError) as exc:
             raise MalformedXML(str(exc))
 
-        try:
-            sse_algo = self._extract_sse_algorithm_from_payload(body)
-        except Exception as e:
-            raise e
+        sse_algo = self._extract_sse_algorithm_from_payload(body)
 
         if sse_algo:
             req.headers[BUCKET_ENCRYPTION_HEADER] = sse_algo
             resp = req.get_response(self.app, method="POST")
             return convert_response(req, resp, 204, HTTPOk)
 
+        self._disable_encryption(req)
         return HTTPOk()
 
     @set_s3_operation_rest('ENCRYPTION')
@@ -183,10 +195,5 @@ class EncryptionController(Controller):
         """
         Handles DELETE Bucket Encryption.
         """
-        # FIXME: Remove this when default sse configuration is set to
-        # match AWS current value (AES256) everywhere
-        if self.conf.default_sse_configuration == 'AES256':
-            raise AccessDenied()
-        req.headers[BUCKET_ENCRYPTION_HEADER] = ""
-        resp = req.get_response(self.app, method="POST")
+        resp = self._disable_encryption(req)
         return convert_response(req, resp, 202, HTTPNoContent)

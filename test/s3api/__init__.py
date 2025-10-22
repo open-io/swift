@@ -143,7 +143,8 @@ def get_s3_client(
         "s3": {
             'signature_version': signature_version,
             'addressing_style': addressing_style,
-        }
+        },
+        "parameter_validation": False,
     }
     if proxy_config:
         params["proxies"] = proxy_config
