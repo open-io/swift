@@ -90,6 +90,12 @@ class Application(SwiftApplication):
         sds_conf['refresh_delay'] = config_auto_int_value(
             sds_conf.pop('endpoint_refresh_delay', None), 60)
 
+        sds_conf['ec_enable_pass_through'] = config_true_value(
+            sds_conf.get('ec_enable_pass_through', 'false'))
+
+        sds_conf['ec_passthrough_min_score'] = config_auto_int_value(
+            sds_conf.pop('ec_passthrough_min_score', None), 90)
+
         # NOTE(FVE): passing self.logger is different from passing just logger.
         # If logger is None, self.logger will be properly instantiated by the
         # constructor of the parent class.
