@@ -150,7 +150,6 @@ class RestoreObjectController(Controller):
                 # Object has been previously restored and the expiration
                 # date has not passed yet.
                 # Only update the restore configuration.
-                restore_prop.expiry_date = new_expiry_date
                 restore_prop.ongoing = False
                 is_update_config = True
             else:
