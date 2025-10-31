@@ -1352,7 +1352,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 return req.get_response(
                     app, 'HEAD', container=container, obj=obj)
             except NoSuchKey:
-                return None
+                raise InvalidPart(
+                    upload_id=upload_id, part_number=part_number)
             finally:
                 del req.environ["swift.crypto.override"]
 

@@ -3148,7 +3148,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
     def test_mpu_complete_multi_checksum_full_object(self):
         self._test_mpu_complete_multi_checksum(cs_type='FULL_OBJECT')
 
-    def _test_multipart_mpu(self, cs_type=None):
+    def _test_multipart_mpu(self, cs_type=None, missing_part=False):
         obj_name = self.create_name('multipart-mpu')
         kwargs = {
             "Bucket": self.bucket_name,
@@ -3168,7 +3168,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         part_body = b'\x00' * 5 * 1024 * 1024
         part_crc32c = base64.b64encode(struct.pack("!I", crc32c(
             part_body))).decode('ascii')
-
+        list_parts = []
         upload_part_resp = self.client.upload_part(
             Bucket=self.bucket_name,
             Key=obj_name,
@@ -3179,33 +3179,64 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         )
         self.assertEqual(200, upload_part_resp[
             'ResponseMetadata']['HTTPStatusCode'])
-        # then do another
-        upload_part_resp = self.client.upload_part(
-            Bucket=self.bucket_name,
-            Key=obj_name,
-            UploadId=upload_id,
-            PartNumber=2,
-            Body=part_body,
-            ChecksumCRC32C=part_crc32c,
+        list_parts.append(
+            {
+                'PartNumber': 1,
+                'ETag': upload_part_resp['ETag'],
+                'ChecksumCRC32C': part_crc32c,
+            }
         )
-        self.assertEqual(200, upload_part_resp[
-            'ResponseMetadata']['HTTPStatusCode'])
+        if not missing_part:
+            # Then add the second part
+            upload_part_resp = self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=obj_name,
+                UploadId=upload_id,
+                PartNumber=2,
+                Body=part_body,
+                ChecksumCRC32C=part_crc32c,
+            )
+            self.assertEqual(200, upload_part_resp[
+                'ResponseMetadata']['HTTPStatusCode'])
+        list_parts.append(
+            {
+                'PartNumber': 2,
+                'ETag': upload_part_resp['ETag'],
+                'ChecksumCRC32C': part_crc32c,
+            }
+        )
+        if missing_part:
+            with self.assertRaises(botocore.exceptions.ClientError) as caught:
+                complete_mpu_resp = self.client.complete_multipart_upload(
+                    Bucket=self.bucket_name, Key=obj_name,
+                    MultipartUpload={
+                        'Parts': list_parts,
+                    },
+                    UploadId=upload_id,
+                )
+            resp = caught.exception.response
+            self.assertEqual(
+                400, resp['ResponseMetadata']['HTTPStatusCode'],
+                resp
+            )
+            expected = {
+                'Code': 'InvalidPart',
+                'Message': ("One or more of the specified parts could not be "
+                            "found.  The part may not have been uploaded, or "
+                            "the specified entity tag may not match the part's"
+                            " entity tag."),
+                'UploadId': upload_id,
+                'PartNumber': '2',
+            }
+            if cs_type != "FULL_OBJECT":
+                expected['ETag'] = upload_part_resp['ETag'].strip('"')
+            self.assertEqual(resp['Error'], expected)
+            return
 
         complete_mpu_resp = self.client.complete_multipart_upload(
             Bucket=self.bucket_name, Key=obj_name,
             MultipartUpload={
-                'Parts': [
-                    {
-                        'PartNumber': 1,
-                        'ETag': upload_part_resp['ETag'],
-                        'ChecksumCRC32C': part_crc32c,
-                    },
-                    {
-                        'PartNumber': 2,
-                        'ETag': upload_part_resp['ETag'],
-                        'ChecksumCRC32C': part_crc32c,
-                    },
-                ],
+                'Parts': list_parts,
             },
             UploadId=upload_id,
         )
@@ -3269,6 +3300,12 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
 
     def test_multipart_mpu_full_object(self):
         self._test_multipart_mpu(cs_type='FULL_OBJECT')
+
+    def test_multipart_mpu_missing_part(self):
+        self._test_multipart_mpu(missing_part=True)
+
+    def test_multipart_mpu_full_object_missing_part(self):
+        self._test_multipart_mpu(cs_type='FULL_OBJECT', missing_part=True)
 
     def _test_multipart_mpu_with_upload_part_copy(self, cs_type="COMPOSITE"):
         obj_name = self.create_name(f'mpu-with-part-copy-{cs_type}')
