@@ -10,7 +10,6 @@ AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 set -e
 #set -x
 
-
 test_mpu_abort__no_parts() {
   BUCKET="bucket-$RANDOM"
   echo "Testing the abortion of a multipart object"
@@ -34,7 +33,7 @@ test_mpu_abort__no_parts() {
 test_mpu_abort__with_parts() {
   BUCKET="bucket-$RANDOM"
   MULTI_FILE=$(mktemp -t multipart_XXXXXX.dat)
-  dd if=/dev/zero of="${MULTI_FILE}" count=6 bs=1M
+  dd if=/dev/zero of="${MULTI_FILE}" count=6 bs=100K
 
   echo
   echo "Testing the abortion of a multipart object with existing parts"
@@ -43,10 +42,13 @@ test_mpu_abort__with_parts() {
   echo "Creating bucket ${BUCKET}"
   ${AWS} s3 mb "s3://$BUCKET"
 
-  echo "Creating multipart 'second' with 2 parts"
+  echo "Creating multipart 'second' with 1002 parts"
   UPLOAD_ID=$(${AWS} s3api create-multipart-upload --bucket ${BUCKET} --key second | jq -r .UploadId)
-  for i in $(seq 1 1002); do ${AWS} s3api upload-part --bucket ${BUCKET} --key second --part-number $i --upload-id "${UPLOAD_ID}" \
-    --body "${MULTI_FILE}"; done
+  for i in $(seq 1 1002); do
+    ${AWS} s3api upload-part --bucket ${BUCKET} --key second \
+      --part-number $i --upload-id "${UPLOAD_ID}" --body "${MULTI_FILE}"
+    echo "Part $i created"
+  done
   echo "Counting segments with openio CLI with default limit to 1000 (should be 1000)"
   SEGS=$(openio object list ${BUCKET}+segments -f value)
   [ -n "$SEGS" ]
@@ -150,7 +152,7 @@ test_mpu_overwrite() {
 
   echo "Check the If-Match feature"
   OBJ_META=$(${AWS} s3api get-object --bucket ${BUCKET} --key obj --if-match c9975699ef630d1f3dfc7224b16d1a25-11 obj)
-  ETAG=$(jq -r ".ETag|tostring" <<< "$OBJ_META")
+  ETAG=$(jq -r ".ETag|tostring" <<<"$OBJ_META")
   [ "$ETAG" = '"c9975699ef630d1f3dfc7224b16d1a25-11"' ]
   diff "${MULTI_FILE}" obj
   # Should return an error code 412 if we pass invalid etags

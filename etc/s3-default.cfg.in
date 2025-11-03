@@ -211,6 +211,7 @@ use = egg:swift#copy
 [filter:slo]
 use = egg:swift#slo
 max_manifest_segments = 10000
+min_segment_size = 524288
 concurrency = 10
 # True enable the async deletion of parts.
 # Response is made to the customer once the manifest is deleted, therefore,
