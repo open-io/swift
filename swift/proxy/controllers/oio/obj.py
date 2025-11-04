@@ -43,7 +43,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPForbidden, \
     HTTPUnprocessableEntity, HTTPClientDisconnect, HTTPCreated, \
     HTTPNoContent, Response, HTTPInternalServerError, multi_range_iterator, \
     HTTPServiceUnavailable, HTTPRequestEntityTooLarge, HTTPException, \
-    str_to_wsgi, wsgi_quote
+    str_to_wsgi, wsgi_quote, wsgi_to_str
 from swift.common.request_helpers import is_sys_or_user_meta, \
     is_object_transient_sysmeta, resolve_etag_is_at_header
 from swift.common.wsgi import make_subrequest
@@ -371,7 +371,9 @@ class ObjectController(BaseObjectController):
                 if is_sys_or_user_meta('object', k) or \
                         is_object_transient_sysmeta(k) or \
                         k.lower() in self.allowed_headers:
-                    resp.headers[str(k)] = v
+                    # oio saves metadata as UTF-8 strings,
+                    # swift headers must be in "wsgi" format
+                    resp.headers[str(k)] = str_to_wsgi(v)
         resp.headers['etag'] = get_object_etag(metadata, self.app.logger)
         resp.headers['x-object-sysmeta-version-id'] = \
             oio_versionid_to_swift_versionid(metadata.get('version'))
@@ -394,8 +396,11 @@ class ObjectController(BaseObjectController):
         Load object metadata from response headers.
         Also load some well-known headers like x-static-large-object.
         """
+        # In swift, headers are supposed to be in "wsgi" format,
+        # but we prefer saving metadata as UTF-8 strings.
         metadata = {
-            k.lower(): v for k, v in headers.items()
+            k.lower(): wsgi_to_str(v)
+            for k, v in headers.items()
             if is_sys_or_user_meta('object', k) or
             is_object_transient_sysmeta(k)
         }
@@ -406,7 +411,7 @@ class ObjectController(BaseObjectController):
         for header_key in self.allowed_headers:
             if header_key in headers:
                 headers_lower = header_key.lower()
-                metadata[headers_lower] = headers[header_key]
+                metadata[headers_lower] = wsgi_to_str(headers[header_key])
         return metadata
 
     @public
@@ -645,7 +650,6 @@ class ObjectController(BaseObjectController):
         metadata = self.load_object_metadata(headers)
         oio_cache = req.environ.get('oio.cache')
         perfdata = req.environ.get('swift.perfdata')
-        # FIXME(FVE): use object_show, cache in req.environ
         version = obj_version_from_env(req.environ)
         props = storage.object_get_properties(from_account, container, obj,
                                               reqid=self.trans_id,

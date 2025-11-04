@@ -928,9 +928,9 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
 
         if HTTP_HEADER_TAGGING_KEY in req.headers:
             tagging = tagging_header_to_xml(
-                req.headers.get(HTTP_HEADER_TAGGING_KEY))
+                wsgi_to_str(req.headers.get(HTTP_HEADER_TAGGING_KEY)))
             if tagging:
-                req.headers[OBJECT_TAGGING_HEADER] = tagging
+                req.headers[OBJECT_TAGGING_HEADER] = bytes_to_wsgi(tagging)
 
         req.headers.pop('Etag', None)
         req.headers.pop('Content-Md5', None)
@@ -1645,7 +1645,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             replication_resolve_rules(
                 self.app,
                 req,
-                tags=tagging_header,
+                tags=wsgi_to_str(tagging_header),
                 metadata=headers,
             )
 

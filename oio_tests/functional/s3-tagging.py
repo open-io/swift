@@ -19,6 +19,7 @@ import os
 import string
 import unittest
 
+from urllib.parse import urlencode
 from botocore.exceptions import ClientError
 
 from swift.common.middleware.crypto.crypto_utils import get_hasher
@@ -28,8 +29,9 @@ from oio_tests.functional.common import get_boto3_client, random_str
 
 # Note: this could be retrieved from the swift configuration
 BACKUP_PEPPER = "this-is-not-really-a-random-string-but-should-be-in-prod"
-TAGSET = [{"Key": "organization", "Value": "marketing"}]
-TAGSET_RESERVED = [{"Key": "ovh:organization", "Value": "marketing"}]
+TAGSET = [{"Key": "𝕆rganization", "Value": "𝕄arketing"}]
+TAGSET_QS = {x["Key"]: x["Value"] for x in TAGSET}
+TAGSET_RESERVED = [{"Key": "ovh:organization", "Value": "𝕄arketing"}]
 
 
 class TestS3Tagging(unittest.TestCase):
@@ -124,6 +126,37 @@ class TestS3Tagging(unittest.TestCase):
             "NoSuchBucket",
             self._delete_bucket_tagging,
         )
+
+    def test_mpu_create_with_tagging(self):
+        self.bucket = f"test-mpu-tagging-{random_str(3)}"
+        boto_client = self._get_boto_client("default")
+        self.boto.create_bucket(Bucket=self.bucket)
+
+        resp = boto_client.create_multipart_upload(
+            Bucket=self.bucket, Key=self.bucket,
+            Tagging=urlencode(TAGSET_QS),
+        )
+        mpu_parts = []
+        upload_id = resp["UploadId"]
+        resp = boto_client.upload_part(
+            Bucket=self.bucket,
+            Key=self.bucket,
+            PartNumber=1,
+            UploadId=upload_id,
+            Body=self.bucket.encode("utf-8"),
+        )
+        mpu_parts.append({"ETag": resp['ETag'], "PartNumber": 1})
+        resp = boto_client.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=self.bucket,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": mpu_parts},
+        )
+        self.assertEqual(resp['ResponseMetadata']['HTTPStatusCode'], 200)
+        self._obj_to_delete.append((self.bucket, resp["VersionId"]))
+
+        resp = self._get_object_tagging(key=self.bucket)
+        self.assertListEqual(resp["TagSet"], TAGSET)
 
     def test_object_operation_no_bucket(self):
         """

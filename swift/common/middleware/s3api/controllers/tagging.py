@@ -35,6 +35,7 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     InvalidTagValue, BadRequest
 from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp, \
     validate_tag_key, validate_tag_value
+from swift.common.swob import str_to_wsgi, wsgi_to_bytes
 from swift.common.utils import IGNORE_CUSTOMER_ACCESS_LOG, \
     close_if_possible, public
 
@@ -105,7 +106,10 @@ def _validate_tags_count(tags, object_tagging=True):
 
 
 def tagging_header_to_xml(header_val):
-    """Convert x-amz-tagging header value to a Tagging XML document."""
+    """
+    Convert x-amz-tagging header value to a Tagging XML document.
+    :returns: bytes
+    """
     root, tagset = _create_tagging_xml_document()
     # AWS supports keys with empty values like key1=&key2=
     items = parse_qs(header_val, keep_blank_values=True)
@@ -213,12 +217,14 @@ class TaggingController(Controller):
                                 req.container_name, req.object_name)
         headers = {}
         if req.is_object_request:
-            body = resp.sysmeta_headers.get(OBJECT_TAGGING_HEADER)
+            body = wsgi_to_bytes(
+                resp.sysmeta_headers.get(OBJECT_TAGGING_HEADER, ""))
             # It seems that S3 returns x-amz-version-id,
             # even if it is not documented.
             headers['x-amz-version-id'] = resp.sw_headers[VERSION_ID_HEADER]
         else:
-            body = resp.sysmeta_headers.get(BUCKET_TAGGING_HEADER)
+            body = wsgi_to_bytes(
+                resp.sysmeta_headers.get(BUCKET_TAGGING_HEADER, ""))
             if self.conf.get("enable_intelligent_tiering"):
                 # If body is None, intelligent tiering tags will be added to a
                 # new empty document.
@@ -333,7 +339,8 @@ class TaggingController(Controller):
 
         if need_update_tags:
             if req.object_name:
-                req.headers[OBJECT_TAGGING_HEADER] = body
+                tagging_str = body.decode("utf-8")
+                req.headers[OBJECT_TAGGING_HEADER] = str_to_wsgi(tagging_str)
                 # In case of replicator request we do need to trigger
                 # replication here because either it is an update of
                 # tags on the destination or an update of replication
@@ -344,12 +351,13 @@ class TaggingController(Controller):
                         self.app,
                         req,
                         # use new tags
-                        tags=req.headers.get(OBJECT_TAGGING_HEADER),
+                        tags=tagging_str,
                         ensure_replicated=True,
                     )
             else:
                 # Bucket tagging
-                req.headers[BUCKET_TAGGING_HEADER] = body
+                req.headers[BUCKET_TAGGING_HEADER] = \
+                    str_to_wsgi(body.decode("utf-8"))
         if req.is_object_request:
             req.environ["swift.crypto.override"] = True
         resp = req.get_response(self.app, 'POST',

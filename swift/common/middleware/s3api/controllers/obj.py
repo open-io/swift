@@ -20,7 +20,7 @@ import xmltodict
 from swift.common.http import HTTP_OK, HTTP_PARTIAL_CONTENT, HTTP_NO_CONTENT
 from swift.common.request_helpers import update_etag_is_at_header
 from swift.common.swob import Range, content_range_header_value, \
-    normalize_etag
+    normalize_etag, bytes_to_wsgi, wsgi_to_bytes, wsgi_to_str
 from swift.common.utils import public, list_from_csv, \
     config_true_value, strict_b64decode
 from swift.common.registry import get_swift_info
@@ -208,7 +208,9 @@ class ObjectController(Controller):
 
         tags_json = None
         if OBJECT_TAGGING_HEADER in resp.sysmeta_headers:
-            xml_tags = resp.sysmeta_headers[OBJECT_TAGGING_HEADER]
+            # headers are "wsgi", xml funcs should receive bytes
+            xml_tags = wsgi_to_bytes(
+                resp.sysmeta_headers[OBJECT_TAGGING_HEADER])
             tags_json = xmltodict.parse(xml_tags)
             tagset = tags_json["Tagging"]["TagSet"]
             if tagset:
@@ -357,10 +359,12 @@ class ObjectController(Controller):
                                   'Illegal copy header')
 
         if HTTP_HEADER_TAGGING_KEY in req.headers:
+            # Headers are always "wsgi"
             tagging = tagging_header_to_xml(
-                req.headers.pop(HTTP_HEADER_TAGGING_KEY))
+                wsgi_to_str(req.headers.pop(HTTP_HEADER_TAGGING_KEY)))
             if tagging:
-                req.headers[OBJECT_TAGGING_HEADER] = tagging
+                # tostring returns bytes, headers are "wsgi"
+                req.headers[OBJECT_TAGGING_HEADER] = bytes_to_wsgi(tagging)
 
         # Object lock
         object_lock_validate_headers(req.headers)
@@ -373,7 +377,7 @@ class ObjectController(Controller):
             req,
             sysmeta_info=sysmeta_info,
             metadata={},
-            tags=req.headers.get(OBJECT_TAGGING_HEADER),
+            tags=wsgi_to_str(req.headers.get(OBJECT_TAGGING_HEADER)),
         )
 
         # Encryption
@@ -400,7 +404,8 @@ class ObjectController(Controller):
         if (resp.is_success
                 and (self.conf.enable_lifecycle
                      or self.bypass_feature_disabled(req, "lifecycle"))):
-            xml_tags = req.headers.get(OBJECT_TAGGING_HEADER)
+            xml_tags = wsgi_to_bytes(
+                req.headers.get(OBJECT_TAGGING_HEADER, ""))
             tags_json = xmltodict.parse(xml_tags) if xml_tags else None
             expiration, rule_id = get_expiration(
                 sysmeta_info.get("s3api-lifecycle"),
