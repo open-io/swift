@@ -133,6 +133,7 @@ class TestS3ApiObj(S3ApiTestCase):
                                storage_class='STANDARD',
                                object_name='object',
                                expected_headers=None,
+                               unexpected_headers=None,
                                extra_check=set(),
                                status_code='200',
                                expected_error=None):
@@ -152,7 +153,7 @@ class TestS3ApiObj(S3ApiTestCase):
             self.assertEqual(
                 req.headers['X-Backend-Storage-Policy-Index'], '2')
 
-            unexpected_headers = []
+            _unexpected_headers = []
             for key, val in expected_headers.items():
                 if key in (
                     'Content-Length', 'Content-Type', 'content-encoding',
@@ -171,10 +172,14 @@ class TestS3ApiObj(S3ApiTestCase):
                     self.assertEqual(headers['x-amz-meta-' + key[14:]], val)
 
                 else:
-                    unexpected_headers.append((key, val))
+                    _unexpected_headers.append((key, val))
+
+            if _unexpected_headers:
+                self.fail('unexpected headers: %r' % _unexpected_headers)
 
             if unexpected_headers:
-                self.fail('unexpected headers: %r' % unexpected_headers)
+                for key in unexpected_headers:
+                    self.assertNotIn(key, headers)
 
             self.assertEqual(headers['etag'],
                              '"%s"' % self.response_headers['etag'])
@@ -502,6 +507,7 @@ class TestS3ApiObj(S3ApiTestCase):
             method=method,
             object_name="object-archived",
             expected_headers=headers,
+            unexpected_headers=('x-amz-restore',),
             extra_check=("x-amz-storage-class",),
             status_code=status_code,
             expected_error=expected_error

@@ -1950,6 +1950,8 @@ class S3Request(swob.Request):
             now = datetime.now(timezone.utc).timestamp()
             obj_available = (not restore_prop.ongoing
                              and now < restore_prop.expiry_date)
+            obj_expired = (not restore_prop.ongoing
+                           and now >= restore_prop.expiry_date)
 
             if obj_available:
                 dt_formatted = datetime.fromtimestamp(
@@ -1957,7 +1959,8 @@ class S3Request(swob.Request):
                 ).strftime("%a, %d %b %Y %H:%M:%S GMT")
                 resp_header_fields.append(f'expiry-date="{dt_formatted}"')
 
-            resp.headers["x-amz-restore"] = ",".join(resp_header_fields)
+            if not obj_expired:
+                resp.headers["x-amz-restore"] = ",".join(resp_header_fields)
 
         if not obj_available and method == "GET":
             raise InvalidObjectState(RESTORE_STATE_ERROR_MSG)

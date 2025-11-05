@@ -15,6 +15,7 @@
 
 import base64
 import binascii
+from datetime import datetime, timezone
 import hashlib
 from mock import patch
 import os
@@ -35,7 +36,7 @@ from swift.common.middleware.s3api.subresource import Owner, Grant, User, \
     ACL, encode_acl, decode_acl, ACLPublicRead
 from test.unit.common.middleware.s3api.test_s3_acl import s3acl
 from swift.common.middleware.s3api.utils import DEFAULT_CONTENT_TYPE, \
-    S3Timestamp, sysmeta_header, mktime
+    RESTORE_OBJECT_HEADER, S3Timestamp, sysmeta_header, mktime
 from swift.common.middleware.s3api.s3request import MAX_32BIT_INT
 from swift.common.storage_policy import StoragePolicy
 from swift.proxy.controllers.base import get_cache_key
@@ -62,6 +63,18 @@ OBJECT_MANIFEST = \
       'etag': 'fedcba9876543210',
       'last_modified': '2018-05-21T08:40:59.000000',
       'path': '/bucket+segments/object/VXBsb2FkIElE/2'}]
+
+OBJECT_ARCHIVED_MANIFEST = \
+    [{'bytes': 11,
+      'content_type': 'application/octet-stream',
+      'etag': '0123456789abcdef',
+      'last_modified': '2018-05-21T08:40:58.000000',
+      'path': '/bucket+segments/object-archived/VXBsb2FkIElE/1'},
+     {'bytes': 21,
+      'content_type': 'application/octet-stream',
+      'etag': 'fedcba9876543210',
+      'last_modified': '2018-05-21T08:40:59.000000',
+      'path': '/bucket+segments/object-archived/VXBsb2FkIElE/2'}]
 
 OBJECTS_TEMPLATE = \
     (('object/VXBsb2FkIElE/1', '2014-05-07T19:47:51.592270',
@@ -197,6 +210,28 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             {sysmeta_header('object', 'mpu-aborted'): "true"},
             None
         )
+
+    def _setup_deep_archive_object(self, restore_status=None):
+        mp_manifest = self.segment_bucket[:-9] + \
+            '/object-archived?format=raw&multipart-manifest=get'
+        headers = {}
+        if restore_status:
+            headers[RESTORE_OBJECT_HEADER] = json.dumps(restore_status)
+        self.swift.register('GET', mp_manifest,
+                            swob.HTTPOk,
+                            {'content-type': 'application/x-sharedlib',
+                             'X-Object-Sysmeta-Swift3-Etag': S3_ETAG,
+                             'X-Static-Large-Object': 'True',
+                             'X-Object-Sysmeta-Storage-Policy': 'TWOCOPIES',
+                             **headers},
+                            json.dumps(OBJECT_ARCHIVED_MANIFEST))
+        self.swift.register(
+            'HEAD', self.segment_bucket + '/object-archived/VXBsb2FkIElE/1',
+            swob.HTTPOk,
+            {'etag': '0123456789abcdef',
+             'content-type': 'application/octet-stream',
+             'content-length': '11'},
+            None)
 
     @s3acl
     def test_bucket_upload_part(self):
@@ -2105,8 +2140,8 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '200')
 
-    def _test_object_head_part(self, part_number=1):
-        req = Request.blank('/bucket/object?partNumber=%d' % part_number,
+    def _test_object_head_part(self, key="object", part_number=1):
+        req = Request.blank('/bucket/%s?partNumber=%d' % (key, part_number),
                             environ={'REQUEST_METHOD': 'HEAD'},
                             headers={'Authorization': 'AWS test:tester:hmac',
                                      'Date': self.get_date_header()},
@@ -2141,7 +2176,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
 
     @s3acl
     def test_object_head_part_error(self):
-        status, headers, body = self._test_object_head_part(12)
+        status, headers, body = self._test_object_head_part(part_number=12)
         self.assertEqual('416', status.split()[0])
 
     def _test_object_get_part(self, part_number=1, headers=None):
@@ -2154,6 +2189,78 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                             headers=headers,
                             body=None)
         return self.call_s3api(req)
+
+    @s3acl
+    def test_object_head_part_deep_archive_non_restored(self):
+        self._setup_deep_archive_object()
+
+        status, headers, body = self._test_object_head_part(
+            key="object-archived")
+        self.assertEqual('200', status.split()[0])
+        self.assertFalse(body)
+        self.assertIn('ETag', headers)
+        self.assertIn('X-Amz-Mp-Parts-Count', headers)
+        self.assertEqual(S3_ETAG, headers['ETag'])
+        self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+        self.assertNotIn('X-Amz-Part-ETag', headers)
+        self.assertNotIn('X-Amz-Restore', headers)
+
+    @s3acl
+    def test_object_head_part_deep_archive_restoring(self):
+        self._setup_deep_archive_object(restore_status={'ongoing': True})
+
+        status, headers, body = self._test_object_head_part(
+            key="object-archived")
+        self.assertEqual('200', status.split()[0])
+        self.assertFalse(body)
+        self.assertIn('ETag', headers)
+        self.assertIn('X-Amz-Mp-Parts-Count', headers)
+        self.assertEqual(S3_ETAG, headers['ETag'])
+        self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+        self.assertNotIn('X-Amz-Part-ETag', headers)
+        self.assertIn('X-Amz-Restore', headers)
+        self.assertEqual('ongoing-request="true"', headers['X-Amz-Restore'])
+
+    @s3acl
+    def test_object_head_part_deep_archive_restored(self):
+        expiry_date = datetime.now(timezone.utc).timestamp() + 2500
+        self._setup_deep_archive_object(
+            restore_status={'ongoing': False,
+                            'expiry_date': expiry_date})
+
+        status, headers, body = self._test_object_head_part(
+            key="object-archived")
+        self.assertEqual('200', status.split()[0])
+        self.assertFalse(body)
+        self.assertIn('ETag', headers)
+        self.assertIn('X-Amz-Mp-Parts-Count', headers)
+        self.assertEqual(S3_ETAG, headers['ETag'])
+        self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+        self.assertNotIn('X-Amz-Part-ETag', headers)
+        self.assertIn('X-Amz-Restore', headers)
+        dt_expiry_date = datetime.fromtimestamp(expiry_date, tz=timezone.utc)
+        dt_formatted = dt_expiry_date.strftime('%a, %d %b %Y %H:%M:%S GMT')
+        self.assertEqual(
+            f'ongoing-request="false",expiry-date="{dt_formatted}"',
+            headers['X-Amz-Restore'])
+
+    @s3acl
+    def test_object_head_part_deep_archive_expired(self):
+        expiry_date = datetime.now(timezone.utc).timestamp() - 2500
+        self._setup_deep_archive_object(
+            restore_status={'ongoing': False,
+                            'expiry_date': expiry_date})
+
+        status, headers, body = self._test_object_head_part(
+            key="object-archived")
+        self.assertEqual('200', status.split()[0])
+        self.assertFalse(body)
+        self.assertIn('ETag', headers)
+        self.assertIn('X-Amz-Mp-Parts-Count', headers)
+        self.assertEqual(S3_ETAG, headers['ETag'])
+        self.assertEqual('2', headers['X-Amz-Mp-Parts-Count'])
+        self.assertNotIn('X-Amz-Part-ETag', headers)
+        self.assertNotIn('X-Amz-Restore', headers)
 
     @s3acl
     def test_object_get_part_error(self):

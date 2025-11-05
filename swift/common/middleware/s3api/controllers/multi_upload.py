@@ -629,6 +629,10 @@ class PartController(Controller):
             self.app, 'GET', req.container_name, req.object_name,
             query=query)
 
+        storage_pol = slo_resp.sw_headers.get(
+            "x-object-sysmeta-storage-policy")
+        req.validate_restore_state(slo_resp, storage_pol)
+
         # Check if the object is really a SLO. If not, and user asked
         # for the first part, do a regular request.
         if 'X-Static-Large-Object' not in slo_resp.sw_headers:
