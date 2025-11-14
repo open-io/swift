@@ -353,7 +353,10 @@ class BucketController(Controller):
         SubElement(common_prefixes, 'Prefix').text = escape_xml_text(name)
 
     def _add_object(self, req, elem, o, escape_xml_text, listing_type,
-                    fetch_owner):
+                    fetch_owner, optional_attrs=None):
+        if optional_attrs is None:
+            optional_attrs = []
+
         name = o['name']
         escaped_name = escape_xml_text(name)
 
@@ -416,7 +419,7 @@ class BucketController(Controller):
             )
             SubElement(contents, 'StorageClass').text = storage_class
         restore_status = o.get("restore_status")
-        if restore_status:
+        if "RestoreStatus" in optional_attrs and restore_status:
             restore_status_element = SubElement(contents, 'RestoreStatus')
             for key, value in restore_status.items():
                 if isinstance(value, bool):
@@ -424,13 +427,24 @@ class BucketController(Controller):
                 SubElement(restore_status_element, key).text = value
 
     def _add_objects_to_result(self, req, elem, objects, escape_xml_text,
-                               listing_type, fetch_owner):
+                               listing_type, fetch_owner,
+                               optional_attrs=None):
         for o in objects:
             if 'subdir' in o:
                 self._add_subdir(elem, o, escape_xml_text)
             else:
                 self._add_object(req, elem, o, escape_xml_text, listing_type,
-                                 fetch_owner)
+                                 fetch_owner, optional_attrs)
+
+    def _extract_optional_attributes(self, req):
+        attrs = req.headers.get('X-Amz-Optional-Object-Attributes')
+        if attrs:
+            if attrs != "RestoreStatus":
+                raise InvalidArgument("X-Amz-Optional-Object-Attributes",
+                                      attrs,
+                                      "Invalid attribute name specified.")
+            return ["RestoreStatus"]
+        return []
 
     @set_s3_operation_rest_for_list_objects
     @ratelimit
@@ -482,7 +496,8 @@ class BucketController(Controller):
                     next_marker=backend_next_marker,
                     next_version_marker=backend_version_marker)
         self._add_objects_to_result(
-            req, elem, objects, escape_xml_text, listing_type, fetch_owner)
+            req, elem, objects, escape_xml_text, listing_type, fetch_owner,
+            optional_attrs=self._extract_optional_attributes(req))
 
         body = finalize_xml_texts(tostring(elem))
 

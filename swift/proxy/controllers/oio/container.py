@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import json
+from datetime import datetime, timezone
 
 from swift.common.oio_utils import \
     MULTIUPLOAD_SUFFIX, get_object_etag, \
@@ -248,6 +249,9 @@ class ContainerController(SwiftContainerController):
             checksum_properties = get_checksum_properties()
 
         def get_restore_object_prop():
+            if RESTORE_OBJECT_HEADER not in props:
+                return {}
+
             restore_object_properties = {}
             restore_data = props[RESTORE_OBJECT_HEADER]
             restore_property = RestoreProperty.load(restore_data)
@@ -255,14 +259,15 @@ class ContainerController(SwiftContainerController):
                 "IsRestoreInProgress": restore_property.ongoing,
             }
             if not restore_property.ongoing:
-                expiry_date_timestamp = restore_property.expiry_date
+                now = datetime.now(timezone.utc).timestamp()
+                if now > restore_property.expiry_date:
+                    return {}
                 restore_object_properties["restore_status"][
                     "RestoreExpiryDate"
-                ] = Timestamp(expiry_date_timestamp).isoformat
+                ] = Timestamp(restore_property.expiry_date).isoformat
             return restore_object_properties
-        restore_object_properties = {}
-        if RESTORE_OBJECT_HEADER in props:
-            restore_object_properties = get_restore_object_prop()
+
+        restore_object_properties = get_restore_object_prop()
         response = {'name': record['name'],
                     'bytes': record['size'],
                     'last_modified': Timestamp(record['mtime']).isoformat,

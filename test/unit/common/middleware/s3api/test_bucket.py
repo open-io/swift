@@ -226,10 +226,12 @@ class TestS3ApiBucket(S3ApiTestCase):
             'GET', '/v1/AUTH_test/junk', swob.HTTPOk,
             {'Content-Type': 'application/json'}, listing_body)
         bucket_name = 'junk'
+        headers = {'Authorization': 'AWS test:tester:hmac',
+                   'Date': self.get_date_header(),
+                   'X-Amz-Optional-Object-Attributes': 'RestoreStatus'}
         req = Request.blank('/%s' % bucket_name,
                             environ={'REQUEST_METHOD': 'GET'},
-                            headers={'Authorization': 'AWS test:tester:hmac',
-                                     'Date': self.get_date_header()})
+                            headers=headers)
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '200')
 
