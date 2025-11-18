@@ -16,6 +16,7 @@
 # limitations under the License.
 
 from datetime import datetime
+import json
 import requests
 import tempfile
 import time
@@ -24,7 +25,7 @@ import unittest
 from botocore.exceptions import ClientError
 from swift.common.utils import MD5_OF_EMPTY_STRING
 from oio_tests.functional.common import random_str, get_boto3_client, \
-    ENDPOINT_URL, STORAGE_DOMAIN
+    ENDPOINT_URL, S3_STORAGE_CLASSES, STORAGE_DOMAIN
 
 
 class _TestS3BasicTestMixin:
@@ -116,6 +117,24 @@ class _TestS3BasicTestMixin:
 
         resp = requests.post(ENDPOINT_URL, allow_redirects=False)
         self.assertEqual(405, resp.status_code)
+
+    def test_info_s3api(self):
+        resp = requests.get(f"{ENDPOINT_URL}/info", allow_redirects=False)
+        self.assertEqual(200, resp.status_code)
+        info = json.loads(resp.content)
+        self.assertIn("s3api", info)
+        s3api_info = info["s3api"]
+        self.assertIn("storage_classes", s3api_info)
+        storage_classes_info = s3api_info["storage_classes"]
+        for storage_class in storage_classes_info:
+            self.assertIn(storage_class, S3_STORAGE_CLASSES)
+        self.assertListEqual(
+            sorted(
+                storage_classes_info,
+                key=lambda sc: S3_STORAGE_CLASSES.index(sc)
+            ),
+            storage_classes_info,
+        )
 
     def test_list_delimiter(self):
         keys = {"file", "file/", "ville", "test"}

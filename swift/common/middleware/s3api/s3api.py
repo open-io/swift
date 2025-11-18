@@ -1025,6 +1025,10 @@ def filter_factory(global_conf, **local_conf):
             conf.get('allow_multipart_uploads', True)),
         min_segment_size=int(conf.get('min_segment_size', 5242880)),
         s3_acl=config_true_value(conf.get('s3_acl', False)),
+        storage_classes=sorted(
+            list_from_csv(conf.get('storage_classes', STANDARD_STORAGE_CLASS)),
+            key=lambda sc: S3_STORAGE_CLASSES.index(sc)
+        )
     )
 
     register_sensitive_header('authorization')

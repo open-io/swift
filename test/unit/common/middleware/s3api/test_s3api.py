@@ -1208,8 +1208,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         registered_keys = [
             'max_bucket_listing', 'max_parts_listing', 'max_upload_part_num',
             'max_multi_delete_objects', 'allow_multipart_uploads',
-            'min_segment_size', 's3_acl']
+            'min_segment_size', 's3_acl', 'storage_classes']
         expected = dict((k, self.conf[k]) for k in registered_keys)
+        expected["storage_classes"] = [expected["storage_classes"]]
         self.assertEqual(expected, swift_info['s3api'])
 
     def test_check_pipeline(self):

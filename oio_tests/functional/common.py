@@ -35,6 +35,17 @@ PERF_ENDPOINT_URL = f"http://{PERF_DOMAIN}:5000"
 OIO_NS = os.getenv("OIO_NS", "OPENIO")
 OIO_ACCOUNT = os.getenv("OIO_ACCOUNT", "AUTH_demo")
 
+S3_STORAGE_CLASSES = [
+    "EXPRESS_ONEZONE",
+    "STANDARD",
+    "STANDARD_IA",
+    "INTELLIGENT_TIERING",
+    "ONEZONE_IA",
+    "GLACIER_IR",
+    "GLACIER",
+    "DEEP_ARCHIVE",
+]
+
 
 def get_boto3_client(
     endpoint_url=ENDPOINT_URL,

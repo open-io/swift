@@ -23,6 +23,7 @@ from swift.common import swob
 
 from swift.common.middleware.s3api.s3api import filter_factory
 from swift.common.middleware.s3api.etree import fromstring
+from swift.common.middleware.s3api.utils import STANDARD_STORAGE_CLASS
 
 from test.debug_logger import debug_logger
 from test.unit.common.middleware.s3api.helpers import FakeSwift
@@ -80,6 +81,7 @@ class S3ApiTestCase(unittest.TestCase):
             'max_multi_delete_objects': 1000,
             'check_ip_whitelist': False,
             's3_acl': False,
+            'storage_classes': STANDARD_STORAGE_CLASS,
             'storage_domain': 'localhost',
             'auth_pipeline_check': True,
             'max_upload_part_num': 10000,
