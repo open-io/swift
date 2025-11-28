@@ -25,6 +25,7 @@ jobs:
 
           apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE} cargo-${RUST_VERSION}
           echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:/usr/lib/rust-${RUST_VERSION}/bin:$PATH" > $HOME/swift-env.sh
+          echo "export PIP_INDEX_URL=https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/" >> $HOME/swift-env.sh
           source $HOME/swift-env.sh
           /opt/${PYTHON_PACKAGE}/bin/python3 -m venv $HOME/swiftenv
           . $HOME/swiftenv/bin/activate
