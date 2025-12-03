@@ -167,10 +167,14 @@ class ObjectController(Controller):
             # Ensure the user can list the bucket
             if self.has_bucket_or_object_read_permission(req) is False:
                 raise exc
-            raise NoSuchKey(object_name, headers={
+            headers = {
                 'x-amz-version-id': obj_version_id,
                 'x-amz-delete-marker': 'true'
-            })
+            }
+            if 's3api-replication-status' in object_info['sysmeta']:
+                headers['x-amz-replication-status'] = \
+                    object_info['sysmeta']['s3api-replication-status']
+            raise NoSuchKey(object_name, headers=headers)
 
         # Retrieve container info for versioning and lifecycle
         container_info = req.get_container_info(self.app)
