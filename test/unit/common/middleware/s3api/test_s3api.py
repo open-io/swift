@@ -863,7 +863,11 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.keystone_auth = KeystoneAuth(
             self.swift, {'operator_roles': 'swift-user'})
         self.s3_token = S3Token(
-            self.keystone_auth, {'auth_uri': 'https://fakehost/identity'})
+            self.keystone_auth, {
+                'auth_uri': 'https://fakehost/identity',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'https://fakehost/v3'})
         self.s3api = S3ApiMiddleware(self.s3_token, self.conf)
         self.s3api.logger = debug_logger()
         req = Request.blank(
@@ -1635,9 +1639,13 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.keystone_auth = KeystoneAuth(
             self.swift, {'operator_roles': 'swift-user'})
         self.s3_token = S3Token(
-            self.keystone_auth, {'auth_uri': 'https://fakehost/identity'})
+            self.keystone_auth, {
+                'auth_uri': 'https://fakehost/identity',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'https://fakehost/v3'})
         self.s3api = S3ApiMiddleware(self.s3_token, self.conf)
-        self.s3api.logger = debug_logger()
+        self.s3api.logger = self.s3_token.logger = debug_logger()
         req = Request.blank(
             '/bucket',
             environ={'REQUEST_METHOD': 'PUT'},
@@ -1648,24 +1656,33 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.swift.register('HEAD', '/v1/AUTH_TENANT_ID',
                             swob.HTTPOk, {}, None)
         with patch.object(self.s3_token, '_json_request') as mock_req:
-            mock_resp = requests.Response()
-            mock_resp._content = json.dumps(GOOD_RESPONSE_V2).encode('ascii')
-            mock_resp.status_code = 201
-            mock_req.return_value = mock_resp
+            with patch(
+                    'swift.common.middleware.s3api.s3token.item_from_env') \
+                    as mock_item:
+                mock_item.return_value = {}
+                mock_resp = requests.Response()
+                mock_resp._content = json.dumps(GOOD_RESPONSE_V2
+                                                ).encode('ascii')
+                mock_resp.status_code = 201
+                mock_req.return_value = mock_resp
 
-            status, headers, body = self.call_s3api(req)
-            self.assertEqual(body, b'')
-            self.assertEqual(1, mock_req.call_count)
-            self.assertIn('swift.backend_path', req.environ)
-            self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
-                             req.environ['swift.backend_path'])
+                status, headers, body = self.call_s3api(req)
+                self.assertEqual(body, b'')
+                self.assertEqual(1, mock_req.call_count)
+                self.assertIn('swift.backend_path', req.environ)
+                self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
+                                 req.environ['swift.backend_path'])
 
     def test_s3api_with_only_s3_token_v3(self):
         self.swift = FakeSwift()
         self.keystone_auth = KeystoneAuth(
             self.swift, {'operator_roles': 'swift-user'})
         self.s3_token = S3Token(
-            self.keystone_auth, {'auth_uri': 'https://fakehost/identity'})
+            self.keystone_auth, {
+                'auth_uri': 'https://fakehost/identity',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'https://fakehost/v3'})
         self.s3api = S3ApiMiddleware(self.s3_token, self.conf)
         self.s3api.logger = debug_logger()
         req = Request.blank(
@@ -1678,17 +1695,22 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.swift.register('HEAD', '/v1/AUTH_PROJECT_ID',
                             swob.HTTPOk, {}, None)
         with patch.object(self.s3_token, '_json_request') as mock_req:
-            mock_resp = requests.Response()
-            mock_resp._content = json.dumps(GOOD_RESPONSE_V3).encode('ascii')
-            mock_resp.status_code = 200
-            mock_req.return_value = mock_resp
+            with patch(
+                    'swift.common.middleware.s3api.s3token.item_from_env') \
+                    as mock_item:
+                mock_item.return_value = {}
+                mock_resp = requests.Response()
+                mock_resp._content = json.dumps(GOOD_RESPONSE_V3
+                                                ).encode('ascii')
+                mock_resp.status_code = 200
+                mock_req.return_value = mock_resp
 
-            status, headers, body = self.call_s3api(req)
-            self.assertEqual(body, b'')
-            self.assertEqual(1, mock_req.call_count)
-            self.assertIn('swift.backend_path', req.environ)
-            self.assertEqual('/v1/AUTH_PROJECT_ID/bucket',
-                             req.environ['swift.backend_path'])
+                status, headers, body = self.call_s3api(req)
+                self.assertEqual(body, b'')
+                self.assertEqual(1, mock_req.call_count)
+                self.assertIn('swift.backend_path', req.environ)
+                self.assertEqual('/v1/AUTH_PROJECT_ID/bucket',
+                                 req.environ['swift.backend_path'])
 
     def test_s3api_with_s3_token_and_auth_token(self):
         self.swift = FakeSwift()
@@ -1697,7 +1719,11 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.auth_token = AuthProtocol(
             self.keystone_auth, {'delay_auth_decision': 'True'})
         self.s3_token = S3Token(
-            self.auth_token, {'auth_uri': 'https://fakehost/identity'})
+            self.auth_token, {
+                'auth_uri': 'https://fakehost/identity',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'https://fakehost/v3'})
         self.s3api = S3ApiMiddleware(self.s3_token, self.conf)
         self.s3api.logger = debug_logger()
         req = Request.blank(
@@ -1712,42 +1738,50 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         with patch.object(self.s3_token, '_json_request') as mock_req:
             with patch.object(self.auth_token,
                               '_do_fetch_token') as mock_fetch:
-                # sanity check
-                self.assertIn('id', GOOD_RESPONSE_V2['access']['token'])
-                mock_resp = requests.Response()
-                mock_resp._content = json.dumps(
-                    GOOD_RESPONSE_V2).encode('ascii')
-                mock_resp.status_code = 201
-                mock_req.return_value = mock_resp
+                with patch(
+                        'swift.common.middleware.s3api.s3token.item_from_env'
+                ) as mock_item:
+                    mock_item.return_value = {}
 
-                mock_access_info = AccessInfoV2(GOOD_RESPONSE_V2)
-                mock_access_info.will_expire_soon = \
-                    lambda stale_duration: False
-                mock_fetch.return_value = (MagicMock(), mock_access_info)
+                    # sanity check
+                    self.assertIn('id', GOOD_RESPONSE_V2['access']['token'])
+                    mock_resp = requests.Response()
+                    mock_resp._content = json.dumps(
+                        GOOD_RESPONSE_V2).encode('ascii')
+                    mock_resp.status_code = 201
+                    mock_req.return_value = mock_resp
 
-                status, headers, body = self.call_s3api(req)
-                # Even though s3token got a token back from keystone, we drop
-                # it on the floor, resulting in a 401 Unauthorized at
-                # `swift.common.middleware.keystoneauth` because
-                # keystonemiddleware's auth_token strips out all auth headers,
-                # significantly 'X-Identity-Status'. Without a token, it then
-                # sets 'X-Identity-Status: Invalid' and never contacts
-                # Keystone.
-                self.assertEqual('403 Forbidden', status)
-                self.assertIn('swift.backend_path', req.environ)
-                self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
-                                 req.environ['swift.backend_path'])
-                self.assertEqual(1, mock_req.call_count)
-                # it never even tries to contact keystone
-                self.assertEqual(0, mock_fetch.call_count)
+                    mock_access_info = AccessInfoV2(GOOD_RESPONSE_V2)
+                    mock_access_info.will_expire_soon = \
+                        lambda stale_duration: False
+                    mock_fetch.return_value = (MagicMock(), mock_access_info)
+
+                    status, headers, body = self.call_s3api(req)
+                    # Even though s3token got a token back from keystone,
+                    # we drop it on the floor, resulting in a 401 Unauthorized
+                    # at `swift.common.middleware.keystoneauth` because
+                    # keystonemiddleware's auth_token strips out all auth
+                    # headers, significantly 'X-Identity-Status'. Without
+                    # a token, it then sets 'X-Identity-Status: Invalid' and
+                    # never contacts Keystone.
+                    self.assertEqual('403 Forbidden', status)
+                    self.assertIn('swift.backend_path', req.environ)
+                    self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
+                                     req.environ['swift.backend_path'])
+                    self.assertEqual(1, mock_req.call_count)
+                    # it never even tries to contact keystone
+                    self.assertEqual(0, mock_fetch.call_count)
 
     def test_s3api_with_only_s3_token_in_s3acl(self):
         self.swift = FakeSwift()
         self.keystone_auth = KeystoneAuth(
             self.swift, {'operator_roles': 'swift-user'})
         self.s3_token = S3Token(
-            self.keystone_auth, {'auth_uri': 'https://fakehost/identity'})
-
+            self.keystone_auth, {
+                'auth_uri': 'https://fakehost/identity',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'https://fakehost/v3'})
         self.conf['s3_acl'] = True
         self.s3api = S3ApiMiddleware(self.s3_token, self.conf)
         self.s3api.logger = debug_logger()
@@ -1765,17 +1799,21 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.swift.register('TEST', '/v1/AUTH_TENANT_ID',
                             swob.HTTPMethodNotAllowed, {}, None)
         with patch.object(self.s3_token, '_json_request') as mock_req:
-            mock_resp = requests.Response()
-            mock_resp._content = json.dumps(GOOD_RESPONSE_V2).encode('ascii')
-            mock_resp.status_code = 201
-            mock_req.return_value = mock_resp
+            with patch('swift.common.middleware.s3api.s3token.item_from_env') \
+                 as mock_item:
+                mock_item.return_value = {}
+                mock_resp = requests.Response()
+                mock_resp._content = json.dumps(GOOD_RESPONSE_V2
+                                                ).encode('ascii')
+                mock_resp.status_code = 201
+                mock_req.return_value = mock_resp
 
-            status, headers, body = self.call_s3api(req)
-            self.assertEqual(body, b'')
-            self.assertIn('swift.backend_path', req.environ)
-            self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
-                             req.environ['swift.backend_path'])
-            self.assertEqual(1, mock_req.call_count)
+                status, headers, body = self.call_s3api(req)
+                self.assertEqual(body, b'')
+                self.assertIn('swift.backend_path', req.environ)
+                self.assertEqual('/v1/AUTH_TENANT_ID/bucket',
+                                 req.environ['swift.backend_path'])
+                self.assertEqual(1, mock_req.call_count)
 
 
 if __name__ == '__main__':

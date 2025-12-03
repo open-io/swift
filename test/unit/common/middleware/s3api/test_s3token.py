@@ -12,8 +12,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import copy
 import base64
+import copy
 import json
 import time
 import unittest
@@ -27,51 +27,59 @@ from six.moves import urllib
 from swift.common.middleware.s3api import s3token
 from swift.common.swob import Request, Response
 from swift.common.wsgi import ConfigFileError
-
 from test.debug_logger import debug_logger
 
-GOOD_RESPONSE_V2 = {'access': {
-    'user': {
-        'username': 'S3_USER',
-        'name': 'S3_USER',
-        'id': 'USER_ID',
+GOOD_RESPONSE_V2 = {
+    'access': {
+        'user': {
+            'username': 'S3_USER',
+            'name': 'S3_USER',
+            'id': 'USER_ID',
+            'roles': [
+                {'name': 'ResellerAdmin'},
+                {'name': 'swift-user'},
+                {'name': '_member_'},
+            ],
+        },
+        'token': {
+            'id': 'TOKEN_ID',
+            'tenant': {'id': 'TENANT_ID', 'name': 'TENANT_NAME'},
+        },
+    }
+}
+GOOD_RESPONSE_V3 = {
+    'token': {
+        'user': {
+            'domain': {
+                'name': 'Default',
+                'id': 'default',
+            },
+            'name': 'S3_USER',
+            'id': 'USER_ID',
+        },
+        'project': {
+            'domain': {
+                'name': 'PROJECT_DOMAIN_NAME',
+                'id': 'PROJECT_DOMAIN_ID',
+            },
+            'name': 'PROJECT_NAME',
+            'id': 'PROJECT_ID',
+        },
         'roles': [
             {'name': 'ResellerAdmin'},
             {'name': 'swift-user'},
             {'name': '_member_'},
         ],
-    },
-    'token': {
-        'id': 'TOKEN_ID',
-        'tenant': {
-            'id': 'TENANT_ID',
-            'name': 'TENANT_NAME'
-        }
     }
-}}
-GOOD_RESPONSE_V3 = {'token': {
-    'user': {
-        'domain': {
-            'name': 'Default',
-            'id': 'default',
-        },
-        'name': 'S3_USER',
-        'id': 'USER_ID',
-    },
-    'project': {
-        'domain': {
-            'name': 'PROJECT_DOMAIN_NAME',
-            'id': 'PROJECT_DOMAIN_ID',
-        },
-        'name': 'PROJECT_NAME',
-        'id': 'PROJECT_ID',
-    },
-    'roles': [
-        {'name': 'ResellerAdmin'},
-        {'name': 'swift-user'},
-        {'name': '_member_'},
-    ],
-}}
+}
+GOOD_RESPONSE_SECRET = {
+    'credential': {
+        'user_id': 'USER_ID',
+        'tenant_id': 'PROJECT_ID',
+        'access': 'access',
+        'secret': 'secret'
+    }
+}
 
 
 class TestResponse(requests.Response):
@@ -106,6 +114,7 @@ class TestResponse(requests.Response):
 class FakeApp(object):
     calls = 0
     """This represents a WSGI app protected by the auth_token middleware."""
+
     def __call__(self, env, start_response):
         self.calls += 1
         resp = Response()
@@ -114,9 +123,8 @@ class FakeApp(object):
 
 
 class S3TokenMiddlewareTestBase(unittest.TestCase):
-
     TEST_AUTH_URI = 'https://fakehost/identity/v2.0'
-    TEST_URL = '%s/s3tokens' % (TEST_AUTH_URI, )
+    TEST_URL = '%s/s3tokens' % (TEST_AUTH_URI,)
     TEST_DOMAIN_ID = '1'
     TEST_DOMAIN_NAME = 'aDomain'
     TEST_GROUP_ID = uuid.uuid4().hex
@@ -136,9 +144,18 @@ class S3TokenMiddlewareTestBase(unittest.TestCase):
         self.time_patcher = mock.patch.object(time, 'time', lambda: 1234)
         self.time_patcher.start()
 
+        self.item_from_env_patcher = mock.patch(
+            'swift.common.middleware.s3api.s3token.item_from_env')
+        self.mock_item_from_env = self.item_from_env_patcher.start()
+        cache = self.mock_item_from_env.return_value
+        cache.get.return_value = None
+
         self.app = FakeApp()
         self.conf = {
             'auth_uri': self.TEST_AUTH_URI,
+            'username': 'swift',
+            'password': 'secret',
+            'auth_url': self.TEST_AUTH_URI,
         }
         self.middleware = self.make_middleware(self.conf)
 
@@ -146,13 +163,25 @@ class S3TokenMiddlewareTestBase(unittest.TestCase):
         self.requests_mock.setUp()
 
     def make_middleware(self, conf):
-        with mock.patch('swift.common.middleware.s3api.s3token.get_logger',
-                        return_value=self.logger):
-            return s3token.S3Token(self.app, conf)
+        with mock.patch(
+            'swift.common.middleware.s3api.s3token.get_logger',
+            return_value=self.logger
+        ):
+            with mock.patch(
+                    'keystoneauth1.session.Session') as MOCK_KEYSTONE:
+                keystone_session = MOCK_KEYSTONE.return_value
+
+                keystone_session.get_auth_headers.return_value = {
+                    'X-Auth-Token': 'bearer token',
+                }
+                middleware = s3token.S3Token(self.app, conf)
+                middleware.MOCK_KEYSTONE = MOCK_KEYSTONE
+                return middleware
 
     def tearDown(self):
         self.requests_mock.cleanUp()
         self.time_patcher.stop()
+        self.item_from_env_patcher.stop()
         super(S3TokenMiddlewareTestBase, self).tearDown()
 
     def start_fake_response(self, status, headers):
@@ -161,13 +190,11 @@ class S3TokenMiddlewareTestBase(unittest.TestCase):
 
 
 class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
-
     def setUp(self):
         super(S3TokenMiddlewareTestGood, self).setUp()
 
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=201,
-                                json=GOOD_RESPONSE_V2)
+        self.requests_mock.post(
+            self.TEST_URL, status_code=201, json=GOOD_RESPONSE_V2)
 
     # Ignore the request and pass to the next middleware in the
     # pipeline if no path has been specified.
@@ -187,7 +214,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         client_env = {
             'HTTP_X_IDENTITY_STATUS': 'Confirmed',
             'HTTP_X_ROLES': 'admin,_member_,swift-user',
-            'HTTP_X_TENANT_ID': 'cfa'
+            'HTTP_X_TENANT_ID': 'cfa',
         }
         req = Request.blank('/v1/AUTH_cfa/c/o', environ=client_env)
         self.middleware(req.environ, self.start_fake_response)
@@ -204,7 +231,8 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def _assert_authorized(self, req, account_path='/v1/AUTH_TENANT_ID/'):
         self.assertTrue(
             req.path.startswith(account_path),
-            '%r does not start with %r' % (req.path, account_path))
+            '%r does not start with %r' % (req.path, account_path),
+        )
         self.assertNotIn('X-Auth-Token', req.headers)
         expected_headers = {
             'X-Identity-Status': 'Confirmed',
@@ -223,19 +251,27 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
             self.assertIsInstance(req.headers[header], str)
         self.assertEqual(1, self.middleware._app.calls)
 
-        self.assertEqual(1, self.requests_mock.call_count)
+        self.assertEqual(2, self.requests_mock.call_count)
         request_call = self.requests_mock.request_history[0]
-        self.assertEqual(json.loads(request_call.body), {'credentials': {
-            'access': 'access',
-            'signature': 'signature',
-            'token': base64.urlsafe_b64encode(b'token').decode('ascii')}})
+        self.assertEqual(
+            json.loads(request_call.body),
+            {
+                'credentials': {
+                    'access': 'access',
+                    'signature': 'signature',
+                    'token':
+                    base64.urlsafe_b64encode(b'token').decode('ascii'),
+                }
+            },
+        )
 
     def test_authorized(self):
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -243,15 +279,14 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def test_tolerate_missing_token_id(self):
         resp = copy.deepcopy(GOOD_RESPONSE_V2)
         del resp['access']['token']['id']
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=201,
-                                json=resp)
+        self.requests_mock.post(self.TEST_URL, status_code=201, json=resp)
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -262,6 +297,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
             'access_key': b'access',
             'signature': b'signature',
             'string_to_sign': b'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -269,16 +305,23 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def test_authorized_http(self):
         auth_uri = 'http://fakehost:35357/v2.0'
         self.requests_mock.post(
-            '%s/s3tokens' % auth_uri,
-            status_code=201, json=GOOD_RESPONSE_V2)
+            '%s/s3tokens' % auth_uri, status_code=201, json=GOOD_RESPONSE_V2
+        )
 
-        self.middleware = self.make_middleware({
-            'auth_uri': auth_uri})
+        self.middleware = self.make_middleware(
+            {
+                'auth_uri': auth_uri,
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://fakehost:35357/v2.0',
+            }
+        )
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -288,28 +331,46 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         # even v3 URLs would respond with a v2-format response
         auth_uri = 'http://fakehost:35357/v3'
         self.requests_mock.post(
-            '%s/s3tokens' % auth_uri,
-            status_code=201, json=GOOD_RESPONSE_V2)
+            '%s/s3tokens' % auth_uri, status_code=201, json=GOOD_RESPONSE_V2
+        )
+        self.requests_mock.get(
+            '%s/users/USER_ID/credentials/OS-EC2/access' % auth_uri,
+            status_code=200, json=GOOD_RESPONSE_SECRET
+        )
 
-        self.middleware = self.make_middleware({
-            'auth_uri': auth_uri})
+        self.middleware = self.make_middleware(
+            {
+                'auth_uri': auth_uri,
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://fakehost:35357/v3',
+            }
+        )
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
 
     def test_authorized_trailing_slash(self):
-        self.middleware = self.make_middleware({
-            'auth_uri': self.TEST_AUTH_URI + '/'})
+        self.middleware = self.make_middleware(
+            {
+                'auth_uri': self.TEST_AUTH_URI + '/',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://fakehost:35357/v3/',
+            }
+        )
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -317,9 +378,10 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def test_authorization_nova_toconnect(self):
         req = Request.blank('/v1/AUTH_swiftint/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access:FORCED_TENANT_ID',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access:FORCED_TENANT_ID',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         self.assertEqual(resp.status_int, 200)
@@ -332,15 +394,16 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         resp_without_admin_role = copy.deepcopy(GOOD_RESPONSE_V2)
         resp_without_admin_role['access']['user']['roles'] = \
             resp_without_admin_role['access']['user']['roles'][1:]
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=200,
-                                json=resp_without_admin_role)
+        self.requests_mock.post(
+            self.TEST_URL, status_code=200, json=resp_without_admin_role
+        )
 
         req = Request.blank('/v1/AUTH_swiftint/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access:FORCED_TENANT_ID',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access:FORCED_TENANT_ID',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         s3_denied_req = self.middleware._deny_request('AccessDenied')
         resp = req.get_response(self.middleware)
@@ -348,19 +411,27 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
 
     @mock.patch.object(requests, 'post')
     def test_insecure(self, MOCK_REQUEST):
-        self.middleware = self.make_middleware({
-            'insecure': 'True', 'auth_uri': 'http://example.com'})
+        self.middleware = self.make_middleware(
+            {
+                'insecure': 'True',
+                'auth_uri': 'http://example.com',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://example.com/v3/',
+            }
+        )
 
-        text_return_value = json.dumps(GOOD_RESPONSE_V2)
-        MOCK_REQUEST.return_value = TestResponse({
-            'status_code': 201,
-            'text': text_return_value})
+        text_return_value = json.dumps(GOOD_RESPONSE_V2).encode()
+        MOCK_REQUEST.return_value = TestResponse(
+            {'status_code': 201, 'text': text_return_value}
+        )
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
 
@@ -374,78 +445,118 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         # Some non-secure values.
         true_values = ['true', 'True', '1', 'yes']
         for val in true_values:
-            config = {'insecure': val,
-                      'certfile': 'false_ind',
-                      'auth_uri': 'http://example.com'}
+            config = {
+                'insecure': val,
+                'certfile': 'false_ind',
+                'auth_uri': 'http://example.com',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://example.com/v3/',
+            }
             middleware = s3token.filter_factory(config)(self.app)
             self.assertIs(False, middleware._verify)
 
-        # Some "secure" values, including unexpected value.
+        # Some 'secure' values, including unexpected value.
         false_values = ['false', 'False', '0', 'no', 'someweirdvalue']
         for val in false_values:
-            config = {'insecure': val,
-                      'certfile': 'false_ind',
-                      'auth_uri': 'http://example.com'}
+            config = {
+                'insecure': val,
+                'certfile': 'false_ind',
+                'auth_uri': 'http://example.com',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://example.com/v3/',
+            }
             middleware = s3token.filter_factory(config)(self.app)
             self.assertEqual('false_ind', middleware._verify)
 
         # Default is secure.
         config = {'certfile': 'false_ind',
-                  'auth_uri': 'http://example.com'}
+                  'auth_uri': 'http://example.com',
+                  'username': 'swift',
+                  'password': 'secret',
+                  'auth_url': 'http://example.com/v3/',
+                  }
         middleware = s3token.filter_factory(config)(self.app)
         self.assertIs('false_ind', middleware._verify)
 
     def test_reseller_prefix(self):
         def do_test(conf, expected):
-            conf.update(self.conf)
-            middleware = s3token.filter_factory(conf)(self.app)
+            base_conf = self.conf.copy()
+            base_conf.update(conf)
+            middleware = s3token.filter_factory(base_conf)(self.app)
             self.assertEqual(expected, middleware._reseller_prefix)
+
         do_test({}, 'AUTH_')
         do_test({'reseller_prefix': 'KEY_'}, 'KEY_')
         do_test({'reseller_prefix': 'KEY'}, 'KEY_')
 
     def test_auth_uris(self):
         for conf, expected in [
-                ({'auth_uri': 'https://example.com/v2.0'},
-                 'https://example.com/v2.0/s3tokens'),
-                # Trailing slash doesn't interfere
-                ({'auth_uri': 'https://example.com/v2.0/'},
-                 'https://example.com/v2.0/s3tokens'),
-                # keystone running under mod_wsgi often has a path prefix
-                ({'auth_uri': 'https://example.com/identity/v2.0'},
-                 'https://example.com/identity/v2.0/s3tokens'),
-                ({'auth_uri': 'https://example.com/identity/v2.0/'},
-                 'https://example.com/identity/v2.0/s3tokens'),
-                # IPv4 addresses are fine
-                ({'auth_uri': 'http://127.0.0.1:35357/v3'},
-                 'http://127.0.0.1:35357/v3/s3tokens'),
-                ({'auth_uri': 'http://127.0.0.1:35357/v3/'},
-                 'http://127.0.0.1:35357/v3/s3tokens'),
-                # IPv6 addresses need [brackets] per RFC 3986
-                ({'auth_uri': 'https://[::FFFF:129.144.52.38]:5000/v3'},
-                 'https://[::FFFF:129.144.52.38]:5000/v3/s3tokens'),
-                ({'auth_uri': 'https://[::FFFF:129.144.52.38]:5000/v3/'},
-                 'https://[::FFFF:129.144.52.38]:5000/v3/s3tokens'),
+            (
+                {'auth_uri': 'https://example.com/v2.0'},
+                'https://example.com/v2.0/s3tokens',
+            ),
+            # Trailing slash doesn't interfere
+            (
+                {'auth_uri': 'https://example.com/v2.0/'},
+                'https://example.com/v2.0/s3tokens',
+            ),
+            # keystone running under mod_wsgi often has a path prefix
+            (
+                {'auth_uri': 'https://example.com/identity/v2.0'},
+                'https://example.com/identity/v2.0/s3tokens',
+            ),
+            (
+                {'auth_uri': 'https://example.com/identity/v2.0/'},
+                'https://example.com/identity/v2.0/s3tokens',
+            ),
+            # IPv4 addresses are fine
+            (
+                {'auth_uri': 'http://127.0.0.1:35357/v3'},
+                'http://127.0.0.1:35357/v3/s3tokens',
+            ),
+            (
+                {'auth_uri': 'http://127.0.0.1:35357/v3/'},
+                'http://127.0.0.1:35357/v3/s3tokens',
+            ),
+            # IPv6 addresses need [brackets] per RFC 3986
+            (
+                {'auth_uri': 'https://[::FFFF:129.144.52.38]:5000/v3'},
+                'https://[::FFFF:129.144.52.38]:5000/v3/s3tokens',
+            ),
+            (
+                {'auth_uri': 'https://[::FFFF:129.144.52.38]:5000/v3/'},
+                'https://[::FFFF:129.144.52.38]:5000/v3/s3tokens',
+            ),
         ]:
+            conf.update({'username': 'swift', 'password': 'secret'})
+            conf['auth_url'] = conf['auth_uri']
             middleware = s3token.filter_factory(conf)(self.app)
             self.assertEqual(expected, middleware._request_uri)
 
     @mock.patch.object(requests, 'post')
     def test_http_timeout(self, MOCK_REQUEST):
-        self.middleware = self.make_middleware({
-            'http_timeout': '2',
-            'auth_uri': 'http://example.com',
-        })
+        self.middleware = self.make_middleware(
+            {
+                'http_timeout': '2',
+                'auth_uri': 'http://example.com',
+                'username': 'swift',
+                'password': 'secret',
+                'auth_url': 'http://example.com/v3',
+            }
+        )
 
-        MOCK_REQUEST.return_value = TestResponse({
-            'status_code': 201,
-            'text': json.dumps(GOOD_RESPONSE_V2)})
+        MOCK_REQUEST.return_value = TestResponse(
+            {'status_code': 201, 'text': json.dumps(GOOD_RESPONSE_V2).encode()}
+        )
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
 
@@ -456,60 +567,85 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def test_http_timeout_option(self):
         good_values = ['1', '5.3', '10', '.001']
         for val in good_values:
-            middleware = s3token.filter_factory({
-                'http_timeout': val,
-                'auth_uri': 'http://example.com',
-            })(self.app)
+            middleware = s3token.filter_factory(
+                {
+                    'http_timeout': val,
+                    'auth_uri': 'http://example.com',
+                    'username': 'swift',
+                    'password': 'secret',
+                    'auth_url': 'http://example.com/v3',
+                }
+            )(self.app)
             self.assertEqual(float(val), middleware._timeout)
 
         bad_values = ['1, 4', '-3', '100', 'foo', '0']
         for val in bad_values:
             with self.assertRaises(ValueError) as ctx:
-                s3token.filter_factory({
-                    'http_timeout': val,
-                    'auth_uri': 'http://example.com',
-                })(self.app)
-            self.assertTrue(ctx.exception.args[0].startswith((
-                'invalid literal for float():',
-                'could not convert string to float:',
-                'http_timeout must be between 0 and 60 seconds',
-            )), 'Unexpected error message: %s' % ctx.exception)
+                s3token.filter_factory(
+                    {
+                        'http_timeout': val,
+                        'auth_uri': 'http://example.com',
+                        'username': 'swift',
+                        'password': 'secret',
+                        'auth_url': 'http://example.com/v3',
+                    }
+                )(self.app)
+            self.assertTrue(
+                ctx.exception.args[0].startswith(
+                    (
+                        'invalid literal for float():',
+                        'could not convert string to float:',
+                        'http_timeout must be between 0 and 60 seconds',
+                    )
+                ),
+                'Unexpected error message: %s' % ctx.exception,
+            )
 
         # default is 10 seconds
         middleware = s3token.filter_factory({
-            'auth_uri': 'http://example.com'})(self.app)
+            'auth_uri': 'http://example.com',
+            'username': 'swift',
+            'password': 'secret',
+            'auth_url': 'http://example.com/v3',
+        })(
+            self.app
+        )
         self.assertEqual(10, middleware._timeout)
 
     def test_bad_auth_uris(self):
-        for auth_uri in [
-                '/not/a/uri',
-                'http://',
-                '//example.com/path']:
+        for auth_uri in ['/not/a/uri', 'http://', '//example.com/path']:
             with self.assertRaises(ConfigFileError) as cm:
                 s3token.filter_factory({'auth_uri': auth_uri})(self.app)
-            self.assertEqual('Invalid auth_uri; must include scheme and host',
-                             cm.exception.args[0])
+            self.assertEqual(
+                'Invalid auth_uri; must include scheme and host',
+                cm.exception.args[0])
         with self.assertRaises(ConfigFileError) as cm:
-            s3token.filter_factory({
-                'auth_uri': 'nonhttp://example.com'})(self.app)
-        self.assertEqual('Invalid auth_uri; scheme must be http or https',
-                         cm.exception.args[0])
+            s3token.filter_factory(
+                {'auth_uri': 'nonhttp://example.com'})(self.app)
+        self.assertEqual(
+            'Invalid auth_uri; scheme must be http or https',
+            cm.exception.args[0])
         for auth_uri in [
-                'http://user@example.com/',
-                'http://example.com/?with=query',
-                'http://example.com/#with-fragment']:
+            'http://user@example.com/',
+            'http://example.com/?with=query',
+            'http://example.com/#with-fragment',
+        ]:
             with self.assertRaises(ConfigFileError) as cm:
                 s3token.filter_factory({'auth_uri': auth_uri})(self.app)
-            self.assertEqual('Invalid auth_uri; must not include username, '
-                             'query, or fragment', cm.exception.args[0])
+            self.assertEqual(
+                'Invalid auth_uri; must not include '
+                'username, query, or fragment',
+                cm.exception.args[0],
+            )
 
     def test_unicode_path(self):
-        url = u'/v1/AUTH_cfa/c/euro\u20ac'.encode('utf8')
+        url = '/v1/AUTH_cfa/c/euro\u20ac'.encode('utf8')
         req = Request.blank(urllib.parse.quote(url))
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -517,9 +653,10 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def test_authorize_with_access_key(self):
         req = Request.blank('/v1/accesskey/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req, account_path='/v1/')
@@ -528,200 +665,217 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
     def test_authorize_with_access_key_and_unquote_chars(self):
         req = Request.blank('/v1/access%key=/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req, account_path='/v1/')
         self.assertEqual(req.environ['PATH_INFO'], '/v1/AUTH_TENANT_ID/c/o')
 
-    @mock.patch('swift.common.middleware.s3api.s3token.item_from_env')
-    @mock.patch('keystoneclient.v3.client.Client')
-    @mock.patch.object(requests, 'post')
-    def test_secret_is_cached(self, MOCK_REQUEST, MOCK_KEYSTONE,
-                              MOCK_ITEM_FROM_ENV):
-        self.middleware = self.make_middleware({
-            'auth_uri': 'http://example.com',
-            'secret_cache_duration': '20',
-            'auth_type': 'v3password',
-            'auth_url': 'http://example.com:5000/v3',
-            'username': 'swift',
-            'password': 'secret',
-            'project_name': 'service',
-            'user_domain_name': 'default',
-            'project_domain_name': 'default',
-        })
+    def test_secret_is_cached(self):
+        self.middleware = self.make_middleware(
+            {
+                'auth_uri': 'http://example.com',
+                'secret_cache_duration': '20',
+                'auth_type': 'v3password',
+                'auth_url': 'http://example.com:5000/v3',
+                'username': 'swift',
+                'password': 'secret',
+                'project_name': 'service',
+                'user_domain_name': 'default',
+                'project_domain_name': 'default',
+            }
+        )
         self.assertEqual(20, self.middleware._secret_cache_duration)
-        self.assertIsNone(MOCK_KEYSTONE.mock_calls[0][2]['region_name'])
 
-        cache = MOCK_ITEM_FROM_ENV.return_value
+        cache = self.mock_item_from_env.return_value
 
-        fake_cache_response = ({}, {'id': 'tenant_id'}, 'secret')
+        fake_cache_response = ({}, {'objectstorage': ['REGION']},
+                               {'id': 'tenant_id'}, 'secret', 2**31)
         cache.get.return_value = fake_cache_response
-
-        MOCK_REQUEST.return_value = TestResponse({
-            'status_code': 201,
-            'text': json.dumps(GOOD_RESPONSE_V2)})
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
-            'check_signature': lambda x: True
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         # Ensure we don't request auth from keystone
-        self.assertFalse(MOCK_REQUEST.called)
-        MOCK_ITEM_FROM_ENV.assert_called_once_with(req.environ,
-                                                   'swift.cache')
+        self.assertFalse(self.requests_mock.called)
+        self.mock_item_from_env.assert_called_once_with(
+            req.environ, 'swift.cache', allow_none=True)
 
-    @mock.patch('swift.common.middleware.s3api.s3token.item_from_env')
-    @mock.patch('keystoneclient.v3.client.Client')
     @mock.patch.object(requests, 'post')
-    def test_secret_sets_cache(self, MOCK_REQUEST, MOCK_KEYSTONE,
-                               MOCK_ITEM_FROM_ENV):
-        self.middleware = self.make_middleware({
-            'auth_uri': 'http://example.com',
-            'secret_cache_duration': '20',
-            'auth_type': 'v3password',
-            'auth_url': 'http://example.com:5000/v3',
-            'username': 'swift',
-            'password': 'secret',
-            'project_name': 'service',
-            'user_domain_name': 'default',
-            'project_domain_name': 'default',
-            'region_name': 'some-other-region',
-        })
+    def test_secret_sets_cache(self, MOCK_REQUEST):
+        auth_uri = 'http://example.com'
+        self.middleware = self.make_middleware(
+            {
+                'auth_uri': auth_uri,
+                'secret_cache_duration': '20',
+                'auth_type': 'v3password',
+                'auth_url': auth_uri + '/v3',
+                'username': 'swift',
+                'password': 'secret',
+                'project_name': 'service',
+                'user_domain_name': 'default',
+                'project_domain_name': 'default',
+                'region_name': 'some-other-region',
+            }
+        )
         self.assertEqual(20, self.middleware._secret_cache_duration)
-        self.assertEqual(MOCK_KEYSTONE.mock_calls[0][2]['region_name'],
-                         'some-other-region')
 
-        cache = MOCK_ITEM_FROM_ENV.return_value
-        cache.get.return_value = None
+        cache = self.mock_item_from_env.return_value
 
-        keystone_client = MOCK_KEYSTONE.return_value
-        keystone_client.session.get_auth_headers.return_value = {
-            'X-Auth-Token': 'bearer token',
-        }
-        keystone_client.ec2.get.return_value = mock.Mock(secret='secret')
-
+        self.requests_mock.get(
+            '%s/users/USER_ID/credentials/OS-EC2/access' % auth_uri,
+            status_code=200, json=GOOD_RESPONSE_SECRET
+        )
         MOCK_REQUEST.return_value = TestResponse({
             'status_code': 201,
             'text': json.dumps(GOOD_RESPONSE_V2).encode('ascii')})
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
-            'check_signature': lambda x: True
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         expected_headers = {
-            'X-Identity-Status': u'Confirmed',
-            'X-Roles': u'ResellerAdmin,swift-user,_member_',
-            'X-User-Id': u'USER_ID',
-            'X-User-Name': u'S3_USER',
-            'X-Tenant-Id': u'TENANT_ID',
-            'X-Tenant-Name': u'TENANT_NAME',
-            'X-Project-Id': u'TENANT_ID',
-            'X-Project-Name': u'TENANT_NAME',
+            'X-Identity-Status': 'Confirmed',
+            'X-Roles': 'ResellerAdmin,swift-user,_member_',
+            'X-User-Id': 'USER_ID',
+            'X-User-Name': 'S3_USER',
+            'X-Tenant-Id': 'TENANT_ID',
+            'X-Tenant-Name': 'TENANT_NAME',
+            'X-Project-Id': 'TENANT_ID',
+            'X-Project-Name': 'TENANT_NAME',
         }
 
         self.assertTrue(MOCK_REQUEST.called)
-        self.assertEqual(MOCK_REQUEST.mock_calls, [
-            mock.call('http://example.com/s3tokens', headers={
-                'Content-Type': 'application/json',
-                'X-Openstack-Request-Id': 'UNKNOWN',
-                'X-Auth-Token': 'bearer token',
-            }, data=json.dumps({
-                "credentials": {
-                    "access": "access",
-                    "token": "dG9rZW4=",
-                    "signature": "signature",
-                }
-            }), verify=None, timeout=10.0)
-        ])
+        self.assertEqual(
+            MOCK_REQUEST.mock_calls,
+            [
+                mock.call(
+                    'http://example.com/s3tokens',
+                    headers={
+                        'Content-Type': 'application/json',
+                        'X-Openstack-Request-Id': 'UNKNOWN',
+                        'X-Auth-Token': 'bearer token',
+                    },
+                    data=json.dumps(
+                        {
+                            'credentials': {
+                                'access': 'access',
+                                'token': 'dG9rZW4=',
+                                'signature': 'signature',
+                            }
+                        }
+                    ),
+                    verify=None,
+                    timeout=10.0,
+                )
+            ],
+        )
         tenant = GOOD_RESPONSE_V2['access']['token']['tenant']
-        expected_cache = (expected_headers, None, tenant, 'secret')
-        cache.set.assert_called_once_with('s3secret/access', expected_cache,
-                                          time=20)
-        MOCK_ITEM_FROM_ENV.assert_called_once_with(req.environ,
-                                                   'swift.cache')
+        expected_cache = (expected_headers, None, tenant, 'secret', 1254)
+        cache.set.assert_called_once_with(
+            's3secret/access', expected_cache, time=20)
+        self.mock_item_from_env.assert_called_once_with(
+            req.environ, 'swift.cache', allow_none=True)
 
-    @mock.patch('swift.common.middleware.s3api.s3token.item_from_env')
-    @mock.patch('keystoneclient.v3.client.Client')
     @mock.patch.object(requests, 'post')
-    def test_secret_cache_setting(self, MOCK_REQUEST, MOCK_KEYSTONE,
-                                  MOCK_ITEM_FROM_ENV):
-        self.middleware = self.make_middleware({
-            'auth_uri': 'http://example.com',
-            'secret_cache_duration': '20',
-            'secret_cache': 'swift.cache.auth',
-            'auth_type': 'v3password',
-            'auth_url': 'http://example.com:5000/v3',
-            'username': 'swift',
-            'password': 'secret',
-            'project_name': 'service',
-            'user_domain_name': 'default',
-            'project_domain_name': 'default',
-        })
+    def test_secret_cache_setting(self, MOCK_REQUEST):
+        auth_uri = 'http://example.com'
+        self.middleware = self.make_middleware(
+            {
+                'auth_uri': auth_uri,
+                'secret_cache_duration': '20',
+                'secret_cache': 'swift.cache.auth',
+                'auth_type': 'v3password',
+                'auth_url': 'http://example.com:5000/v3',
+                'username': 'swift',
+                'password': 'secret',
+                'project_name': 'service',
+                'user_domain_name': 'default',
+                'project_domain_name': 'default',
+            }
+        )
         self.assertEqual(20, self.middleware._secret_cache_duration)
         self.assertEqual('swift.cache.auth', self.middleware._secret_cache)
-        self.assertIsNone(MOCK_KEYSTONE.mock_calls[0][2]['region_name'])
 
-        cache = MOCK_ITEM_FROM_ENV.return_value
+        cache = self.mock_item_from_env.return_value
 
-        fake_cache_response = ({}, {'id': 'tenant_id'}, 'secret')
+        fake_cache_response = ({'X-User-Id': 'USER_ID'},
+                               {'objectstorage': ['REGION']},
+                               {'id': 'tenant_id'}, 'secret', 2**31)
         cache.get.return_value = fake_cache_response
 
-        MOCK_REQUEST.return_value = TestResponse({
-            'status_code': 201,
-            'text': json.dumps(GOOD_RESPONSE_V2)})
+        self.requests_mock.get(
+            '%s/users/USER_ID/credentials/OS-EC2/access' % auth_uri,
+            status_code=200, json=GOOD_RESPONSE_SECRET
+        )
+        MOCK_REQUEST.return_value = TestResponse(
+            {'status_code': 201, 'text': json.dumps(GOOD_RESPONSE_V2).encode()}
+        )
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
-            'check_signature': lambda x: True
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         # Ensure we don't request auth from keystone
         self.assertFalse(MOCK_REQUEST.called)
-        MOCK_ITEM_FROM_ENV.assert_called_once_with(req.environ,
-                                                   'swift.cache.auth')
+        self.mock_item_from_env.assert_called_once_with(
+            req.environ, 'swift.cache.auth', allow_none=True)
 
 
 class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
     def test_unauthorized_token(self):
-        ret = {"error":
-               {"message": "EC2 access key not found.",
-                "code": 401,
-                "title": "Unauthorized"}}
+        ret = {
+            'error': {
+                'message': 'EC2 access key not found.',
+                'code': 401,
+                'title': 'Unauthorized',
+            }
+        }
         self.requests_mock.post(self.TEST_URL, status_code=403, json=ret)
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         s3_denied_req = self.middleware._deny_request('AccessDenied')
         self.assertEqual(resp.body, s3_denied_req.body)
         self.assertEqual(
             resp.status_int,  # pylint: disable-msg=E1101
-            s3_denied_req.status_int)  # pylint: disable-msg=E1101
+            s3_denied_req.status_int,
+        )  # pylint: disable-msg=E1101
         self.assertEqual(0, self.middleware._app.calls)
 
         self.assertEqual(1, self.requests_mock.call_count)
         request_call = self.requests_mock.request_history[0]
-        self.assertEqual(json.loads(request_call.body), {'credentials': {
-            'access': 'access',
-            'signature': 'signature',
-            'token': base64.urlsafe_b64encode(b'token').decode('ascii')}})
+        self.assertEqual(
+            json.loads(request_call.body),
+            {
+                'credentials': {
+                    'access': 'access',
+                    'signature': 'signature',
+                    'token': base64.urlsafe_b64encode(b'token').decode(),
+                }
+            },
+        )
 
     def test_no_s3_creds_defers_to_auth_middleware(self):
         # Without an Authorization header, we should just pass through to the
@@ -736,9 +890,10 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
         MOCK_POST.side_effect = requests.exceptions.ConnectTimeout()
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         invalid_resp = self.middleware._deny_request('RequestTimeout')
         resp = req.get_response(self.middleware)
@@ -751,34 +906,37 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
 
             req = Request.blank('/v1/AUTH_cfa/c/o')
             req.environ['s3api.auth_details'] = {
-                'access_key': u'access',
-                'signature': u'signature',
-                'string_to_sign': u'token',
+                'access_key': 'access',
+                'signature': 'signature',
+                'string_to_sign': 'token',
+                'check_signature': lambda x: True,
             }
             resp = req.get_response(self.middleware)
             self.assertEqual(resp.body, s3_invalid_resp.body)
             self.assertEqual(
                 resp.status_int,  # pylint: disable-msg=E1101
-                s3_invalid_resp.status_int)  # pylint: disable-msg=E1101
+                s3_invalid_resp.status_int,
+            )  # pylint: disable-msg=E1101
             self.assertEqual(0, self.middleware._app.calls)
 
     def _test_bad_reply(self, response_body):
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=201,
-                                text=response_body)
+        self.requests_mock.post(
+            self.TEST_URL, status_code=201, text=response_body)
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         s3_invalid_resp = self.middleware._deny_request('InvalidURI')
         self.assertEqual(resp.body, s3_invalid_resp.body)
         self.assertEqual(
             resp.status_int,  # pylint: disable-msg=E1101
-            s3_invalid_resp.status_int)  # pylint: disable-msg=E1101
+            s3_invalid_resp.status_int,
+        )  # pylint: disable-msg=E1101
         self.assertEqual(0, self.middleware._app.calls)
 
     def test_bad_reply_not_json(self):
@@ -832,30 +990,41 @@ class S3TokenMiddlewareTestDeferredAuth(S3TokenMiddlewareTestBase):
         self.middleware = self.make_middleware(self.conf)
 
     def test_unauthorized_token(self):
-        ret = {"error":
-               {"message": "EC2 access key not found.",
-                "code": 401,
-                "title": "Unauthorized"}}
+        ret = {
+            'error': {
+                'message': 'EC2 access key not found.',
+                'code': 401,
+                'title': 'Unauthorized',
+            }
+        }
         self.requests_mock.post(self.TEST_URL, status_code=403, json=ret)
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         self.assertEqual(
             resp.status_int,  # pylint: disable-msg=E1101
-            200)
+            200,
+        )
         self.assertNotIn('X-Auth-Token', req.headers)
         self.assertEqual(1, self.middleware._app.calls)
 
         self.assertEqual(1, self.requests_mock.call_count)
         request_call = self.requests_mock.request_history[0]
-        self.assertEqual(json.loads(request_call.body), {'credentials': {
-            'access': 'access',
-            'signature': 'signature',
-            'token': base64.urlsafe_b64encode(b'token').decode('ascii')}})
+        self.assertEqual(
+            json.loads(request_call.body),
+            {
+                'credentials': {
+                    'access': 'access',
+                    'signature': 'signature',
+                    'token': base64.urlsafe_b64encode(b'token').decode(),
+                }
+            },
+        )
 
     def test_fail_to_connect_to_keystone(self):
         with mock.patch.object(self.middleware, '_json_request') as o:
@@ -863,49 +1032,53 @@ class S3TokenMiddlewareTestDeferredAuth(S3TokenMiddlewareTestBase):
 
             req = Request.blank('/v1/AUTH_cfa/c/o')
             req.environ['s3api.auth_details'] = {
-                'access_key': u'access',
-                'signature': u'signature',
-                'string_to_sign': u'token',
+                'access_key': 'access',
+                'signature': 'signature',
+                'string_to_sign': 'token',
+                'check_signature': lambda x: True,
             }
             resp = req.get_response(self.middleware)
             self.assertEqual(
                 resp.status_int,  # pylint: disable-msg=E1101
-                200)
+                200,
+            )
         self.assertNotIn('X-Auth-Token', req.headers)
         self.assertEqual(1, self.middleware._app.calls)
 
     def test_bad_reply(self):
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=201,
-                                text="<badreply>")
+        self.requests_mock.post(
+            self.TEST_URL, status_code=201, text='<badreply>')
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         self.assertEqual(
             resp.status_int,  # pylint: disable-msg=E1101
-            200)
+            200,
+        )
         self.assertNotIn('X-Auth-Token', req.headers)
         self.assertEqual(1, self.middleware._app.calls)
 
 
 class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
-
     def setUp(self):
         super(S3TokenMiddlewareTestV3, self).setUp()
 
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=200,
-                                json=GOOD_RESPONSE_V3)
+        self.requests_mock.post(
+            self.TEST_URL, status_code=200, json=GOOD_RESPONSE_V3)
 
-    def _assert_authorized(self, req,
-                           account_path='/v1/AUTH_PROJECT_ID/',
-                           tenant_name='PROJECT_NAME',
-                           user_name='S3_USER'):
+    def _assert_authorized(
+        self,
+        req,
+        account_path='/v1/AUTH_PROJECT_ID/',
+        tenant_name='PROJECT_NAME',
+        user_name='S3_USER',
+    ):
         self.assertTrue(req.path.startswith(account_path))
         expected_headers = {
             'X-Identity-Status': 'Confirmed',
@@ -932,9 +1105,10 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
     def test_authorized(self):
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -945,6 +1119,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
             'access_key': b'access',
             'signature': b'signature',
             'string_to_sign': b'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -954,16 +1129,20 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         # even v2 URLs would respond with a v3-format response
         auth_uri = 'http://fakehost:35357/v2.0/'
         self.requests_mock.post(
-            auth_uri + 's3tokens',
-            status_code=201, json=GOOD_RESPONSE_V3)
+            auth_uri + 's3tokens', status_code=201, json=GOOD_RESPONSE_V3
+        )
 
-        self.middleware = self.make_middleware({
-            'auth_uri': auth_uri})
+        self.middleware = self.make_middleware(
+            {'auth_uri': auth_uri,
+             'auth_url': f'{auth_uri}/v3',
+             'username': 'swift',
+             'password': 'secret'})
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -971,28 +1150,38 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
     def test_authorized_v3(self):
         auth_uri = 'http://fakehost:35357/v3/'
         self.requests_mock.post(
-            auth_uri + 's3tokens',
-            status_code=201, json=GOOD_RESPONSE_V3)
+            auth_uri + 's3tokens', status_code=201, json=GOOD_RESPONSE_V3
+        )
 
         self.middleware = self.make_middleware({
-            'auth_uri': auth_uri})
+            'auth_uri': auth_uri,
+            'auth_url': auth_uri,
+            'username': 'swift',
+            'password': 'secret'})
+
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
 
     def test_authorized_trailing_slash(self):
         self.middleware = self.make_middleware({
-            'auth_uri': self.TEST_AUTH_URI + '/'})
+            'auth_uri': self.TEST_AUTH_URI + '/',
+            'auth_url': self.TEST_AUTH_URI + '/v3/',
+            'username': 'swift',
+            'password': 'secret'})
+
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req)
@@ -1000,9 +1189,10 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
     def test_authorization_nova_toconnect(self):
         req = Request.blank('/v1/AUTH_swiftint/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access:FORCED_TENANT_ID',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access:FORCED_TENANT_ID',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         self.assertEqual(resp.status_int, 200)
@@ -1015,15 +1205,16 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         resp_without_admin_role = copy.deepcopy(GOOD_RESPONSE_V3)
         resp_without_admin_role['token']['roles'] = \
             resp_without_admin_role['token']['roles'][1:]
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=200,
-                                json=resp_without_admin_role)
+        self.requests_mock.post(
+            self.TEST_URL, status_code=200, json=resp_without_admin_role
+        )
 
         req = Request.blank('/v1/AUTH_swiftint/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access:FORCED_TENANT_ID',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access:FORCED_TENANT_ID',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         s3_denied_req = self.middleware._deny_request('AccessDenied')
         resp = req.get_response(self.middleware)
@@ -1032,29 +1223,37 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
     def test_impersonate_user(self):
         req = Request.blank('/v1/AUTH_swiftint/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access:FORCED_ID:FORCED_TENANT:FORCED_USER',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access:FORCED_ID:FORCED_TENANT:FORCED_USER',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         self.assertEqual(resp.status_int, 200)
-        self._assert_authorized(req, account_path='/v1/AUTH_FORCED_ID/',
-                                tenant_name='FORCED_TENANT',
-                                user_name='FORCED_USER')
+        self._assert_authorized(
+            req,
+            account_path='/v1/AUTH_FORCED_ID/',
+            tenant_name='FORCED_TENANT',
+            user_name='FORCED_USER',
+        )
 
     def test_impersonate_user_missing(self):
         req = Request.blank('/v1/AUTH_swiftint/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access:FORCED_ID:FORCED_TENANT',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access:FORCED_ID:FORCED_TENANT',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         self.assertEqual(resp.status_int, 200)
         # Account is forced, tenant and user are not
-        self._assert_authorized(req, account_path='/v1/AUTH_FORCED_ID',
-                                tenant_name='PROJECT_NAME',
-                                user_name='S3_USER')
+        self._assert_authorized(
+            req,
+            account_path='/v1/AUTH_FORCED_ID',
+            tenant_name='PROJECT_NAME',
+            user_name='S3_USER',
+        )
 
     def _test_bad_reply_missing_parts(self, *parts):
         resp = copy.deepcopy(GOOD_RESPONSE_V3)
@@ -1062,22 +1261,23 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         for part in parts[:-1]:
             part_dict = part_dict[part]
         del part_dict[parts[-1]]
-        self.requests_mock.post(self.TEST_URL,
-                                status_code=201,
-                                text=json.dumps(resp))
+        self.requests_mock.post(
+            self.TEST_URL, status_code=201, text=json.dumps(resp))
 
         req = Request.blank('/v1/AUTH_cfa/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
         s3_invalid_resp = self.middleware._deny_request('InvalidURI')
         self.assertEqual(resp.body, s3_invalid_resp.body)
         self.assertEqual(
             resp.status_int,  # pylint: disable-msg=E1101
-            s3_invalid_resp.status_int)  # pylint: disable-msg=E1101
+            s3_invalid_resp.status_int,
+        )  # pylint: disable-msg=E1101
         self.assertEqual(0, self.middleware._app.calls)
 
     def test_bad_reply_missing_parts(self):
@@ -1090,8 +1290,8 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         self._test_bad_reply_missing_parts('token', 'project', 'id')
         self._test_bad_reply_missing_parts('token', 'project', 'name')
         self._test_bad_reply_missing_parts('token', 'project', 'domain', 'id')
-        self._test_bad_reply_missing_parts('token', 'project', 'domain',
-                                           'name')
+        self._test_bad_reply_missing_parts(
+            'token', 'project', 'domain', 'name')
         self._test_bad_reply_missing_parts('token', 'project', 'domain')
         self._test_bad_reply_missing_parts('token', 'project')
         self._test_bad_reply_missing_parts('token', 'roles')
@@ -1099,9 +1299,10 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
     def test_authorize_with_access_key(self):
         req = Request.blank('/v1/accesskey/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req, account_path='/v1/')
@@ -1110,9 +1311,10 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
     def test_authorize_with_access_key_and_unquote_chars(self):
         req = Request.blank('/v1/ab%c=/c/o')
         req.environ['s3api.auth_details'] = {
-            'access_key': u'access',
-            'signature': u'signature',
-            'string_to_sign': u'token',
+            'access_key': 'access',
+            'signature': 'signature',
+            'string_to_sign': 'token',
+            'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
         self._assert_authorized(req, account_path='/v1/')

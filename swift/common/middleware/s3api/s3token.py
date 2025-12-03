@@ -60,7 +60,6 @@ import logging
 import time
 from random import random
 
-from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session as keystone_session
 from keystoneauth1 import loading as keystone_loading
 import requests
@@ -109,6 +108,35 @@ KEYSTONE_AUTH_HEADERS = (
     'X-User',
     'X-Role',
 )
+
+
+# New exception to split error management of Keystone calls
+# And exception raised by s3token middleware
+class AuthFromCacheFailed(Exception):
+    """Exception raise if auth validation from cache failed"""
+
+
+class KeystoneError(Exception):
+    """Base class for exception for S3Token.*_request methods"""
+
+    def __init__(self, reason=None):
+        self.reason = reason
+
+
+class KeystoneRequestTimeout(KeystoneError):
+    """Exception raise if Keystone server timeout"""
+
+
+class KeystoneInvalidURI(KeystoneError):
+    """Exception raise if invalid URI was provided to Keystone"""
+
+
+class KeystoneAccessDenied(KeystoneError):
+    """Exception raise if Keystone reply AccessDenied"""
+
+
+class KeystoneUnavailable(KeystoneError):
+    """Exception raise if Keystone server reply with status >=500"""
 
 
 def parse_v2_response(token):
@@ -171,7 +199,8 @@ class S3Token(object):
             conf.get('delay_auth_decision'))
 
         # where to find the auth service (we use this to validate tokens)
-        self._request_uri = conf.get('auth_uri', '').rstrip('/') + '/s3tokens'
+        self._auth_uri = conf.get('auth_uri', '').rstrip('/')
+        self._request_uri = self._auth_uri + '/s3tokens'
         parsed = urllib.parse.urlsplit(self._request_uri)
         if not parsed.scheme or not parsed.hostname:
             raise ConfigFileError(
@@ -211,8 +240,20 @@ class S3Token(object):
         self._delta_cache_duration = \
             self._secret_cache_duration - self._secret_cache_duration_min
 
+        # Option to enable cache reenforcement in case of Keystone
+        # unavailability
+        self._secret_cache_reenforcement = config_true_value(
+            conf.get('secret_cache_reenforcement', 'false')
+        )
+        if self._secret_cache_reenforcement and \
+           self._delta_cache_duration == 0:
+            raise ValueError('secret_cache_reenforcement can not be activated '
+                             'without valid secret_cache_duration_min')
+
+        # Placeholder for memcache client (set in __call__() from env)
+        self.memcache = None
+
         # Service authentication for s3tokens API calls
-        self.keystoneclient = None
         try:
             auth_plugin = keystone_loading.get_plugin_loader(
                 conf.get('auth_type', 'password'))
@@ -226,44 +267,40 @@ class S3Token(object):
                     auth_options[name] = value
 
             if not auth_options:
-                self._logger.warning(
-                    "No service auth configuration. "
-                    "s3tokens API calls will be unauthenticated. "
-                    "New versions of keystone require service auth.")
+                self._logger.critical(
+                    'Service auth configuration is mandatory '
+                    'for s3tokens API calls.')
+                raise ValueError('Service auth configuration is mandatory')
 
-            else:
-                auth = auth_plugin.load_from_options(**auth_options)
-                session = keystone_session.Session(auth=auth)
-                self.keystoneclient = keystone_client.Client(
-                    session=session,
-                    region_name=conf.get('region_name'))
-                self._logger.info(
-                    "Service authentication configured for s3tokens API")
+            auth = auth_plugin.load_from_options(**auth_options)
+            self.keystone_session = keystone_session.Session(auth=auth)
+            self._logger.info(
+                'Service authentication configured for s3tokens API')
         except Exception:
-            self._logger.warning(
-                "Unable to load service auth configuration. "
-                "s3tokens API calls will be unauthenticated "
-                "and secret caching will be unavailable.",
-                exc_info=True)
-
-        if self._secret_cache_duration and self.keystoneclient:
-            self._logger.info("Caching s3tokens for %s seconds",
-                              self._secret_cache_duration)
-        else:
-            self._secret_cache_duration = 0
+            self._logger.exception(
+                'Unable to load service auth configuration. '
+                'that is mandatory for s3tokens API calls.')
+            raise ValueError('Service auth configuration is mandatory')
+        self._logger.info(
+            'Caching s3tokens for %s seconds', self._secret_cache_duration)
 
     def _deny_request(self, code, reason=None):
         error_cls, message = {
             'AccessDenied': (HTTPUnauthorized, 'Access denied'),
             'InvalidURI': (HTTPBadRequest,
                            'Could not parse the specified URI'),
-            'RequestTimeout': (HTTPServiceUnavailable, 'Connection error')
+            'RequestTimeout': (HTTPServiceUnavailable, 'Connection error'),
+            'KeystoneUnavailable': (
+                HTTPServiceUnavailable,
+                'Identity server (Keystone) is unavailable',
+            ),
         }[code]
         resp = error_cls(content_type='text/xml')
-        error_msg = ('<?xml version="1.0" encoding="UTF-8"?>\r\n'
-                     '<Error>\r\n  <Code>%s</Code>\r\n  '
-                     '<Message>%s</Message>\r\n</Error>\r\n' %
-                     (code, message))
+        error_msg = (
+            '<?xml version="1.0" encoding="UTF-8"?>\r\n'
+            '<Error>\r\n  <Code>%s</Code>\r\n  '
+            '<Message>%s</Message>\r\n</Error>\r\n' % (code, message)
+        )
         if six.PY3:
             error_msg = error_msg.encode()
         resp.body = error_msg
@@ -272,39 +309,46 @@ class S3Token(object):
             resp.message = message
         return resp
 
-    def _json_request(self, creds_json, trans_id):
+    def _json_request(self, creds_json, trans_id, s3token_time, timeout=None):
         headers = {'Content-Type': 'application/json',
                    'X-Openstack-Request-Id': trans_id}
 
         # Add service authentication headers if configured
-        if self.keystoneclient:
-            try:
-                headers.update(
-                    self.keystoneclient.session.get_auth_headers())
-            except Exception:
-                self._logger.warning("Failed to get service token",
-                                     exc_info=True)
-
-        metric_name = "POST.keystone.token."
-        start = time.monotonic()
         try:
-            response = requests.post(self._request_uri,
-                                     headers=headers, data=creds_json,
-                                     verify=self._verify,
-                                     timeout=self._timeout)
-            metric_name += "%s.timing" % (response.status_code,)
+            headers.update(self.keystone_session.get_auth_headers())
+        except Exception:
+            self._logger.warning('Failed to get service token',
+                                 exc_info=True)
+
+        metric_name = 'POST.keystone.token.'
+        start = time.monotonic()
+
+        if timeout is None:
+            timeout = self._timeout
+        try:
+            response = requests.post(
+                self._request_uri,
+                headers=headers,
+                data=creds_json,
+                verify=self._verify,
+                timeout=timeout,
+            )
+            metric_name += '%s.timing' % (response.status_code,)
+            s3token_time['check_token'] = response.elapsed.total_seconds()
         except requests.exceptions.RequestException as e:
             # The message may have spaces, send the exception type instead
-            metric_name += "%s.timing" % (type(e),)
+            metric_name += '%s.timing' % (type(e),)
             self._logger.info('HTTP connection exception: %s', e)
+            s3token_time['check_token'] = time.monotonic() - start
             if isinstance(
-                e, (
+                e,
+                (
                     requests.exceptions.ConnectionError,
                     requests.exceptions.Timeout,
-                )
+                ),
             ):
-                raise self._deny_request('RequestTimeout')
-            raise self._deny_request('InvalidURI')
+                raise KeystoneRequestTimeout()
+            raise KeystoneInvalidURI()
         finally:
             self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
 
@@ -315,9 +359,279 @@ class S3Token(object):
 
             _log('Keystone error: POST %s return %s (%s)',
                  self._request_uri, response.status_code, response.reason)
-            raise self._deny_request('AccessDenied', reason=response.reason)
+
+            if response.status_code >= 500:
+                raise KeystoneUnavailable(reason=response.reason)
+            raise KeystoneAccessDenied(reason=response.reason)
 
         return response
+
+    def _secret_request(
+        self, user_id, access_key, trans_id, s3token_time, timeout=None
+    ):
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Openstack-Request-Id': trans_id,
+        }
+
+        url = self._request_uri.rsplit('/', 1)[0]  # remove
+        secret_uri = f'{url}/users/{user_id}/credentials/OS-EC2/{access_key}'
+
+        # Add service authentication headers
+        headers.update(self.keystone_session.get_auth_headers())
+
+        metric_name = 'GET.keystone.secret.'
+        start = time.monotonic()
+
+        if timeout is None:
+            timeout = self._timeout
+        try:
+            response = requests.get(
+                secret_uri, headers=headers,
+                verify=self._verify, timeout=timeout
+            )
+            metric_name += '%s.timing' % (response.status_code,)
+            s3token_time['fetch_secret'] = response.elapsed.total_seconds()
+        except requests.exceptions.RequestException as e:
+            # The message may have spaces, send the exception type instead
+            metric_name += '%s.timing' % (type(e),)
+            self._logger.info('HTTP connection exception: %s', e)
+            s3token_time['fetch_secret'] = time.monotonic() - start
+            if isinstance(
+                e,
+                (
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                ),
+            ):
+                raise KeystoneRequestTimeout()
+            raise KeystoneInvalidURI()
+        finally:
+            self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
+
+        if response.status_code < 200 or response.status_code >= 300:
+            _log = (
+                self._logger.error
+                if response.status_code >= 500
+                else self._logger.debug
+            )
+
+            _log(
+                'Keystone error: GET %s return %s (%s)',
+                secret_uri,
+                response.status_code,
+                response.reason,
+            )
+            if response.status_code >= 500:
+                raise KeystoneUnavailable(reason=response.reason)
+            raise KeystoneAccessDenied(reason=response.reason)
+
+        try:
+            return response.json()['credential']
+        except Exception:
+            raise KeystoneInvalidURI(reason='Invalid response content')
+
+    def get_from_cache(self, access, s3token_time):
+        token_key = 's3secret/%s' % access
+        start = time.monotonic()
+        cached_auth_data = self.memcache.get(token_key)
+        duration = time.monotonic() - start
+        metric_name = 'GET.memcached.secret.200.timing'
+        try:
+            (headers, regions_per_type,
+             tenant, secret, cache_invalidity_ts) = (
+                cached_auth_data
+            )
+            current_ttl = max(cache_invalidity_ts - time.time(), 0)
+            return (headers, regions_per_type, tenant, secret, current_ttl)
+        except TypeError:
+            # We don't know if there is no cached data or if the cache
+            # server is dead. The cache miss is more probable though.
+            metric_name = 'GET.memcached.secret.404.timing'
+        except ValueError:
+            # Data stored in cache is not unpackable, simulate a 400 http error
+            metric_name = 'GET.memcached.secret.400.timing'
+        finally:
+            self._logger.timing(metric_name, duration * 1000)
+            s3token_time['get_cache'] = duration
+        raise AuthFromCacheFailed
+
+    def set_to_cache(self, access, headers, regions_per_type,
+                     tenant, secret, ttl, s3token_time):
+        token_key = 's3secret/%s' % access
+        monotonic_now = time.monotonic()
+        now = time.time()
+        value = (headers, regions_per_type, tenant, secret, now + ttl)
+        self.memcache.set(token_key, value, time=ttl)
+        # XXX(FVE): the previous statement does not return
+        # anything nor raises exceptions, we don't know if
+        # the secret has actually been cached unless we read
+        # the logs, so we report a code 201 every time.
+        metric_name = 'PUT.memcached.secret.201.timing'
+        set_cache_duration = time.monotonic() - monotonic_now
+        self._logger.timing(metric_name, set_cache_duration * 1000)
+        s3token_time['set_cache'] = set_cache_duration
+        self._logger.debug('Cached keystone credentials for %ds', ttl)
+
+    def get_auth_data_from_cache(
+        self, s3_auth_details, access, signature, trans_id, s3token_time
+    ):
+        (headers, regions_per_type,
+         tenant, secret, current_ttl) = self.get_from_cache(
+            access, s3token_time
+        )
+
+        if not s3_auth_details['check_signature'](secret):
+            self._logger.debug('Cached creds invalid')
+            raise AuthFromCacheFailed
+
+        self._logger.debug('Cached creds valid')
+        if self._delta_cache_duration == 0:
+            return (headers, regions_per_type, tenant)
+
+        # jitter configured in the cache invalidation
+        #
+        # If current_ttl is greater or near delta_cache_duration
+        # the ratio will be greater or near 1.0
+        #
+        # The square root is here to flat degrowth of ratio and
+        # reduce probability to invalidate the cache too early
+        invalidation_proba = (current_ttl / self._delta_cache_duration) ** 0.5
+
+        if invalidation_proba < random():
+            # We have validated auth with cache but we want to refresh
+            # the cache. If `secret_cache_reenforcement` is activated
+            # we try to do that here to keep current data if Keystone
+            # is unavailable. Legacy method is to ignore current check and
+            # force s3token to call Keystone has we don't have cache.
+            # The pb is if keystone is unavailable we will
+            # reject this specific customer request.
+            if not self._secret_cache_reenforcement:
+                # As reenforcement cache is disable, we ignore cache for this
+                # request, to force refresh by raising AuthFromCacheFailed
+                raise AuthFromCacheFailed
+
+            # Reenforce cache locally with cache extension
+            # in case of unavailability of keystone
+            # (timeoutor 50x)
+            # First: check if secret is still available
+            try:
+                user_id = headers.get('X-User-Id')
+                cred_ref = self._secret_request(
+                    user_id, access, trans_id, s3token_time, timeout=1
+                )
+                if cred_ref['secret'] != secret:
+                    raise AuthFromCacheFailed
+            except (KeystoneRequestTimeout, KeystoneUnavailable):
+                self._logger.info(
+                    'Keystone unavailable during cache reenforcement, '
+                    'ignore it and refresh the cache'
+                )
+            except Exception:
+                raise AuthFromCacheFailed
+
+            # As access_key / access_secret are still know by keystone, we set
+            # data to memcache again with new duration
+            duration = self._secret_cache_duration
+            self.set_to_cache(
+                access,
+                headers,
+                regions_per_type,
+                tenant,
+                secret,
+                duration,
+                s3token_time,
+            )
+
+        return (headers, regions_per_type, tenant)
+
+    def get_auth_data_from_keystone(
+        self, s3_auth_details, access, signature, trans_id, s3token_time
+    ):
+        # Authenticate request.
+        string_to_sign = s3_auth_details['string_to_sign']
+        if isinstance(string_to_sign, six.text_type):
+            string_to_sign = string_to_sign.encode('utf-8')
+        token = base64.urlsafe_b64encode(string_to_sign)
+        if isinstance(token, six.binary_type):
+            token = token.decode('ascii')
+        creds = {
+            'credentials': {'access': access,
+                            'token': token,
+                            'signature': signature}
+        }
+
+        creds_json = json.dumps(creds)
+        self._logger.debug('Connecting to Keystone sending this JSON: %s',
+                           creds_json)
+        # NOTE(vish): We could save a call to keystone by having
+        #             keystone return token, tenant, user, and roles
+        #             from this call.
+        #
+        # NOTE(chmou): We still have the same problem we would need to
+        #              change token_auth to detect if we already
+        #              identified and not doing a second query and just
+        #              pass it through to swiftauth in this case.
+        # try:
+        #    # NB: requests.Response, not swob.Response
+        #    resp = self._json_request(creds_json, trans_id)
+        # except HTTPException as e_resp:
+        try:
+            resp = self._json_request(creds_json, trans_id, s3token_time)
+        except KeystoneRequestTimeout:
+            raise self._deny_request('RequestTimeout')
+        except KeystoneInvalidURI:
+            raise self._deny_request('InvalidURI')
+        except KeystoneUnavailable as e:
+            raise self._deny_request('KeystoneUnavailable', reason=e.reason)
+        except KeystoneAccessDenied as e:
+            raise self._deny_request('AccessDenied', reason=e.reason)
+
+        self._logger.debug(
+            'Keystone Reply: Status: %d, Output: %s',
+            resp.status_code, resp.content
+        )
+
+        try:
+            token = resp.json()
+            if 'access' in token:
+                headers, tenant = parse_v2_response(token)
+            elif 'token' in token:
+                headers, tenant = parse_v3_response(token)
+            else:
+                raise ValueError
+        except ValueError:
+            raise self._deny_request('InvalidURI')
+
+        # OVH: Try to extract regions per type from catalog
+        regions_per_type = get_regions_per_type_from_catalog(
+            token.get('token', {}).get('catalog')
+        )
+        # /OVH
+        try:
+            user_id = headers.get('X-User-Id')
+            if not user_id:
+                raise ValueError
+            cred_ref = self._secret_request(user_id, access,
+                                            trans_id, s3token_time)
+            # Call check_signature method that will store
+            # secret in s3request class atribute self._secret.
+            s3_auth_details['check_signature'](cred_ref['secret'])
+            duration = self._secret_cache_duration
+            self.set_to_cache(
+                access,
+                headers,
+                regions_per_type,
+                tenant,
+                cred_ref['secret'],
+                duration,
+                s3token_time,
+            )
+            self._logger.debug('Cached keystone credentials for %ds', duration)
+        except Exception as exc:
+            self._logger.warning('Unable to cache secret: %s', exc)
+
+        return (headers, regions_per_type, tenant)
 
     def __call__(self, environ, start_response):
         """Handle incoming request. authenticate and send downstream."""
@@ -343,6 +657,17 @@ class S3Token(object):
             self._logger.debug(msg)
             return self._app(environ, start_response)
 
+        # Get memcache client from env
+        self.memcache = item_from_env(environ,
+                                      self._secret_cache,
+                                      allow_none=True)
+
+        if self.memcache is None:
+            error = 'Error in s3token, memcache_client not available (%s)'
+            self._logger.debug(error, self._secret_cache)
+            return self._deny_request('KeystoneUnavailable')(environ,
+                                                             start_response)
+
         access = s3_auth_details['access_key']
         if isinstance(access, six.binary_type):
             access = access.decode('utf-8')
@@ -354,9 +679,6 @@ class S3Token(object):
         string_to_sign = s3_auth_details['string_to_sign']
         if isinstance(string_to_sign, six.text_type):
             string_to_sign = string_to_sign.encode('utf-8')
-        token = base64.urlsafe_b64encode(string_to_sign)
-        if isinstance(token, six.binary_type):
-            token = token.decode('ascii')
 
         # NOTE(chmou): This is to handle the special case with nova
         # when we have the option s3_affix_tenant. We will force it to
@@ -387,86 +709,28 @@ class S3Token(object):
                         force_tenant, err, trans_id
                     )
 
-        # Authenticate request.
-        creds = {'credentials': {'access': access,
-                                 'token': token,
-                                 'signature': signature}}
-
-        memcache_client = None
-        memcache_token_key = 's3secret/%s' % access
-        if self._secret_cache_duration > 0:
-            memcache_client = item_from_env(environ, self._secret_cache)
-        cached_auth_data = None
-        environ.setdefault('s3token.time', {})
-        regions_per_type = None
-        if memcache_client:
-            start = time.monotonic()
-            cached_auth_data = memcache_client.get(memcache_token_key)
-            duration = time.monotonic() - start
-            req.environ['s3token.time']['get_cache'] = duration
-            if cached_auth_data:
-                # The cached data may be invalid, but the server answered,
-                # so we log this with code 200.
-                metric_name = "GET.memcached.secret.200.timing"
-                # Without cache_invalidity_ts set current_ttl to
-                # secret_cache_duration
-                current_ttl = self._secret_cache_duration
-                if len(cached_auth_data) == 5:
-                    # Extract cache_invalidity_ts
-                    # Compatibility, until all cache entries are updated
-                    (headers, regions_per_type, tenant, secret,
-                     cache_invalidity_ts) = cached_auth_data
-                    current_ttl = max(
-                        cache_invalidity_ts - time.time(), 0)
-                elif len(cached_auth_data) == 4:
-                    # OVH: store regions_per_type in cached_auth_data
-                    # for endpoint_filter.
-                    headers, regions_per_type, tenant, secret = \
-                        cached_auth_data
-                else:
-                    headers, tenant, secret = cached_auth_data
-
-                if s3_auth_details['check_signature'](secret):
-                    self._logger.debug("Cached creds valid")
-
-                    # jitter configured in the cache invalidation
-                    #
-                    # If current_ttl is greater or near delta_cache_duration
-                    # the ratio will be greater or near 1.0
-                    #
-                    # The square root is here to flat degrowth of ratio and
-                    # reduce probability to invalidate the cache too early
-                    if self._delta_cache_duration:
-                        invalidation_proba = (
-                            current_ttl / self._delta_cache_duration) ** 0.5
-
-                        if invalidation_proba < random():
-                            # Ignore cache for this request, to force refresh.
-                            cached_auth_data = None
-                else:
-                    self._logger.debug("Cached creds invalid")
-                    cached_auth_data = None
-            else:
-                # We don't know if there is no cached data or if the cache
-                # server is dead. The cache miss is more probable though.
-                metric_name = "GET.memcached.secret.404.timing"
-            self._logger.timing(metric_name, duration * 1000)
-
-        if not cached_auth_data:
-            creds_json = json.dumps(creds)
-            self._logger.debug('Connecting to Keystone sending this JSON: %s',
-                               creds_json)
-            # NOTE(vish): We could save a call to keystone by having
-            #             keystone return token, tenant, user, and roles
-            #             from this call.
-            #
-            # NOTE(chmou): We still have the same problem we would need to
-            #              change token_auth to detect if we already
-            #              identified and not doing a second query and just
-            #              pass it through to swiftauth in this case.
+        s3token_time = environ.setdefault('s3token.time', {})
+        try:
+            (headers, regions_per_type, tenant) = \
+                self.get_auth_data_from_cache(s3_auth_details, access,
+                                              signature, trans_id,
+                                              s3token_time)
+        except Exception:
             try:
-                # NB: requests.Response, not swob.Response
-                resp = self._json_request(creds_json, trans_id)
+                (headers, regions_per_type, tenant) = \
+                    self.get_auth_data_from_keystone(s3_auth_details, access,
+                                                     signature, trans_id,
+                                                     s3token_time)
+            except (ValueError, KeyError, TypeError):
+                if self._delay_auth_decision:
+                    error = 'Error on keystone deferring rejection downstream'
+                    self._logger.debug(error)
+                    return self._app(environ, start_response)
+                else:
+                    error = 'Error on keystone reply - rejecting request'
+                    self._logger.debug(error)
+                    return self._deny_request('InvalidURI')(environ,
+                                                            start_response)
             except HTTPException as e_resp:
                 if self._delay_auth_decision:
                     msg = ('Received error, deferring rejection based on '
@@ -479,97 +743,11 @@ class S3Token(object):
                     self._logger.debug(msg, e_resp.status)
                     # NB: swob.Response, not requests.Response
                     return e_resp(environ, start_response)
-
-            self._logger.debug('Keystone Reply: Status: %d, Output: %s',
-                               resp.status_code, resp.content)
-
-            try:
-                token = resp.json()
-                if 'access' in token:
-                    headers, tenant = parse_v2_response(token)
-                elif 'token' in token:
-                    headers, tenant = parse_v3_response(token)
-                else:
-                    raise ValueError
-                environ['s3token.time']['check_token'] = \
-                    resp.elapsed.total_seconds()
-                # OVH: Try to extract regions per type from catalog
-                regions_per_type = get_regions_per_type_from_catalog(
-                    token.get('token', {}).get('catalog'))
-                # /OVH
-                if memcache_client:
-                    user_id = headers.get('X-User-Id')
-                    if not user_id:
-                        raise ValueError
-                    start = time.monotonic()
-                    try:
-                        duration = self._secret_cache_duration
-                        try:
-                            cred_ref = self.keystoneclient.ec2.get(
-                                user_id=user_id,
-                                access=access)
-                            # Call check_signature method that will store
-                            # secret in s3request class atribute self._secret.
-                            s3_auth_details['check_signature'](cred_ref.secret)
-                            metric_name = "GET.keystone.secret.200.timing"
-                        except Exception as exc:
-                            metric_name = \
-                                "GET.keystone.secret.%s.timing" % type(exc)
-                            raise exc
-                        finally:
-                            ks_resp_end = time.monotonic()
-                            self._logger.timing(metric_name,
-                                                (ks_resp_end - start) * 1000)
-                            environ['s3token.time']['fetch_secret'] = \
-                                ks_resp_end - start
-                        now = time.time()
-                        # OVH: Add regions_per_type in memcached
-                        cache_value = (headers, regions_per_type,
-                                       tenant, cred_ref.secret)
-                        if self._delta_cache_duration:
-                            # Add timestamp of cache invalidity
-                            # to cache_value tuple
-                            cache_value += (now + duration,)
-
-                        memcache_client.set(
-                            memcache_token_key,
-                            cache_value,
-                            time=duration)
-                        # XXX(FVE): the previous statement does not return
-                        # anything nor raises exceptions, we don't know if
-                        # the secret has actually been cached unless we read
-                        # the logs, so we report a code 201 every time.
-                        metric_name = "PUT.memcached.secret.201.timing"
-                        set_cache_duration = time.monotonic() - ks_resp_end
-                        self._logger.timing(metric_name,
-                                            set_cache_duration * 1000)
-                        environ['s3token.time']['set_cache'] = \
-                            set_cache_duration
-                        self._logger.debug(
-                            "Cached keystone credentials for %ds",
-                            duration)
-                    except Exception as exc:
-                        self._logger.warning("Unable to cache secret: %s", exc)
-
-                # Populate the environment similar to auth_token,
-                # so we don't have to contact Keystone again.
-                #
-                # Note that although the strings are unicode following json
-                # deserialization, Swift's HeaderEnvironProxy handles ensuring
-                # they're stored as native strings
-                req.environ['keystone.token_info'] = token
-            except (ValueError, KeyError, TypeError):
-                if self._delay_auth_decision:
-                    error = ('Error on keystone reply: %d %s - '
-                             'deferring rejection downstream')
-                    self._logger.debug(error, resp.status_code, resp.content)
-                    return self._app(environ, start_response)
-                else:
-                    error = ('Error on keystone reply: %d %s - '
-                             'rejecting request')
-                    self._logger.debug(error, resp.status_code, resp.content)
-                    return self._deny_request('InvalidURI')(
-                        environ, start_response)
+            except Exception as e:
+                msg = 'Received error, rejecting request with error: %s'
+                self._logger.debug(msg, e)
+                return self._deny_request('InvalidURI')(environ,
+                                                        start_response)
 
         # OVH: Put regions_per_type in env for swift_endpoint_filter
         req.environ['keystone.regions_per_type'] = regions_per_type
