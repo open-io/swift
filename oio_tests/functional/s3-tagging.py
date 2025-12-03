@@ -514,3 +514,36 @@ class TestS3Tagging(unittest.TestCase):
             self.assertEqual(
                 ctx.exception.response['headers']['x-amz-delete-marker'],
                 'true')
+
+    def test_object_delete_marker_from_replicator(self):
+        self.bucket = f"test-object-delete-marker-{random_str(8)}"
+        replicator_client = get_boto3_client(user_agent_extra='s3-replicator')
+        self.boto.create_bucket(Bucket=self.bucket)
+        self.boto.put_bucket_versioning(
+            Bucket=self.bucket, VersioningConfiguration={"Status": "Enabled"})
+        key = "my-object"
+        resp = self.boto.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=b"foobar",
+        )
+        self._obj_to_delete.append((key, resp["VersionId"]))
+        resp = self.boto.delete_object(
+            Bucket=self.bucket,
+            Key=key,
+        )
+        self._obj_to_delete.append((key, resp["VersionId"]))
+
+        # PUT
+        replicator_client.put_object_tagging(
+            Bucket=self.bucket,
+            Key=key,
+            Tagging={
+                'TagSet': [
+                    {
+                        'Key': 'ovh:replication_status',
+                        'Value': 'PENDING'
+                    },
+                ]
+            },
+        )

@@ -201,11 +201,10 @@ class TaggingController(Controller):
         # Metadata not found, return the provided tags (which may be None)
         return tagging
 
-    def _ensure_is_not_delete_marker(self, req, resp):
-        is_delete_marker = DELETE_MARKER_CONTENT_TYPE == resp.headers.get(
-            'X-Backend-Content-Type', resp.headers['Content-Type'])
+    def _ensure_is_not_delete_marker(self, method, content_type):
+        is_delete_marker = DELETE_MARKER_CONTENT_TYPE == content_type
         if is_delete_marker:
-            raise MethodNotAllowed(req.method, resource_type="DeleteMarker",
+            raise MethodNotAllowed(method, resource_type="DeleteMarker",
                                    delete_marker=True)
 
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
@@ -224,7 +223,8 @@ class TaggingController(Controller):
             req.environ["swift.crypto.override"] = True
         resp = req.get_response(self.app, 'HEAD',
                                 req.container_name, req.object_name)
-        self._ensure_is_not_delete_marker(req, resp)
+        self._ensure_is_not_delete_marker(req.method, resp.headers.get(
+            'X-Backend-Content-Type', resp.headers.get('Content-Type')))
 
         headers = {}
         if req.is_object_request:
@@ -371,9 +371,10 @@ class TaggingController(Controller):
                     str_to_wsgi(body.decode("utf-8"))
         if req.is_object_request:
             req.environ["swift.crypto.override"] = True
-            resp = req.get_response(self.app, 'HEAD',
-                                    req.container_name, req.object_name)
-            self._ensure_is_not_delete_marker(req, resp)
+            if not from_replicator:
+                object_info = req.get_object_info(self.app)
+                self._ensure_is_not_delete_marker(
+                    req.method, object_info.get('type'))
 
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
@@ -412,9 +413,9 @@ class TaggingController(Controller):
 
         if req.is_object_request:
             req.environ["swift.crypto.override"] = True
-            resp = req.get_response(self.app, 'HEAD',
-                                    req.container_name, req.object_name)
-            self._ensure_is_not_delete_marker(req, resp)
+            object_info = req.get_object_info(self.app)
+            self._ensure_is_not_delete_marker(
+                req.method, object_info.get('type'))
 
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
