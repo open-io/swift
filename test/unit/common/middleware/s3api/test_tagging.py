@@ -358,7 +358,7 @@ class TestS3ApiTagging(S3ApiTestCase):
         self.assertEqual('200 OK', status)
         self.assertFalse(body)  # False -> empty
         calls = self.swift.calls_with_headers
-        self.assertEqual(3, len(calls))
+        self.assertEqual(4, len(calls))
         post = calls[2]
         self.assertEqual('POST', post[0])
         self.assertEqual('/v1/AUTH_test/bucket/object', post[1])
@@ -375,7 +375,7 @@ class TestS3ApiTagging(S3ApiTestCase):
         self.assertEqual('204 No Content', status)
         self.assertFalse(body)  # False -> empty
         calls = self.swift.calls_with_headers
-        self.assertEqual(3, len(calls))
+        self.assertEqual(4, len(calls))
         post = calls[2]
         self.assertEqual('POST', post[0])
         self.assertEqual('/v1/AUTH_test/bucket/object', post[1])

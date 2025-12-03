@@ -297,7 +297,8 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
     xml_declaration = True
 
     def __init__(
-        self, msg=None, backend_error=None, service_id=None, *args, **kwargs
+        self, msg=None, backend_error=None, service_id=None,
+        delete_marker=False, *args, **kwargs
     ):
         if msg:
             self._msg = msg
@@ -319,6 +320,9 @@ class ErrorResponse(S3ResponseBase, swob.HTTPException):
             content_type='application/xml', *args,
             **kwargs)
         self.headers = HeaderKeyDict(self.headers)
+
+        if delete_marker:
+            self.headers["x-amz-delete-marker"] = "true"
 
     def _xml_body(self):
         # This part of the XML may contain information sent by the client.

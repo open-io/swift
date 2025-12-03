@@ -543,6 +543,8 @@ ACL_MAP = {
     {'Permission': 'READ'},
     ('PUT', 'POST', 'object'):
     {'Permission': 'WRITE'},
+    ('DELETE', 'HEAD', 'object'):
+    {'Permission': 'READ'},
     ('POST', 'POST', 'object'):
     {'Permission': 'WRITE'},
     # bucket CORS, Lifecycle, Tagging

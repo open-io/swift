@@ -16,6 +16,8 @@
 
 from six.moves.urllib.parse import parse_qs
 
+from swift.common.middleware.versioned_writes.object_versioning import \
+    DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.crypto.crypto_utils import get_hasher
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_container_existence, check_bucket_access, \
@@ -32,7 +34,7 @@ from swift.common.middleware.s3api.intelligent_tiering_utils import \
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     MalformedXML, NoSuchTagSet, InvalidArgument, InvalidTag, InvalidTagKey, \
-    InvalidTagValue, BadRequest
+    InvalidTagValue, BadRequest, MethodNotAllowed
 from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp, \
     validate_tag_key, validate_tag_value
 from swift.common.swob import str_to_wsgi, wsgi_to_bytes
@@ -199,6 +201,13 @@ class TaggingController(Controller):
         # Metadata not found, return the provided tags (which may be None)
         return tagging
 
+    def _ensure_is_not_delete_marker(self, req, resp):
+        is_delete_marker = DELETE_MARKER_CONTENT_TYPE == resp.headers.get(
+            'X-Backend-Content-Type', resp.headers['Content-Type'])
+        if is_delete_marker:
+            raise MethodNotAllowed(req.method, resource_type="DeleteMarker",
+                                   delete_marker=True)
+
     @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit
     @public
@@ -215,6 +224,8 @@ class TaggingController(Controller):
             req.environ["swift.crypto.override"] = True
         resp = req.get_response(self.app, 'HEAD',
                                 req.container_name, req.object_name)
+        self._ensure_is_not_delete_marker(req, resp)
+
         headers = {}
         if req.is_object_request:
             body = wsgi_to_bytes(
@@ -360,6 +371,10 @@ class TaggingController(Controller):
                     str_to_wsgi(body.decode("utf-8"))
         if req.is_object_request:
             req.environ["swift.crypto.override"] = True
+            resp = req.get_response(self.app, 'HEAD',
+                                    req.container_name, req.object_name)
+            self._ensure_is_not_delete_marker(req, resp)
+
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
         if resp.status_int == 202:
@@ -397,6 +412,10 @@ class TaggingController(Controller):
 
         if req.is_object_request:
             req.environ["swift.crypto.override"] = True
+            resp = req.get_response(self.app, 'HEAD',
+                                    req.container_name, req.object_name)
+            self._ensure_is_not_delete_marker(req, resp)
+
         resp = req.get_response(self.app, 'POST',
                                 req.container_name, req.object_name)
         if resp.status_int == 202:

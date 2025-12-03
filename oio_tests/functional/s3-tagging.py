@@ -457,3 +457,60 @@ class TestS3Tagging(unittest.TestCase):
             SSECustomerAlgorithm='AES256'
         )
         self.assertDictEqual(resp["Metadata"], user_metadata)
+
+    def test_object_delete_marker(self):
+        self.bucket = f"test-object-delete-marker-{random_str(8)}"
+        self.boto.create_bucket(Bucket=self.bucket)
+        self.boto.put_bucket_versioning(
+            Bucket=self.bucket, VersioningConfiguration={"Status": "Enabled"})
+        key = "my-object"
+        resp = self.boto.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=b"foobar",
+        )
+        self._obj_to_delete.append((key, resp["VersionId"]))
+        resp = self.boto.delete_object(
+            Bucket=self.bucket,
+            Key=key,
+        )
+        self._obj_to_delete.append((key, resp["VersionId"]))
+
+        # PUT
+        with self.assertRaises(ClientError) as ctx:
+            self.boto.put_object_tagging(
+                Bucket=self.bucket,
+                Key=key,
+                Tagging={
+                    'TagSet': [
+                        {
+                            'Key': 'foo',
+                            'Value': 'bar'
+                        },
+                    ]
+                },
+            )
+            self.assertEqual('MethodNotAllowed',
+                             ctx.exception.response['Error']['Code'])
+            self.assertIn('x-amz-delete-marker', ctx.exception.response['headers'])
+            self.assertEqual(
+                ctx.exception.response['headers']['x-amz-delete-marker'],
+                'true')
+        # GET
+        with self.assertRaises(ClientError) as ctx:
+            self.boto.get_object_tagging(Bucket=self.bucket, Key=key)
+            self.assertEqual('MethodNotAllowed',
+                             ctx.exception.response['Error']['Code'])
+            self.assertIn('x-amz-delete-marker', ctx.exception.response['headers'])
+            self.assertEqual(
+                ctx.exception.response['headers']['x-amz-delete-marker'],
+                'true')
+        # DELETE
+        with self.assertRaises(ClientError) as ctx:
+            self.boto.delete_object_tagging(Bucket=self.bucket, Key=key)
+            self.assertEqual('MethodNotAllowed',
+                             ctx.exception.response['Error']['Code'])
+            self.assertIn('x-amz-delete-marker', ctx.exception.response['headers'])
+            self.assertEqual(
+                ctx.exception.response['headers']['x-amz-delete-marker'],
+                'true')
