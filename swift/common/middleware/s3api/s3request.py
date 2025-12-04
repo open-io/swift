@@ -264,13 +264,14 @@ class ChecksummingInput(object):
     def read(self, size=None):
         chunk = self._input.read(size)
         self._hasher.update(chunk)
-        self._to_read -= len(chunk)
         short_read = bool(chunk) if size is None else (len(chunk) < size)
-        if self._to_read < 0 or (short_read and self._to_read):
-            # This can't be good -- too much or too little -- bomb out
-            self.close()
-            raise S3InputChecksumMismatch(self._checksum_name.upper())
-        elif self._to_read == 0:
+        if self._to_read is not None:
+            self._to_read -= len(chunk)
+            if self._to_read < 0 or (short_read and self._to_read):
+                # This can't be good -- too much or too little -- bomb out
+                self.close()
+                raise S3InputChecksumMismatch(self._checksum_name.upper())
+        if self._to_read == 0 or (self._to_read is None and short_read):
             # Exactly at the end; final verification
             if self._expected is None:
                 self.expect(self._input.trailers.get(self._checksum_header))
@@ -1715,13 +1716,14 @@ class S3Request(swob.Request):
                     # it will be checked later
                     b64digest = b64digest.rsplit('-', 1)[0]
 
+                clen = (
+                    int(self.resolved_content_length)
+                    if self.resolved_content_length is not None
+                    else None
+                )
                 self.environ['wsgi.input'] = self._checksum_input = \
                     ChecksummingInput(
-                        self.environ['wsgi.input'],
-                        int(self.headers.get('x-amz-decoded-content-length',
-                                             self.content_length)),
-                        header,
-                        b64digest)
+                        self.environ['wsgi.input'], clen, header, b64digest)
 
                 # Also get this into the container listing. Since it's a
                 # property of the body itself, hang it off the etag in the
