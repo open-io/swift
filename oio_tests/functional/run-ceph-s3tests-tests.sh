@@ -38,6 +38,7 @@ sed \
   -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" \
   etc/s3-default.cfg.in \
   > etc/s3-default.cfg
+export COV_CONTEXT="ceph-s3-tests"
 run_functional_test etc/s3-default.cfg ceph-s3tests.sh
 
 exit $RET

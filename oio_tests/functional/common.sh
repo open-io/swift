@@ -259,6 +259,7 @@ function run_functional_test() {
     else
         conf="$1"
     fi
+    COV_CONTEXT="${COV_CONTEXT:-$(basename $conf)}"
     shift
 
     local test_suites=$(for suite in $*; do echo "oio_tests/functional/${suite}"; done)
@@ -273,7 +274,7 @@ function run_functional_test() {
       coverage run \
         --rcfile=.coveragerc \
         --concurrency=eventlet \
-        --context "$(basename $conf)" \
+        --context "$COV_CONTEXT" \
         -p bin/oioswift-proxy-server \
         $conf -v >/tmp/journal.log 2>&1 &
     fi

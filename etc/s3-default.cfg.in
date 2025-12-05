@@ -1,7 +1,7 @@
 [DEFAULT]
 bind_ip = 127.0.0.1
 bind_port = 5000
-workers = 1
+workers = 0
 #use_realpath_on_usr1 = false
 max_clients = 8192
 backlog = 16384
@@ -15,7 +15,7 @@ log_name = oioswift
 cors_allow_origin = https://www.ovh.com,https://ovh.com,http://localhost:9000,https://*.dtci.ovhcloud.dev,https://*.dtci.ovhcloud.tools
 cors_expose_headers = X-Storage-Policy,X-Container-Read
 
-eventlet_debug = true
+eventlet_debug = false
 sds_namespace = OPENIO
 sds_proxy_url = http://127.0.0.1:6000
 sds_default_account = AUTH_demo
