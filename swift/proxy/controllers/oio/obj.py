@@ -54,6 +54,7 @@ from swift.proxy.controllers.obj import check_content_type
 from swift.proxy.controllers.obj import BaseObjectController
 
 from oio.common import exceptions
+from swift.common.middleware.s3api.s3response import MaxVersionsReached
 
 from oio.common.http import ranges_from_http_header
 from oio.common.storage_method import STORAGE_METHODS
@@ -848,7 +849,9 @@ class ObjectController(BaseObjectController):
                 replication_replicator_id=replicator_id,
                 replication_role_project_id=role_project_id,
                 end_user_request=True, **kwargs)
-        except exceptions.Conflict:
+        except exceptions.Conflict as exc:
+            if ("object reached max allowed") in str(exc):
+                raise MaxVersionsReached(request=req)
             raise HTTPConflict(request=req)
         except exceptions.PreconditionFailed:
             raise HTTPPreconditionFailed(request=req)
@@ -986,7 +989,9 @@ class ObjectController(BaseObjectController):
                 replication_role_project_id=role_project_id,
                 end_user_request=True, dryrun=dryrun,
                 slo_manifest=slo_manifest)
-        except exceptions.Conflict:
+        except exceptions.Conflict as exc:
+            if ("object reached max allowed") in str(exc):
+                raise MaxVersionsReached(request=req)
             raise HTTPConflict(request=req)
         except exceptions.NoSuchContainer:
             return HTTPNotFound(request=req)

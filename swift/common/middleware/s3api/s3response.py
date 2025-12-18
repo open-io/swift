@@ -425,6 +425,12 @@ class BadEndpoint(ErrorResponse):
     _msg = 'This operation is not accessible through this endpoint.'
 
 
+class MaxVersionsReached(ErrorResponse):
+    _status = '403 Forbidden'
+    _msg = 'The request PUT is rejected because max of versions is reached' \
+           'for that object.'
+
+
 class BucketAlreadyExists(ErrorResponse):
     _status = '409 Conflict'
     _msg = 'The requested bucket name is not available. The bucket ' \
