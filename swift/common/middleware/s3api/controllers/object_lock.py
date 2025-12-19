@@ -245,8 +245,8 @@ class BucketLockController(Controller):
         nb_days = BucketLockController._convert_to_days(out)
         mode = out.get("Rule", {}).get("DefaultRetention", {}).get("Mode")
         req.headers[header_name_from_id(self.operation_id)] = json_output
-        req.headers[header_name_from_id('defaultretention')] = nb_days
-        req.headers[header_name_from_id('defaultmode')] = mode
+        req.headers[header_name_from_id('defaultretention')] = nb_days or ''
+        req.headers[header_name_from_id('defaultmode')] = mode or ''
 
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
