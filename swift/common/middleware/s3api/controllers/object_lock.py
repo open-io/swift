@@ -530,6 +530,8 @@ class ObjectLockRetentionController(Controller):
                         raise AccessDenied()
                 if old_retention_mode is not None and current_retention_mode \
                    is not None:
+                    if old_retention_date < now_str:
+                        pass
                     if bypass_governance:
                         if old_retention_mode == 'COMPLIANCE' and \
                            current_retention_mode == 'GOVERNANCE':
