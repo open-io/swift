@@ -783,7 +783,8 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
             ],
         )
         tenant = GOOD_RESPONSE_V2['access']['token']['tenant']
-        expected_cache = (expected_headers, None, tenant, 'secret', 1254)
+        # Round ttl to 1250 as it is in set_to_cache function
+        expected_cache = (expected_headers, None, tenant, 'secret', 1250)
         cache.set.assert_called_once_with(
             's3secret/access', expected_cache, time=20)
         self.mock_item_from_env.assert_called_once_with(

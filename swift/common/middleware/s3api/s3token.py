@@ -62,6 +62,9 @@ from random import random
 
 from keystoneauth1 import session as keystone_session
 from keystoneauth1 import loading as keystone_loading
+from keystoneauth1.exceptions import ConnectFailure, ConnectTimeout, \
+    RequestTimeout, SSLError, InternalServerError, HttpNotImplemented, \
+    BadGateway, ServiceUnavailable, GatewayTimeout
 import requests
 import six
 from six.moves import urllib
@@ -191,6 +194,10 @@ class S3Token(object):
         self._timeout = float(conf.get('http_timeout', '10.0'))
         if not (0 < self._timeout <= 60):
             raise ValueError('http_timeout must be between 0 and 60 seconds')
+        session_timeout = float(conf.get('session_timeout', '5.0'))
+        if not (0 < session_timeout <= 30):
+            raise ValueError(
+                'session_timeout must be between 0 and 30 seconds')
         self._reseller_admin_role = conf.get('reseller_admin_role',
                                              'ResellerAdmin').lower()
         self._reseller_prefix = append_underscore(
@@ -233,8 +240,8 @@ class S3Token(object):
                          self._secret_cache_duration))
         if self._secret_cache_duration < 0:
             raise ValueError('secret_cache_duration must be non-negative')
-        elif (self._secret_cache_duration_min > self._secret_cache_duration
-              or self._secret_cache_duration_min < 0):
+        if (self._secret_cache_duration_min > self._secret_cache_duration or
+                self._secret_cache_duration_min < 0):
             raise ValueError('secret_cache_duration_min must be lower or equal'
                              ' to secret_cache_duration and non-negative')
         self._delta_cache_duration = \
@@ -249,6 +256,11 @@ class S3Token(object):
            self._delta_cache_duration == 0:
             raise ValueError('secret_cache_reenforcement can not be activated '
                              'without valid secret_cache_duration_min')
+        self._reenforcement_timeout = float(
+            conf.get('reenforcement_timeout', '1.0'))
+        if not 0 < self._reenforcement_timeout <= 10:
+            raise ValueError(
+                'reenforcement_timeout must be between 0 and 10 seconds')
 
         # Placeholder for memcache client (set in __call__() from env)
         self.memcache = None
@@ -273,7 +285,8 @@ class S3Token(object):
                 raise ValueError('Service auth configuration is mandatory')
 
             auth = auth_plugin.load_from_options(**auth_options)
-            self.keystone_session = keystone_session.Session(auth=auth)
+            self.keystone_session = keystone_session.Session(
+                auth=auth, timeout=session_timeout)
             self._logger.info(
                 'Service authentication configured for s3tokens API')
         except Exception:
@@ -309,16 +322,45 @@ class S3Token(object):
             resp.message = message
         return resp
 
+    def _get_auth_header(self, s3token_time):
+        # Add service authentication headers if configured
+        metric_name = '.keystone.token.'
+        start = time.monotonic()
+        try:
+            return self.keystone_session.get_auth_headers()
+        except (ConnectFailure, ConnectTimeout, RequestTimeout, SSLError):
+            self._logger.warning('Failed to get service token, timeout',
+                                 exc_info=True)
+            raise KeystoneRequestTimeout()
+        except (InternalServerError, HttpNotImplemented, BadGateway,
+                ServiceUnavailable, GatewayTimeout):
+            self._logger.warning('Failed to get service token, unavailable',
+                                 exc_info=True)
+            raise KeystoneUnavailable()
+        finally:
+            s3token_time['service_token'] = time.monotonic() - start
+            self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
+
+    def _get_creds_json(self, s3_auth_details, access, signature):
+        # Authenticate request.
+        string_to_sign = s3_auth_details['string_to_sign']
+        if isinstance(string_to_sign, six.text_type):
+            string_to_sign = string_to_sign.encode('utf-8')
+        token = base64.urlsafe_b64encode(string_to_sign)
+        if isinstance(token, six.binary_type):
+            token = token.decode('ascii')
+        creds = {
+            'credentials': {'access': access,
+                            'token': token,
+                            'signature': signature}
+        }
+        return json.dumps(creds)
+
     def _json_request(self, creds_json, trans_id, s3token_time, timeout=None):
         headers = {'Content-Type': 'application/json',
                    'X-Openstack-Request-Id': trans_id}
 
-        # Add service authentication headers if configured
-        try:
-            headers.update(self.keystone_session.get_auth_headers())
-        except Exception:
-            self._logger.warning('Failed to get service token',
-                                 exc_info=True)
+        headers.update(self._get_auth_header(s3token_time))
 
         metric_name = 'POST.keystone.token.'
         start = time.monotonic()
@@ -348,6 +390,8 @@ class S3Token(object):
                 ),
             ):
                 raise KeystoneRequestTimeout()
+            if isinstance(e, requests.exceptions.SSLError):
+                raise KeystoneUnavailable()
             raise KeystoneInvalidURI()
         finally:
             self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
@@ -374,11 +418,10 @@ class S3Token(object):
             'X-Openstack-Request-Id': trans_id,
         }
 
+        headers.update(self._get_auth_header(s3token_time))
+
         url = self._request_uri.rsplit('/', 1)[0]  # remove
         secret_uri = f'{url}/users/{user_id}/credentials/OS-EC2/{access_key}'
-
-        # Add service authentication headers
-        headers.update(self.keystone_session.get_auth_headers())
 
         metric_name = 'GET.keystone.secret.'
         start = time.monotonic()
@@ -405,6 +448,8 @@ class S3Token(object):
                 ),
             ):
                 raise KeystoneRequestTimeout()
+            if isinstance(e, requests.exceptions.SSLError):
+                raise KeystoneUnavailable()
             raise KeystoneInvalidURI()
         finally:
             self._logger.timing(metric_name, (time.monotonic() - start) * 1000)
@@ -457,11 +502,15 @@ class S3Token(object):
         raise AuthFromCacheFailed
 
     def set_to_cache(self, access, headers, regions_per_type,
-                     tenant, secret, ttl, s3token_time):
-        token_key = 's3secret/%s' % access
+                     tenant, secret, ttl, s3token_time,
+                     deci_counter=0):
+        token_key = f's3secret/{access}'
         monotonic_now = time.monotonic()
         now = time.time()
-        value = (headers, regions_per_type, tenant, secret, now + ttl)
+        # floor unit to keep deci_counter (use // to remove float part)
+        expiration_counter = ((now + ttl) // 10) * 10 + deci_counter
+        value = (headers, regions_per_type, tenant,
+                 secret, expiration_counter)
         self.memcache.set(token_key, value, time=ttl)
         # XXX(FVE): the previous statement does not return
         # anything nor raises exceptions, we don't know if
@@ -512,23 +561,38 @@ class S3Token(object):
                 raise AuthFromCacheFailed
 
             # Reenforce cache locally with cache extension
-            # in case of unavailability of keystone
-            # (timeoutor 50x)
-            # First: check if secret is still available
+            # in case of unavailability of keystone (timeout or 50x)
             try:
-                user_id = headers.get('X-User-Id')
-                cred_ref = self._secret_request(
-                    user_id, access, trans_id, s3token_time, timeout=1
-                )
-                if cred_ref['secret'] != secret:
-                    raise AuthFromCacheFailed
+                if current_ttl % 10 != 9:
+                    # 9 time of 10: check if secret is still available
+                    user_id = headers.get('X-User-Id')
+                    cred_ref = self._secret_request(
+                        user_id, access, trans_id, s3token_time,
+                        timeout=self._reenforcement_timeout)
+                    if cred_ref['secret'] != secret:
+                        raise AuthFromCacheFailed
+                else:
+                    # 1 time on 10, call get_creds_json to refresh
+                    # region_per_type
+                    creds_json = self._get_creds_json(
+                        s3_auth_details, access, signature)
+                    resp = self._json_request(
+                        creds_json, trans_id, s3token_time,
+                        timeout=self._reenforcement_timeout)
+                    token = resp.json()
+                    regions_per_type = get_regions_per_type_from_catalog(
+                        token.get('token', {}).get('catalog')
+                    )
             except (KeystoneRequestTimeout, KeystoneUnavailable):
                 self._logger.info(
                     'Keystone unavailable during cache reenforcement, '
-                    'ignore it and refresh the cache'
+                    'ignore it and refresh the cache for %s...', access[:10]
                 )
-            except Exception:
-                raise AuthFromCacheFailed
+                # Inc metric to count how many time we reenforce cache without
+                # response from Keystone
+                self._logger.increment('ignored.request-timeout')
+            except Exception as exc:
+                raise AuthFromCacheFailed from exc
 
             # As access_key / access_secret are still know by keystone, we set
             # data to memcache again with new duration
@@ -541,6 +605,7 @@ class S3Token(object):
                 secret,
                 duration,
                 s3token_time,
+                deci_counter=(current_ttl + 1) % 10
             )
 
         return (headers, regions_per_type, tenant)
@@ -548,20 +613,7 @@ class S3Token(object):
     def get_auth_data_from_keystone(
         self, s3_auth_details, access, signature, trans_id, s3token_time
     ):
-        # Authenticate request.
-        string_to_sign = s3_auth_details['string_to_sign']
-        if isinstance(string_to_sign, six.text_type):
-            string_to_sign = string_to_sign.encode('utf-8')
-        token = base64.urlsafe_b64encode(string_to_sign)
-        if isinstance(token, six.binary_type):
-            token = token.decode('ascii')
-        creds = {
-            'credentials': {'access': access,
-                            'token': token,
-                            'signature': signature}
-        }
-
-        creds_json = json.dumps(creds)
+        creds_json = self._get_creds_json(s3_auth_details, access, signature)
         self._logger.debug('Connecting to Keystone sending this JSON: %s',
                            creds_json)
         # NOTE(vish): We could save a call to keystone by having
