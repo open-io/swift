@@ -59,6 +59,7 @@ import json
 import logging
 import time
 from random import random
+import urllib
 
 from keystoneauth1 import session as keystone_session
 from keystoneauth1 import loading as keystone_loading
@@ -66,8 +67,6 @@ from keystoneauth1.exceptions import ConnectFailure, ConnectTimeout, \
     RequestTimeout, SSLError, InternalServerError, HttpNotImplemented, \
     BadGateway, ServiceUnavailable, GatewayTimeout
 import requests
-import six
-from six.moves import urllib
 
 from swift.common.swob import Request, HTTPBadRequest, \
     HTTPUnauthorized, HTTPException, HTTPServiceUnavailable
@@ -313,9 +312,7 @@ class S3Token(object):
             '<?xml version="1.0" encoding="UTF-8"?>\r\n'
             '<Error>\r\n  <Code>%s</Code>\r\n  '
             '<Message>%s</Message>\r\n</Error>\r\n' % (code, message)
-        )
-        if six.PY3:
-            error_msg = error_msg.encode()
+        ).encode()
         resp.body = error_msg
         resp.message = reason
         if not reason:
@@ -344,11 +341,7 @@ class S3Token(object):
     def _get_creds_json(self, s3_auth_details, access, signature):
         # Authenticate request.
         string_to_sign = s3_auth_details['string_to_sign']
-        if isinstance(string_to_sign, six.text_type):
-            string_to_sign = string_to_sign.encode('utf-8')
-        token = base64.urlsafe_b64encode(string_to_sign)
-        if isinstance(token, six.binary_type):
-            token = token.decode('ascii')
+        token = base64.urlsafe_b64encode(string_to_sign).decode('ascii')
         creds = {
             'credentials': {'access': access,
                             'token': token,
@@ -721,16 +714,7 @@ class S3Token(object):
                                                              start_response)
 
         access = s3_auth_details['access_key']
-        if isinstance(access, six.binary_type):
-            access = access.decode('utf-8')
-
         signature = s3_auth_details['signature']
-        if isinstance(signature, six.binary_type):
-            signature = signature.decode('utf-8')
-
-        string_to_sign = s3_auth_details['string_to_sign']
-        if isinstance(string_to_sign, six.text_type):
-            string_to_sign = string_to_sign.encode('utf-8')
 
         # NOTE(chmou): This is to handle the special case with nova
         # when we have the option s3_affix_tenant. We will force it to
@@ -814,8 +798,6 @@ class S3Token(object):
 
         req.headers.update(headers)
         tenant_to_connect = force_tenant or tenant['id']
-        if six.PY2 and isinstance(tenant_to_connect, six.text_type):
-            tenant_to_connect = tenant_to_connect.encode('utf-8')
         self._logger.debug('Connecting with tenant: %s', tenant_to_connect)
         new_tenant_name = '%s%s' % (self._reseller_prefix, tenant_to_connect)
         environ['PATH_INFO'] = environ['PATH_INFO'].replace(account,

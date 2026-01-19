@@ -270,7 +270,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -285,17 +285,6 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
-            'check_signature': lambda x: True,
-        }
-        req.get_response(self.middleware)
-        self._assert_authorized(req)
-
-    def test_authorized_bytes(self):
-        req = Request.blank('/v1/AUTH_cfa/c/o')
-        req.environ['s3api.auth_details'] = {
-            'access_key': b'access',
-            'signature': b'signature',
             'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
@@ -320,7 +309,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -350,7 +339,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -369,7 +358,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -380,7 +369,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access:FORCED_TENANT_ID',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -402,7 +391,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access:FORCED_TENANT_ID',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         s3_denied_req = self.middleware._deny_request('AccessDenied')
@@ -430,7 +419,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -555,7 +544,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -644,7 +633,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -655,7 +644,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -667,7 +656,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -700,7 +689,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -742,7 +731,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -829,7 +818,7 @@ class S3TokenMiddlewareTestGood(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -853,7 +842,7 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -893,7 +882,7 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         invalid_resp = self.middleware._deny_request('RequestTimeout')
@@ -909,7 +898,7 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
             req.environ['s3api.auth_details'] = {
                 'access_key': 'access',
                 'signature': 'signature',
-                'string_to_sign': 'token',
+                'string_to_sign': b'token',
                 'check_signature': lambda x: True,
             }
             resp = req.get_response(self.middleware)
@@ -928,7 +917,7 @@ class S3TokenMiddlewareTestBad(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1003,7 +992,7 @@ class S3TokenMiddlewareTestDeferredAuth(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1035,7 +1024,7 @@ class S3TokenMiddlewareTestDeferredAuth(S3TokenMiddlewareTestBase):
             req.environ['s3api.auth_details'] = {
                 'access_key': 'access',
                 'signature': 'signature',
-                'string_to_sign': 'token',
+                'string_to_sign': b'token',
                 'check_signature': lambda x: True,
             }
             resp = req.get_response(self.middleware)
@@ -1054,7 +1043,7 @@ class S3TokenMiddlewareTestDeferredAuth(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1108,17 +1097,6 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
-            'check_signature': lambda x: True,
-        }
-        req.get_response(self.middleware)
-        self._assert_authorized(req)
-
-    def test_authorized_bytes(self):
-        req = Request.blank('/v1/AUTH_cfa/c/o')
-        req.environ['s3api.auth_details'] = {
-            'access_key': b'access',
-            'signature': b'signature',
             'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
@@ -1142,7 +1120,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -1164,7 +1142,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -1181,7 +1159,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -1192,7 +1170,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access:FORCED_TENANT_ID',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1214,7 +1192,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access:FORCED_TENANT_ID',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         s3_denied_req = self.middleware._deny_request('AccessDenied')
@@ -1226,7 +1204,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access:FORCED_ID:FORCED_TENANT:FORCED_USER',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1243,7 +1221,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access:FORCED_ID:FORCED_TENANT',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1269,7 +1247,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         resp = req.get_response(self.middleware)
@@ -1302,7 +1280,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
@@ -1314,7 +1292,7 @@ class S3TokenMiddlewareTestV3(S3TokenMiddlewareTestBase):
         req.environ['s3api.auth_details'] = {
             'access_key': 'access',
             'signature': 'signature',
-            'string_to_sign': 'token',
+            'string_to_sign': b'token',
             'check_signature': lambda x: True,
         }
         req.get_response(self.middleware)
