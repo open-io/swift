@@ -97,7 +97,7 @@ from swift.common.middleware.s3api.s3response import BrokenMPU, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
-    PreconditionFailed, OperationAborted
+    PreconditionFailed, OperationAborted, InvalidObjectState
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
@@ -105,7 +105,8 @@ from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.utils import CHECKSUM_COMPOSITE, \
     CHECKSUM_FULL_OBJECT, CHECKSUM_TYPES, CHECKSUMS, CHECKSUMS_BY_NAME, \
     MULTIUPLOAD_SUFFIX, DEFAULT_CONTENT_TYPE, S3Timestamp, unique_id, \
-    sysmeta_header, update_response_header_with_response_params
+    sysmeta_header, update_response_header_with_response_params, \
+    is_storage_class_restorable
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, init_xml_texts, XMLSyntaxError, DocumentInvalid
 from swift.common.storage_policy import POLICIES
@@ -629,9 +630,16 @@ class PartController(Controller):
             self.app, 'GET', req.container_name, req.object_name,
             query=query)
 
+        # Replicator should not have access to any restorable storage class
+        # (even if the object is currently restored)
+        if req.from_replicator() and \
+                is_storage_class_restorable(req.storage_class_domain):
+            raise InvalidObjectState(
+                "The operation is not valid from the replicator")
+
         storage_pol = slo_resp.sw_headers.get(
             "x-object-sysmeta-storage-policy")
-        req.validate_restore_state(slo_resp, storage_pol)
+        req.is_archived_object_available(slo_resp, storage_pol)
 
         # Check if the object is really a SLO. If not, and user asked
         # for the first part, do a regular request.

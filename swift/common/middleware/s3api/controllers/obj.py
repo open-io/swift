@@ -33,7 +33,7 @@ from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.utils import CHECKSUM_FULL_OBJECT, \
     DEFAULT_CONTENT_TYPE, S3Timestamp, sysmeta_header, \
-    update_response_header_with_response_params
+    update_response_header_with_response_params, is_storage_class_restorable
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_access, set_s3_operation_rest, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -48,7 +48,7 @@ from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import \
     S3NotImplemented, InvalidRange, NoSuchKey, NoSuchVersion, \
     InvalidArgument, HTTPNoContent, PreconditionFailed, \
-    AccessDenied, MethodNotAllowed
+    AccessDenied, MethodNotAllowed, InvalidObjectState
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
@@ -222,9 +222,16 @@ class ObjectController(Controller):
                     tagset["Tag"] = [tagset["Tag"]]
                 resp.headers['x-amz-tagging-count'] = len(tagset["Tag"])
 
-        # Check if object is not archived
+        # Replicator should not have access to any restorable storage class
+        # (even if the object is currently restored)
+        if req.from_replicator() and \
+                is_storage_class_restorable(req.storage_class_domain):
+            raise InvalidObjectState(
+                "The operation is not valid from the replicator")
+
+        # Check if object is not archived (raise exceptions if not available)
         storage_pol = resp.sw_headers.get("x-object-sysmeta-storage-policy")
-        req.validate_restore_state(resp, storage_pol)
+        req.is_archived_object_available(resp, storage_pol)
 
         if version_id in ('null', None):
             if (self.conf.enable_lifecycle or

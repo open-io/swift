@@ -1905,7 +1905,7 @@ class S3Request(swob.Request):
         # Check if object is not archived
         storage_pol = src_resp.sw_headers.get(
             "x-object-sysmeta-storage-policy")
-        self.validate_restore_state(src_resp, storage_pol, method="GET")
+        self.is_archived_object_available(src_resp, storage_pol, method="GET")
         self.headers['X-Amz-Copy-Source'] = quote(src_path)
         if query:
             self.headers['X-Amz-Copy-Source'] += \
@@ -1924,8 +1924,10 @@ class S3Request(swob.Request):
         })
         return src_resp
 
-    def validate_restore_state(self, resp, storage_policy, method=None):
-        """Validate the source copy object restore state
+    def is_archived_object_available(self, resp, storage_policy, method=None):
+        """
+        Check if the object is currently available and raise an exception if
+        the object is not.
 
         :param resp: response object
         :param method: enforce request method
