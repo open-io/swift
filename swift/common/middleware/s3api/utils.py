@@ -41,6 +41,7 @@ S3_STORAGE_CLASSES = [
 ]
 
 S3_STORAGE_CLASSES_RESTORABLE = [
+    "GLACIER",
     "DEEP_ARCHIVE",
 ]
 STANDARD_STORAGE_CLASS = "STANDARD"
@@ -476,5 +477,6 @@ def truncate_excess_characters(value, max_size):
             return (value_bytes[:i]).decode("utf-8")
         except UnicodeDecodeError:
             pass
-    # Instead of returning an error immediately, try directly the orignal value
+    # Instead of returning an error immediately, try directly the original
+    # value.
     return value

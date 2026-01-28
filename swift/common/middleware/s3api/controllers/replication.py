@@ -34,7 +34,8 @@ from swift.common.middleware.s3api.s3response import HTTPNoContent, HTTPOk, \
     ReplicationConfigurationNotFoundError, S3NotImplemented, \
     ServiceUnavailable, AccessDenied, InvalidTagKey, InvalidTagValue
 from swift.common.middleware.s3api.utils import S3_STORAGE_CLASSES, \
-    convert_response, sysmeta_header, validate_tag_key, validate_tag_value
+    convert_response, sysmeta_header, validate_tag_key, validate_tag_value, \
+    is_storage_class_restorable
 from swift.common.oio_utils import AWS_OIO_PREFIX
 from swift.common.utils import config_true_value, public
 from swift.proxy.controllers.base import get_container_info
@@ -254,6 +255,13 @@ def replication_resolve_rules(app, req, sysmeta_info=None, metadata=None,
     :param delete: indicate if the object is being deleted
     :param ensure_replicated: verify if we are dealing with a replicated object
     """
+    # Do not replicate any objects with a restorable storage class. Note that
+    # creating a delete marker is always allowed (they do not really have
+    # storage classes).
+    if req.method != "DELETE" and \
+            is_storage_class_restorable(req.storage_class_domain):
+        return
+
     replication_cb = req.environ.get(REPLICATION_CALLBACK)
     if replication_cb:
         if not sysmeta_info:
