@@ -1042,6 +1042,7 @@ class S3Request(swob.Request):
     authentication_type = _req_s3api_info('authentication_type')
     aws_chunked = _req_s3api_info('aws_chunked')
     user_id = _req_s3api_info('requester')
+    access_key = _req_s3api_info('access_key')
     trans_id = swob._req_environ_property('swift.trans_id')
     request_origin = _req_s3api_info("request_origin")
     is_website = _req_s3api_info("website")

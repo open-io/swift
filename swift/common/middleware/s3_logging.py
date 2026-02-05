@@ -47,7 +47,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             default_access_log_route='s3-access',
             default_log_msg_template=(
                 '{client_ip} {remote_addr} {requester} {end_time.datetime} '
-                '{method} {path} {protocol} {status_int} {operation} '
+                '{method} {path} {protocol} {status_int} {operation} {s3_key}'
                 '{error_code} {error_detail} {backend_error} {known_error} '
                 '{backend_service_id} {referer} {user_agent} {auth_token} '
                 '{signature_version} {authentication_type} {aws_chunked} '
@@ -161,6 +161,7 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
                 'storage_class': 'STANDARD',
                 'storage_class_domain': 'STANDARD',
                 'requester': 'r',
+                's3_key': 'xxx',
                 'operation': 'REST.HEAD.BUCKET',
                 'signature_version': 's3v4',
                 'authentication_type': 'AuthHeader',
@@ -204,6 +205,9 @@ class S3LoggingMiddleware(ProxyLoggingMiddleware):
             'storage_class_domain': s3_info.get('storage_class_domain'),
             'requester': StrAnonymizer(
                 s3_info.get('requester'), self.anonymization_method,
+                self.anonymization_salt),
+            's3_key': StrAnonymizer(
+                s3_info.get('access_key'), self.anonymization_method,
                 self.anonymization_salt),
             'operation': s3_info.get('operation'),
             'error_code': error_code,
