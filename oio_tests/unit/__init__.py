@@ -23,6 +23,7 @@ from oio.api.object_storage import ObjectStorageApi
 from oio.account.client import AccountClient
 from oio.container.client import ContainerClient
 from oio.blob.client import BlobClient
+from oio.content.client import ContentClient
 
 
 class FakeStorageAPI(ObjectStorageApi):
@@ -32,6 +33,7 @@ class FakeStorageAPI(ObjectStorageApi):
         self.__dict__.update(kwargs)
         self._blob_client = Mock(BlobClient)
         self._global_kwargs = dict()
+        self._content_client = Mock(ContentClient)
 
 
 class DebugLogAdapter(utils.LogAdapter):

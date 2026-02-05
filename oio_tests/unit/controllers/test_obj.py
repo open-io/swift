@@ -262,7 +262,7 @@ class TestObjectController(unittest.TestCase):
         req.headers['Etag'] = '"openio"'
         meta = fake_prepare_meta()
         chunks = [{"url": "http://127.0.0.1:7000/AAAA", "pos": "0", "size": 0}]
-        self.storage.container.content_prepare = Mock(
+        self.storage.content.content_prepare = Mock(
             return_value=(meta, chunks))
         with patch('oio.api.replication.io.http_connect',
                    new=fake_http_connect):
@@ -336,7 +336,7 @@ class TestObjectController(unittest.TestCase):
         req.headers['content-length'] = '6'
         meta = fake_prepare_meta()
         chunks = [{"url": "http://127.0.0.1:7000/AAAA", "pos": "0", "size": 6}]
-        self.storage.container.content_prepare = Mock(
+        self.storage.content.content_prepare = Mock(
             return_value=(meta, chunks))
         with patch('oio.api.replication.io.http_connect',
                    new=fake_http_connect):
@@ -355,7 +355,7 @@ class TestObjectController(unittest.TestCase):
         req.headers['content-length'] = '6'
         meta = fake_prepare_meta()
         chunks = [{"url": "http://127.0.0.1:7000/AAAA", "pos": "0", "size": 6}]
-        self.storage.container.content_prepare = Mock(
+        self.storage.content.content_prepare = Mock(
             return_value=(meta, chunks))
         with patch('oio.api.replication.io.http_connect',
                    new=fake_http_connect):
@@ -374,7 +374,7 @@ class TestObjectController(unittest.TestCase):
         req.headers['content-length'] = '6'
         chunks = [{"url": "http://127.0.0.1:7000/AAAA", "pos": "0", "size": 6}]
         meta = fake_prepare_meta()
-        self.storage.container.content_prepare = Mock(
+        self.storage.content.content_prepare = Mock(
             return_value=(meta, chunks))
         with patch('oio.api.replication.io.http_connect',
                    new=fake_http_connect):
@@ -393,7 +393,7 @@ class TestObjectController(unittest.TestCase):
         req.headers['content-length'] = '6'
         chunks = [{"url": "http://127.0.0.1:7000/AAAA", "pos": "0", "size": 6}]
         meta = fake_prepare_meta()
-        self.storage.container.content_prepare = Mock(
+        self.storage.content.content_prepare = Mock(
             return_value=(meta, chunks))
         with patch('oio.api.replication.io.http_connect',
                    new=fake_http_connect):
@@ -420,7 +420,7 @@ class TestObjectController(unittest.TestCase):
         req.headers['content-length'] = '6'
         chunks = [{"url": "http://127.0.0.1:7000/AAAA", "pos": "0", "size": 6}]
         meta = fake_prepare_meta()
-        self.storage.container.content_prepare = Mock(
+        self.storage.content.content_prepare = Mock(
             return_value=(meta, chunks))
         with patch('oio.api.replication.io.http_connect',
                    new=fake_http_connect):
