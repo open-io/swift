@@ -317,6 +317,7 @@ class ProxyLoggingMiddleware(object):
             'request_time': '0.05',
             'source': '',
             'log_info': '',
+            'log_audit': '-',
             'ttfb': '0.05',
             'pid': '42',
             'wire_status_int': '200',
@@ -456,6 +457,7 @@ class ProxyLoggingMiddleware(object):
             'source': req.environ.get('swift.source'),
             'log_info':
                 ','.join(req.environ.get('swift.log_info', '')),
+            'log_audit': req.environ.get('swift.log_audit'),
             # Same precision as request_time
             'ttfb': f"{ttfb:.4f}" if isinstance(ttfb, float) else ttfb,
             'pid': self.pid,

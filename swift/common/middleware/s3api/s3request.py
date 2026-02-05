@@ -2687,6 +2687,10 @@ class S3Request(swob.Request):
             callback=self.callback_resp)
         status = resp.status_int  # pylint: disable-msg=E1101
 
+        # Propagate log_audit to the environ of s3 request
+        self.environ['swift.log_audit'] = sw_resp.environ.get(
+            'swift.log_audit')
+
         if not self.user_id:
             if 'HTTP_X_USER_NAME' in sw_resp.environ:
                 # keystone
