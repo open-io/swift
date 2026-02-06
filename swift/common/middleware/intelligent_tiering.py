@@ -15,10 +15,9 @@
 
 
 from datetime import datetime, timedelta
+from enum import Enum
 from functools import partial
-import json
-import pika
-from pika.exchange_type import ExchangeType
+import requests
 
 from oio.common.constants import OIO_DB_ENABLED, OIO_DB_FROZEN
 
@@ -36,33 +35,24 @@ from swift.common.middleware.s3api.utils import sysmeta_header, S3Timestamp
 from swift.common.middleware.s3api.multi_upload_utils import \
     list_bucket_multipart_uploads
 from swift.common.swob import HTTPMethodNotAllowed
-from swift.common.utils import config_true_value, get_logger
+from swift.common.utils import get_logger
 from swift.common.wsgi import make_pre_authed_request
-
-
-RABBITMQ_QUEUE_NAME = 'pca'
-RABBITMQ_EXCHANGE_NAME = 'pca'
-RABBITMQ_DURABLE = True
-RABBITMQ_AUTO_DELETE = False
-RABBITMQ_MSG_ARCHIVING = 'archive'
-RABBITMQ_MSG_RESTORING = 'restore'
-RABBITMQ_MSG_DELETION = 'delete'
-RABBITMQ_CONN_TIMEOUT = 10
 
 
 # Default authorized actions.
 # Written like in a conf (strings comma separated)
 DEFAULT_IAM_CREATE_BUCKET_ACTIONS = BUCKET_STATE_NONE
-DEFAULT_IAM_DELETE_BUCKET_ACTIONS = BUCKET_STATE_NONE + ',' + \
-    BUCKET_STATE_FLUSHED
+DEFAULT_IAM_DELETE_BUCKET_ACTIONS = (
+    BUCKET_STATE_NONE + "," + BUCKET_STATE_FLUSHED
+)
 DEFAULT_IAM_PUT_OBJECT_ACTIONS = BUCKET_STATE_NONE
 DEFAULT_IAM_GET_OBJECT_ACTIONS = BUCKET_STATE_RESTORED
 DEFAULT_IAM_DELETE_OBJECT_ACTIONS = BUCKET_STATE_NONE
 
 # AccessTier definitions
-TIER_ARCHIVE = 'OVH_ARCHIVE'
-TIER_ARCHIVE_LOCK = 'OVH_ARCHIVE_LOCK'
-TIER_RESTORE = 'OVH_RESTORE'
+TIER_ARCHIVE = "OVH_ARCHIVE"
+TIER_ARCHIVE_LOCK = "OVH_ARCHIVE_LOCK"
+TIER_RESTORE = "OVH_RESTORE"
 
 TIERING_TIER_ACTIONS = [
     TIER_ARCHIVE,
@@ -71,148 +61,83 @@ TIERING_TIER_ACTIONS = [
 ]
 
 TIERING_IAM_SUPPORTED_ACTIONS = {
-    's3:CreateBucket': RT_BUCKET,
-    's3:DeleteBucket': RT_BUCKET,
-    's3:PutObject': RT_OBJECT,
-    's3:GetObject': RT_OBJECT,
-    's3:DeleteObject': RT_OBJECT
+    "s3:CreateBucket": RT_BUCKET,
+    "s3:DeleteBucket": RT_BUCKET,
+    "s3:PutObject": RT_OBJECT,
+    "s3:GetObject": RT_OBJECT,
+    "s3:DeleteObject": RT_OBJECT,
 }
 
-TIERING_CALLBACK = 'swift.callback.tiering.apply'
+TIERING_CALLBACK = "swift.callback.tiering.apply"
 
 
-class RabbitMQClient(object):
-    """
-    Provides an API to send various messages to RabbitMQ.
-    """
+class PcaApiAction(str, Enum):
+    ARCHIVE = "archive"
+    DELETE = "delete"
+    RESTORE = "restore"
 
-    def __init__(self, url, exchange, queue, rabbitmq_durable,
-                 rabbitmq_auto_delete, namespace, logger=None):
-        self.logger = logger
-        self.namespace = namespace
-        self.url = url
-        self.queue = queue
-        self.dl_queue = f"{queue}-dl"
-        self.exchange = exchange
-        self.dl_exchange = f"{exchange}-dlx"
-        self.rabbitmq_durable = rabbitmq_durable
-        self.rabbitmq_auto_delete = rabbitmq_auto_delete
+    def __str__(self):
+        return self.value
 
-    def _connect(self):
-        """
-        Returns an AMQP BlockingConnection and a channel for the provided URL,
-        exchange and queue provided.
-        It may raises exceptions.
-        """
-        # pika.ConnectionParameters is better than pika.URLParameters to handle
-        # multiple arguments but I don't want to change the RabbitMQClient API.
-        url = self.url + f"?blocked_connection_timeout={RABBITMQ_CONN_TIMEOUT}"
-        url_param = pika.URLParameters(url)
-        connection = pika.BlockingConnection(url_param)
-        try:
-            channel = connection.channel()
-            try:
-                channel.exchange_declare(exchange=self.exchange,
-                                         exchange_type=ExchangeType.topic,
-                                         durable=self.rabbitmq_durable,
-                                         auto_delete=self.rabbitmq_auto_delete)
-                channel.exchange_declare(exchange=self.dl_exchange,
-                                         exchange_type=ExchangeType.fanout,
-                                         durable=True,
-                                         auto_delete=False,
-                                         internal=True)
-                channel.queue_declare(queue=self.queue,
-                                      durable=self.rabbitmq_durable,
-                                      auto_delete=self.rabbitmq_auto_delete,
-                                      arguments={
-                                          "x-dead-letter-exchange":
-                                          self.dl_exchange,
-                                      })
-                channel.queue_declare(queue=self.dl_queue,
-                                      durable=True,
-                                      auto_delete=False)
-                channel.queue_bind(exchange=self.exchange, queue=self.queue)
-                channel.queue_bind(exchange=self.dl_exchange,
-                                   queue=self.dl_queue)
-                channel.confirm_delivery()
-            except Exception:
-                if channel.is_open:
-                    channel.cancel()
-                raise
-        except Exception:
-            if connection.is_open:
-                connection.close()
-            raise
 
-        return connection, channel
+class PcaApiException(Exception):
+    pass
 
-    def _send_message(self, account, bucket, action, bucket_size=None,
-                      bucket_region=None):
-        connection, channel = None, None
-        try:
-            connection, channel = self._connect()
-            data = {"namespace": self.namespace,
-                    "account": account,
-                    "bucket": bucket,
-                    "action": action}
-            if bucket_size:
-                data["size"] = bucket_size
-            if bucket_region:
-                data["region"] = bucket_region
 
-            properties = pika.BasicProperties(
-                content_type='application/json',
-                delivery_mode=pika.DeliveryMode.Persistent,
-            )
-            channel.basic_publish(exchange=self.exchange,
-                                  routing_key=self.queue,
-                                  body=json.dumps(data),
-                                  properties=properties,
-                                  mandatory=True)
-        except Exception as exc:
-            self.logger.exception('Error with RabbitMQ server: %s' % str(exc))
-            raise ServiceUnavailable() from exc
-        finally:
-            if connection is not None:
-                try:
-                    if channel.is_open:
-                        channel.cancel()
-                    if connection.is_open:
-                        connection.close()
-                except Exception as exc:
-                    self.logger.exception('Failed to disconnect: %s', str(exc))
+class PcaApiConflictException(PcaApiException):
+    pass
 
-    def start_archiving(self, account, bucket, bucket_size, bucket_region):
-        self._send_message(
-            account,
-            bucket,
-            RABBITMQ_MSG_ARCHIVING,
-            bucket_size=bucket_size,
-            bucket_region=bucket_region)
 
-    def start_restoring(self, account, bucket, bucket_size, bucket_region):
-        self._send_message(
-            account,
-            bucket,
-            RABBITMQ_MSG_RESTORING,
-            bucket_size=bucket_size,
-            bucket_region=bucket_region
-        )
+class PcaApiPreconditionException(PcaApiException):
+    pass
 
-    def start_archive_deletion(
-        self,
-        account,
-        bucket,
-        bucket_size,
-        bucket_region
+
+class PcaApiClient(object):
+    def __init__(self, namespace, endpoints, timeout, logger):
+        self.__namespace = namespace
+        self.__endpoints = endpoints.split(",")
+        self.__timeout = float(timeout)
+        self.__logger = logger
+
+    def _post_message(self, endpoint, payload):
+        path = f"{endpoint}/api/message"
+        self.__logger.debug("Requesting PCA API: %s", path)
+        resp = requests.post(path, json=payload, timeout=self.__timeout)
+        if resp.status_code == 201:
+            return
+        if resp.status_code == 409:
+            raise PcaApiConflictException(resp.reason)
+        if resp.status_code == 412:
+            raise PcaApiPreconditionException(resp.reason)
+        raise ServiceUnavailable(resp.reason)
+
+    def send_message(
+        self, action, account, bucket, bucket_size, bucket_region
     ):
-        self._send_message(
-            account,
-            bucket,
-            RABBITMQ_MSG_DELETION,
-            bucket_size=bucket_size,
-            bucket_region=bucket_region
-        )
+        payload = {
+            "information": {
+                "namespace": self.__namespace,
+                "account": account,
+                "bucket": bucket,
+                "action": action,
+                "size": bucket_size,
+                "region": bucket_region,
+            }
+        }
+
+        for endpoint in self.__endpoints:
+            try:
+                self._post_message(endpoint, payload)
+                return
+            except PcaApiConflictException:
+                continue
+            except PcaApiPreconditionException as exc:
+                raise ServiceUnavailable("Unable to register message") from exc
+            except ServiceUnavailable:
+                continue
+            except requests.exceptions.RequestException:
+                continue
+        raise ServiceUnavailable("Unable to register message")
 
 
 class IntelligentTieringMiddleware(object):
@@ -237,23 +162,14 @@ class IntelligentTieringMiddleware(object):
                                            log_route='intelligent_tiering')
         self.conf = conf
 
-        # RabbitMQ
-        rabbitmq_url = conf.get('rabbitmq_url')
-        if not rabbitmq_url:
-            raise ValueError('rabbitmq_url is missing')
-        rabbitmq_queue = conf.get('rabbitmq_queue', RABBITMQ_QUEUE_NAME)
-        rabbitmq_exchange = conf.get('rabbitmq_exchange',
-                                     RABBITMQ_EXCHANGE_NAME)
-        rabbitmq_durable = config_true_value(
-            conf.get('rabbitmq_durable', RABBITMQ_DURABLE))
-        rabbitmq_auto_delete = config_true_value(
-            conf.get('rabbitmq_auto_delete', RABBITMQ_AUTO_DELETE))
-        namespace = conf['sds_namespace']  # Mandatory, raises KeyError
-
-        self.rabbitmq_client = RabbitMQClient(rabbitmq_url, rabbitmq_exchange,
-                                              rabbitmq_queue, rabbitmq_durable,
-                                              rabbitmq_auto_delete, namespace,
-                                              logger=self.logger)
+        # PCA API
+        pca_api_endpoints = conf.get("pca_api_endpoints")
+        pca_timeout = float(conf.get("pca_api_timeout", "1.0"))
+        if not pca_api_endpoints:
+            raise ValueError("pca_api_endpoints is missing")
+        self.pca_client = PcaApiClient(
+            conf["sds_namespace"], pca_api_endpoints, pca_timeout, self.logger
+        )
 
         # Intelligent Tiering IAM rules
         self.iam_rules = {}
@@ -404,9 +320,13 @@ class IntelligentTieringMiddleware(object):
             bucket_size = bucket_info.get('bytes')
             bucket_region = bucket_info.get('region')
 
-            # Send rabbitmq event
-            self.rabbitmq_client.start_archiving(
-                req.account, req.container_name, bucket_size, bucket_region
+            # Notify PCA API
+            self.pca_client.send_message(
+                PcaApiAction.ARCHIVE,
+                req.account,
+                req.container_name,
+                bucket_size,
+                bucket_region,
             )
             # Change status in container metadata
             self._set_archiving_status(
@@ -490,10 +410,16 @@ class IntelligentTieringMiddleware(object):
             raise BadRequest('Restoring is not allowed in the state %s' %
                              current_status)
 
-        self.rabbitmq_client.start_restoring(
-            req.account, req.container_name, bucket_size, bucket_region
+        # Notify PCA API
+        self.pca_client.send_message(
+            PcaApiAction.RESTORE,
+            req.account,
+            req.container_name,
+            bucket_size,
+            bucket_region,
         )
         self._set_archiving_status(req, current_status, new_status)
+
         return new_status
 
     def _process_PUT(self, req, tiering_conf, s3app, **kwargs):
@@ -552,11 +478,13 @@ class IntelligentTieringMiddleware(object):
 
         bucket_info = req.get_bucket_info(self.app)
 
-        self.rabbitmq_client.start_archive_deletion(
+        # Notify PCA API
+        self.pca_client.send_message(
+            PcaApiAction.DELETE,
             req.account,
             req.container_name,
-            bucket_info.get('bytes'),
-            bucket_info.get('region'),
+            bucket_info.get("bytes"),
+            bucket_info.get("region"),
         )
         self._set_archiving_status(req, current_status, new_status)
         return new_status

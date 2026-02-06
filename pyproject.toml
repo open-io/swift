@@ -6,6 +6,9 @@ dynamic = ["authors", "classifiers", "dependencies", "entry-points", "optional-d
 requires = ["black", "setuptools >= 47.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.ruff]
+line-length = 79
+
 [tool.black]
 line-length = 79
 

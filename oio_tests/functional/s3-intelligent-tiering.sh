@@ -114,22 +114,13 @@ test_intelligent_tiering() {
     --bucket ${SHARED_BUCKET} --id myid \
     --intelligent-tiering-configuration "${INTELLIGENT_TIERING_JSON}"
 
-  # Check if RabbitMQ HTTP API port is open
-  #   (should be on CDS, eventually in dev env).
-  # This API is provided by the plugin rabbitmq_management.
-  nc -w 2 localhost 15672 < /dev/null
-  retval=$?
-  if [ "$retval" -eq "0" ]; then
-    # Wait for the container update event to reach the account service
-    # (if we don't, the size won't be right).
-    sleep 1
-    # Read message in RabbitMQ
-    OUT=$(rabbitmqadmin get queue=pca ackmode=ack_requeue_false --format=long)
-    # Expected size: magic + user1_magic + user1_bigobject + user1_bigobject/<upload-id>/1
-    # size = 111 + 111 + 252 + 111 = 585
-    # because the size of the manifest of user1_bigobject is 252
-    echo "$OUT" | grep "payload: {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 585, \"region\": \"REGIONONE\"}"
-  fi
+  sleep 1
+  # Check the data
+  OUT=$(curl http://localhost:7000)
+  # Expected size: magic + user1_magic + user1_bigobject + user1_bigobject/<upload-id>/1
+  # size = 111 + 111 + 252 + 111 = 585
+  # because the size of the manifest of user1_bigobject is 252
+  echo "$OUT" | grep "\"information\": {\"namespace\": \"${OIO_NS}\", \"account\": \"${OIO_ACCOUNT}\", \"bucket\": \"sharedbucket\", \"action\": \"archive\", \"size\": 585, \"region\": \"REGIONONE\"}"
 
   # user1 cannot create anymore (Intelligent-tiering deny)
   OUT=$(${AWSA1U1} s3 cp /etc/magic s3://${SHARED_BUCKET}/user1_magic2 2>&1 | tail -n 1)
@@ -224,6 +215,9 @@ test_clean() {
   # admin can delete buckets
   ${AWSA1ADM} s3 rb s3://$SHARED_BUCKET
 }
+
+# Start a fake PCA Api server
+nohup python oio_tests/tools/fake_pca_api.py >/tmp/journal_fake_pca_api.log 2>&1 &
 
 test_create_bucket
 test_list_buckets

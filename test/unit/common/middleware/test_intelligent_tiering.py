@@ -19,25 +19,33 @@ from random import randint
 from test.debug_logger import debug_logger
 from test.unit.common.middleware.helpers import FakeSwift
 import unittest
-from unittest.mock import patch, ANY
+from unittest.mock import Mock, patch, ANY
 
 from oio.common.constants import OIO_DB_FROZEN
 
-from swift.common.middleware.intelligent_tiering import \
-    IntelligentTieringMiddleware
+from swift.common.middleware.intelligent_tiering import (
+    IntelligentTieringMiddleware,
+    PcaApiAction,
+    PcaApiConflictException,
+    PcaApiPreconditionException,
+)
 from swift.common.middleware.s3api.intelligent_tiering_utils import \
     BUCKET_STATE_DELETING, BUCKET_STATE_LOCKED, BUCKET_STATE_NONE, \
     BUCKET_STATE_ARCHIVED, BUCKET_STATE_RESTORED, BUCKET_ALLOWED_TRANSITIONS, \
     BUCKET_STATE_RESTORING, BUCKET_STATE_DRAINING
-from swift.common.middleware.s3api.s3response import BadRequest, \
-    S3NotImplemented
+from swift.common.middleware.s3api.s3response import (
+    BadRequest,
+    S3NotImplemented,
+    ServiceUnavailable,
+)
 from swift.common.swob import Request, HTTPNoContent
 
 
 MOCK_FAKE_REQ_CONT_INFO = 'test.unit.common.middleware.' \
     'test_intelligent_tiering.FakeReq.get_container_info'
-MOCK_RABBIT_SEND_MESSAGE = 'swift.common.middleware.intelligent_tiering.' \
-    'RabbitMQClient._send_message'
+MOCK_PCA_API_SEND_MESSAGE = (
+    "swift.common.middleware.intelligent_tiering.PcaApiClient._post_message"
+)
 MOCK_SET_BUCKET_STATUS = 'swift.common.middleware.intelligent_tiering.' \
     'IntelligentTieringMiddleware._set_bucket_status'
 MOCK_SET_CONTAINER_PROPS = 'swift.common.middleware.intelligent_tiering.' \
@@ -56,7 +64,7 @@ class FakeReq(object):
         self.environ = env or {}
         self.bucket_db = None
 
-    def get_container_info(self):
+    def get_container_info(self, _app, read_caches=None):
         raise S3NotImplemented()
 
     def get_bucket_info(self, _app, read_caches=None):
@@ -74,7 +82,10 @@ class TestIntelligentTiering(unittest.TestCase):
 
     def setUp(self):
         self.fake_swift = FakeSwift()
-        fake_conf = {"rabbitmq_url": "fake-url", "sds_namespace": "OPENIO"}
+        fake_conf = {
+            "pca_api_endpoints": "fake-url1,fake-url2,fake-url3",
+            "sds_namespace": "OPENIO",
+        }
         self.logger = debug_logger('test-intelligent-tiering-middleware')
         self.app = IntelligentTieringMiddleware(
             self.fake_swift, fake_conf, logger=self.logger)
@@ -94,7 +105,7 @@ class TestIntelligentTiering(unittest.TestCase):
 
         self.req = FakeReq('PUT', account=self.ACCOUNT,
                            container_name=self.CONTAINER_NAME)
-        self.expected_rabbit_args = None
+        self.expected_pca_api_args = None
         self.expected_container_props_args = None
         self.expected_container_status_args = None
         self.return_value_get_bucket_status = None
@@ -109,15 +120,15 @@ class TestIntelligentTiering(unittest.TestCase):
                          self.app.tiering_callback)
 
     def _test_callback_ok(
-            self,
-            m_b_status,
-            m_set_container_props,
-            m_rabbit,
-            use_tiering_conf=True,
-            **kwargs,
+        self,
+        m_b_status,
+        m_set_container_props,
+        m_pca_api,
+        use_tiering_conf=True,
+        **kwargs,
     ):
         # reset values
-        m_rabbit.call_count = 0
+        m_pca_api.call_count = 0
         m_set_container_props.call_count = 0
         m_b_status.call_count = 0
 
@@ -125,18 +136,25 @@ class TestIntelligentTiering(unittest.TestCase):
         if use_tiering_conf:
             tiering_conf = self.tiering_conf
 
-        with patch(MOCK_FAKE_REQ_CONT_INFO,
-                   return_value=self.return_value_get_bucket_status):
-            self.app.tiering_callback(self.req, tiering_conf, None, **kwargs)
+        self.req.get_container_info = Mock(
+            return_value=self.return_value_get_bucket_status
+        )
+        self.app.tiering_callback(self.req, tiering_conf, None, **kwargs)
 
-        if self.expected_rabbit_args:
-            self.assertEqual(1, m_rabbit.call_count)
-            m_rabbit.assert_called_with(
-                *self.expected_rabbit_args[0],
-                **self.expected_rabbit_args[1],
+        if self.expected_pca_api_args:
+            self.assertEqual(
+                len(self.expected_pca_api_args), m_pca_api.call_count
             )
+            for i, (pca_args, pca_kwargs) in enumerate(
+                self.expected_pca_api_args
+            ):
+                self.assertTupleEqual(pca_args, m_pca_api.mock_calls[i].args)
+                self.assertDictEqual(
+                    pca_kwargs, m_pca_api.mock_calls[i].kwargs
+                )
+
         else:
-            self.assertEqual(0, m_rabbit.call_count)
+            self.assertEqual(0, m_pca_api.call_count)
 
         if self.expected_container_status_args:
             self.assertEqual(1, m_b_status.call_count)
@@ -152,15 +170,15 @@ class TestIntelligentTiering(unittest.TestCase):
             **self.expected_container_props_args[1])
 
     def _test_callback_ko(
-            self,
-            m_b_status,
-            m_set_container_props,
-            m_rabbit,
-            use_tiering_conf=True,
-            **kwargs,
+        self,
+        m_b_status,
+        m_set_container_props,
+        m_pca_api,
+        use_tiering_conf=True,
+        **kwargs,
     ):
         # reset values
-        m_rabbit.call_count = 0
+        m_pca_api.call_count = 0
         m_set_container_props.call_count = 0
         m_b_status.call_count = 0
 
@@ -168,17 +186,19 @@ class TestIntelligentTiering(unittest.TestCase):
         if use_tiering_conf:
             tiering_conf = self.tiering_conf
 
-        with patch(MOCK_FAKE_REQ_CONT_INFO,
-                   return_value=self.return_value_get_bucket_status):
-            self.assertRaises(
-                BadRequest,
-                self.app.tiering_callback,
-                self.req,
-                tiering_conf,
-                None,
-                **kwargs,
-            )
-        self.assertEqual(0, m_rabbit.call_count)
+        self.req.get_container_info = Mock(
+            return_value=self.return_value_get_bucket_status
+        )
+
+        self.assertRaises(
+            BadRequest,
+            self.app.tiering_callback,
+            self.req,
+            tiering_conf,
+            None,
+            **kwargs,
+        )
+        self.assertEqual(0, m_pca_api.call_count)
         self.assertEqual(0, m_set_container_props.call_count)
         self.assertEqual(0, m_b_status.call_count)
 
@@ -198,12 +218,26 @@ class TestIntelligentTiering(unittest.TestCase):
     # PUT ARCHIVE
     ###
     def _put_archive_ok(
-            self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
-        self.expected_rabbit_args = [
-            (self.ACCOUNT, self.CONTAINER_NAME, 'archive'),
-            {'bucket_size': 42, 'bucket_region': None},
-        ]
+        self.expected_pca_api_args = (
+            (
+                (
+                    "fake-url1",
+                    {
+                        "information": {
+                            "namespace": "OPENIO",
+                            "account": self.ACCOUNT,
+                            "bucket": self.CONTAINER_NAME,
+                            "action": PcaApiAction.ARCHIVE,
+                            "size": 42,
+                            "region": None,
+                        }
+                    },
+                ),
+                {},
+            ),
+        )
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
 
         # Test with Status=None
@@ -223,30 +257,44 @@ class TestIntelligentTiering(unittest.TestCase):
         }
         # Checking if mpu are completed will be tested in functional tests
         m_check_mpu.return_value = True
-        self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ok(m_b_status, m_set_container_props, m_pca_api)
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_ok(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
         self._put_archive_ok(
-            m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+            m_check_mpu, m_b_status, m_set_container_props, m_pca_api
         )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_lock_ok(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
-        self.expected_rabbit_args = [
-            (self.ACCOUNT, self.CONTAINER_NAME, 'archive'),
-            {'bucket_size': 42, 'bucket_region': None},
-        ]
+        self.expected_pca_api_args = (
+            (
+                (
+                    "fake-url1",
+                    {
+                        "information": {
+                            "namespace": "OPENIO",
+                            "account": self.ACCOUNT,
+                            "bucket": self.CONTAINER_NAME,
+                            "action": PcaApiAction.ARCHIVE,
+                            "size": 42,
+                            "region": None,
+                        }
+                    },
+                ),
+                {},
+            ),
+        )
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE_LOCK'
 
         # Test with Status=None
@@ -270,7 +318,7 @@ class TestIntelligentTiering(unittest.TestCase):
         }
         # Checking if mpu are completed will be tested in functional tests
         m_check_mpu.return_value = True
-        self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ok(m_b_status, m_set_container_props, m_pca_api)
 
         # Check timestamp stored is correct
         # 0: go into call object
@@ -287,12 +335,12 @@ class TestIntelligentTiering(unittest.TestCase):
         m_check_mpu,
         m_b_status,
         m_set_container_props,
-        m_rabbit,
+        m_pca_api,
         bucket_status=BUCKET_STATE_ARCHIVED,
         expect_ok=True,
         old_timestamp=None,
     ):
-        self.expected_rabbit_args = None
+        self.expected_pca_api_args = None
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE_LOCK'
 
         self.expected_container_status_args = None  # already frozen
@@ -313,7 +361,7 @@ class TestIntelligentTiering(unittest.TestCase):
             self._test_callback_ok(
                 m_b_status,
                 m_set_container_props,
-                m_rabbit,
+                m_pca_api,
                 **kwargs,
             )
 
@@ -330,16 +378,16 @@ class TestIntelligentTiering(unittest.TestCase):
             self._test_callback_ko(
                 m_b_status,
                 m_set_container_props,
-                m_rabbit,
+                m_pca_api,
                 **kwargs,
             )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_lock_update_ok(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
         # Simulate add a lock for first time
         for tier in ("OVH_ARCHIVE", "OVH_ARCHIVE_LOCK", "OVH_RESTORE"):
@@ -353,7 +401,7 @@ class TestIntelligentTiering(unittest.TestCase):
                     m_check_mpu,
                     m_b_status,
                     m_set_container_props,
-                    m_rabbit,
+                    m_pca_api,
                     bucket_status=state,
                 )
 
@@ -369,17 +417,17 @@ class TestIntelligentTiering(unittest.TestCase):
                     m_check_mpu,
                     m_b_status,
                     m_set_container_props,
-                    m_rabbit,
+                    m_pca_api,
                     bucket_status=state,
                     old_timestamp=datetime.now().timestamp(),
                 )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_lock_update_smaller_date(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
         # Simulate updating a lock but with a smaller date than the existing
         # one
@@ -397,25 +445,25 @@ class TestIntelligentTiering(unittest.TestCase):
                     m_check_mpu,
                     m_b_status,
                     m_set_container_props,
-                    m_rabbit,
+                    m_pca_api,
                     bucket_status=state,
                     old_timestamp=old_timestamp,
                     expect_ok=False,
                 )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_lock_update_bad_conf(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
         """
         Add a first conf without lock, then update it to add a lock but..
         .. with a twist that make it impossible.
         """
         self._put_archive_ok(
-            m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+            m_check_mpu, m_b_status, m_set_container_props, m_pca_api
         )
 
         # Not the same ids
@@ -424,7 +472,7 @@ class TestIntelligentTiering(unittest.TestCase):
             m_check_mpu,
             m_b_status,
             m_set_container_props,
-            m_rabbit,
+            m_pca_api,
             expect_ok=False,
         )
 
@@ -434,23 +482,23 @@ class TestIntelligentTiering(unittest.TestCase):
             m_check_mpu,
             m_b_status,
             m_set_container_props,
-            m_rabbit,
+            m_pca_api,
             expect_ok=False,
         )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_lock_update_bucket_bad_status(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
         """
         Add a first conf without lock, then update it to add a lock but..
         .. the bucket has not the expected state.
         """
         self._put_archive_ok(
-            m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+            m_check_mpu, m_b_status, m_set_container_props, m_pca_api
         )
 
         self.old_xml = self.get_conf_xml()
@@ -463,17 +511,17 @@ class TestIntelligentTiering(unittest.TestCase):
                 m_check_mpu,
                 m_b_status,
                 m_set_container_props,
-                m_rabbit,
+                m_pca_api,
                 bucket_status=state,
                 expect_ok=False,
             )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     @patch(MOCK_CHECK_MPU_COMPLETE)
     def test_PUT_archive_bad_bucket_status(
-        self, m_check_mpu, m_b_status, m_set_container_props, m_rabbit
+        self, m_check_mpu, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -485,26 +533,28 @@ class TestIntelligentTiering(unittest.TestCase):
                 'sysmeta': {'s3api-archiving-status': state}
             }
             m_check_mpu.return_value = True
-            self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+            self._test_callback_ko(
+                m_b_status, m_set_container_props, m_pca_api
+            )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_archive_bad_req_status(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         self.tiering_conf['Status'] = 'Disabled'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_archive_req_multiple_tierings(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_ARCHIVE'
         self.tiering_conf['Tierings'].append(
@@ -512,37 +562,53 @@ class TestIntelligentTiering(unittest.TestCase):
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_archive_req_bad_action(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'DEEP_ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_NONE}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
     ###
     # PUT RESTORE
     ###
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
-    def test_PUT_restore_ok(self, m_b_status, m_set_container_props, m_rabbit):
-        self.expected_rabbit_args = [
-            (self.ACCOUNT, self.CONTAINER_NAME, 'restore'),
-            {'bucket_size': 42, 'bucket_region': None}
-        ]
+    def test_PUT_restore_ok(
+        self, m_b_status, m_set_container_props, m_pca_api
+    ):
+        self.expected_pca_api_args = (
+            (
+                (
+                    "fake-url1",
+                    {
+                        "information": {
+                            "namespace": "OPENIO",
+                            "account": self.ACCOUNT,
+                            "bucket": self.CONTAINER_NAME,
+                            "action": PcaApiAction.RESTORE,
+                            "size": 42,
+                            "region": None,
+                        }
+                    },
+                ),
+                {},
+            ),
+        )
         self.expected_container_props_args = [
             (
                 self.req,
@@ -554,13 +620,13 @@ class TestIntelligentTiering(unittest.TestCase):
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ok(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ok(m_b_status, m_set_container_props, m_pca_api)
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_bad_bucket_status(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -571,26 +637,28 @@ class TestIntelligentTiering(unittest.TestCase):
             self.return_value_get_bucket_status = {
                 'sysmeta': {'s3api-archiving-status': state}
             }
-            self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+            self._test_callback_ko(
+                m_b_status, m_set_container_props, m_pca_api
+            )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_bad_req_status(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         self.tiering_conf['Status'] = 'Disabled'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_req_multiple_tierings(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = 'OVH_RESTORE'
         self.tiering_conf['Tierings'].append(
@@ -598,20 +666,20 @@ class TestIntelligentTiering(unittest.TestCase):
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_PUT_restore_req_bad_action(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.tiering_conf['Tierings'][0]['AccessTier'] = \
             'ARCHIVE_ACCESS'
         self.return_value_get_bucket_status = {
             'sysmeta': {'s3api-archiving-status': BUCKET_STATE_ARCHIVED}
         }
-        self._test_callback_ko(m_b_status, m_set_container_props, m_rabbit)
+        self._test_callback_ko(m_b_status, m_set_container_props, m_pca_api)
 
     ###
     # DELETE
@@ -620,7 +688,7 @@ class TestIntelligentTiering(unittest.TestCase):
         self,
         m_b_status,
         m_set_container_props,
-        m_rabbit,
+        m_pca_api,
         bucket_status,
     ):
         self.expected_container_props_args = [
@@ -634,18 +702,35 @@ class TestIntelligentTiering(unittest.TestCase):
             'sysmeta': bucket_status,
         }
         self._test_callback_ok(
-            m_b_status, m_set_container_props, m_rabbit, use_tiering_conf=False
+            m_b_status,
+            m_set_container_props,
+            m_pca_api,
+            use_tiering_conf=False,
         )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
-    def test_DELETE_ok(self, m_b_status, m_set_container_props, m_rabbit):
+    def test_DELETE_ok(self, m_b_status, m_set_container_props, m_pca_api):
         self.req.method = 'DELETE'
-        self.expected_rabbit_args = [
-            (self.ACCOUNT, self.CONTAINER_NAME, 'delete'),
-            {'bucket_size': 42, 'bucket_region': None}
-        ]
+        self.expected_pca_api_args = (
+            (
+                (
+                    "fake-url1",
+                    {
+                        "information": {
+                            "namespace": "OPENIO",
+                            "account": self.ACCOUNT,
+                            "bucket": self.CONTAINER_NAME,
+                            "action": PcaApiAction.DELETE,
+                            "size": 42,
+                            "region": None,
+                        }
+                    },
+                ),
+                {},
+            ),
+        )
         self.expected_container_props_args = [
             (self.req, BUCKET_STATE_DELETING),
             {}
@@ -655,18 +740,18 @@ class TestIntelligentTiering(unittest.TestCase):
         self._test_delete_ok(
             m_b_status,
             m_set_container_props,
-            m_rabbit,
-            {'s3api-archiving-status': BUCKET_STATE_ARCHIVED},
+            m_pca_api,
+            {"s3api-archiving-status": BUCKET_STATE_ARCHIVED},
         )
 
         # Test with Status=Archived and lock date expired
         self._test_delete_ok(
             m_b_status,
             m_set_container_props,
-            m_rabbit,
+            m_pca_api,
             {
-                's3api-archiving-status': BUCKET_STATE_ARCHIVED,
-                's3api-archive-lock-until-timestamp': 42,
+                "s3api-archiving-status": BUCKET_STATE_ARCHIVED,
+                "s3api-archive-lock-until-timestamp": 42,
             },
         )
 
@@ -674,26 +759,26 @@ class TestIntelligentTiering(unittest.TestCase):
         self._test_delete_ok(
             m_b_status,
             m_set_container_props,
-            m_rabbit,
-            {'s3api-archiving-status': BUCKET_STATE_RESTORED},
+            m_pca_api,
+            {"s3api-archiving-status": BUCKET_STATE_RESTORED},
         )
 
         # Test with Status=Restored and lock date expired
         self._test_delete_ok(
             m_b_status,
             m_set_container_props,
-            m_rabbit,
+            m_pca_api,
             {
-                's3api-archiving-status': BUCKET_STATE_RESTORED,
-                's3api-archive-lock-until-timestamp': 42,
+                "s3api-archiving-status": BUCKET_STATE_RESTORED,
+                "s3api-archive-lock-until-timestamp": 42,
             },
         )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_DELETE_bad_bucket_status(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.req.method = 'DELETE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -707,15 +792,15 @@ class TestIntelligentTiering(unittest.TestCase):
             self._test_callback_ko(
                 m_b_status,
                 m_set_container_props,
-                m_rabbit,
+                m_pca_api,
                 use_tiering_conf=False,
             )
 
-    @patch(MOCK_RABBIT_SEND_MESSAGE)
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
     @patch(MOCK_SET_CONTAINER_PROPS)
     @patch(MOCK_SET_BUCKET_STATUS)
     def test_DELETE_lock_still_active(
-        self, m_b_status, m_set_container_props, m_rabbit
+        self, m_b_status, m_set_container_props, m_pca_api
     ):
         self.req.method = 'DELETE'
         for state in BUCKET_ALLOWED_TRANSITIONS:
@@ -734,9 +819,73 @@ class TestIntelligentTiering(unittest.TestCase):
             self._test_callback_ko(
                 m_b_status,
                 m_set_container_props,
-                m_rabbit,
+                m_pca_api,
                 use_tiering_conf=False,
             )
+
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    def test_DELETE_fallback(
+        self, m_b_status, m_set_container_props, m_pca_api
+    ):
+        self.req.method = "DELETE"
+        self.expected_pca_api_args = [
+            (("fake-url1", ANY), {}),
+            (("fake-url2", ANY), {}),
+            (("fake-url3", ANY), {}),
+        ]
+        m_pca_api.side_effect = [
+            PcaApiConflictException(),
+            ServiceUnavailable(),
+            None,
+        ]
+
+        self._test_delete_ok(
+            m_b_status,
+            m_set_container_props,
+            m_pca_api,
+            {
+                "s3api-archiving-status": BUCKET_STATE_RESTORED,
+                "s3api-archive-lock-until-timestamp": 42,
+            },
+        )
+
+    @patch(MOCK_PCA_API_SEND_MESSAGE)
+    @patch(MOCK_SET_CONTAINER_PROPS)
+    @patch(MOCK_SET_BUCKET_STATUS)
+    def test_DELETE_error(self, m_b_status, m_set_container_props, m_pca_api):
+        self.req.method = "DELETE"
+        self.expected_pca_api_args = [
+            (("fake-url1", ANY), {}),
+            (("fake-url2", ANY), {}),
+        ]
+        m_pca_api.side_effect = [
+            ServiceUnavailable(),
+            PcaApiPreconditionException(),
+        ]
+
+        self.return_value_get_bucket_status = {
+            "sysmeta": {"s3api-archiving-status": BUCKET_STATE_RESTORED}
+        }
+
+        self.req.get_container_info = Mock(
+            return_value=self.return_value_get_bucket_status
+        )
+
+        self.assertRaises(
+            ServiceUnavailable,
+            self.app.tiering_callback,
+            self.req,
+            {
+                "s3api-archiving-status": BUCKET_STATE_RESTORED,
+                "s3api-archive-lock-until-timestamp": 42,
+            },
+            None,
+        )
+        self.assertEqual(2, m_pca_api.call_count)
+        self.assertEqual(0, m_set_container_props.call_count)
+        self.assertEqual(0, m_b_status.call_count)
 
 
 # pylint: disable=protected-access
@@ -746,7 +895,10 @@ class TestIAMIntelligentTiering(unittest.TestCase):
 
     def setUp(self):
         self.fake_swift = FakeSwift()
-        fake_conf = {"rabbitmq_url": "fake-url", "sds_namespace": "OPENIO"}
+        fake_conf = {
+            "pca_api_endpoints": "fake-url",
+            "sds_namespace": "OPENIO",
+        }
         self.logger = debug_logger('test-intelligent-tiering-middleware')
         self.app = IntelligentTieringMiddleware(
             self.fake_swift, fake_conf, logger=self.logger)
