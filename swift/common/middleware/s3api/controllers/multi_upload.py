@@ -1440,6 +1440,10 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         manifest = []
         checksums = []
         previous_number = 0
+        checksums_to_combine = {}
+        s3_chksum = None
+        expected_s3_chksum = None
+
         try:
             xml = req.xml(MAX_COMPLETE_UPLOAD_BODY_SIZE)
             if not xml:
@@ -1524,30 +1528,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                         # The response from this call is cached,
                         # so subsequent HEAD requests for each part won't hit
                         # the backend.
-                        part_info_resp = get_nth_part_info(
-                            self.app, req, upload_id, part_number)
-                        if not part_nth_head_response:
-                            # Saving part metadata used later
-                            # to check encryption properties
-                            part_nth_head_response = part_info_resp
-                        part_checksum = int(
-                            binascii.hexlify(
-                                strict_b64decode(
-                                    part_chksums[algo])).decode("ascii"), 16)
-                        # Validate part checksum as we already request for
-                        # part metadata.
-                        part_s3_etag_header = sysmeta_header(
-                            'object', 'checksum-' + algo)
-                        if part_info_resp.sysmeta_headers.get(
-                            part_s3_etag_header
-                        ) != part_chksums[algo]:
-                            raise S3InputChecksumMismatch(
-                                algo.upper(), part_number, etag)
-                        chksum.combine(
-                            part_checksum,
-                            part_info_resp.content_length,
-                            checksum_info.reflected_polynomial
-                        )
+                        # check is done in callback size_checker
+                        pass
                     else:
                         chksum.update(strict_b64decode(part_chksums[algo]))
                 elif part_chksums:
@@ -1619,13 +1601,15 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 expected_s3_chksum = expected_b64digest
                 if checksum_type == CHECKSUM_COMPOSITE:
                     expected_s3_chksum += '-%d' % (expected_parts_number)
-                if (
-                    expected_s3_chksum != s3_chksum
-                ):
-                    raise BadDigest(
-                        'The %s you specified did not '
-                        'match the calculated checksum.' % algo)
+                if checksum_type != CHECKSUM_FULL_OBJECT:
+                    if (
+                        expected_s3_chksum != s3_chksum
+                    ):
+                        raise BadDigest(
+                            'The %s you specified did not '
+                            'match the calculated checksum.' % algo)
             s3_etag_header = sysmeta_header('object', 'checksum-' + algo)
+
             headers[s3_etag_header] = s3_chksum
             c_etag += '; s3_%s=%s' % (algo, s3_chksum)
 
@@ -1635,12 +1619,29 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 return
             part_s3_etag_header = sysmeta_header(
                 'object', 'checksum-' + part_algo)
+            if checksum_resp.etag is None and \
+               checksum_type == CHECKSUM_FULL_OBJECT:
+                raise InvalidPart(
+                    upload_id=upload_id,
+                    part_number=part_number,
+                )
+
             if checksum_resp.headers.get(part_s3_etag_header) != expected:
-                raise S3InputChecksumMismatch(
-                    part_algo.upper(), part_number, etag)
+                raise InvalidPart(
+                    upload_id=upload_id,
+                    part_number=part_number,
+                    e_tag=etag,
+                )
+            if checksum_type == CHECKSUM_FULL_OBJECT:
+                part_checksum = int(
+                    binascii.hexlify(
+                        strict_b64decode(
+                            expected)).decode("ascii"), 16)
+                content_length = checksum_resp.content_length
+                checksums_to_combine[index] = (part_checksum, content_length)
 
         req.environ['swift.callback.slo_segment_hook'] = checksum_checker
-
+        # if checksum_type != CHECKSUM_FULL_OBJECT:
         headers[get_container_update_override_key('etag')] = c_etag
 
         too_small_message = ('s3api requires that each segment be at least '
@@ -1692,6 +1693,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             if upload_resp.sysmeta_headers.get(MPU_ABORTED_METADATA):
                 # MPU has been aborted
                 raise BrokenMPU()
+
             # Check the size of each segment except the last and make sure
             # they are all more than the minimum upload chunk size.
             # Note that we need to use the *internal* keys, since we're
@@ -1701,7 +1703,37 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                 for item in manifest[:-1]
                 if item and item['bytes'] < self.conf.min_segment_size]
 
+        def checksum_compute():
+            if checksum_type == CHECKSUM_FULL_OBJECT:
+                chksum = checksum_info.new_hasher()
+                for _, val in (sorted(checksums_to_combine.items())):
+                    (part_checksum, c_length) = val
+                    chksum.combine(
+                        part_checksum,
+                        c_length,
+                        checksum_info.reflected_polynomial
+                    )
+                full_c_etag = '; s3_etag=%s' % s3_etag
+                f_s3_chksum = base64.b64encode(chksum.digest()).decode('ascii')
+                if (
+                    expected_s3_chksum is not None and
+                    expected_s3_chksum != f_s3_chksum
+                ):
+                    raise BadDigest(
+                        'The %s you specified did not '
+                        'match the calculated checksum.' % algo)
+
+                s3_etag_header = sysmeta_header('object', 'checksum-' + algo)
+                full_c_etag += '; s3_%s=%s' % (algo, f_s3_chksum)
+                return f_s3_chksum, {
+                    get_container_update_override_key('etag'): full_c_etag,
+                    s3_etag_header: f_s3_chksum}
+            else:
+                return s3_chksum, {}
+
         req.environ['swift.callback.slo_manifest_hook'] = size_checker
+        req.environ['swift.callback.combine_checksum_hook'] = checksum_compute
+
         req.environ['swift.crypto.override'] = True
         start_time = time.time()
 
@@ -1712,7 +1744,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             # Track whether we've sent anything yet so we can yield out that
             # declaration *first*
             yielded_anything = False
-
+            update_checksum = None
             try:
                 try:
                     # Reuse the same version-id as the MPU placeholder
@@ -1750,6 +1782,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                                 status=body['Response Status'],
                                 msg='\n'.join(': '.join(err)
                                               for err in body['Errors']))
+                        else:
+                            update_checksum = body.pop('update-checksum', None)
                 except S3InputChecksumMismatch as e:
                     raise InvalidPart(
                         upload_id=upload_id,
@@ -1790,6 +1824,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
                     # gone (e.g., because of concurrent completes or a retried
                     # complete), so much the better.
                     pass
+                if update_checksum is not None:
+                    s3_chksum = update_checksum
 
                 yield _make_complete_body(
                     req, s3_etag, yielded_anything,

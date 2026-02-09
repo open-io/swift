@@ -1397,6 +1397,17 @@ class StaticLargeObject(object):
                     out_content_type, resp_dict, problem_segments, 'upload')
                 return
 
+            ck_hook = req.environ.get('swift.callback.combine_checksum_hook')
+            s3_chksum_full = None
+            if ck_hook:
+                s3_chksum_full, combined_etag = ck_hook()
+                if combined_etag:
+                    # This is a non-standard header that can be used by the
+                    # callback to indicate the SLO etag without having to
+                    # compute it themselves.
+                    for key, val in combined_etag.items():
+                        req.headers[key] = val
+
             slo_etag = md5(usedforsecurity=False)
             for seg_data in data_for_storage:
                 if 'data' in seg_data:
@@ -1462,7 +1473,7 @@ class StaticLargeObject(object):
                 resp.etag = slo_etag
                 resp_dict['Etag'] = resp.headers['Etag']
                 resp_dict['Last Modified'] = resp.headers['Last-Modified']
-
+                resp_dict['update-checksum'] = s3_chksum_full
             if heartbeat:
                 resp_body = resp.body
                 if six.PY3 and isinstance(resp_body, bytes):
