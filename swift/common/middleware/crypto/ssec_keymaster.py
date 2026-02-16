@@ -419,6 +419,7 @@ class SsecKeyMaster(KeyMaster):
         refresh_delay = config_auto_int_value(
             conf.get("sds_endpoint_refresh_delay"), 60)
         self.kms = KmsClient({"namespace": conf["sds_namespace"]},
+                             proxy_endpoint=conf.get("sds_proxy_url"),
                              location=conf.get("sds_location"),
                              logger=self.logger,
                              refresh_delay=refresh_delay)
