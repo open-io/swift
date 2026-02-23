@@ -428,7 +428,7 @@ class BadEndpoint(ErrorResponse):
 class MaxVersionsReached(ErrorResponse):
     _status = '403 Forbidden'
     _msg = 'The request PUT is rejected because max of versions is reached' \
-           'for that object.'
+           ' for that object.'
 
 
 class BucketAlreadyExists(ErrorResponse):

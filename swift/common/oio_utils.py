@@ -25,9 +25,9 @@ from swift.common.swob import HTTPMethodNotAllowed, \
 
 from oio.common.constants import REQID_HEADER, \
     HEADER_PREFIX as OIO_HEADER_PREFIX
-from oio.common.exceptions import MethodNotAllowed, NoSuchContainer, \
-    NoSuchObject, OioNetworkException, ServiceBusy, ServiceUnavailable, \
-    DeadlineReached
+from oio.common.exceptions import ContentDrained, MethodNotAllowed, \
+    NoSuchContainer, NoSuchObject, OioNetworkException, ServiceBusy, \
+    ServiceUnavailable, DeadlineReached
 from oio.common.storage_method import parse_chunk_method
 
 
@@ -120,6 +120,8 @@ def handle_service_busy(fnc):
                 req.environ.setdefault("oio.error_info", {})[k] = v
             return HTTPServiceUnavailable(request=req, headers=headers,
                                           body=str(err))
+        except ContentDrained:
+            return HTTPForbidden(request=req, body="Object is not restored")
     return _service_busy_wrapper
 
 

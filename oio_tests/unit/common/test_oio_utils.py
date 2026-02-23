@@ -24,7 +24,7 @@ import unittest
 
 from mock import MagicMock
 
-from oio.common.exceptions import MethodNotAllowed, ServiceBusy
+from oio.common.exceptions import MethodNotAllowed, ServiceBusy, ContentDrained
 from swift.common.oio_utils import handle_not_allowed, handle_service_busy
 from swift.common.swob import HTTPException
 from swift.common.ring import FakeRing
@@ -72,6 +72,18 @@ class TestOioUtils(unittest.TestCase):
         self.assertEqual(res.status_int, 503)
         self.assertIn("Retry-After", res.headers)
         mself.app.retry_after.__str__.assert_called_once()
+
+    def test_handle_content_drained(self):
+        def content_drained(*args, **kwargs):
+            raise ContentDrained("Content drained")
+
+        mself = MagicMock()
+        wrapped = handle_service_busy(content_drained)
+        res = wrapped(mself, None)
+        self.assertIsInstance(res, HTTPException)
+        self.assertEqual(res.status_int, 403)
+        self.assertNotIn("Retry-After", res.headers)
+        mself.app.retry_after.__str__.assert_not_called()
 
     def test_retry_after_value(self):
         def busy_cluster(*args, **kwargs):
