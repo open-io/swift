@@ -314,17 +314,18 @@ def dict_conf_to_xml(
                 if not isinstance(data[key], dict):
                     _to_xml(data[key], key, element)
                 else:
-                    if key == 'Filter' and \
-                       (len(data[key]) >= 2 or
-                        (len(data[key]) == 1 and
-                         len(data[key].get('Tags', [])) > 1)):
+                    if key == 'Filter':
+                        filter_dict = data[key]
+                        tags = filter_dict.get('Tag', [])
                         subelement = SubElement(element, key)
-                        and_subelement = SubElement(subelement, "And")
-                        _to_xml(data[key], element=and_subelement)
+                        if len(tags) > 1 or len(filter_dict) > 1:
+                            # Multiple criteria filter needs `And` element
+                            subelement = SubElement(subelement, "And")
+                        _to_xml(data[key], element=subelement)
                     elif key in ("Rules", *LIFECYCLE_ACTIONS):
                         _key = key[:-1] if key == "Rules" else key
                         for _, val in _iter_skip_internal(data[key]):
-                            subelement = (SubElement)(element, _key)
+                            subelement = SubElement(element, _key)
                             _to_xml(val, element=subelement)
                     else:
                         subelement = SubElement(element, key)

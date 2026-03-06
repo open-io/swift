@@ -139,7 +139,7 @@ class TestS3Lifecycle(unittest.TestCase):
 
         resp = self.client.get_bucket_lifecycle_configuration(Bucket=self.bucket)
         self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
-        self.assertEqual(lifecycle_configuration["Rules"], resp["Rules"])
+        self.assertListEqual(lifecycle_configuration["Rules"], resp["Rules"])
 
         headers = resp["ResponseMetadata"]["HTTPHeaders"]
         self.assertEqual(
