@@ -663,19 +663,21 @@ def _validate_time_consistency(actions, rule, **_kwargs):
             _validate_one_time_per_actions(type_actions)
             time_type = _validate_actions_time_type_consistency(
                 type_actions, rule)
-            for a in type_actions.values():
-                if (
-                    time_type is None
-                    and a.get("ExpiredObjectDeleteMarker") is None
-                ):
-                    raise MalformedXML()
+            type_actions["__time_type"] = time_type
+            if time_type is None:
+                for key, a in type_actions.items():
+                    if key.startswith("__"):
+                        continue
+                    if a.get("ExpiredObjectDeleteMarker") is None:
+                        raise MalformedXML()
+                continue
+
             time_type_used = time_type_used or time_type
 
             # Only current version can use 'Date' and 'Days'
             if time_type_used != time_type:
                 raise InvalidMixedDaysAndDate(
                     [time_type_used, time_type], rule)
-            type_actions["__time_type"] = time_type
         _validate_transitions_before_expiration(
             actions, prefix, time_type_used, rule)
 

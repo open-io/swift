@@ -129,6 +129,16 @@ class TestS3Lifecycle(unittest.TestCase):
                     "Filter": {},
                     "Status": "Enabled",
                 },
+                {
+                    "Expiration": {
+                        "Days": 70,
+                    },
+                    "ID": "rule-6",
+                    "Filter": {
+                        "Tag": {"Key": "foo", "Value": "bar"},
+                    },
+                    "Status": "Disabled",
+                },
             ],
         }
 
@@ -192,11 +202,11 @@ class TestS3Lifecycle(unittest.TestCase):
             headers["x-amz-transition-default-minimum-object-size"],
             object_size)
 
-    def test_test_put_bucket_lifecycle_configuration_object_size_header(self):
+    def test_put_bucket_lifecycle_configuration_object_size_header(self):
         for value in ("all_storage_classes_128K", "varies_by_storage_class"):
             self._put_bucket_lifecycle_configuration_object_size_header(value)
 
-    def test_test_put_bucket_lifecycle_configuration_object_size_header_invalid(self):
+    def test_put_bucket_lifecycle_configuration_object_size_header_invalid(self):
         def add_custom_header_before_call(request, **kwargs):
             request.headers["X-Amz-Transition-Default-Minimum-Object-Size"] = "foobar"
         try:
@@ -261,6 +271,25 @@ class TestS3Lifecycle(unittest.TestCase):
                             "Prefix": "doc",
                         },
                         "Expiration": {"Days": 10},
+                    }
+                ]
+            },
+        )
+        self.assertEqual(200, resp["ResponseMetadata"]["HTTPStatusCode"])
+
+    def test_put_bucket_lifecycle_configuration_transition_before_expiration(self):
+        resp = self.client.put_bucket_lifecycle_configuration(
+            Bucket=self.bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "",
+                        "Status": "Enabled",
+                        "Filter": {
+                            "Prefix": "doc",
+                        },
+                        "Transitions": [{"Days": 30, "StorageClass": "STANDARD_IA"}],
+                        "Expiration": {"ExpiredObjectDeleteMarker": True},
                     }
                 ]
             },
