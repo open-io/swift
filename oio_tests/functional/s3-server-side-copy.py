@@ -42,7 +42,7 @@ class TestS3ServerSideCopy(unittest.TestCase):
             run_awscli_s3('rb', '--force', bucket=self.bucket_src)
             run_awscli_s3('rb', '--force', bucket=self.bucket_dst)
         except CliError as cli_err:
-            self.logger.warning("Failed to clean test buckets: %s", cli_err)
+            print(f"Failed to clean test buckets: {cli_err}")
         super(TestS3ServerSideCopy, self).tearDown()
 
     def _create_object_src(self, key, size):
