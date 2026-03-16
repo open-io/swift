@@ -60,7 +60,8 @@ jobs:
 
           # --- Python dependencies ---
           . $HOME/swiftenv/bin/activate
-          pip install --upgrade pip setuptools tox virtualenv -r test-requirements.txt
+          # setuptools>=81 deprecates pkg_resources, which is still used by swift somehow
+          pip install --upgrade pip 'setuptools<81' tox virtualenv -r test-requirements.txt
           test -n "{{.cds.env.SDS_BRANCH}}" && git config --local submodule.oio-sds.branch "{{.cds.env.SDS_BRANCH}}" || true
           eval $(worker key install --env-git proj-ssh-openio)
           git submodule update --init --remote
