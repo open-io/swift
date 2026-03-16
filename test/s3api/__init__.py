@@ -28,6 +28,9 @@ from swift.common.utils import config_true_value, readconf
 from test import get_config
 
 _CONFIG = None
+DEFAULT_ENDPOINT = 'https://s3.amazonaws.com'
+DEFAULT_PROFILE = 'DEFAULT'
+DEFAULT_REGION = 'us-east-1'
 
 
 # boto's loggign can get pretty noisy; require opt-in to see it all
@@ -40,18 +43,26 @@ class ConfigError(Exception):
     '''Error test conf misconfigurations'''
 
 
-def load_aws_config(conf_file):
+def load_aws_config(conf_file, creds_file):
     """
-    Read user credentials from an AWS CLI style credentials file and translate
-    to a swift test config. Currently only supports a single user.
+    Read user config and credentials from an AWS CLI style credentials file
+    and translate to a swift test config.
+    Currently only supports a single user.
 
-    :param conf_file: path to AWS credentials file
+    :param conf_file: path to AWS config file
+    :param creds_file: path to AWS credentials file
     """
-    conf = readconf(conf_file, 'default')
+    conf = {}
+    profile = os.environ.get('SWIFT_TEST_AWS_CONFIG_PROFILE', DEFAULT_PROFILE)
+    if conf_file:
+        conf.update(readconf(conf_file, f"profile {profile}"))
+    if creds_file:
+        conf.update(readconf(creds_file, profile))
+
     global _CONFIG
     _CONFIG = {
-        'endpoint': 'https://s3.amazonaws.com',
-        'region': 'us-east-1',
+        'endpoint': conf.get('endpoint_url', DEFAULT_ENDPOINT),
+        'region': conf.get('region', DEFAULT_REGION),
         'access_key1': conf.get('aws_access_key_id'),
         'secret_key1': conf.get('aws_secret_access_key'),
         'session_token1': conf.get('aws_session_token'),
@@ -59,12 +70,16 @@ def load_aws_config(conf_file):
         'secret_key4': conf.get('aws_secret_access_key'),
         'proxy_addr': conf.get('proxy_addr')
     }
+    print(
+        f'Loaded test config from "{conf_file}" and "{creds_file}" '
+        f'with profile "{profile}"'
+    )
 
 
 aws_config_file = os.environ.get('SWIFT_TEST_AWS_CONFIG_FILE')
-if aws_config_file:
-    load_aws_config(aws_config_file)
-    print('Loaded test config from %s' % aws_config_file)
+aws_config_credentials = os.environ.get('SWIFT_TEST_AWS_CONFIG_CREDENTIALS')
+if aws_config_file or aws_config_credentials:
+    load_aws_config(aws_config_file, aws_config_credentials)
 
 
 def get_opt_or_error(option):
@@ -276,7 +291,7 @@ class BaseS3TestCase(BaseS3Mixin, unittest.TestCase):
     def tearDown(self):
         # Avoid cleaning all buckets of the account
         # (including the ones not from the test).
-        if aws_config_file:
+        if aws_config_file or aws_config_credentials:
             return
 
         client = self.get_s3_client(1)
@@ -300,7 +315,7 @@ class BaseS3TestCaseWithBucket(BaseS3Mixin, unittest.TestCase):
     def tearDownClass(cls):
         # Avoid cleaning all buckets of the account
         # (including the ones not from the test).
-        if aws_config_file:
+        if aws_config_file or aws_config_credentials:
             return
 
         client = cls.get_s3_client(1)
