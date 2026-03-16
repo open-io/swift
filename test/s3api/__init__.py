@@ -274,6 +274,11 @@ class BaseS3Mixin(object):
 
 class BaseS3TestCase(BaseS3Mixin, unittest.TestCase):
     def tearDown(self):
+        # Avoid cleaning all buckets of the account
+        # (including the ones not from the test).
+        if aws_config_file:
+            return
+
         client = self.get_s3_client(1)
         self.clear_account(client)
         try:
@@ -293,6 +298,11 @@ class BaseS3TestCaseWithBucket(BaseS3Mixin, unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # Avoid cleaning all buckets of the account
+        # (including the ones not from the test).
+        if aws_config_file:
+            return
+
         client = cls.get_s3_client(1)
         cls.clear_account(client)
         try:
