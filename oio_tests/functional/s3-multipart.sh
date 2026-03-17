@@ -189,6 +189,7 @@ test_mpu_update_metadata() {
   BUCKET="bucket-$RANDOM"
   META_VALUE="updated"
   MULTI_FILE=$(mktemp -t multipart_XXXXXX.dat)
+  OUTFILE=$(mktemp -t multipart_XXXXXX.dat)
   dd if=/dev/zero of="${MULTI_FILE}" count=21 bs=1M
 
   echo
@@ -201,27 +202,24 @@ test_mpu_update_metadata() {
   echo "Uploading a multipart object in bucket ${BUCKET}"
   ${AWS} s3 cp "$MULTI_FILE" "s3://$BUCKET/obj"
 
-  echo "Counting segments with openio CLI"
-  SEGS=$(openio object list ${BUCKET}+segments -f value)
-  [ -n "$SEGS" ]
-  SEG_COUNT=$(echo -n "${SEGS}" | wc -l)
-
   echo "Changing object metadata"
-  ${AWS} s3 cp "s3://$BUCKET/obj" "s3://$BUCKET/obj" --metadata "status=${META_VALUE}" --metadata-directive "REPLACE"
+  # FIXME VME: we used to use "s3 cp" (in order to still have a MPU in the end)
+  # Put "s3 cp" again once conditional write is implemented.
+  ${AWS} s3api copy-object --bucket "${BUCKET}" --key "obj" \
+    --copy-source "${BUCKET}/obj" \
+    --metadata "status=${META_VALUE}" \
+    --metadata-directive REPLACE
 
   echo "Checking new metadata"
   DATA=$(${AWS} s3api head-object --bucket ${BUCKET} --key obj)
   NEW_META_VALUE=$(echo "$DATA" | jq -r .Metadata.status)
   [ "$NEW_META_VALUE" = "$META_VALUE" ]
 
-  echo "Counting segments with openio CLI (should be the same, we just changed metadata)"
-  SEGS2=$(openio object list ${BUCKET}+segments -f value)
-  [ -n "$SEGS2" ]
-  SEG_COUNT2=$(echo -n "${SEGS2}" | wc -l)
-  [ "$SEG_COUNT" -eq "$SEG_COUNT2" ]
-  # Note: segments are not the same, we did not optimize user metadata changes
-  # (but we did optimize ACL changes, see above).
-  [ "$SEGS" != "$SEGS2" ]
+  # After the copy, the object is not a MPU anymore but a simple object
+  echo "Checking the hash of the copy"
+  OLD_HASH="\"$(md5sum ${MULTI_FILE} | awk -F' ' '{print $1}')\""
+  NEW_HASH=$(echo $DATA | jq -r .ETag)
+  [ "$NEW_HASH" = "$OLD_HASH" ]
 
   echo
   echo "Cleanup"
