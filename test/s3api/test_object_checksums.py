@@ -34,7 +34,7 @@ class ObjectChecksumMixin(object):
     def setUpClass(cls):
         super().setUpClass()
         cls.client = cls.get_s3_client(1)
-        cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
+        cls.is_aws = cls.client._endpoint.host.endswith(".amazonaws.com")
         cls.CHECKSUM_HDR = 'x-amz-checksum-' + cls.ALGORITHM.lower()
         cls.GLOBAL_CHECKSUM_HDR = (
             'x-amz-checksum-' + TestObjectChecksumCRC64NVME.ALGORITHM.lower())
@@ -2206,7 +2206,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
     def setUpClass(cls):
         super().setUpClass()
         cls.client = cls.get_s3_client(1)
-        cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
+        cls.is_aws = cls.client._endpoint.host.endswith(".amazonaws.com")
 
     def test_multi_checksum(self):
         with self.assertRaises(botocore.exceptions.ClientError) as caught:
@@ -3397,9 +3397,9 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
         self.assertEqual('CRC32C', create_mpu_resp['ChecksumAlgorithm'])
         self.assertEqual(cs_type, create_mpu_resp['ChecksumType'])
         upload_id = create_mpu_resp['UploadId']
-        # On AWS upload part copy of an objet with different checksum algorithm
-        # is possible, the checksum is recomputed with the mpu checksum
-        # algorithm. We currently do not support this behavior.
+        # On AWS upload part copy of an object with different checksum
+        # algorithm is possible, the checksum is recomputed with the mpu
+        # checksum algorithm. We currently do not support this behavior.
         if not self.is_aws:
             with self.assertRaises(botocore.exceptions.ClientError) as caught:
                 # Upload part

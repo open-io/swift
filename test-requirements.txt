@@ -5,6 +5,7 @@
 # Hacking already pins down pep8, pyflakes and flake8
 hacking>=2.0,<2.1.0 # Apache-2.0
 coverage>=7.2.3 # Apache-2.0
+flaky
 pytest>=4.6.11  # MIT
 pytest-cov>=2.12.1  # MIT
 pytest-timer

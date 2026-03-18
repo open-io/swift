@@ -20,6 +20,7 @@ addopts = [
   "-l",
   "--tb=short",
   "--timer-top-n=10",
+  "--no-success-flaky-report",
 ]
 #log_level = "DEBUG"
 markers = [

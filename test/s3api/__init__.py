@@ -29,7 +29,7 @@ from test import get_config
 
 _CONFIG = None
 DEFAULT_ENDPOINT = 'https://s3.amazonaws.com'
-DEFAULT_PROFILE = 'DEFAULT'
+DEFAULT_PROFILE = 'default'
 DEFAULT_REGION = 'us-east-1'
 
 
@@ -55,12 +55,17 @@ def load_aws_config(conf_file, creds_file):
     conf = {}
     profile = os.environ.get('SWIFT_TEST_AWS_CONFIG_PROFILE', DEFAULT_PROFILE)
     if conf_file:
-        conf.update(readconf(conf_file, f"profile {profile}"))
+        try:
+            conf.update(readconf(conf_file, f"profile {profile}"))
+        except ValueError:
+            # Default profile is not suffixed by "profile "
+            conf.update(readconf(conf_file, profile))
     if creds_file:
         conf.update(readconf(creds_file, profile))
 
     global _CONFIG
     _CONFIG = {
+        'profile': profile,
         'endpoint': conf.get('endpoint_url', DEFAULT_ENDPOINT),
         'region': conf.get('region', DEFAULT_REGION),
         'access_key1': conf.get('aws_access_key_id'),
@@ -68,7 +73,8 @@ def load_aws_config(conf_file, creds_file):
         'session_token1': conf.get('aws_session_token'),
         'access_key4': conf.get('aws_access_key_id'),
         'secret_key4': conf.get('aws_secret_access_key'),
-        'proxy_addr': conf.get('proxy_addr')
+        'proxy_addr': conf.get('proxy_addr'),
+        'ca_cert': conf.get('ca_cert'),
     }
     print(
         f'Loaded test config from "{conf_file}" and "{creds_file}" '
@@ -275,8 +281,10 @@ class BaseS3Mixin(object):
                     break
 
     @classmethod
-    def create_name(cls, slug):
-        return '%s%s-%s' % (TEST_PREFIX, slug, uuid.uuid4().hex)
+    def create_name(cls, slug, use_prefix=True, truncate=True):
+        """Truncate is useful for creating bucket names."""
+        name = f"{TEST_PREFIX if use_prefix else ''}{slug}{uuid.uuid4().hex}"
+        return name[:63] if truncate else name
 
     @classmethod
     def clear_account(cls, client):
@@ -291,7 +299,8 @@ class BaseS3TestCase(BaseS3Mixin, unittest.TestCase):
     def tearDown(self):
         # Avoid cleaning all buckets of the account
         # (including the ones not from the test).
-        if aws_config_file or aws_config_credentials:
+        if aws_config_file or aws_config_credentials \
+                and _CONFIG.get("profile", DEFAULT_PROFILE) != DEFAULT_PROFILE:
             return
 
         client = self.get_s3_client(1)
@@ -307,15 +316,19 @@ class BaseS3TestCase(BaseS3Mixin, unittest.TestCase):
 class BaseS3TestCaseWithBucket(BaseS3Mixin, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.bucket_name = cls.create_name('test-bucket')
-        client = cls.get_s3_client(1)
-        client.create_bucket(Bucket=cls.bucket_name)
+        if not hasattr(cls, "bucket_name") or not cls.bucket_name:
+            cls.bucket_name = cls.create_name('test-bucket')
+        if not hasattr(cls, "skip_bucket_creation") \
+                or not cls.skip_bucket_creation:
+            client = cls.get_s3_client(1)
+            client.create_bucket(Bucket=cls.bucket_name)
 
     @classmethod
     def tearDownClass(cls):
         # Avoid cleaning all buckets of the account
         # (including the ones not from the test).
-        if aws_config_file or aws_config_credentials:
+        if aws_config_file or aws_config_credentials \
+                and _CONFIG.get("profile", DEFAULT_PROFILE) != DEFAULT_PROFILE:
             return
 
         client = cls.get_s3_client(1)

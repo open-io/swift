@@ -31,7 +31,7 @@ class BaseTestWhitelistIp(BaseS3TestCase):
     def setUpClass(cls):
         cls.client = cls.get_s3_client(1)
         cls.whitelisted_client = cls.get_s3_client(4)
-        cls.is_aws = cls.client._endpoint.host == "https://s3.amazonaws.com"
+        cls.is_aws = cls.client._endpoint.host.endswith(".amazonaws.com")
         proxy_addr = cls.get_proxy_addr(is_aws=cls.is_aws)
         proxy_config = {
             'http': proxy_addr,
