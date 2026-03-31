@@ -464,6 +464,7 @@ class VersionedBucketNotEmpty(BucketNotEmpty):
 class CORSForbidden(ErrorResponse):
     _code = 'AccessForbidden'
     _status = '403 Forbidden'
+    # The typo on "evalution" come from AWS response.
     _msg = 'CORSResponse: This CORS request is not allowed. This is usually ' \
            'because the evalution of Origin, request method / ' \
            'Access-Control-Request-Method or Access-Control-Request-Headers ' \
@@ -933,7 +934,7 @@ class Found(ErrorResponse):
 
 class PreconditionFailed(ErrorResponse):
     _status = '412 Precondition Failed'
-    _msg = 'At least one of the preconditions you specified did not hold.'
+    _msg = 'At least one of the pre-conditions you specified did not hold'
 
 
 class Redirect(ErrorResponse):
