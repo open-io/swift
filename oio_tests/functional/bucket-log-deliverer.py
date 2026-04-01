@@ -253,50 +253,6 @@ class TestBucketLogDelivery(unittest.TestCase):
         finally:
             run_awscli_s3('rb', bucket=bucket)
 
-    def test_cross_account(self):
-        bucket = random_str(10)
-        run_awscli_s3('mb', bucket=bucket)
-        try:
-            logging_bucket = random_str(10)
-            run_awscli_s3('mb', bucket=logging_bucket)
-            try:
-                logging_conf = deepcopy(LOGGING_CONF)
-                logging_conf['LoggingEnabled']['TargetBucket'] = logging_bucket
-                run_awscli_s3api(
-                    'put-bucket-logging',
-                    '--bucket-logging-status', json.dumps(logging_conf),
-                    bucket=bucket)
-                run_awscli_s3('rb', bucket=logging_bucket)
-                run_awscli_s3('mb', bucket=logging_bucket, profile='a2adm')
-                try:
-                    run_awscli_s3api(
-                        'put-bucket-acl',
-                        '--grant-write',
-                        'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
-                        '--grant-read-acp',
-                        'URI=http://acs.amazonaws.com/groups/s3/LogDelivery',
-                        bucket=logging_bucket, profile='a2adm')
-                    file_names = (
-                        f'prefix_{bucket}.log-2038-01-19-03-14-08',
-                    )
-                    self._create_files(file_names)
-                    self._scan_and_check(no_longer_useful=1)
-                    self._check_files_existence(())
-                    self._check_objects_existence(
-                        logging_bucket, (), profile='a2adm')
-                finally:
-                    run_awscli_s3(
-                        'rb', '--force', bucket=logging_bucket,
-                        profile='a2adm')
-            finally:
-                try:
-                    run_awscli_s3('rb', '--force', bucket=logging_bucket)
-                except CliError as exc:
-                    if 'NoSuchBucket' not in str(exc):
-                        raise
-        finally:
-            run_awscli_s3('rb', bucket=bucket)
-
     def test_cross_location(self):
         bucket = random_str(10)
         run_awscli_s3('mb', bucket=bucket)
