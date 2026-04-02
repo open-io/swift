@@ -22,7 +22,7 @@ regex
 #
 # dnspython>=1.15.0;python_version=='2.7' # http://www.dnspython.org/LICENSE
 # ipaddress>=1.0.16;python_version<'3.3'  # PSF
-blake3<1.0.0  # dependency problem with Cargo 1.75 and blake3 1.0.1
+blake3
 boto3
 dict2xml
 oio[all]>7.2

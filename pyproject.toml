@@ -3,7 +3,7 @@ name = "swift"
 dynamic = ["authors", "classifiers", "dependencies", "entry-points", "optional-dependencies", "readme", "scripts", "version"]
 
 [build-system]
-requires = ["black", "setuptools >= 47.1.0", "wheel"]
+requires = ["black", "setuptools < 81", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
