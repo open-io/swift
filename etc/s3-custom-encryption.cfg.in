@@ -24,7 +24,7 @@ account_autocreate = true
 sds_connection_timeout=5
 sds_read_timeout=20
 sds_write_timeout=20
-delete_slo_parts=true
+delete_slo_parts=false
 
 [filter:gatekeeper]
 use = egg:swift#gatekeeper

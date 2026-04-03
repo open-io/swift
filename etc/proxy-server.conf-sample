@@ -374,8 +374,9 @@ use = egg:swift#proxy
 # When a static large object manifest is overwritten, swift's default behavior
 # is to keep the parts, in case another manifest references them. It is the
 # container owner's responsability to delete them.
-# oioswift allows to automatically delete the parts (enabled by default).
-#delete_slo_parts=true
+# oioswift relies on the backend to delete asynchronously the parts.
+# the options is disabled by default
+#delete_slo_parts=false 
 #
 # When handling HEAD requests on objects, verify that the required number
 # of chunks are reachable. When disabled (the default), just check the
