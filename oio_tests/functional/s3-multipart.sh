@@ -10,6 +10,24 @@ AWS="aws --endpoint-url ${ENDPOINT_URL} --no-verify-ssl"
 set -e
 #set -x
 
+wait_for_empty_segments() {
+  BUCKET="$1"
+  TIMEOUT="${2:-20}"
+  local deadline=$((SECONDS + TIMEOUT))
+
+  while true; do
+    SEGS=$(openio object list "${BUCKET}+segments" -f value)
+    if [ -z "$SEGS" ]; then
+      return 0
+    fi
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "Timed out waiting for empty segments in bucket ${BUCKET}" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 test_mpu_abort__no_parts() {
   BUCKET="bucket-$RANDOM"
   echo "Testing the abortion of a multipart object"
@@ -64,8 +82,7 @@ test_mpu_abort__with_parts() {
   echo "Aborting multipart 'second'"
   ${AWS} s3api abort-multipart-upload --bucket ${BUCKET} --key second --upload-id "${UPLOAD_ID}" 2>&1 | tail -n 1
   echo "Counting segments with openio CLI (should be 0)"
-  SEGS=$(openio object list ${BUCKET}+segments -f value)
-  [ -z "$SEGS" ]
+  wait_for_empty_segments "${BUCKET}" 180
 
   ${AWS} s3 rb "s3://$BUCKET"
   rm "$MULTI_FILE"
@@ -133,6 +150,7 @@ test_mpu_overwrite() {
   ${AWS} s3 cp "$SMALL_FILE" "s3://$BUCKET/obj"
 
   echo "Counting segments with openio CLI (should be zero)"
+  wait_for_empty_segments "${BUCKET}"
   SEGS4=$(openio object list ${BUCKET}+segments -f value)
   [ -z "$SEGS4" ]
   SEG_COUNT4=$(echo -n "${SEGS4}" | wc -l)

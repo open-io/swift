@@ -147,7 +147,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             'GET', '%s?%s' % (self.segment_bucket,
                               'format=json&mpu_marker_only=True'),
             swob.HTTPOk, {}, json.dumps([]))
-        # but for the listing when aborting an upload, break it up into pages
+        # paginated part listing (used by list-parts tests)
         self.swift.register(
             'GET', '%s?delimiter=/&format=json&marker=&'
             'prefix=object/VXBsb2FkIElE/' % (self.segment_bucket, ),
@@ -175,6 +175,10 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             swob.HTTPCreated, {}, None)
         self.swift.register(
             'DELETE', self.segment_bucket + '/object/VXBsb2FkIElE',
+            swob.HTTPNoContent, {}, None)
+        self.swift.register(
+            'DELETE',
+            self.segment_bucket + '/object/VXBsb2FkIElE?slo_manifest=1',
             swob.HTTPNoContent, {}, None)
         self.swift.register(
             'GET', self.segment_bucket + '/object/invalid',
@@ -2045,6 +2049,23 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
                                      'Date': self.get_date_header()})
         status, headers, body = self.call_s3api(req)
         self.assertEqual(status.split()[0], '204')
+        # Parts must NOT be deleted synchronously; async cleanup is triggered
+        # via slo_manifest=1 on the marker delete.
+        self.assertNotIn(
+            ('DELETE', self.segment_bucket + '/object/VXBsb2FkIElE/1'),
+            self.swift.calls)
+        self.assertNotIn(
+            ('DELETE', self.segment_bucket + '/object/VXBsb2FkIElE/2'),
+            self.swift.calls)
+        # No part listing should be done synchronously either
+        self.assertFalse(any(
+            method == 'GET' and 'prefix=object/VXBsb2FkIElE/' in path
+            for method, path in self.swift.calls))
+        # Marker is deleted with slo_manifest=1 to trigger async part cleanup
+        self.assertIn(
+            ('DELETE',
+             self.segment_bucket + '/object/VXBsb2FkIElE?slo_manifest=1'),
+            self.swift.calls)
 
     @s3acl
     def test_upload_part_aborted_mpu(self):
@@ -2649,12 +2670,13 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             self._test_for_s3acl('DELETE', '?uploadId=VXBsb2FkIElE',
                                  'test:full_control')
         self.assertEqual(status.split()[0], '204')
+        # Parts are deleted asynchronously; only the marker DELETE is made,
+        # with slo_manifest=1 to trigger async cleanup via MpuPartCleaner.
         self.assertEqual([
             path for method, path in self.swift.calls if method == 'DELETE'
         ], [
-            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/2',
-            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
-            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE?'
+            'slo_manifest=1',
         ])
 
     @s3acl(s3acl_only=True)
