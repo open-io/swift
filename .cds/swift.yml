@@ -169,15 +169,11 @@ metadata:
   default_tags: git.branch,git.author,git.tag
 
 retention_policy: |+
-    if (cds_triggered_by_username == 'cds.scheduler') then
-      # Give a few days to the team to analyze failed builds
-      return run_days_before < 4
-    end
     if (has_git_branch == "true") then
       if(git_branch_exist == "true") then
         return run_days_before < 365
       else
-        return run_days_before < 2
+        return run_days_before < 4
       end
     else
       return run_days_before < 365
