@@ -39,12 +39,19 @@ class S3AclController(Controller):
     bucket_resource_type = 'ACL'
     object_resource_type = 'OBJECT_ACL'
     param_resource = 'acl'
+    _iam_map = {
+        'REST.GET.ACL': 's3:GetBucketAcl',
+        'REST.PUT.ACL': 's3:PutBucketAcl',
+        'REST.GET.OBJECT_ACL': 's3:GetObjectAcl',
+        'REST.PUT.OBJECT_ACL': 's3:PutObjectAcl',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:GetObjectAcl', 's3:GetBucketAcl')
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket acl and GET Object acl.
@@ -65,7 +72,7 @@ class S3AclController(Controller):
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:PutObjectAcl', 's3:PutBucketAcl')
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket acl and PUT Object acl.

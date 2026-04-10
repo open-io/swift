@@ -47,13 +47,17 @@ class LoggingStatusController(Controller):
     """
     bucket_resource_type = 'LOGGING_STATUS'
     param_resource = 'logging'
+    _iam_map = {
+        'REST.GET.LOGGING_STATUS': 's3:GetBucketLogging',
+        'REST.PUT.LOGGING_STATUS': 's3:PutBucketLogging',
+    }
 
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
     @check_bucket_access
-    @check_iam_access('s3:PutBucketLogging')
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket logging.
@@ -84,7 +88,7 @@ class LoggingStatusController(Controller):
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
     @check_bucket_access
-    @check_iam_access('s3:PutBucketLogging')
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket logging.

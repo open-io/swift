@@ -31,6 +31,7 @@ class ServiceController(Controller):
     """
     Handles account level requests.
     """
+    _iam_map = {'SOAP.ListAllMyBuckets': 's3:ListAllMyBuckets'}
 
     @classmethod
     def get_s3_operation(cls, req):
@@ -40,7 +41,7 @@ class ServiceController(Controller):
 
     @public
     @fill_cors_headers
-    @check_iam_access('s3:ListAllMyBuckets')
+    @check_iam_access
     def GET(self, req):
         """
         Handle GET Service request

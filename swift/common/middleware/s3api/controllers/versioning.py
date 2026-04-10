@@ -41,13 +41,17 @@ class VersioningController(Controller):
     """
     bucket_resource_type = 'VERSIONING'
     param_resource = 'versioning'
+    _iam_map = {
+        'REST.GET.VERSIONING': 's3:GetBucketVersioning',
+        'REST.PUT.VERSIONING': 's3:PutBucketVersioning',
+    }
 
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access('s3:PutBucketVersioning')
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket versioning.
@@ -69,7 +73,7 @@ class VersioningController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access('s3:PutBucketVersioning')
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket versioning.

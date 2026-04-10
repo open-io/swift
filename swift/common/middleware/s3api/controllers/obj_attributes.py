@@ -55,6 +55,11 @@ class ObjectAttributesController(Controller):
 
     object_resource_type = 'OBJECT_ATTRIBUTES'
     param_resource = 'attributes'
+    # GetObjectAttributes is gated by two IAM actions; both must allow.
+    _iam_map = {
+        'REST.GET.OBJECT_ATTRIBUTES':
+            ('s3:GetObjectAttributes', 's3:GetObjectAcl'),
+    }
 
     @ratelimit
     @public
@@ -62,8 +67,7 @@ class ObjectAttributesController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:GetObjectAcl')
-    @check_iam_access('s3:GetObjectAttributes')
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Object Attributes.

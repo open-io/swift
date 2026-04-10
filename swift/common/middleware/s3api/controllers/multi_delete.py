@@ -31,7 +31,7 @@ from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     fromstring, tostring, XMLSyntaxError, DocumentInvalid
-from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.iam import check_iam_action
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import HTTPOk, \
     S3NotImplemented, NoSuchKey, ErrorResponse, MalformedXML, \
@@ -46,6 +46,9 @@ class MultiObjectDeleteController(Controller):
     operation in the S3 server log.
     """
 
+    _iam_map = {
+        'BATCH.DELETE.OBJECT': 's3:DeleteObject',
+    }
 
     @classmethod
     def get_s3_operation(cls, req):
@@ -76,11 +79,6 @@ class MultiObjectDeleteController(Controller):
         # This must be checked for each object name. Just prepare
         # the checker here and call it later.
         bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)
-        if bypass_governance is not None and \
-           bypass_governance.lower() == 'true':
-            check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")
-        else:
-            check_iam_bypass = None
 
         def object_key_iter(elem):
             for obj in elem.iterchildren('Object'):
@@ -158,11 +156,10 @@ class MultiObjectDeleteController(Controller):
             delete_marker = False
             delete_marker_version = None
             try:
-                check_iam_access('s3:DeleteObject')(
-                    lambda x, req: None)(None, req)
-                if check_iam_bypass:
-                    # Will raise AccessDenied if bypass not allowed
-                    check_iam_bypass(lambda x, req: None)(None, req)
+                check_iam_action(req, 's3:DeleteObject')
+                if bypass_governance is not None and \
+                        bypass_governance.lower() == 'true':
+                    check_iam_action(req, 's3:BypassGovernanceRetention')
                     header = sysmeta_header(
                         'object', 'retention-bypass-governance')
                     req_headers[header] = bypass_governance

@@ -21,7 +21,7 @@ from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.acl_handlers import get_acl_handler
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.iam import IAM_EXPLICIT_ALLOW, \
-    check_iam_access
+    check_iam_action
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import S3NotImplemented, \
     InvalidRequest, NoSuchBucket, AccessDenied, NoSuchKey, \
@@ -165,6 +165,9 @@ class Controller(object):
     bucket_resource_type = None
     object_resource_type = None
     param_resource = None
+    # Maps REST.METHOD.TYPE → IAM action string.
+    _iam_map = {}
+
     def __init__(self, app, conf, logger, **kwargs):
         self.app = app
         self.conf = conf
@@ -188,6 +191,14 @@ class Controller(object):
         if is_object:
             return "REST.%s.OBJECT" % req.method
         return "REST.%s.BUCKET" % req.method
+
+    @classmethod
+    def get_iam_action(cls, req):
+        """
+        Return the S3 IAM action for this request, or None if not applicable.
+        """
+        op = cls.get_s3_operation(req)
+        return cls._iam_map.get(op)
 
     @classmethod
     def resource_type(cls):
@@ -239,8 +250,7 @@ class Controller(object):
             # However, if the request comes from the replicator, the real
             # exception should be raised.
             if not req.from_replicator():
-                check_iam_access('s3:ListBucket')(
-                    lambda x, req: None)(None, subreq)
+                check_iam_action(subreq, 's3:ListBucket')
 
             resp = subreq.get_response(self.app, query={'limit': 0})
             drain_and_close(resp)

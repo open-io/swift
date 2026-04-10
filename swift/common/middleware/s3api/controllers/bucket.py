@@ -51,6 +51,13 @@ class BucketController(Controller):
     Handles bucket request.
     """
     bucket_resource_type = 'BUCKET'
+    _iam_map = {
+        'REST.HEAD.BUCKET': 's3:ListBucket',
+        'REST.GET.BUCKET': 's3:ListBucket',
+        'REST.GET.BUCKETVERSIONS': 's3:ListBucketVersions',
+        'REST.PUT.BUCKET': 's3:CreateBucket',
+        'REST.DELETE.BUCKET': 's3:DeleteBucket',
+    }
 
     @classmethod
     def get_s3_operation(cls, req):
@@ -141,7 +148,7 @@ class BucketController(Controller):
     @public
     @fill_cors_headers
     @check_bucket_access
-    @check_iam_access("s3:DeleteBucket")
+    @check_iam_access
     def HEAD(self, req):
         """
         Handle HEAD Bucket (Get Metadata) request
@@ -449,17 +456,11 @@ class BucketController(Controller):
     @public
     @fill_cors_headers
     @check_bucket_access
-    @check_iam_access("s3:ListBucket")
+    @check_iam_access
     def GET(self, req):
         """
         Handle GET Bucket (List Objects) request
         """
-        if 'versions' in req.params:
-            check_iam = check_iam_access("s3:ListBucketVersions")
-        else:
-            check_iam = check_iam_access("s3:ListBucket")
-        check_iam(lambda x, req: None)(None, req)
-
         tag_max_keys = req.get_validated_param(
             'max-keys', self.conf.max_bucket_listing)
         # TODO: Separate max_bucket_listing and default_bucket_listing
@@ -504,7 +505,7 @@ class BucketController(Controller):
     @ratelimit
     @public
     @fill_cors_headers
-    @check_iam_access("s3:CreateBucket")
+    @check_iam_access
     def PUT(self, req):
         """
         Handle PUT Bucket request
@@ -556,7 +557,7 @@ class BucketController(Controller):
     @public
     @fill_cors_headers
     @check_bucket_access
-    @check_iam_access("s3:DeleteBucket")
+    @check_iam_access
     def DELETE(self, req):
         """
         Handle DELETE Bucket request

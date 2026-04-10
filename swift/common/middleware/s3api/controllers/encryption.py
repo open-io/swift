@@ -73,6 +73,11 @@ class EncryptionController(Controller):
     """
     bucket_resource_type = 'ENCRYPTION'
     param_resource = 'encryption'
+    _iam_map = {
+        'REST.GET.ENCRYPTION': 's3:GetEncryptionConfiguration',
+        'REST.PUT.ENCRYPTION': 's3:PutEncryptionConfiguration',
+        'REST.DELETE.ENCRYPTION': 's3:PutEncryptionConfiguration',
+    }
 
     def _extract_sse_algorithm_from_payload(self, payload):
         """
@@ -136,7 +141,7 @@ class EncryptionController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:PutEncryptionConfiguration")
+    @check_iam_access
     def GET(self, req):
         """
         Handles Get Bucket Encryption
@@ -157,7 +162,7 @@ class EncryptionController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:PutEncryptionConfiguration")
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket Encryption
@@ -188,7 +193,7 @@ class EncryptionController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:PutEncryptionConfiguration")
+    @check_iam_access
     def DELETE(self, req):
         """
         Handles DELETE Bucket Encryption.

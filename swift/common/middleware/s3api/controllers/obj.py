@@ -43,7 +43,8 @@ from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules, HEADER_ADD_METADATA
 from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
-from swift.common.middleware.s3api.iam import check_iam_access
+from swift.common.middleware.s3api.iam import check_iam_access, \
+    check_iam_action
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import \
     S3NotImplemented, InvalidRange, NoSuchKey, NoSuchVersion, \
@@ -120,6 +121,13 @@ class ObjectController(Controller):
     Handles requests on objects
     """
     object_resource_type = 'OBJECT'
+    _iam_map = {
+        'REST.HEAD.OBJECT': 's3:GetObject',
+        'REST.GET.OBJECT': 's3:GetObject',
+        'REST.PUT.OBJECT': 's3:PutObject',
+        'REST.COPY.OBJECT': 's3:PutObject',
+        'REST.DELETE.OBJECT': 's3:DeleteObject',
+    }
 
     @classmethod
     def get_s3_operation(cls, req):
@@ -307,7 +315,7 @@ class ObjectController(Controller):
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:DeleteObject")
+    @check_iam_access
     def HEAD(self, req):
         """
         Handle HEAD Object request
@@ -326,7 +334,7 @@ class ObjectController(Controller):
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:GetObject")
+    @check_iam_access
     def GET(self, req):
         """
         Handle GET Object request
@@ -338,7 +346,7 @@ class ObjectController(Controller):
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:PutObject")
+    @check_iam_access
     def PUT(self, req):
         """
         Handle PUT Object and PUT Object (Copy) request
@@ -479,7 +487,7 @@ class ObjectController(Controller):
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:DeleteObject")
+    @check_iam_access
     def DELETE(self, req):
         """
         Handle DELETE Object request
@@ -488,8 +496,7 @@ class ObjectController(Controller):
         bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)
         if bypass_governance is not None and \
                 bypass_governance.lower() == 'true':
-            check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")
-            check_iam_bypass(lambda x, req: None)(None, req)
+            check_iam_action(req, 's3:BypassGovernanceRetention')
             header = sysmeta_header('object', 'retention-bypass-governance')
             req.headers[header] = bypass_governance
         container_info = req.get_container_info(self.app)

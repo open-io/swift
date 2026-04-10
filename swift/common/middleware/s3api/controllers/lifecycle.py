@@ -1099,13 +1099,18 @@ class LifecycleController(Controller):
     """
     bucket_resource_type = 'LIFECYCLE'
     param_resource = 'lifecycle'
+    _iam_map = {
+        'REST.GET.LIFECYCLE': 's3:GetLifecycleConfiguration',
+        'REST.PUT.LIFECYCLE': 's3:PutLifecycleConfiguration',
+        'REST.DELETE.LIFECYCLE': 's3:PutLifecycleConfiguration',
+    }
 
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
     @check_bucket_access
-    @check_iam_access('s3:PutLifecycleConfiguration')
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket lifecycle.
@@ -1135,7 +1140,7 @@ class LifecycleController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access('s3:PutLifecycleConfiguration')
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket lifecycle.
@@ -1206,7 +1211,7 @@ class LifecycleController(Controller):
     @bucket_operation
     @check_bucket_access
     # No specific permission for DELETE
-    @check_iam_access('s3:PutLifecycleConfiguration')
+    @check_iam_access
     def DELETE(self, req):
         """
         Handles DELETE Bucket lifecycle.

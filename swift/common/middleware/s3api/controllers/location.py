@@ -31,13 +31,14 @@ class LocationController(Controller):
     """
     bucket_resource_type = 'LOCATION'
     param_resource = 'location'
+    _iam_map = {'REST.GET.LOCATION': 's3:GetBucketLocation'}
 
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access('s3:GetBucketLocation')
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket location.

@@ -90,6 +90,12 @@ class AclController(Controller):
     bucket_resource_type = 'ACL'
     object_resource_type = 'OBJECT_ACL'
     param_resource = 'acl'
+    _iam_map = {
+        'REST.GET.ACL': 's3:GetBucketAcl',
+        'REST.PUT.ACL': 's3:PutBucketAcl',
+        'REST.GET.OBJECT_ACL': 's3:GetObjectAcl',
+        'REST.PUT.OBJECT_ACL': 's3:PutObjectAcl',
+    }
 
     @ratelimit
     @public

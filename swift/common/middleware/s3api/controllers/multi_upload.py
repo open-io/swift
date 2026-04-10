@@ -304,6 +304,13 @@ class PartController(Controller):
     """
     object_resource_type = 'PART'
     param_resource = 'partNumber'
+    _iam_map = {
+        'REST.HEAD.PART': 's3:GetObject',
+        'REST.GET.PART': 's3:GetObject',
+        'REST.PUT.PART': 's3:PutObject',
+        'REST.COPY.PART': 's3:PutObject',
+    }
+
     @classmethod
     def get_s3_operation(cls, req):
         if (req.method == 'PUT'
@@ -334,7 +341,7 @@ class PartController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:PutObject')
+    @check_iam_access
     def PUT(self, req):
         """
         Handles Upload Part and Upload Part Copy.
@@ -551,7 +558,7 @@ class PartController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:GetObject")
+    @check_iam_access
     def GET(self, req):
         """
         Handles Get Part (regular Get but with ?part-number=N).
@@ -569,7 +576,7 @@ class PartController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:GetObject")
+    @check_iam_access
     def HEAD(self, req):
         """
         Handles Head Part (regular HEAD but with ?part-number=N).
@@ -736,6 +743,11 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
     bucket_resource_type = 'UPLOADS'
     object_resource_type = 'UPLOADS'
     param_resource = 'uploads'
+    _iam_map = {
+        'REST.GET.UPLOADS': 's3:ListBucketMultipartUploads',
+        'REST.POST.UPLOADS': 's3:PutObject',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
@@ -744,7 +756,7 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
                               "?uploads subresource")
     @check_container_existence
     @check_bucket_access
-    @check_iam_access('s3:ListBucketMultipartUploads')
+    @check_iam_access
     def GET(self, req):
         """
         Handles List Multipart Uploads
@@ -826,7 +838,7 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:PutObject')
+    @check_iam_access
     def POST(self, req):
         """
         Handles Initiate Multipart Upload.
@@ -1048,6 +1060,12 @@ class UploadController(Controller, LifecycleAbortDateMixin):
     """
     object_resource_type = 'UPLOAD'
     param_resource = 'uploadId'
+    _iam_map = {
+        'REST.GET.UPLOAD': 's3:ListMultipartUploadParts',
+        'REST.DELETE.UPLOAD': 's3:AbortMultipartUpload',
+        'REST.POST.UPLOAD': 's3:PutObject',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
@@ -1055,7 +1073,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:ListMultipartUploadParts')
+    @check_iam_access
     def GET(self, req):
         """
         Handles List Parts.
@@ -1157,7 +1175,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:AbortMultipartUpload')
+    @check_iam_access
     def DELETE(self, req):
         """
         Handles Abort Multipart Upload.
@@ -1281,7 +1299,7 @@ class UploadController(Controller, LifecycleAbortDateMixin):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:PutObject')
+    @check_iam_access
     def POST(self, req):
         """
         Handles Complete Multipart Upload.

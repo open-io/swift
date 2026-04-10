@@ -19,7 +19,8 @@ import ipaddress
 
 from swift.common.middleware.s3api.acl_utils import ACL_EXPLICIT_ALLOW
 from swift.common.middleware.s3api.exception import IAMException
-from swift.common.middleware.s3api.s3response import AccessDenied
+from swift.common.middleware.s3api.s3response import AccessDenied, \
+    InternalError
 from swift.common.utils import config_auto_int_value, get_logger, \
     get_remote_client, tlru_cache, REPLICATOR_EXPLICIT_ALLOW
 
@@ -440,121 +441,140 @@ class IamRulesMatcher(object):
         return self.do_explicit_check(RE_ALLOW, action, resource, req)
 
 
-def check_iam_access(object_action, bucket_action=None):
+def check_iam_action(req, action):
     """
-    Check the specified object_action is allowed for the current user
-    on the resource defined by the request.
+    Check if an IAM action is allowed for the given request.
 
-    If bucket_action is specified and the request is a bucket request,
-    check bucket_action instead.
+    Raises AccessDenied if the action is denied.
+    Does nothing when IAM is disabled (no IAM_RULES_CALLBACK).
     """
+    # If there is no callback, IAM is disabled,
+    # thus we let everything pass through.
+    rules_cb = req.environ.get(IAM_RULES_CALLBACK)
+    if rules_cb is None:
+        return
 
-    def real_check_iam_access(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            req = args[1]
+    # Maybe the replicator is the initiator of the request and is
+    # already authorized.
+    replicator_allow = req.environ.get(REPLICATOR_EXPLICIT_ALLOW, False)
+    if replicator_allow is True:
+        if action in REPLICATOR_ACTIONS:
+            # Bypass all further checks.
+            req.environ[IAM_EXPLICIT_ALLOW] = EXPLICIT_ALLOW
+            return
 
-            # If there is no callback, IAM is disabled,
-            # thus we let everything pass through.
-            rules_cb = req.environ.get(IAM_RULES_CALLBACK)
-            if rules_cb is None:
-                return func(*args, **kwargs)
+        # We don't want to give more information to the user
+        # than the AccessDenied.
+        # We use the logger from acl_handlers as it is the only one
+        # available and this log is useful to track new actions
+        # made by the replicator without updating
+        # REPLICATOR_ACTIONS.
+        if req.acl_handler and req.acl_handler.logger:
+            req.acl_handler.logger.error(
+                "Replicator now allowed for action=%s", action
+            )
+        raise AccessDenied()
 
-            if bucket_action and not req.is_object_request:
-                action = bucket_action
-            else:
-                action = object_action
+    # Maybe ACLs authorized the request.
+    acl_allow = req.environ.get(ACL_EXPLICIT_ALLOW)
 
-            # Maybe the replicator is the initiator of the request and is
-            # already authorized.
-            replicator_allow = req.environ.get(
-                REPLICATOR_EXPLICIT_ALLOW, False)
-            if replicator_allow is True:
-                if action in REPLICATOR_ACTIONS:
-                    # Bypass all further checks.
-                    req.environ[IAM_EXPLICIT_ALLOW] = EXPLICIT_ALLOW
-                    return func(*args, **kwargs)
+    # IAM rules will be checked. We don't know yet if they allow
+    # the request, thus we consider they don't.
+    req.environ[IAM_EXPLICIT_ALLOW] = False
 
-                # We don't want to give more information to the user
-                # than the AccessDenied.
-                # We use the logger from acl_handlers as it is the only one
-                # available and this log is useful to track new actions
-                # made by the replicator without updating
-                # REPLICATOR_ACTIONS.
-                if req.acl_handler and req.acl_handler.logger:
-                    req.acl_handler.logger.error(
-                        "Replicator now allowed for action=%s", action
-                    )
-                raise AccessDenied()
+    # FIXME(IAM): a * must be used as object name,
+    # not as wildcard in Resource below
+    if req.object_name:
+        rsc = IamResource(req.container_name + '/' + req.object_name)
+    elif req.container_name:
+        rsc = IamResource(req.container_name)
+    else:
+        rsc = IamResource(None)
 
-            # Maybe ACLs authorized the request.
-            acl_allow = req.environ.get(ACL_EXPLICIT_ALLOW)
+    effect = None
+    # FIXME(IAM): refine the callback parameters
+    matcher = rules_cb(req)
+    if matcher:
+        effect, sid = matcher(rsc, action, req)
+        # An IAM rule explicitly denies the request.
+        if effect == EXPLICIT_DENY:
+            matcher.logger.debug("Request explicitly denied by IAM (" +
+                                 sid + ")")
+            raise AccessDenied()
 
-            # IAM rules will be checked. We don't know yet if they allow
-            # the request, thus we consider they don't.
+    # If no IAM rule matched for this user, ...
+    if effect is None:
+        # ... and ACLs did not grant access rights,
+        # don't let anything pass through.
+        if acl_allow is False:
+            if matcher:
+                matcher.logger.debug(
+                    "Request implicitly denied (no allow statement "
+                    "and ACLs deny access to the resource)")
+            raise AccessDenied()
+        # else:
+        #    # acl_allow is None -> ACLs were not checked yet.
+
+        # FIXME(adu): Service-type resources continue to allow
+        #             requests when no rules match.
+        #             Eventually, these requests should be denied.
+        # ... and service resource does not have an ACL.
+        # if rsc.type == RT_SERVICE:
+        #     if matcher:
+        #         matcher.logger.debug(
+        #             "Request implicitly denied (no allow statement "
+        #             "and resource is service)")
+        #     raise AccessDenied()
+
+    req.environ[IAM_EXPLICIT_ALLOW] = effect == EXPLICIT_ALLOW
+
+    # TODO(FVE): check bucket policy (not implemented ATM)
+    # If the bucket has an owner, but the request's account is
+    # different, deny the request. User policies cannot give access
+    # to other account's buckets.
+    if (acl_allow is None and req.container_name and req.bucket_db
+            and req.environ[IAM_EXPLICIT_ALLOW]):
+        bkt_owner = req.bucket_db.get_owner(req.container_name,
+                                            reqid=req.trans_id)
+        if bkt_owner and bkt_owner != req.user_account:
+            # We cannot deny access immediately. Let the ACLs decide.
             req.environ[IAM_EXPLICIT_ALLOW] = False
 
-            # FIXME(IAM): a * must be used as object name,
-            # not as wildcard in Resource below
-            if req.object_name:
-                rsc = IamResource(req.container_name + '/' + req.object_name)
-            elif req.container_name:
-                rsc = IamResource(req.container_name)
-            else:
-                rsc = IamResource(None)
 
-            effect = None
-            # FIXME(IAM): refine the callback parameters
-            matcher = rules_cb(req)
-            if matcher:
-                effect, sid = matcher(rsc, action, req)
-                # An IAM rule explicitly denies the request.
-                if effect == EXPLICIT_DENY:
-                    matcher.logger.debug("Request explicitly denied by IAM (" +
-                                         sid + ")")
-                    raise AccessDenied()
+def check_iam_access(func):
+    """
+    Check IAM access for the current request.
 
-            # If no IAM rule matched for this user, ...
-            if effect is None:
-                # ... and ACLs did not grant access rights,
-                # don't let anything pass through.
-                if acl_allow is False:
-                    if matcher:
-                        matcher.logger.debug(
-                            "Request implicitly denied (no allow statement "
-                            "and ACLs deny access to the resource)")
-                    raise AccessDenied()
-                # else:
-                #    # acl_allow is None -> ACLs were not checked yet.
+    The IAM action is derived from the controller's get_iam_action()
+    classmethod and may be either a single action string or a tuple
+    of actions. When it is a tuple, each action is checked in order;
+    every one must pass.
 
-                # FIXME(adu): Service-type resources continue to allow
-                #             requests when no rules match.
-                #             Eventually, these requests should be denied.
-                # ... and service resource does not have an ACL.
-                # if rsc.type == RT_SERVICE:
-                #     if matcher:
-                #         matcher.logger.debug(
-                #             "Request implicitly denied (no allow statement "
-                #             "and resource is service)")
-                #     raise AccessDenied()
+    @check_iam_access only wraps handlers that are expected to require
+    an IAM check, so a None return from get_iam_action() means the
+    controller's _iam_map is missing an entry for this operation. We
+    surface that as an InternalError so the omission is detected
+    rather than silently letting the request through.
+    """
 
-            req.environ[IAM_EXPLICIT_ALLOW] = effect == EXPLICIT_ALLOW
-
-            # TODO(FVE): check bucket policy (not implemented ATM)
-            # If the bucket has an owner, but the request's account is
-            # different, deny the request. User policies cannot give access
-            # to other account's buckets.
-            if (acl_allow is None and req.container_name and req.bucket_db
-                    and req.environ[IAM_EXPLICIT_ALLOW]):
-                bkt_owner = req.bucket_db.get_owner(req.container_name,
-                                                    reqid=req.trans_id)
-                if bkt_owner and bkt_owner != req.user_account:
-                    # We cannot deny access immediately. Let the ACLs decide.
-                    req.environ[IAM_EXPLICIT_ALLOW] = False
-
-            return func(*args, **kwargs)
-        return wrapper
-    return real_check_iam_access
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        ctrl, req = args[0], args[1]
+        action = type(ctrl).get_iam_action(req)
+        if action is None:
+            op = type(ctrl).get_s3_operation(req)
+            err_msg = (
+                "No IAM action mapped for %s on operation %s; "
+                "_iam_map is potentially missing an entry"
+                % (type(ctrl).__name__, op)
+            )
+            ctrl.logger.error(err_msg)
+            raise InternalError(backend_error=err_msg)
+        actions = action if isinstance(action, (tuple, list)) else (action,)
+        for a in actions:
+            check_iam_action(req, a)
+        return func(*args, **kwargs)
+    return wrapper
 
 
 class IamMiddleware(object):

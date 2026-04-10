@@ -141,6 +141,15 @@ class TaggingController(Controller):
     bucket_resource_type = 'TAGGING'
     object_resource_type = 'OBJECT_TAGGING'
     param_resource = 'tagging'
+    _iam_map = {
+        'REST.GET.TAGGING': 's3:GetBucketTagging',
+        'REST.PUT.TAGGING': 's3:PutBucketTagging',
+        'REST.DELETE.TAGGING': 's3:DeleteBucketTagging',
+        'REST.GET.OBJECT_TAGGING': 's3:GetObjectTagging',
+        'REST.PUT.OBJECT_TAGGING': 's3:PutObjectTagging',
+        'REST.DELETE.OBJECT_TAGGING': 's3:DeleteObjectTagging',
+    }
+
     def _enrich_tags_with_intelligent_tiering(self, req, tagging):
         """
         This method should only be called in an intelligent-tiering context.
@@ -215,7 +224,7 @@ class TaggingController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:GetObjectTagging', 's3:GetBucketTagging')
+    @check_iam_access
     def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket and Object tagging.
@@ -294,7 +303,7 @@ class TaggingController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:PutObjectTagging', 's3:PutBucketTagging')
+    @check_iam_access
     def PUT(self, req):  # pylint: disable=invalid-name
         """
         Handles PUT Bucket and Object tagging.
@@ -392,7 +401,7 @@ class TaggingController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:DeleteObjectTagging', 's3:DeleteBucketTagging')
+    @check_iam_access
     def DELETE(self, req):  # pylint: disable=invalid-name
         """
         Handles DELETE Bucket and Object tagging.

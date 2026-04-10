@@ -189,12 +189,19 @@ class BucketLockController(Controller):
     operation_id = 'Object-Lock'
     bucket_resource_type = 'OBJECT_LOCK_CONFIGURATION'
     param_resource = 'object-lock'
+    _iam_map = {
+        'REST.GET.OBJECT_LOCK_CONFIGURATION':
+            's3:GetBucketObjectLockConfiguration',
+        'REST.PUT.OBJECT_LOCK_CONFIGURATION':
+            's3:PutBucketObjectLockConfiguration',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access("s3:GetBucketObjectLockConfiguration")
+    @check_iam_access
     def GET(self, req):
         resp = req.get_response(self.app, method='HEAD')
         info = resp.sysmeta_headers
@@ -224,7 +231,7 @@ class BucketLockController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access("s3:PutBucketObjectLockConfiguration")
+    @check_iam_access
     def PUT(self, req):
         resp = req.get_response(self.app, method='HEAD')
         body = req.xml(10000)
@@ -332,13 +339,18 @@ class ObjectLockLegalHoldController(Controller):
     """
     object_resource_type = 'OBJECT_LOCK_LEGALHOLD'
     param_resource = 'legal-hold'
+    _iam_map = {
+        'REST.GET.OBJECT_LOCK_LEGALHOLD': 's3:GetObjectLegalHold',
+        'REST.PUT.OBJECT_LOCK_LEGALHOLD': 's3:PutObjectLegalHold',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
     @object_operation
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:GetObjectLegalHold")
+    @check_iam_access
     def GET(self, req):
         objectlock_id = 'legal-hold'
         key_filter = OBJECT_HOLD_META_PREFIX
@@ -381,7 +393,7 @@ class ObjectLockLegalHoldController(Controller):
     @object_operation
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:PutObjectLegalHold")
+    @check_iam_access
     def PUT(self, req):
         lock_id = 'legal-hold'
         body = req.xml(10000)
@@ -433,13 +445,18 @@ class ObjectLockRetentionController(Controller):
     """
     object_resource_type = 'OBJECT_LOCK_RETENTION'
     param_resource = 'retention'
+    _iam_map = {
+        'REST.GET.OBJECT_LOCK_RETENTION': 's3:GetObjectRetention',
+        'REST.PUT.OBJECT_LOCK_RETENTION': 's3:PutObjectRetention',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
     @object_operation
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:GetObjectRetention")
+    @check_iam_access
     def GET(self, req):
         info = req.get_container_info(self.app)
         info_sysmeta = info['sysmeta']
@@ -482,7 +499,7 @@ class ObjectLockRetentionController(Controller):
     @object_operation
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:PutObjectRetention")
+    @check_iam_access
     def PUT(self, req):
         lock_id = 'retention'
 

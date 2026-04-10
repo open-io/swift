@@ -93,13 +93,19 @@ class WebsiteController(Controller):
     """
     bucket_resource_type = 'WEBSITE'
     param_resource = 'website'
+    _iam_map = {
+        'REST.GET.WEBSITE': 's3:GetBucketWebsite',
+        'REST.PUT.WEBSITE': 's3:PutBucketWebsite',
+        'REST.DELETE.WEBSITE': 's3:DeleteBucketWebsite',
+    }
+
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:GetBucketWebsite")
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket website.
@@ -119,7 +125,7 @@ class WebsiteController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:PutBucketWebsite")
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket website.
@@ -141,7 +147,7 @@ class WebsiteController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:DeleteBucketWebsite")
+    @check_iam_access
     def DELETE(self, req):
         """
         Handles DELETE Bucket website.
@@ -187,6 +193,10 @@ class S3WebsiteController(Controller):
     """
     Handles requests on static website
     """
+    _iam_map = {
+        'WEBSITE.GET.OBJECT': 's3:GetObject',
+        'WEBSITE.HEAD.OBJECT': 's3:GetObject',
+    }
 
     @classmethod
     def get_s3_operation(cls, req):
@@ -306,7 +316,7 @@ class S3WebsiteController(Controller):
     @handle_no_such_key
     # FIXME(adu): Remove when the management of user policies
     # and ACLs has been rewritten
-    @check_iam_access("s3:GetObject")
+    @check_iam_access
     def HEAD(self, req):
         """
         Handle HEAD request
@@ -320,7 +330,7 @@ class S3WebsiteController(Controller):
     @handle_no_such_key
     # FIXME(adu): Remove when the management of user policies
     # and ACLs has been rewritten
-    @check_iam_access("s3:GetObject")
+    @check_iam_access
     def GET(self, req):
         """
         Handle GET request

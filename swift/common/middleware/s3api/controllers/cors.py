@@ -86,6 +86,11 @@ class CorsController(Controller):
     """
     param_resource = 'cors'
     bucket_resource_type = 'CORS'
+    _iam_map = {
+        'REST.GET.CORS': 's3:GetBucketCORS',
+        'REST.PUT.CORS': 's3:PutBucketCORS',
+        'REST.DELETE.CORS': 's3:PutBucketCORS',
+    }
 
     @ratelimit
     @public
@@ -93,7 +98,7 @@ class CorsController(Controller):
     @bucket_operation
     @check_container_existence
     @check_bucket_access
-    @check_iam_access('s3:PutBucketCORS')
+    @check_iam_access
     def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket CORS.
@@ -110,7 +115,7 @@ class CorsController(Controller):
     @bucket_operation
     @check_container_existence
     @check_bucket_access
-    @check_iam_access('s3:PutBucketCORS')
+    @check_iam_access
     def PUT(self, req):  # pylint: disable=invalid-name
         """
         Handles PUT Bucket CORS.
@@ -142,7 +147,7 @@ class CorsController(Controller):
     @check_bucket_access
     @bucket_operation
     @check_container_existence
-    @check_iam_access('s3:PutBucketCORS')  # No specific permission for DELETE
+    @check_iam_access  # No specific permission for DELETE
     def DELETE(self, req):  # pylint: disable=invalid-name
         """
         Handles DELETE Bucket CORS.

@@ -88,6 +88,7 @@ class RestoreObjectController(Controller):
     """
     object_resource_type = 'RESTORE'
     param_resource = 'restore'
+    _iam_map = {'REST.POST.RESTORE': 's3:RestoreObject'}
 
     @ratelimit
     @public
@@ -96,7 +97,7 @@ class RestoreObjectController(Controller):
     @check_container_existence
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access('s3:RestoreObject')
+    @check_iam_access
     def POST(self, req):
         """
         Handles restore object request

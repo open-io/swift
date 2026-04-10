@@ -59,6 +59,14 @@ class IntelligentTieringController(Controller):
     """
     bucket_resource_type = 'INTELLIGENT_TIERING'
     param_resource = 'intelligent-tiering'
+    _iam_map = {
+        'REST.GET.INTELLIGENT_TIERING':
+            's3:GetIntelligentTieringConfiguration',
+        'REST.PUT.INTELLIGENT_TIERING':
+            's3:PutIntelligentTieringConfiguration',
+        'REST.DELETE.INTELLIGENT_TIERING':
+            's3:DeleteIntelligentTieringConfiguration',
+    }
 
     def apply_tiering(self, req, tiering_dict, **kwargs):
         """
@@ -99,7 +107,7 @@ class IntelligentTieringController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access("s3:DeleteIntelligentTieringConfiguration")
+    @check_iam_access
     def GET(self, req):
         """
         Handles GetBucketIntelligentTieringConfiguration
@@ -159,7 +167,7 @@ class IntelligentTieringController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access("s3:PutIntelligentTieringConfiguration")
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PutBucketIntelligentTieringConfiguration
@@ -222,7 +230,7 @@ class IntelligentTieringController(Controller):
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access("s3:DeleteIntelligentTieringConfiguration")
+    @check_iam_access
     def DELETE(self, req):
         """
         Handles DeleteBucketIntelligentTieringConfiguration

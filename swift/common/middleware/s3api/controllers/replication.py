@@ -324,6 +324,11 @@ class ReplicationController(Controller):
     """
     bucket_resource_type = 'REPLICATION'
     param_resource = 'replication'
+    _iam_map = {
+        'REST.GET.REPLICATION': 's3:GetReplicationConfiguration',
+        'REST.PUT.REPLICATION': 's3:PutReplicationConfiguration',
+        'REST.DELETE.REPLICATION': 's3:PutReplicationConfiguration',
+    }
 
     @staticmethod
     def _ensure_feature_is_disabled(root, feature, children):
@@ -527,7 +532,7 @@ class ReplicationController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:PutReplicationConfiguration")
+    @check_iam_access
     def PUT(self, req):
         """
         Handles PUT Bucket replication
@@ -577,7 +582,7 @@ class ReplicationController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:GetReplicationConfiguration")
+    @check_iam_access
     def GET(self, req):
         """
         Handles GET Bucket replication
@@ -610,7 +615,7 @@ class ReplicationController(Controller):
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:PutReplicationConfiguration")
+    @check_iam_access
     def DELETE(self, req):
         """
         Handles DELETE Bucket replication
