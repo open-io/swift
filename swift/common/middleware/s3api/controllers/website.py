@@ -15,7 +15,7 @@
 
 import json
 from dict2xml import dict2xml
-from functools import partial, wraps
+from functools import partial
 from swift.common.http import is_success
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.utils import (
@@ -30,7 +30,6 @@ from swift.common.middleware.s3api.controllers.base import (
     check_bucket_access,
     check_container_existence,
     handle_no_such_key,
-    set_s3_operation_rest,
 )
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import (
@@ -92,8 +91,8 @@ class WebsiteController(Controller):
     - DELETE Bucket website
 
     """
-
-    @set_s3_operation_rest('WEBSITE')
+    bucket_resource_type = 'WEBSITE'
+    param_resource = 'website'
     @ratelimit
     @public
     @fill_cors_headers
@@ -114,7 +113,6 @@ class WebsiteController(Controller):
         xml_out = dict2xml(body, wrap="WebsiteConfiguration", newlines=False)
         return HTTPOk(body=xml_out, content_type="application/xml")
 
-    @set_s3_operation_rest('WEBSITE')
     @ratelimit
     @public
     @fill_cors_headers
@@ -137,7 +135,6 @@ class WebsiteController(Controller):
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 204, HTTPOk)
 
-    @set_s3_operation_rest('WEBSITE')
     @ratelimit
     @public
     @fill_cors_headers
@@ -186,23 +183,14 @@ class WebsiteController(Controller):
         return json_output
 
 
-def set_s3_operation_website(func):
-    """
-    A decorator to set the specified operation name to the s3api.info fields.
-    """
-    @wraps(func)
-    def _set_s3_operation(self, req, *args, **kwargs):
-        meth = req.method
-        self.set_s3_operation(req, f'WEBSITE.{meth}.OBJECT')
-        return func(self, req, *args, **kwargs)
-
-    return _set_s3_operation
-
-
 class S3WebsiteController(Controller):
     """
     Handles requests on static website
     """
+
+    @classmethod
+    def get_s3_operation(cls, req):
+        return f'WEBSITE.{req.method}.OBJECT'
 
     def _render(self, req, obj=None, err=None, method=None):
         """
@@ -311,7 +299,6 @@ class S3WebsiteController(Controller):
             # Handle request on a bucket
             return self._handle_object_requests(req, suffix_doc, error_doc)
 
-    @set_s3_operation_website
     @ratelimit
     @public
     @fill_cors_headers
@@ -326,7 +313,6 @@ class S3WebsiteController(Controller):
         """
         return self.GETorHEAD(req)
 
-    @set_s3_operation_website
     @ratelimit
     @public
     @fill_cors_headers

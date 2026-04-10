@@ -20,8 +20,7 @@ from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.crypto.crypto_utils import get_hasher
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_container_existence, check_bucket_access, \
-    set_s3_operation_rest, handle_no_such_key
+    check_container_existence, check_bucket_access, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
     OBJECT_REPLICATION_ERROR, OBJECT_REPLICATION_STATUS, \
@@ -139,6 +138,9 @@ class TaggingController(Controller):
     * DELETE Bucket and Object tagging
 
     """
+    bucket_resource_type = 'TAGGING'
+    object_resource_type = 'OBJECT_TAGGING'
+    param_resource = 'tagging'
     def _enrich_tags_with_intelligent_tiering(self, req, tagging):
         """
         This method should only be called in an intelligent-tiering context.
@@ -207,7 +209,6 @@ class TaggingController(Controller):
             raise MethodNotAllowed(method, resource_type="DeleteMarker",
                                    delete_marker=True)
 
-    @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit
     @public
     @fill_cors_headers
@@ -287,7 +288,6 @@ class TaggingController(Controller):
                 raise InvalidTagKey()
         return None
 
-    @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit
     @public
     @fill_cors_headers
@@ -386,7 +386,6 @@ class TaggingController(Controller):
             return HTTPOk(headers=headers)
         return resp
 
-    @set_s3_operation_rest('TAGGING', 'OBJECT_TAGGING')
     @ratelimit
     @public
     @fill_cors_headers

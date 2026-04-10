@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from dateutil import parser
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_access, set_s3_operation_rest
+    bucket_operation, check_bucket_access
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring, tostring, Element, SubElement
@@ -1097,14 +1097,15 @@ class LifecycleController(Controller):
      - DELETE Bucket lifecycle
 
     """
+    bucket_resource_type = 'LIFECYCLE'
+    param_resource = 'lifecycle'
 
-    @set_s3_operation_rest('LIFECYCLE')
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoSuchLifecycleConfiguration)
     @check_bucket_access
-    @check_iam_access('s3:GetLifecycleConfiguration')
+    @check_iam_access('s3:PutLifecycleConfiguration')
     def GET(self, req):
         """
         Handles GET Bucket lifecycle.
@@ -1129,7 +1130,6 @@ class LifecycleController(Controller):
             minimum_obj_size.value)
         return resp
 
-    @set_s3_operation_rest('LIFECYCLE')
     @ratelimit
     @public
     @fill_cors_headers
@@ -1200,7 +1200,6 @@ class LifecycleController(Controller):
             )
         return resp
 
-    @set_s3_operation_rest('LIFECYCLE')
     @ratelimit
     @public
     @fill_cors_headers

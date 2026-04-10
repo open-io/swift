@@ -18,7 +18,7 @@ import json
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_access, set_s3_operation_rest
+    bucket_operation, check_bucket_access
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, tostring, fromstring
@@ -45,13 +45,15 @@ class LoggingStatusController(Controller):
 
     Those APIs are logged as LOGGING_STATUS operations in the S3 server log.
     """
-    @set_s3_operation_rest('LOGGING_STATUS')
+    bucket_resource_type = 'LOGGING_STATUS'
+    param_resource = 'logging'
+
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation(err_resp=NoLoggingStatusForKey)
     @check_bucket_access
-    @check_iam_access('s3:GetBucketLogging')
+    @check_iam_access('s3:PutBucketLogging')
     def GET(self, req):
         """
         Handles GET Bucket logging.
@@ -77,7 +79,6 @@ class LoggingStatusController(Controller):
 
         return HTTPOk(body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('LOGGING_STATUS')
     @ratelimit
     @public
     @fill_cors_headers

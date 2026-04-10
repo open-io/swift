@@ -16,7 +16,7 @@
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_access, set_s3_operation_rest
+    bucket_operation, check_bucket_access
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -29,7 +29,9 @@ class LocationController(Controller):
     Handles GET Bucket location, which is logged as a LOCATION operation in the
     S3 server log.
     """
-    @set_s3_operation_rest('LOCATION')
+    bucket_resource_type = 'LOCATION'
+    param_resource = 'location'
+
     @ratelimit
     @public
     @fill_cors_headers

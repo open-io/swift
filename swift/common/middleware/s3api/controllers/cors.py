@@ -19,8 +19,7 @@ from swift.common.cors import check_cors_rule, get_cors, cors_fill_headers
 from swift.common.utils import public
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_container_existence, check_bucket_access, \
-    set_s3_operation_rest
+    bucket_operation, check_container_existence, check_bucket_access
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.etree import fromstring, tostring, \
     DocumentInvalid, XMLSyntaxError
@@ -85,15 +84,16 @@ class CorsController(Controller):
      - DELETE Bucket CORS
 
     """
+    param_resource = 'cors'
+    bucket_resource_type = 'CORS'
 
-    @set_s3_operation_rest('CORS')
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_container_existence
     @check_bucket_access
-    @check_iam_access('s3:GetBucketCORS')
+    @check_iam_access('s3:PutBucketCORS')
     def GET(self, req):  # pylint: disable=invalid-name
         """
         Handles GET Bucket CORS.
@@ -104,7 +104,6 @@ class CorsController(Controller):
             raise NoSuchCORSConfiguration
         return HTTPOk(body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('CORS')
     @ratelimit
     @public
     @fill_cors_headers
@@ -137,7 +136,6 @@ class CorsController(Controller):
         resp = req.get_response(self.app, method='POST')
         return convert_response(req, resp, 204, HTTPOk)
 
-    @set_s3_operation_rest('CORS')
     @ratelimit
     @public
     @fill_cors_headers

@@ -62,7 +62,6 @@ Static Large Object when the multipart upload is completed.
 import base64
 import binascii
 import copy
-import functools
 import os
 import time
 from datetime import datetime
@@ -80,7 +79,7 @@ from six.moves.urllib.parse import unquote, quote_plus, urlparse
 from swift.common.cors import handle_options_request
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, object_operation, check_container_existence, \
-    check_bucket_access, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.encryption import \
     encryption_set_env_variable
@@ -257,23 +256,6 @@ def _make_complete_body(req, s3_etag, yielded_anything,
     return body
 
 
-def set_s3_operation_rest_for_put_part(func):
-    """
-    A decorator to set the specified operation and command name
-    to the s3api.info fields.
-    """
-    @functools.wraps(func)
-    def _set_s3_operation(self, req, *args, **kwargs):
-        if 'X-Amz-Copy-Source' in req.headers:
-            set_s3_operation_wrapper = set_s3_operation_rest(
-                'PART', method='COPY')
-        else:
-            set_s3_operation_wrapper = set_s3_operation_rest('PART')
-        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
-
-    return _set_s3_operation
-
-
 class LifecycleAbortDateMixin(object):
     def get_lifecycle_headers(
             self, req, container_sysmeta, obj_name, initial_date):
@@ -320,6 +302,14 @@ class PartController(Controller):
 
     Those APIs are logged as PART operations in the S3 server log.
     """
+    object_resource_type = 'PART'
+    param_resource = 'partNumber'
+    @classmethod
+    def get_s3_operation(cls, req):
+        if (req.method == 'PUT'
+                and 'X-Amz-Copy-Source' in req.headers):
+            return 'REST.COPY.PART'
+        return super().get_s3_operation(req)
 
     def parse_part_number(self, req):
         """
@@ -337,7 +327,6 @@ class PartController(Controller):
                                   err_msg)
         return part_number
 
-    @set_s3_operation_rest_for_put_part
     @ratelimit
     @public
     @fill_cors_headers
@@ -555,7 +544,6 @@ class PartController(Controller):
         return req.get_heartbeat_response(
             self.app, resp, on_success=_on_success)
 
-    @set_s3_operation_rest('PART')
     @ratelimit
     @public
     @fill_cors_headers
@@ -574,7 +562,6 @@ class PartController(Controller):
 
         return self.GETorHEAD(req)
 
-    @set_s3_operation_rest('PART')
     @ratelimit
     @public
     @fill_cors_headers
@@ -718,7 +705,6 @@ class PartController(Controller):
         update_response_header_with_response_params(req, slo_resp)
         return slo_resp
 
-    @set_s3_operation_rest('PREFLIGHT')
     @ratelimit
     @public
     @object_operation  # required
@@ -747,7 +733,9 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
 
     Those APIs are logged as UPLOADS operations in the S3 server log.
     """
-    @set_s3_operation_rest('UPLOADS')
+    bucket_resource_type = 'UPLOADS'
+    object_resource_type = 'UPLOADS'
+    param_resource = 'uploads'
     @ratelimit
     @public
     @fill_cors_headers
@@ -830,7 +818,6 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
 
         return HTTPOk(body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('UPLOADS')
     @extract_oio_headers
     @ratelimit
     @public
@@ -1059,7 +1046,8 @@ class UploadController(Controller, LifecycleAbortDateMixin):
 
     Those APIs are logged as UPLOAD operations in the S3 server log.
     """
-    @set_s3_operation_rest('UPLOAD')
+    object_resource_type = 'UPLOAD'
+    param_resource = 'uploadId'
     @ratelimit
     @public
     @fill_cors_headers
@@ -1162,7 +1150,6 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             headers=headers
         )
 
-    @set_s3_operation_rest('UPLOAD')
     @ratelimit
     @public
     @fill_cors_headers
@@ -1287,7 +1274,6 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             raise
         return HTTPNoContent()
 
-    @set_s3_operation_rest('UPLOAD')
     @ratelimit
     @public
     @fill_cors_headers

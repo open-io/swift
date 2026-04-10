@@ -19,7 +19,7 @@ from dict2xml import dict2xml
 from re import compile, sub
 from swift.common.middleware.s3api.controllers.base import Controller, \
     bucket_operation, check_bucket_access, object_operation, \
-    set_s3_operation_rest, handle_no_such_key
+    handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
@@ -187,8 +187,8 @@ class BucketLockController(Controller):
     - PutObjectLockConfiguration
     """
     operation_id = 'Object-Lock'
-
-    @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
+    bucket_resource_type = 'OBJECT_LOCK_CONFIGURATION'
+    param_resource = 'object-lock'
     @ratelimit
     @public
     @fill_cors_headers
@@ -219,7 +219,6 @@ class BucketLockController(Controller):
         xml_out = dict2xml(body)
         return HTTPOk(body=xml_out, content_type='application/xml')
 
-    @set_s3_operation_rest('OBJECT_LOCK_CONFIGURATION')
     @ratelimit
     @public
     @fill_cors_headers
@@ -331,8 +330,8 @@ class ObjectLockLegalHoldController(Controller):
      - GetObjectLegalHold
      - PutObjectLegalHold
     """
-
-    @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
+    object_resource_type = 'OBJECT_LOCK_LEGALHOLD'
+    param_resource = 'legal-hold'
     @ratelimit
     @public
     @fill_cors_headers
@@ -376,7 +375,6 @@ class ObjectLockLegalHoldController(Controller):
             raise NoSuchObjectLockConfiguration()
         return HTTPOk(body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('OBJECT_LOCK_LEGALHOLD')
     @ratelimit
     @public
     @fill_cors_headers
@@ -433,8 +431,8 @@ class ObjectLockRetentionController(Controller):
      - GetObjectRetention
      - PutObjectRetention
     """
-
-    @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
+    object_resource_type = 'OBJECT_LOCK_RETENTION'
+    param_resource = 'retention'
     @ratelimit
     @public
     @fill_cors_headers
@@ -478,7 +476,6 @@ class ObjectLockRetentionController(Controller):
             raise NoSuchObjectLockConfiguration()
         return HTTPOk(body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('OBJECT_LOCK_RETENTION')
     @ratelimit
     @public
     @fill_cors_headers

@@ -35,7 +35,7 @@ from swift.common.middleware.s3api.utils import CHECKSUM_FULL_OBJECT, \
     DEFAULT_CONTENT_TYPE, S3Timestamp, sysmeta_header, \
     update_response_header_with_response_params, is_storage_class_restorable
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_access, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.encryption import \
     encryption_set_env_variable
@@ -115,27 +115,18 @@ def check_ssec_headers(req, resp):
                 None, WRONG_MD5_VALUE)
 
 
-def set_s3_operation_rest_for_put_object(func):
-    """
-    A decorator to set the specified operation and command name
-    to the s3api.info fields.
-    """
-    @functools.wraps(func)
-    def _set_s3_operation(self, req, *args, **kwargs):
-        if 'X-Amz-Copy-Source' in req.headers:
-            set_s3_operation_wrapper = set_s3_operation_rest(
-                'OBJECT', method='COPY')
-        else:
-            set_s3_operation_wrapper = set_s3_operation_rest('OBJECT')
-        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
-
-    return _set_s3_operation
-
-
 class ObjectController(Controller):
     """
     Handles requests on objects
     """
+    object_resource_type = 'OBJECT'
+
+    @classmethod
+    def get_s3_operation(cls, req):
+        if (req.method == 'PUT'
+                and 'X-Amz-Copy-Source' in req.headers):
+            return 'REST.COPY.OBJECT'
+        return super().get_s3_operation(req)
 
     def _gen_head_range_resp(self, req_range, resp):
         """
@@ -311,13 +302,12 @@ class ObjectController(Controller):
         update_response_header_with_response_params(req, resp)
         return resp
 
-    @set_s3_operation_rest('OBJECT')
     @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_access
     @handle_no_such_key
-    @check_iam_access("s3:GetObject")
+    @check_iam_access("s3:DeleteObject")
     def HEAD(self, req):
         """
         Handle HEAD Object request
@@ -331,7 +321,6 @@ class ObjectController(Controller):
 
         return resp
 
-    @set_s3_operation_rest('OBJECT')
     @ratelimit
     @public
     @fill_cors_headers
@@ -344,7 +333,6 @@ class ObjectController(Controller):
         """
         return self.GETorHEAD(req)
 
-    @set_s3_operation_rest_for_put_object
     @ratelimit
     @public
     @fill_cors_headers
@@ -457,7 +445,6 @@ class ObjectController(Controller):
         return req.get_heartbeat_response(
             self.app, resp, on_success=_on_success)
 
-    @set_s3_operation_rest('OBJECT')
     @ratelimit
     @public
     def POST(self, req):
@@ -487,7 +474,6 @@ class ObjectController(Controller):
             break
         return resp
 
-    @set_s3_operation_rest('OBJECT')
     @ratelimit
     @public
     @fill_cors_headers
@@ -501,7 +487,7 @@ class ObjectController(Controller):
         version_id = version_id_param(req)
         bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)
         if bypass_governance is not None and \
-           bypass_governance.lower() == 'true':
+                bypass_governance.lower() == 'true':
             check_iam_bypass = check_iam_access("s3:BypassGovernanceRetention")
             check_iam_bypass(lambda x, req: None)(None, req)
             header = sysmeta_header('object', 'retention-bypass-governance')

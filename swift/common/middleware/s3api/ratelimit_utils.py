@@ -418,7 +418,7 @@ def ratelimit(func):
         if ratelimit_callbacks is not None:
             for ratelimit_name, ratelimit_callback in ratelimit_callbacks:
                 try:
-                    async_incr = ratelimit_callback(req, self.operation)
+                    async_incr = ratelimit_callback(req, req.operation)
                     async_incrs.append((ratelimit_name, async_incr))
                 except SlowDown:
                     raise

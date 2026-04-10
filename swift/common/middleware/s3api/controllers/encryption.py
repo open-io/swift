@@ -22,7 +22,6 @@ from swift.common.middleware.s3api.controllers.base import (
     bucket_operation,
     check_bucket_access,
     check_container_existence,
-    set_s3_operation_rest,
 )
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import (
@@ -72,6 +71,8 @@ class EncryptionController(Controller):
     - DeleteBucketEncryption
 
     """
+    bucket_resource_type = 'ENCRYPTION'
+    param_resource = 'encryption'
 
     def _extract_sse_algorithm_from_payload(self, payload):
         """
@@ -129,14 +130,13 @@ class EncryptionController(Controller):
         req.headers[BUCKET_ENCRYPTION_HEADER] = ""
         return req.get_response(self.app, method="POST")
 
-    @set_s3_operation_rest('ENCRYPTION')
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
     @check_container_existence
-    @check_iam_access("s3:GetEncryptionConfiguration")
+    @check_iam_access("s3:PutEncryptionConfiguration")
     def GET(self, req):
         """
         Handles Get Bucket Encryption
@@ -151,7 +151,6 @@ class EncryptionController(Controller):
 
         raise ServerSideEncryptionConfigurationNotFoundError
 
-    @set_s3_operation_rest('ENCRYPTION')
     @ratelimit
     @public
     @fill_cors_headers
@@ -183,7 +182,6 @@ class EncryptionController(Controller):
         self._disable_encryption(req)
         return HTTPOk()
 
-    @set_s3_operation_rest('ENCRYPTION')
     @ratelimit
     @public
     @fill_cors_headers

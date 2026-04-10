@@ -16,7 +16,7 @@
 from dict2xml import dict2xml
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_access, set_s3_operation_rest
+    bucket_operation, check_bucket_access
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import Element, SubElement, \
     DocumentInvalid, XMLSyntaxError, fromstring, tostring
@@ -57,6 +57,8 @@ class IntelligentTieringController(Controller):
      - DeleteBucketIntelligentTieringConfiguration
      - ListBucketIntelligentTieringConfigurations
     """
+    bucket_resource_type = 'INTELLIGENT_TIERING'
+    param_resource = 'intelligent-tiering'
 
     def apply_tiering(self, req, tiering_dict, **kwargs):
         """
@@ -92,13 +94,12 @@ class IntelligentTieringController(Controller):
         stored_id = xml_conf_to_dict(document.encode('utf-8')).get('Id')
         return document if stored_id == tiering_id else None
 
-    @set_s3_operation_rest('INTELLIGENT_TIERING')
     @ratelimit
     @public
     @fill_cors_headers
     @bucket_operation
     @check_bucket_access
-    @check_iam_access("s3:GetIntelligentTieringConfiguration")
+    @check_iam_access("s3:DeleteIntelligentTieringConfiguration")
     def GET(self, req):
         """
         Handles GetBucketIntelligentTieringConfiguration
@@ -153,7 +154,6 @@ class IntelligentTieringController(Controller):
 
         return HTTPOk(body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('INTELLIGENT_TIERING')
     @ratelimit
     @public
     @fill_cors_headers
@@ -217,7 +217,6 @@ class IntelligentTieringController(Controller):
         return convert_response(req, subreq.get_response(self.app),
                                 204, HTTPOk)
 
-    @set_s3_operation_rest('INTELLIGENT_TIERING')
     @ratelimit
     @public
     @fill_cors_headers

@@ -16,8 +16,6 @@
 from base64 import standard_b64encode as b64encode
 from base64 import standard_b64decode as b64decode
 from binascii import Error as BinasciiError
-import functools
-
 import six
 
 from swift.common import constraints, swob
@@ -28,7 +26,7 @@ from swift.common.utils import json, public, config_true_value, Timestamp
 from swift.common.registry import get_swift_info
 
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_access, set_s3_operation_rest
+    check_bucket_access
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.controllers.encryption import \
     encryption_set_env_variable
@@ -48,26 +46,19 @@ from swift.common.middleware.s3api.utils import CHECKSUMS, \
 MAX_PUT_BUCKET_BODY_SIZE = 10240
 
 
-def set_s3_operation_rest_for_list_objects(func):
-    """
-    A decorator to set the specified operation and command name
-    to the s3api.info fields.
-    """
-    @functools.wraps(func)
-    def _set_s3_operation(self, req, *args, **kwargs):
-        if 'versions' in req.params:
-            set_s3_operation_wrapper = set_s3_operation_rest('BUCKETVERSIONS')
-        else:
-            set_s3_operation_wrapper = set_s3_operation_rest('BUCKET')
-        return set_s3_operation_wrapper(func)(self, req, *args, **kwargs)
-
-    return _set_s3_operation
-
-
 class BucketController(Controller):
     """
     Handles bucket request.
     """
+    bucket_resource_type = 'BUCKET'
+
+    @classmethod
+    def get_s3_operation(cls, req):
+        # GET ?versions uses the BUCKETVERSIONS resource type
+        if req.method == 'GET' and 'versions' in req.params:
+            return 'REST.GET.BUCKETVERSIONS'
+        return super().get_s3_operation(req)
+
     def _delete_segments_bucket(self, req):
         """
         Before delete bucket, delete segments bucket if existing.
@@ -146,12 +137,11 @@ class BucketController(Controller):
             else:
                 oio_query['force_master'] = force_master
 
-    @set_s3_operation_rest('BUCKET')
     @ratelimit
     @public
     @fill_cors_headers
     @check_bucket_access
-    @check_iam_access("s3:ListBucket")
+    @check_iam_access("s3:DeleteBucket")
     def HEAD(self, req):
         """
         Handle HEAD Bucket (Get Metadata) request
@@ -455,7 +445,6 @@ class BucketController(Controller):
             return ["RestoreStatus"]
         return []
 
-    @set_s3_operation_rest_for_list_objects
     @ratelimit
     @public
     @fill_cors_headers
@@ -512,7 +501,6 @@ class BucketController(Controller):
 
         return HTTPOk(request=req, body=body, content_type='application/xml')
 
-    @set_s3_operation_rest('BUCKET')
     @ratelimit
     @public
     @fill_cors_headers
@@ -564,7 +552,6 @@ class BucketController(Controller):
         resp.location = '/' + req.container_name
         return resp
 
-    @set_s3_operation_rest('BUCKET')
     @ratelimit
     @public
     @fill_cors_headers
@@ -580,7 +567,6 @@ class BucketController(Controller):
         resp = req.get_response(self.app)
         return resp
 
-    @set_s3_operation_rest('BUCKET')
     @public
     def POST(self, req):
         """

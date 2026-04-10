@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import copy
-import functools
 import json
 
 from swift.common.constraints import MAX_OBJECT_NAME_LENGTH
@@ -23,8 +22,8 @@ from swift.common.swob import str_to_wsgi
 from swift.common.utils import config_true_value, public, StreamingPile
 from swift.common.registry import get_swift_info
 
-from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_access
+from swift.common.middleware.s3api.controllers.base import (
+    Controller, bucket_operation, check_bucket_access)
 from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
@@ -41,23 +40,19 @@ from swift.common.middleware.s3api.s3response import HTTPOk, \
 from swift.common.middleware.s3api.utils import sysmeta_header
 
 
-def set_s3_operation_batch_delete_object(func):
-    """
-    A decorator to set the specified operation name to the s3api.info fields.
-    """
-    @functools.wraps(func)
-    def _set_s3_operation(self, req, *args, **kwargs):
-        self.set_s3_operation(req, 'BATCH.DELETE.OBJECT')
-        return func(self, req, *args, **kwargs)
-
-    return _set_s3_operation
-
-
 class MultiObjectDeleteController(Controller):
     """
     Handles Delete Multiple Objects, which is logged as a MULTI_OBJECT_DELETE
     operation in the S3 server log.
     """
+
+
+    @classmethod
+    def get_s3_operation(cls, req):
+        if req.method == 'POST':
+            return 'BATCH.DELETE.OBJECT'
+        return super().get_s3_operation(req)
+
     def _gen_error_body(self, error, elem, delete_list):
         for key, version in delete_list:
             error_elem = SubElement(elem, 'Error')
@@ -69,7 +64,6 @@ class MultiObjectDeleteController(Controller):
 
         return tostring(elem)
 
-    @set_s3_operation_batch_delete_object
     @ratelimit
     @public
     @fill_cors_headers

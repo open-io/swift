@@ -22,8 +22,7 @@ from swift.common.utils import close_if_possible, config_true_value, \
 from swift.common.middleware.versioned_writes.object_versioning import \
     DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_access, set_s3_operation_rest, handle_no_such_key, \
-    check_container_existence
+    check_bucket_access, handle_no_such_key, check_container_existence
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING, list_parts_from_segments
@@ -54,7 +53,9 @@ class ObjectAttributesController(Controller):
     and ListParts into a single call.
     """
 
-    @set_s3_operation_rest('OBJECT', 'OBJECT_ATTRIBUTES')
+    object_resource_type = 'OBJECT_ATTRIBUTES'
+    param_resource = 'attributes'
+
     @ratelimit
     @public
     @fill_cors_headers

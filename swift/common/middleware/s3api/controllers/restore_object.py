@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from oio.common.properties import RestoreProperty
 from swift.common.middleware.s3api.controllers.base import Controller, \
     check_bucket_access, check_container_existence, handle_no_such_key, \
-    object_operation, set_s3_operation_rest
+    object_operation
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring
@@ -86,8 +86,9 @@ class RestoreObjectController(Controller):
     Handles the following APIs:
         - POST restore object.
     """
+    object_resource_type = 'RESTORE'
+    param_resource = 'restore'
 
-    @set_s3_operation_rest('RESTORE')
     @ratelimit
     @public
     @fill_cors_headers

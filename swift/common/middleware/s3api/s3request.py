@@ -1037,6 +1037,7 @@ class S3Request(swob.Request):
     key = _req_s3api_info('key')
     version_id = _req_s3api_info('version_id')
     storage_class = _req_s3api_info('storage_class')
+    operation = _req_s3api_info('operation')
     storage_class_domain = _req_s3api_info('storage_class_domain')
     style = _req_s3api_info('style')
     signature_version = _req_s3api_info('signature_version')
@@ -1122,6 +1123,10 @@ class S3Request(swob.Request):
                     self.authentication_type = self._get_authentication_type()
                     self.aws_chunked = self._is_chunked_upload
                     self.request_origin = self._get_request_origin
+                    try:
+                        self.operation = self.controller.get_s3_operation(self)
+                    except S3NotImplemented:
+                        self.operation = None
                 except Exception:
                     if parse_auth_info_success:
                         raise

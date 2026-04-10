@@ -120,42 +120,19 @@ def check_bucket_access(func):
         # - create MPU
         # - complete MPU
         if (
-            req.from_replicator() and req.is_object_request
-            and self.operation in ("REST.PUT.OBJECT",
-                                   "REST.POST.UPLOAD",
-                                   "REST.POST.UPLOADS")
+            req.from_replicator()
+            and req.is_object_request
+            and req.operation
+            in ("REST.PUT.OBJECT", "REST.POST.UPLOAD", "REST.POST.UPLOADS")
         ):
             info = req.get_container_info(self.app)
-            versioning = info.get('sysmeta', {}).get('versions-enabled', False)
+            versioning = info.get("sysmeta", {}).get("versions-enabled", False)
             if not config_true_value(versioning):
-                raise InvalidRequest('Bucket must have versioning enabled.')
+                raise InvalidRequest("Bucket must have versioning enabled.")
 
         return func(self, req)
 
     return _check_bucket_access
-
-
-def set_s3_operation_rest(resource_type, object_resource_type=None,
-                          method=None):
-    """
-    A decorator to set the specified operation name to the s3api.info fields.
-    """
-    def _set_s3_operation(func):
-        @functools.wraps(func)
-        def set_s3_operation_wrapper(self, req, *args, **kwargs):
-            if object_resource_type and req.is_object_request:
-                rsrc_type = object_resource_type
-            else:
-                rsrc_type = resource_type
-            if method:
-                meth = method
-            else:
-                meth = req.method
-            self.set_s3_operation(req, f'REST.{meth}.{rsrc_type}')
-            return func(self, req, *args, **kwargs)
-
-        return set_s3_operation_wrapper
-    return _set_s3_operation
 
 
 def handle_no_such_key(func):
@@ -183,30 +160,42 @@ class Controller(object):
     """
     Base WSGI controller class for the middleware
     """
+
+    # Per-controller resource types (set to non-None on subclasses).
+    bucket_resource_type = None
+    object_resource_type = None
+    param_resource = None
     def __init__(self, app, conf, logger, **kwargs):
         self.app = app
         self.conf = conf
         self.logger = logger
-        self.operation = None
+
+    @classmethod
+    def get_s3_operation(cls, req):
+        """Return the S3 operation in REST.METHOD.TYPE format"""
+        if req.method == "OPTIONS":
+            return "REST.OPTIONS.PREFLIGHT"
+
+        is_object = req.is_object_request
+        if cls.param_resource in req.params:
+            rsrc_type = (
+                cls.object_resource_type
+                if is_object
+                else cls.bucket_resource_type
+            )
+            if rsrc_type is not None:
+                return "REST.%s.%s" % (req.method, rsrc_type)
+        if is_object:
+            return "REST.%s.OBJECT" % req.method
+        return "REST.%s.BUCKET" % req.method
 
     @classmethod
     def resource_type(cls):
         """
         Returns the target resource type of this controller.
         """
-        name = cls.__name__[:-len('Controller')]
+        name = cls.__name__[: -len("Controller")]
         return camel_to_snake(name).upper()
-
-    def set_s3_operation(self, req, operation):
-        """
-        Set the specified operation name to the s3api.info fields.
-        :param req: HTTP request object
-        :param operation: S3 operation string
-        """
-        if self.operation:
-            return
-        self.operation = operation
-        req.environ.setdefault('s3api.info', {})['operation'] = self.operation
 
     def has_bucket_or_object_read_permission(self, req):
         """
@@ -267,7 +256,6 @@ class Controller(object):
             # of error while checking, access is denied by default
             return False
 
-    @set_s3_operation_rest('PREFLIGHT')
     @ratelimit
     @public
     @check_bucket_access

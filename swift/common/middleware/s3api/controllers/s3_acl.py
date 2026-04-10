@@ -17,7 +17,7 @@ from swift.common.middleware.s3api.controllers.replication import \
     replication_resolve_rules
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_access, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import tostring
 from swift.common.middleware.s3api.iam import check_iam_access
@@ -36,7 +36,9 @@ class S3AclController(Controller):
 
     Those APIs are logged as ACL operations in the S3 server log.
     """
-    @set_s3_operation_rest('ACL', 'OBJECT_ACL')
+    bucket_resource_type = 'ACL'
+    object_resource_type = 'OBJECT_ACL'
+    param_resource = 'acl'
     @ratelimit
     @public
     @fill_cors_headers
@@ -58,7 +60,6 @@ class S3AclController(Controller):
 
         return resp
 
-    @set_s3_operation_rest('ACL', 'OBJECT_ACL')
     @ratelimit
     @public
     @fill_cors_headers

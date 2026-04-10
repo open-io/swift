@@ -19,7 +19,7 @@ from swift.common.utils import public
 
 from swift.common.middleware.s3api.exception import ACLError
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    check_bucket_access, set_s3_operation_rest, handle_no_such_key
+    check_bucket_access, handle_no_such_key
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.s3response import HTTPOk, S3NotImplemented,\
     MalformedACLError, UnexpectedContent, MissingSecurityHeader
@@ -87,7 +87,10 @@ class AclController(Controller):
 
     Those APIs are logged as ACL operations in the S3 server log.
     """
-    @set_s3_operation_rest('ACL', 'OBJECT_ACL')
+    bucket_resource_type = 'ACL'
+    object_resource_type = 'OBJECT_ACL'
+    param_resource = 'acl'
+
     @ratelimit
     @public
     @fill_cors_headers
@@ -101,7 +104,6 @@ class AclController(Controller):
 
         return get_acl(req.user_id, resp.headers)
 
-    @set_s3_operation_rest('ACL', 'OBJECT_ACL')
     @ratelimit
     @public
     @fill_cors_headers

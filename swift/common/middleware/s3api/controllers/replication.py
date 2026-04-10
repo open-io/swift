@@ -22,8 +22,7 @@ from oio.common.replication import optimize_replication_conf, \
 
 from swift.common.http import HTTP_SERVICE_UNAVAILABLE, is_success
 from swift.common.middleware.s3api.controllers.base import Controller, \
-    bucket_operation, check_bucket_access, check_container_existence, \
-    set_s3_operation_rest
+    bucket_operation, check_bucket_access, check_container_existence
 from swift.common.middleware.s3api.controllers.cors import fill_cors_headers
 from swift.common.middleware.s3api.etree import DocumentInvalid, \
     XMLSyntaxError, fromstring, tostring, SubElement, Element
@@ -323,6 +322,9 @@ class ReplicationController(Controller):
         - GET Bucket replication configuration
         - PUT Bucket replication configuration
     """
+    bucket_resource_type = 'REPLICATION'
+    param_resource = 'replication'
+
     @staticmethod
     def _ensure_feature_is_disabled(root, feature, children):
         element = root.find(f"./{feature}")
@@ -519,7 +521,6 @@ class ReplicationController(Controller):
         if role_replicator_id not in self.conf.replicator_ids:
             raise AccessDenied()
 
-    @set_s3_operation_rest('REPLICATION')
     @ratelimit
     @public
     @fill_cors_headers
@@ -570,7 +571,6 @@ class ReplicationController(Controller):
         resp = req.get_response(self.app, method="POST")
         return convert_response(req, resp, 204, HTTPOk)
 
-    @set_s3_operation_rest('REPLICATION')
     @ratelimit
     @public
     @fill_cors_headers
@@ -604,7 +604,6 @@ class ReplicationController(Controller):
             body, denormalize_func=denormalize_func)
         return HTTPOk(body=generated_body, content_type="application/xml")
 
-    @set_s3_operation_rest('REPLICATION')
     @ratelimit
     @public
     @fill_cors_headers

@@ -16,7 +16,7 @@
 from swift.common.utils import public
 from swift.common.middleware.s3api.controllers import BucketController
 from swift.common.middleware.s3api.controllers.base import \
-    check_bucket_access, set_s3_operation_rest
+    check_bucket_access
 from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import BucketAlreadyExists, \
     BucketAlreadyOwnedByYou, NoSuchBucket, ServiceUnavailable, InternalError
@@ -27,7 +27,6 @@ class UniqueBucketController(BucketController):
     Handles bucket requests, ensure bucket names are globally unique.
     """
 
-    @set_s3_operation_rest('BUCKET')
     @ratelimit
     @public
     def PUT(self, req):
@@ -76,7 +75,6 @@ class UniqueBucketController(BucketController):
             raise InternalError('Failed to create bucket')
         return resp
 
-    @set_s3_operation_rest('BUCKET')
     @ratelimit
     @public
     @check_bucket_access
