@@ -257,6 +257,19 @@ class UniqueBucketAclHandler(BucketAclHandler):
     pass
 
 
+class ObjectAttributesAclHandler(BaseAclHandler):
+    """
+    ObjectAttributesAclHandler: Handler for ObjectAttributesController
+    """
+    def GET(self, app):
+        # Need for internal « ListPart » to get parts checksums
+        if self.container.endswith(MULTIUPLOAD_SUFFIX):
+            container = self.container[:-len(MULTIUPLOAD_SUFFIX)]
+            self._handle_acl(app, 'HEAD', container, '')
+        else:
+            return self._handle_acl(app, 'GET')
+
+
 class ObjectAclHandler(BaseAclHandler):
     """
     ObjectAclHandler: Handler for ObjectController

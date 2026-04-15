@@ -47,6 +47,8 @@ from swift.common.middleware.s3api.controllers.versioning import \
     VersioningController
 from swift.common.middleware.s3api.controllers.website import \
     S3WebsiteController, WebsiteController
+from swift.common.middleware.s3api.controllers.obj_attributes import \
+    ObjectAttributesController
 from swift.common.middleware.s3api.controllers.tagging import \
     TaggingController
 from swift.common.middleware.s3api.controllers.unique_bucket import \
@@ -80,6 +82,7 @@ __all__ = [
     'WebsiteController',
     'TaggingController',
     'EncryptionController',
+    'ObjectAttributesController',
 
     'UnsupportedController',
 ]

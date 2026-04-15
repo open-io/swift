@@ -1,0 +1,32 @@
+include "common.rnc"
+
+start =
+  element GetObjectAttributesResponse {
+    element ETag { xsd:string }?,
+    element Checksum {
+      element ChecksumCRC32 { xsd:string }? &
+      element ChecksumCRC32C { xsd:string }? &
+      element ChecksumCRC64NVME { xsd:string }? &
+      element ChecksumSHA1 { xsd:string }? &
+      element ChecksumSHA256 { xsd:string }? &
+      element ChecksumType { xsd:string }?
+    }?,
+    element ObjectParts {
+      element PartsCount { xsd:int },
+      element IsTruncated { xsd:boolean },
+      element MaxParts { xsd:int },
+      element PartNumberMarker { xsd:int },
+      element NextPartNumberMarker { xsd:int }?,
+      element Part {
+        element PartNumber { xsd:int },
+        element Size { xsd:long },
+        element ChecksumCRC32 { xsd:string }?,
+        element ChecksumCRC32C { xsd:string }?,
+        element ChecksumCRC64NVME { xsd:string }?,
+        element ChecksumSHA1 { xsd:string }?,
+        element ChecksumSHA256 { xsd:string }?
+      }*
+    }?,
+    element StorageClass { xsd:string }?,
+    element ObjectSize { xsd:long }?
+  }

@@ -74,6 +74,47 @@ def version_id_param(req):
     return version_id
 
 
+def check_ssec_headers(req, resp):
+    """
+    Validate SSE-C headers when the object requires an encryption key.
+
+    :raises InvalidArgument: if required headers are missing or invalid
+    :raises AccessDenied: if the encryption key cannot be decoded
+    """
+    if not config_true_value(
+        resp.sw_headers.get('X-Requires-Encryption-Key')
+    ):
+        return
+    if SSEC_KEY_HEADER not in req.headers:
+        raise InvalidArgument(
+            'x-amz-server-side-encryption', None,
+            MISSING_KEY_MSG)
+    elif SSEC_ALGO_HEADER not in req.headers:
+        raise InvalidArgument(
+            'x-amz-server-side-encryption', None,
+            MISSING_ALGO_MSG)
+    if SSEC_KEY_MD5_HEADER in req.headers:
+        b64_secret = req.headers.get(SSEC_KEY_HEADER)
+        md5_secret = req.headers.get(SSEC_KEY_MD5_HEADER)
+        try:
+            secret = decode_secret(b64_secret)
+        except ValueError:
+            raise AccessDenied(INVALID_KEY)
+        try:
+            strict_b64decode(
+                md5_secret, allow_line_breaks=True)
+        except ValueError:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None, INVALID_MD5_VALUE)
+        try:
+            check_md5(secret, md5_secret)
+        except ValueError:
+            raise InvalidArgument(
+                'x-amz-server-side-encryption',
+                None, WRONG_MD5_VALUE)
+
+
 def set_s3_operation_rest_for_put_object(func):
     """
     A decorator to set the specified operation and command name
@@ -256,39 +297,7 @@ class ObjectController(Controller):
             # HEAD requests without keys on encrypted objects are allowed for
             # internal usage (e.g. ACLs). But we should deny them when they
             # come from the outside.
-            if config_true_value(resp.sw_headers.get(
-                'X-Requires-Encryption-Key')
-            ):
-                if SSEC_KEY_HEADER not in req.headers:
-                    raise InvalidArgument(
-                        'x-amz-server-side-encryption', None, MISSING_KEY_MSG)
-                elif SSEC_ALGO_HEADER not in req.headers:
-                    raise InvalidArgument(
-                        'x-amz-server-side-encryption', None, MISSING_ALGO_MSG)
-                if SSEC_KEY_MD5_HEADER in req.headers:
-                    b64_secret = req.headers.get(SSEC_KEY_HEADER)
-                    md5_secret = req.headers.get(SSEC_KEY_MD5_HEADER)
-                    try:
-                        secret = decode_secret(b64_secret)
-                    except ValueError:
-                        raise AccessDenied(INVALID_KEY)
-                    # validate given md5 value is base64 encoded
-                    try:
-                        strict_b64decode(
-                            md5_secret, allow_line_breaks=True)
-                    except ValueError:
-                        InvalidArgument(
-                            'x-amz-server-side-encryption',
-                            None, INVALID_MD5_VALUE
-                        )
-                    try:
-                        # Compute md5 from encryption key
-                        check_md5(secret, md5_secret)
-                    except ValueError:
-                        InvalidArgument(
-                            'x-amz-server-side-encryption',
-                            None, WRONG_MD5_VALUE
-                        )
+            check_ssec_headers(req, resp)
 
         if 'x-amz-meta-deleted' in resp.headers:
             raise NoSuchKey(object_name)

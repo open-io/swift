@@ -67,8 +67,6 @@ import os
 import time
 from datetime import datetime
 
-import six
-
 from swift.common.middleware.s3api.controllers.obj import version_id_param
 from swift.common.swob import Range, bytes_to_wsgi, normalize_etag, \
     str_to_wsgi, wsgi_to_str
@@ -93,7 +91,7 @@ from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.exception import S3InputChecksumMismatch
 from swift.common.middleware.s3api.s3response import BrokenMPU, \
-    InvalidArgument, ErrorResponse, MalformedXML, BadDigest, InternalError, \
+    InvalidArgument, ErrorResponse, MalformedXML, BadDigest, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
@@ -114,7 +112,7 @@ from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_DATE, HEADER_RETENION_MODE, \
     object_lock_populate_sysmeta_headers, object_lock_validate_headers
 from swift.common.middleware.s3api.multi_upload_utils import \
-    list_bucket_multipart_uploads
+    list_bucket_multipart_uploads, list_parts_from_segments
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 from swift.common.middleware.s3api.controllers.lifecycle import \
     get_mpu_abortion
@@ -1074,13 +1072,6 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         """
         Handles List Parts.
         """
-        def filter_part_num_marker(o):
-            try:
-                num = int(os.path.basename(o['name']))
-                return num > part_num_marker
-            except ValueError:
-                return False
-
         encoding_type = get_param(req, 'encoding-type')
         if encoding_type is not None and encoding_type != 'url':
             err_msg = 'Invalid Encoding Method specified in Request'
@@ -1101,65 +1092,18 @@ class UploadController(Controller, LifecycleAbortDateMixin):
             'part-number-marker', 0)
 
         object_name = wsgi_to_str(req.object_name)
-        query = {
-            'format': 'json',
-            'prefix': '%s/%s/' % (object_name, upload_id),
-            'delimiter': '/',
-            'marker': '',
-        }
 
         headers = self.get_lifecycle_headers(
             req, None, req.object_name, slo_resp.last_modified)
 
-        container = req.container_name + MULTIUPLOAD_SUFFIX
-        # Because the parts are out of order in Swift, we list up to the
-        # maximum number of parts and then apply the marker and limit options.
-        objects = []
-        previous_marker = None
-        while True:
-            current_marker = query.get('marker')
-            if previous_marker is not None \
-                    and previous_marker == current_marker:
-                error_message = (
-                    'Pagination loop detected while listing parts of '
-                    '%s/%s: marker %r did not advance (reqid=%s)' % (
-                        container, object_name, current_marker,
-                        req.trans_id)
-                )
-                raise InternalError(reason=error_message)
-            previous_marker = current_marker
-            resp = req.get_response(self.app, container=container, obj='',
-                                    query=query)
-            new_objects = json.loads(resp.body)
-            if not new_objects:
-                break
-            objects.extend(new_objects)
-            if six.PY2:
-                query['marker'] = new_objects[-1]['name'].encode('utf-8')
-            else:
-                query['marker'] = new_objects[-1]['name']
+        objList, truncated = list_parts_from_segments(
+            self.app, req, object_name, upload_id,
+            part_num_marker=part_num_marker,
+            max_parts=maxparts)
 
         last_part = 0
-
-        # If the caller requested a list starting at a specific part number,
-        # construct a sub-set of the object list.
-        objList = [obj for obj in objects if filter_part_num_marker(obj)]
-
-        # pylint: disable-msg=E1103
-        objList.sort(key=lambda o: int(o['name'].split('/')[-1]))
-
-        if len(objList) > maxparts:
-            objList = objList[:maxparts]
-            truncated = True
-        else:
-            truncated = False
-        # TODO: We have to retrieve object list again when truncated is True
-        # and some objects filtered by invalid name because there could be no
-        # enough objects for limit defined by maxparts.
-
         if objList:
-            o = objList[-1]
-            last_part = os.path.basename(o['name'])
+            last_part = os.path.basename(objList[-1]['name'])
 
         escape_xml_text, finalize_xml_texts = init_xml_texts(
             encoding_type == 'url')

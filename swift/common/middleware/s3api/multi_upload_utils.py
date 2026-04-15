@@ -177,3 +177,64 @@ def list_bucket_multipart_uploads(app, req, pre_auth=False):
         "prefixes": prefixes,
     }
     return result
+
+
+def list_parts_from_segments(app, req, object_name, upload_id,
+                             part_num_marker=0, max_parts=None):
+    """
+    List part objects from the segments container.
+
+    Parts are stored in ``{bucket}+segments`` under the prefix
+    ``{object_name}/{upload_id}/``.  The listing is fetched in full
+    (parts are not in numeric order in Swift), then filtered by
+    *part_num_marker*, sorted numerically, and truncated to
+    *max_parts*.
+
+    :returns: ``(objects, is_truncated)`` where *objects* is a list
+        of segment dicts (``name``, ``hash``, ``bytes``, …) sorted
+        by part number.
+    """
+    if max_parts is None:
+        max_parts = DEFAULT_MAX_PARTS_LISTING
+
+    container = req.container_name + MULTIUPLOAD_SUFFIX
+    query = {
+        'format': 'json',
+        'prefix': '%s/%s/' % (object_name, upload_id),
+        'delimiter': '/',
+        'marker': '',
+    }
+    objects = []
+    previous_marker = None
+    while True:
+        current_marker = query.get('marker')
+        if previous_marker is not None \
+                and previous_marker == current_marker:
+            error_message = (
+                'Pagination loop detected while listing parts of '
+                '%s/%s: marker %r did not advance (reqid=%s)' % (
+                    container, object_name, current_marker,
+                    req.trans_id)
+            )
+            raise InternalError(reason=error_message)
+        previous_marker = current_marker
+        resp = req.get_response(app, container=container, obj='',
+                                query=query)
+        new_objects = json.loads(resp.body)
+        if not new_objects:
+            break
+        objects.extend(new_objects)
+        query['marker'] = new_objects[-1]['name']
+
+    def _part_num(o):
+        try:
+            return int(o['name'].split('/')[-1])
+        except (ValueError, IndexError):
+            return 0
+
+    objects = [o for o in objects if _part_num(o) > part_num_marker]
+    objects.sort(key=_part_num)
+
+    is_truncated = len(objects) > max_parts
+    objects = objects[:max_parts]
+    return objects, is_truncated

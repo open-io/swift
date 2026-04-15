@@ -61,7 +61,8 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     LifecycleController, IntelligentTieringController, BucketLockController, \
     ObjectLockRetentionController, ObjectLockLegalHoldController, \
     S3WebsiteController, WebsiteController, ReplicationController, \
-    EncryptionController, RestoreObjectController
+    EncryptionController, RestoreObjectController, \
+    ObjectAttributesController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     InvalidObjectState, RequestTimeTooSkewed, S3Response, \
@@ -98,9 +99,9 @@ from swift.common.middleware.crypto.crypto_utils import INVALID_MD5_VALUE, \
 # List of sub-resources that must be maintained as part of the HMAC
 # signature string.
 ALLOWED_SUB_RESOURCES = sorted([
-    'acl', 'delete', 'lifecycle', 'location', 'logging', 'notification',
-    'partNumber', 'policy', 'requestPayment', 'torrent', 'uploads', 'uploadId',
-    'versionId', 'versioning', 'versions', 'website',
+    'acl', 'attributes', 'delete', 'lifecycle', 'location', 'logging',
+    'notification', 'partNumber', 'policy', 'requestPayment', 'torrent',
+    'uploads', 'uploadId', 'versionId', 'versioning', 'versions', 'website',
     'response-cache-control', 'response-content-disposition',
     'response-content-encoding', 'response-content-language',
     'response-content-type', 'response-expires', 'cors', 'tagging', 'restore',
@@ -2113,8 +2114,10 @@ class S3Request(swob.Request):
             return WebsiteController
         if 'tagging' in self.params:
             return TaggingController
+        if 'attributes' in self.params:
+            return ObjectAttributesController
 
-        unsupported = ('attributes', 'notification', 'policy',
+        unsupported = ('notification', 'policy',
                        'requestPayment', 'torrent', 'restore')
         if set(unsupported) & set(self.params):
             return UnsupportedController

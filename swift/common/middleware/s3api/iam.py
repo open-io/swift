@@ -72,6 +72,8 @@ SUPPORTED_ACTIONS = {
     "s3:GetLifecycleConfiguration": RT_BUCKET,
     "s3:GetObject": RT_OBJECT,
     "s3:GetObjectAcl": RT_OBJECT,
+    "s3:GetObjectAttributes": RT_OBJECT,
+    "s3:GetObjectVersionAttributes": RT_OBJECT,
     "s3:GetObjectLegalHold": RT_OBJECT,
     "s3:GetObjectRetention": RT_OBJECT,
     "s3:GetObjectTagging": RT_OBJECT,
