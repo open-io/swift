@@ -76,6 +76,7 @@ s3_only = true
 landing_page = https://www.ovhcloud.com/en/public-cloud/object-storage/
 replicator_ids = s3-replication
 enable_encryption = true
+enable_conditional_write = true
 
 [filter:tempauth]
 use = egg:swift#tempauth

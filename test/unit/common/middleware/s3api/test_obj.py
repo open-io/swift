@@ -1218,7 +1218,7 @@ class TestS3ApiObj(S3ApiTestCase):
         # No way to determine ETag to send
         self.assertNotIn('etag', headers)
         self.assertIn(b'UNSIGNED-PAYLOAD', SigV4Request(
-            req.environ, self.s3api.conf)._canonical_request())
+            req.environ, conf=self.s3api.conf)._canonical_request())
 
     def test_object_PUT_headers(self):
         content_md5 = binascii.b2a_base64(binascii.a2b_hex(self.etag)).strip()

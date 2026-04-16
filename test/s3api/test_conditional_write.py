@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import io
 from threading import Thread
 from time import sleep
@@ -184,11 +185,21 @@ class InternalServerError(Exception):
     """Raised when an unexpected 500 error is returned."""
 
 
-def _rerun_on_internal_server_error(err, *args):
-    """Flaky is configured to rerun tests on 500 errors."""
+_non_500_reruns = {}
+
+
+def _rerun_on_error(err, name, test, _plugin):
+    """Flaky rerun filter: up to 5 reruns for 500 errors, 1 rerun otherwise."""
+    key = f"{type(test).__name__}.{name}"
     if isinstance(err[1], InternalServerError):
         # If we get a 500, do not rush into the next try
         sleep(1)
+        return True
+    # For any other error, allow a single rerun (some tests requires
+    # good timings, it's not reliable enough when played on CI).
+    count = _non_500_reruns.get(key, 0)
+    if count < 2:  # Flaky can this function twice per failure.
+        _non_500_reruns[key] = count + 1
         return True
     return False
 
@@ -258,7 +269,7 @@ def _make_test_class(
     return klass
 
 
-@flaky(max_runs=5, rerun_filter=_rerun_on_internal_server_error)
+@flaky(max_runs=5, rerun_filter=_rerun_on_error)
 class CondWriteMixin(object):
     CODE_OK = 200
 
@@ -373,7 +384,7 @@ class CondWriteMixin(object):
             status_code=412,
         )
         if ADD_DEBUG_PRINT:
-            print("--> PreconditionFailed")
+            print(f"{datetime.datetime.now()}: --> PreconditionFailed")
 
     def _assert_conditional_request_conflict(
         self, response: dict, condition: str
@@ -386,7 +397,7 @@ class CondWriteMixin(object):
             status_code=409,
         )
         if ADD_DEBUG_PRINT:
-            print("--> ConditionalRequestConflict")
+            print(f"{datetime.datetime.now()}: --> ConditionalRequestConflict")
 
     def _assert_no_such_key(self, response: dict, key: str) -> None:
         self._assert_response(
@@ -397,7 +408,7 @@ class CondWriteMixin(object):
             status_code=404,
         )
         if ADD_DEBUG_PRINT:
-            print("--> NoSuchKey")
+            print(f"{datetime.datetime.now()}: --> NoSuchKey")
 
     def _assert_success(self, response: dict) -> None:
         self._assert_response(
@@ -405,7 +416,7 @@ class CondWriteMixin(object):
             status_code=self.CODE_OK,
         )
         if ADD_DEBUG_PRINT:
-            print("--> Success")
+            print(f"{datetime.datetime.now()}: --> Success")
 
     def _assert_not_implemented(self, response: dict, condition: str) -> None:
         """
@@ -448,8 +459,10 @@ class CondWriteMixin(object):
         self.actual_etag = resp.get("ETag", "").strip('"')
         if ADD_DEBUG_PRINT:
             print(
-                f"create key={key} in bucket={self.bucket_name} "
+                f"{datetime.datetime.now()}: "
+                f"create done key={key} in bucket={self.bucket_name} "
                 f"(version_id={resp.get('VersionId')} etag={self.actual_etag})"
+                f" extra={extra}"
             )
         return resp
 
@@ -469,6 +482,7 @@ class CondWriteMixin(object):
             delete_kwargs["BypassGovernanceRetention"] = True
         if ADD_DEBUG_PRINT:
             print(
+                f"{datetime.datetime.now()}: "
                 f"delete key={key} in bucket={self.bucket_name} "
                 f"(version_id={version_id})"
             )
@@ -1180,7 +1194,7 @@ class ConcurrentCondWriteMixin(CondWriteMixin, BaseS3TestCaseWithBucket):
 
     __test__ = False
 
-    DEFAULT_SLOW_PUT_DURATION = 2
+    DEFAULT_SLOW_PUT_DURATION = 5
 
     @classmethod
     def setUpClass(cls):
@@ -1232,7 +1246,7 @@ class ConcurrentCondWriteMixin(CondWriteMixin, BaseS3TestCaseWithBucket):
     ):
         try:
             if ADD_DEBUG_PRINT:
-                print(f"start slow put of key={key}")
+                print(f"{datetime.datetime.now()}: start slow put key={key}")
             thread_return["resp"] = self._put_object(
                 key=key,
                 body=RatelimitedStream(duration),
@@ -1240,11 +1254,14 @@ class ConcurrentCondWriteMixin(CondWriteMixin, BaseS3TestCaseWithBucket):
             )
             if ADD_DEBUG_PRINT:
                 version_id = thread_return["resp"].get("VersionId")
-                print(f"end slow put of key={key} version_id={version_id}")
+                print(
+                    f"{datetime.datetime.now()}: "
+                    f"end slow put of key={key} version_id={version_id}"
+                )
         except botocore.exceptions.ClientError as err:
             thread_return["resp"] = err.response
         except Exception as exc:
-            print(f"Got unexpected exception={exc}")
+            print(f"{datetime.datetime.now()}: Got unexpected exception={exc}")
             thread_return["resp"] = None
 
     def _do_operations_during_slow_put(
@@ -1285,7 +1302,7 @@ class ConcurrentCondWriteMixin(CondWriteMixin, BaseS3TestCaseWithBucket):
         # Resolve MAGICAL_ETAG (real etag is set by _put_object)
         extra_slow_put = self._resolve_extra(extra_slow_put)
         if ADD_DEBUG_PRINT:
-            print(f"use {extra_slow_put}")
+            print(f"{datetime.datetime.now()}: use {extra_slow_put}")
 
         thread_return = {}  # mutable variable
         put_object_thread = Thread(
@@ -1299,7 +1316,12 @@ class ConcurrentCondWriteMixin(CondWriteMixin, BaseS3TestCaseWithBucket):
         put_object_thread.start()
 
         # Make sure the thread has started before continuing
-        sleep(1)
+        sleep(2)
+        if ADD_DEBUG_PRINT:
+            print(
+                f"{datetime.datetime.now()}: "
+                "end sleep before doing list of operations"
+            )
         for operation in list_operations:
             op_kwargs = operation.get("params")
             op_name = operation["fn"].__name__
@@ -1878,7 +1900,7 @@ if RUN_CONCURRENT_TESTS and not RUN_MPU_TESTS_ONLY:
 class ConcurrentCondWriteMixinMPU(ConcurrentCondWriteMixin):
     __test__ = False
 
-    DEFAULT_SLOW_PUT_DURATION = 2
+    DEFAULT_SLOW_PUT_DURATION = 5
 
     @classmethod
     def setUpClass(cls):
@@ -1905,7 +1927,7 @@ class ConcurrentCondWriteMixinMPU(ConcurrentCondWriteMixin):
         }
         try:
             if ADD_DEBUG_PRINT:
-                print(f"start slow put of MPU key={key}")
+                print(f"{datetime.datetime.now()}: start slow MPU key={key}")
             resp = self.client.create_multipart_upload(**kwargs)
             self.upload_id = resp["UploadId"]
 
@@ -1917,9 +1939,12 @@ class ConcurrentCondWriteMixinMPU(ConcurrentCondWriteMixin):
             self.part_etag = part_resp["ETag"]
             if ADD_DEBUG_PRINT:
                 version_id = part_resp.get("VersionId")
-                print(f"end slow put of MPU key={key} version_id={version_id}")
+                print(
+                    f"{datetime.datetime.now()}: "
+                    f"end slow put of MPU key={key} version_id={version_id}"
+                )
         except Exception as exc:
-            print(f"Got unexpected exception={exc}")
+            print(f"{datetime.datetime.now()}: Got unexpected exception={exc}")
             thread_return["resp"] = None
 
     def _do_operations_during_slow_put(

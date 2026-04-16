@@ -118,6 +118,10 @@ aws_secret_access_key=ADMIN_PASS
 [a2u1]
 aws_access_key_id=account2:user1
 aws_secret_access_key=USER_PASS
+
+[https]
+aws_access_key_id=demo:demo
+aws_secret_access_key=DEMO_PASS
 EOF
 
   cat <<EOF >"$HOME/.aws/config"
@@ -170,6 +174,16 @@ s3 =
     multipart_threshold = 15MB
     multipart_chunksize = 5MB
     addressing_style = $addressing_style
+
+[https]
+region = RegionOne
+endpoint_url = https://s3.regionone.io.lo.team-swift.ovh:5000
+ca_cert = %CA_CERT_TO_REPLACE%
+s3 =
+  signature_version = s3v4
+  multipart_threshold = 15MB
+  multipart_chunksize = 5MB
+  addressing_style = $addressing_style
 EOF
 }
 

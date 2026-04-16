@@ -392,6 +392,7 @@ class Config(dict):
         'ratelimit_as_client_error': False,
         'retry_after': 1,
         'token_prefix': '',
+        'enable_conditional_write': True,
     }
 
     def __init__(self, base=None):

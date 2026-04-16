@@ -170,6 +170,7 @@ enable_lifecycle = false
 enable_object_lock = false
 enable_website = false
 enable_access_logging = false
+enable_conditional_write = true
 retry_after = 1
 #enable_beta_features = true
 enable_encryption = true

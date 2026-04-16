@@ -207,6 +207,7 @@ class TestConfig(unittest.TestCase):
         del conf.ratelimit_as_client_error
         del conf.retry_after
         del conf.token_prefix
+        del conf.enable_conditional_write
         self.assertEqual({}, conf)
 
     def test_update(self):

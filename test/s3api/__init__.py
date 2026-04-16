@@ -84,6 +84,8 @@ def load_aws_config(conf_file, creds_file):
 
 aws_config_file = os.environ.get('SWIFT_TEST_AWS_CONFIG_FILE')
 aws_config_credentials = os.environ.get('SWIFT_TEST_AWS_CONFIG_CREDENTIALS')
+force_account_cleaning = config_true_value(
+    os.environ.get('SWIFT_TEST_FORCE_ACCOUNT_CLEANING'))
 if aws_config_file or aws_config_credentials:
     load_aws_config(aws_config_file, aws_config_credentials)
 
@@ -162,10 +164,10 @@ def get_s3_client(
             raise ConfigError(str(e))
     params = {
         "s3": {
-            'signature_version': signature_version,
             'addressing_style': addressing_style,
         },
         "parameter_validation": False,
+        "signature_version": signature_version,
     }
     if proxy_config:
         params["proxies"] = proxy_config
@@ -294,23 +296,27 @@ class BaseS3Mixin(object):
                 continue
             cls.clear_bucket(client, bucket['Name'])
 
-
-class BaseS3TestCase(BaseS3Mixin, unittest.TestCase):
-    def tearDown(self):
+    @classmethod
+    def _clear_test_accounts(cls):
         # Avoid cleaning all buckets of the account
         # (including the ones not from the test).
-        if aws_config_file or aws_config_credentials \
-                and _CONFIG.get("profile", DEFAULT_PROFILE) != DEFAULT_PROFILE:
+        if (aws_config_file or aws_config_credentials) \
+                and not force_account_cleaning:
             return
 
-        client = self.get_s3_client(1)
-        self.clear_account(client)
+        client = cls.get_s3_client(1)
+        cls.clear_account(client)
         try:
-            client = self.get_s3_client(2)
+            client = cls.get_s3_client(2)
         except ConfigError:
             pass
         else:
-            self.clear_account(client)
+            cls.clear_account(client)
+
+
+class BaseS3TestCase(BaseS3Mixin, unittest.TestCase):
+    def tearDown(self):
+        self._clear_test_accounts()
 
 
 class BaseS3TestCaseWithBucket(BaseS3Mixin, unittest.TestCase):
@@ -325,17 +331,4 @@ class BaseS3TestCaseWithBucket(BaseS3Mixin, unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # Avoid cleaning all buckets of the account
-        # (including the ones not from the test).
-        if aws_config_file or aws_config_credentials \
-                and _CONFIG.get("profile", DEFAULT_PROFILE) != DEFAULT_PROFILE:
-            return
-
-        client = cls.get_s3_client(1)
-        cls.clear_account(client)
-        try:
-            client = cls.get_s3_client(2)
-        except ConfigError:
-            pass
-        else:
-            cls.clear_account(client)
+        cls._clear_test_accounts()

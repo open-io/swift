@@ -181,7 +181,6 @@ ceph_s3:
   s3tests_boto3.functional.test_s3.test_put_obj_enc_conflict_c_s3: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_obj_enc_conflict_s3_kms: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_obj_with_tags: {status: KNOWN}
-  s3tests_boto3.functional.test_s3.test_put_object_ifmatch_failed: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_public_block: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_put_tags_acl_public: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_set_get_del_bucket_policy: {status: KNOWN}

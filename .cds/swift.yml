@@ -128,6 +128,16 @@ workflow:
       script: |+
         return clean_only ~= "true"
 
+  tests-conditional-write:
+    pipeline: swift-oio-tests
+    application: swift
+    environment: swift-tests-conditional-write-env
+    depends_on:
+      - root
+    conditions:
+      script: |+
+        return clean_only ~= "true"
+
   ceph-s3-tests:
     pipeline: swift-oio-tests
     application: swift
@@ -152,6 +162,7 @@ workflow:
       - oio-tests-cold-archive
       - oio-tests-encryption
       - tests-s3api
+      - tests-conditional-write
     conditions:
       script: |+
         return clean_only ~= "true"

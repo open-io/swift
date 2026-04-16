@@ -94,7 +94,10 @@ from swift.common.middleware.s3api.s3response import BrokenMPU, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
-    PreconditionFailed, OperationAborted, InvalidObjectState
+    PreconditionFailed, OperationAborted, InvalidObjectState, \
+    ConditionalRequestConflict, ServiceUnavailable
+from swift.common.middleware.versioned_writes.object_versioning import \
+    DELETE_MARKER_CONTENT_TYPE
 from swift.common.middleware.s3api.iam import check_iam_access
 from swift.common.middleware.s3api.multi_upload_utils import \
     DEFAULT_MAX_PARTS_LISTING
@@ -115,6 +118,9 @@ from swift.common.middleware.s3api.multi_upload_utils import \
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 from swift.common.middleware.s3api.controllers.lifecycle import \
     get_mpu_abortion
+from swift.common.middleware.s3api.tools.conditional_write import \
+    ConditionalWriteMixin, CONDITIONAL_WRITE_DELETE_PREFIX, \
+    _build_conditional_write_cache_key
 from swift.common.oio_utils import extract_oio_headers, \
     swift_versionid_to_oio_versionid
 
@@ -123,6 +129,11 @@ from oio.common import exceptions
 # 10000 parts about 200 bytes each, plus envelope
 MAX_COMPLETE_UPLOAD_BODY_SIZE = 3 * 1024 * 1024
 MPU_ABORTED_METADATA = sysmeta_header('object', 'mpu-aborted')
+MPU_PREVIOUS_ETAG = sysmeta_header('object', 'mpu-previous-etag')
+MPU_PREVIOUS_LAST_MODIFIED = sysmeta_header(
+    'object', 'mpu-previous-last-modified'
+)
+MPU_NO_EXISTING_OBJECT = '__none__'
 
 
 def _get_upload_id(req):
@@ -982,6 +993,55 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
             req.environ['swift.callback.pre_commit_hook'] = \
                 get_existing_marker_with_version
 
+        if self.conf.enable_conditional_write:
+            # Temporarily remove swift.crypto.override so the HEAD returns
+            # the plaintext etag (same as what complete_multipart_upload sees).
+            saved_crypto = req.environ.pop(
+                'swift.crypto.override', None
+            )
+            try:
+                # Clear any stale delete conditional write key so that only
+                # deleting happening during this MPU (between create and
+                # complete) are detected.
+                # FIXME: what about multiple concurrent MPU creation ?
+                oiocache = req.environ.get('oio.cache')
+                delete_key = None
+                if oiocache is not None:
+                    delete_cw_key = _build_conditional_write_cache_key(
+                        CONDITIONAL_WRITE_DELETE_PREFIX, req
+                    )
+                    delete_key = oiocache.get(delete_cw_key)
+
+                # Snapshot the existing object's etag at MPU creation time.
+                # This is used by complete_multipart_upload to detect
+                # concurrent modifications when If-Match is specified.
+                obj_resp = req.get_response(
+                    self.app, 'HEAD', req.container_name, req.object_name
+                )
+                existing_ct = obj_resp.sw_headers.get('Content-Type', '')
+                if existing_ct == DELETE_MARKER_CONTENT_TYPE:
+                    req.headers[MPU_PREVIOUS_ETAG] = MPU_NO_EXISTING_OBJECT
+                else:
+                    etag = obj_resp.etag or ''
+                    req.headers[MPU_PREVIOUS_ETAG] = normalize_etag(etag)
+                    last_modified = obj_resp.sw_headers.get('Last-Modified')
+                    if last_modified:
+                        req.headers[MPU_PREVIOUS_LAST_MODIFIED] = last_modified
+            except NoSuchKey:
+                req.headers[MPU_PREVIOUS_ETAG] = MPU_NO_EXISTING_OBJECT
+            except ErrorResponse:
+                raise
+            except Exception:
+                self.logger.warning('Failed to snapshot etag at MPU creation')
+                raise ServiceUnavailable()
+            finally:
+                # Restore the saved data
+                if saved_crypto is not None:
+                    req.environ['swift.crypto.override'] = saved_crypto
+
+            if delete_key:
+                del oiocache[delete_cw_key]
+
         info = req.get_container_info(self.app)
         sysmeta_info = info.get('sysmeta', {})
         object_lock_populate_sysmeta_headers(req.headers, sysmeta_info)
@@ -1048,7 +1108,9 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
         return resp
 
 
-class UploadController(Controller, LifecycleAbortDateMixin):
+class UploadController(
+    Controller, LifecycleAbortDateMixin, ConditionalWriteMixin,
+):
     """
     Handles the following APIs:
 
@@ -1308,6 +1370,11 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         # but to verify the MPU checksum
         req.check_checksum_mismatch(False)
 
+        # Save If-Match presence before check_conditional_match strips it
+        had_if_match = bool(req.if_match)
+        if self.conf.enable_conditional_write:
+            self.check_conditional_match(req)
+
         upload_id = _get_upload_id(req)
         upload_resp = _get_upload_info(
             req,
@@ -1323,6 +1390,51 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         if upload_resp.sysmeta_headers.get(MPU_ABORTED_METADATA):
             # MPU has been aborted
             raise BrokenMPU()
+
+        # Complete MPU with If-Match: check if the object was modified
+        # after the MPU was created.
+        if self.conf.enable_conditional_write and had_if_match:
+            stored_etag = upload_resp.sysmeta_headers.get(MPU_PREVIOUS_ETAG)
+            stored_last_modified = upload_resp.sysmeta_headers.get(
+                MPU_PREVIOUS_LAST_MODIFIED)
+            if stored_etag is not None:
+                try:
+                    obj_resp = req.get_response(
+                        self.app, 'HEAD', req.container_name, req.object_name
+                    )
+                    current_etag = normalize_etag(obj_resp.etag or '')
+                    current_last_modified = obj_resp.sw_headers.get(
+                        'Last-Modified')
+                    existing_ct = obj_resp.sw_headers.get(
+                        'Content-Type', '')
+                    # Detect concurrent modification.
+                    new_version = False
+                    if stored_last_modified and current_last_modified \
+                            and current_last_modified \
+                            != stored_last_modified:
+                        new_version = (
+                            current_last_modified > stored_last_modified
+                        )
+                    if existing_ct == DELETE_MARKER_CONTENT_TYPE:
+                        # Object was deleted (replaced by a delete
+                        # marker) since MPU creation.
+                        if stored_etag != MPU_NO_EXISTING_OBJECT:
+                            raise ConditionalRequestConflict(
+                                Condition='If-Match'
+                            )
+                    elif current_etag != stored_etag or new_version:
+                        raise ConditionalRequestConflict(Condition='If-Match')
+                except ConditionalRequestConflict:
+                    # Avoid final global catch
+                    raise
+                except NoSuchKey:
+                    if stored_etag != MPU_NO_EXISTING_OBJECT:
+                        raise ConditionalRequestConflict(Condition='If-Match')
+                except Exception as exc:
+                    self.logger.warning(
+                        'Failed to check MPU concurrent modification: %s', exc
+                    )
+
         # Used to gather and check encryption properties
         first_part_number_used = None
         part_nth_head_response = None

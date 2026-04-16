@@ -49,13 +49,17 @@ from swift.common.middleware.s3api.ratelimit_utils import ratelimit
 from swift.common.middleware.s3api.s3response import \
     S3NotImplemented, InvalidRange, NoSuchKey, NoSuchVersion, \
     InvalidArgument, HTTPNoContent, PreconditionFailed, \
-    AccessDenied, MethodNotAllowed, InvalidObjectState
+    AccessDenied, MethodNotAllowed, InvalidObjectState, \
+    ConditionalRequestConflict
 from swift.common.middleware.s3api.controllers.object_lock import \
     HEADER_BYPASS_GOVERNANCE, HEADER_LEGAL_HOLD_STATUS, HEADER_RETENION_MODE, \
     HEADER_RETENION_DATE, object_lock_populate_sysmeta_headers, \
     object_lock_validate_headers
 from swift.common.middleware.s3api.copy_utils import make_copy_resp_xml
 from swift.common.middleware.s3api.controllers.lifecycle import get_expiration
+from swift.common.middleware.s3api.tools.conditional_write import \
+    ConditionalWriteMixin, META_HOOK_RESULT_KEY, META_CONDITION_KEY, \
+    HOOK_RESULT_NO_SUCH_KEY, HOOK_RESULT_CONFLICT
 
 
 def version_id_param(req):
@@ -116,7 +120,7 @@ def check_ssec_headers(req, resp):
                 None, WRONG_MD5_VALUE)
 
 
-class ObjectController(Controller):
+class ObjectController(Controller, ConditionalWriteMixin):
     """
     Handles requests on objects
     """
@@ -382,6 +386,10 @@ class ObjectController(Controller):
                 # tostring returns bytes, headers are "wsgi"
                 req.headers[OBJECT_TAGGING_HEADER] = bytes_to_wsgi(tagging)
 
+        # Conditional write
+        if self.conf.enable_conditional_write:
+            self.check_conditional_match(req, use_hook=True)
+
         # Object lock
         object_lock_validate_headers(req.headers)
         object_lock_populate_sysmeta_headers(
@@ -408,7 +416,21 @@ class ObjectController(Controller):
         if not req.headers.get('Content-Type'):
             # can't setdefault because it can be None for some reason
             req.headers['Content-Type'] = DEFAULT_CONTENT_TYPE
-        resp = req.get_response(self.app, query=query)
+        try:
+            resp = req.get_response(self.app, query=query)
+        except PreconditionFailed:
+            if self.conf.enable_conditional_write:
+                # Adapt the error according to the hook result
+                hook_result = req.environ.pop(META_HOOK_RESULT_KEY, None)
+                if hook_result == HOOK_RESULT_NO_SUCH_KEY:
+                    raise NoSuchKey(req.object_name)
+                if hook_result == HOOK_RESULT_CONFLICT:
+                    condition = req.environ.pop(META_CONDITION_KEY, 'If-Match')
+                    raise ConditionalRequestConflict(Condition=condition)
+                if hook_result:
+                    condition = req.environ.pop(META_CONDITION_KEY, 'If-Match')
+                    raise PreconditionFailed(Condition=condition)
+            raise
 
         checksum_info = req.get_checksum_info()
         if checksum_info:
@@ -493,6 +515,24 @@ class ObjectController(Controller):
         Handle DELETE Object request
         """
         version_id = version_id_param(req)
+
+        if self.conf.enable_conditional_write:
+            # Conditional delete with a version ID is not supported by AWS
+            if version_id not in ('null', None) and req.if_match:
+                raise S3NotImplemented(
+                    'A header you provided implies functionality that is '
+                    'not implemented',
+                    Header='If-Match')
+
+            self.check_conditional_match(req)
+
+            # Signal to any future conditional PUT that a DELETE happened.
+            # Only signal for non version specific calls.
+            # Version specific deletes just remove one version and are not
+            # competing writes.
+            if version_id in ('null', None):
+                self.add_cache_conditional_write_delete(req)
+
         bypass_governance = req.environ.get(HEADER_BYPASS_GOVERNANCE, None)
         if bypass_governance is not None and \
                 bypass_governance.lower() == 'true':

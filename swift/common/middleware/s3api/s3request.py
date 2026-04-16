@@ -1600,9 +1600,11 @@ class S3Request(swob.Request):
                                       self.headers['X-Amz-Copy-Source'],
                                       msg)
 
-        if self.method == 'PUT' and any(h in self.headers for h in (
-                'If-Match', 'If-None-Match',
-                'If-Modified-Since', 'If-Unmodified-Since')):
+        unsupported_headers = ('If-Modified-Since', 'If-Unmodified-Since')
+        if not self.conf.enable_conditional_write:
+            unsupported_headers += ('If-Match', 'If-None-Match')
+        if self.method == 'PUT' and any(h in self.headers for h in
+                                        unsupported_headers):
             raise S3NotImplemented(
                 'Conditional object PUTs are not supported.')
 

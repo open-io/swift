@@ -214,6 +214,9 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             {sysmeta_header('object', 'mpu-aborted'): "true"},
             None
         )
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            swob.HTTPNotFound, {}, None)
 
     def _setup_deep_archive_object(self, restore_status=None):
         mp_manifest = self.segment_bucket[:-9] + \
@@ -844,27 +847,29 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.assertNotIn('Content-MD5', req_headers)
         if bucket_exists:
             self.assertEqual([
+                ('HEAD', '/v1/AUTH_test/bucket/object'),
                 ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ], self.swift.calls)
         else:
             self.assertEqual([
                 ('PUT', '/v1/AUTH_test/bucket+segments'),
+                ('HEAD', '/v1/AUTH_test/bucket/object'),
                 ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'),
             ], self.swift.calls)
             if expected_policy:
-                _, _, req_headers = self.swift.calls_with_headers[-2]
+                _, _, req_headers = self.swift.calls_with_headers[-3]
                 self.assertEqual(req_headers.get('X-Storage-Policy'),
                                  expected_policy)
 
             if expected_read_acl:
-                _, _, req_headers = self.swift.calls_with_headers[-2]
+                _, _, req_headers = self.swift.calls_with_headers[-3]
                 self.assertEqual(req_headers.get('X-Container-Read'),
                                  expected_read_acl)
             else:
                 self.assertNotIn('X-Container-Read', req_headers)
 
             if expected_write_acl:
-                _, _, req_headers = self.swift.calls_with_headers[-2]
+                _, _, req_headers = self.swift.calls_with_headers[-3]
                 self.assertEqual(req_headers.get('X-Container-Write'),
                                  expected_write_acl)
             else:
@@ -981,7 +986,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
     @patch('swift.common.middleware.s3api.controllers.multi_upload.'
            'unique_id', lambda: 'VXBsb2FkIElE')
     def _test_object_multipart_upload_initiate_s3acl(
-            self, cache, existance_cached, should_head, should_put):
+            self, cache, existence_cached, should_head, should_put):
         # mostly inlining stuff from @s3acl(s3_acl_only=True)
         self.s3api.conf.s3_acl = True
         self.swift.s3_acl = True
@@ -1004,16 +1009,22 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         status, headers, body = self.call_s3api(req)
         fromstring(body, 'InitiateMultipartUploadResult')
         self.assertEqual(status.split()[0], '200')
-        # This is the get_container_info existance check :'(
+        # This is the get_container_info existence check :'(
         expected = []
-        if not existance_cached:
+        if not existence_cached:
             expected.append(('HEAD', '/v1/AUTH_test/bucket'))
         if should_head:
             expected.append(('HEAD', '/v1/AUTH_test/bucket+segments'))
-        # XXX: For some reason check ACLs always does second HEAD (???)
-        expected.append(('HEAD', '/v1/AUTH_test/bucket'))
         if should_put:
+            expected.append(('HEAD', '/v1/AUTH_test/bucket'))
             expected.append(('PUT', '/v1/AUTH_test/bucket+segments'))
+        # Conditional write: snapshot existing object's etag
+        expected.append(('HEAD', '/v1/AUTH_test/bucket'))
+        expected.append(('HEAD', '/v1/AUTH_test/bucket/object'))
+        if not should_put:
+            # ACL check for PUT marker (skipped when should_put already
+            # checked ACLs)
+            expected.append(('HEAD', '/v1/AUTH_test/bucket'))
         expected.append(
             ('PUT', '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE'))
         self.assertEqual(expected, self.swift.calls)
@@ -1036,7 +1047,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register('HEAD', '/v1/AUTH_test/bucket+segments',
                             swob.HTTPNoContent, {}, None)
         kwargs = {
-            'existance_cached': False,
+            'existence_cached': False,
             'should_head': True,
             'should_put': False,
         }
@@ -1050,7 +1061,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             get_cache_key('AUTH_test', 'bucket+segments'): {'status': 204},
         })
         kwargs = {
-            'existance_cached': True,
+            'existence_cached': True,
             'should_head': False,
             'should_put': False,
         }
@@ -1067,7 +1078,7 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         self.swift.register('PUT', '/v1/AUTH_test/bucket+segments',
                             swob.HTTPCreated, {}, None)
         kwargs = {
-            'existance_cached': True,
+            'existence_cached': True,
             'should_head': False,
             'should_put': True,
         }

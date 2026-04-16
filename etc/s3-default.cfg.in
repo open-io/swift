@@ -35,6 +35,10 @@ sds_tls = False
 oio_storage_policies = EC21,THREECOPIES,TWOCOPIES,SINGLE
 auto_storage_policies = EC21,THREECOPIES:0,EC21:100000
 
+# Use HTTPS
+# cert_file = /path/to/proxy.cert
+# key_file = /path/to/proxy.key
+
 [pipeline:main]
 pipeline = catch_errors gatekeeper healthcheck s3-logging cache listing_formats bulk iam replication_ratelimit bucket_ratelimit replication s3api tempauth proxy-logging copy slo dlo versioned_writes symlink keymaster encryption proxy-logging proxy-server
 
@@ -178,6 +182,7 @@ retry_after = 1
 #enable_beta_features = true
 enable_encryption = true
 enable_restore_object = true
+enable_conditional_write = true
 backup_pepper = this-is-not-really-a-random-string-but-should-be-in-prod
 # Force SSE-S3 mode. Only one value is currently supported: AES256
 # If commented: root key if fallback_on_keymaster is True

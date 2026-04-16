@@ -942,6 +942,12 @@ class Redirect(ErrorResponse):
     _msg = 'Temporary redirect.'
 
 
+class ConditionalRequestConflict(ErrorResponse):
+    _status = '409 Conflict'
+    _msg = 'The conditional request cannot succeed due to a conflicting ' \
+           'operation against this resource.'
+
+
 class RestoreAlreadyInProgress(ErrorResponse):
     _status = '409 Conflict'
     _msg = 'Object restore is already in progress.'
