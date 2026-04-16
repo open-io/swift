@@ -1528,6 +1528,10 @@ class S3Request(swob.Request):
 
             if decoded_content < (self.content_length or 0):
                 raise IncompleteBody(
+                    backend_error=(
+                        'Decoded content length (%d) < '
+                        'Content-Length (%d) on query auth request'
+                        % (decoded_content, self.content_length)),
                     number_bytes_expected=decoded_content,
                     number_bytes_provided=self.content_length,
                 )
@@ -2594,8 +2598,10 @@ class S3Request(swob.Request):
     def _streaming_input_read(self):
         try:
             yield
-        except S3InputIncomplete:
-            raise IncompleteBody('The request body terminated unexpectedly')
+        except S3InputIncomplete as e:
+            raise IncompleteBody(
+                'The request body terminated unexpectedly',
+                backend_error='streaming input: %s' % e)
         except S3InputSHA256Mismatch as err:
             # hopefully by now any modifications to the path (e.g. tenant to
             # account translation) will have been made by auth middleware
@@ -2608,6 +2614,7 @@ class S3Request(swob.Request):
                 **self.signature_does_not_match_kwargs())
         except S3InputSizeError as e:
             raise IncompleteBody(
+                backend_error='streaming input: %s' % e,
                 number_bytes_expected=e.args[1],
                 number_bytes_provided=e.args[2],
             )
@@ -2616,8 +2623,9 @@ class S3Request(swob.Request):
                 chunk=e.args[1],
                 bad_chunk_size=e.args[0],
             )
-        except S3InputMalformedTrailer:
-            raise MalformedTrailerError
+        except S3InputMalformedTrailer as e:
+            raise MalformedTrailerError(
+                backend_error='streaming input: malformed trailer (%s)' % e)
         except S3InputSHA256Mismatch as err:
             raise XAmzContentSHA256Mismatch(
                 client_computed_content_s_h_a256=err.expected,
@@ -2627,10 +2635,12 @@ class S3Request(swob.Request):
             raise BadDigest(
                 'The %s you specified did not '
                 'match the calculated checksum.' % e.args[0])
-        except S3InputError:
+        except S3InputError as e:
             # All cases should be covered above, but belt & bracers
             # NB: general exception handler in s3api.py will log traceback
-            raise InternalError
+            raise InternalError(
+                backend_error='streaming input: unhandled %s: %s'
+                              % (type(e).__name__, e))
 
     def _get_response(self, app, method, container, obj,
                       headers=None, body=None, query=None):
