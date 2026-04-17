@@ -11,19 +11,17 @@ jobs:
         script: |+
           #!/bin/bash
           set -x
+          systemctl disable --now apt-daily.timer
+          systemctl disable --now apt-daily-upgrade.timer
           . .cds/versions
-          export DEBIAN_FRONTEND=noninteractive
-          echo "deb [trusted=yes] http://read:{{.cds.proj.private_ovh_objectstorage_openio_read_password}}@last-private-ovh-objectstorage-openio.snap-priv.mirrors.ovh.net/ubuntu focal/main main" >> /etc/apt/sources.list.d/obsto.list
-          echo "deb [trusted=yes] http://last-public-ovh-pcs.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/obsto.list
-          echo "deb [trusted=yes] http://last-public.canonical.ubuntu.archive.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/snapmirror-focal.list
-          echo "deb [trusted=yes] http://last-public.canonical.ubuntu.archive.snap.mirrors.ovh.net/ubuntu focal-updates main" >> /etc/apt/sources.list.d/snapmirror-focal.list
-          # Docker repo for docker compose plugin should be removed after https://jira.ovhcloud.tools/browse/CORDEV-2545 completion
+          . .cds/configure-repositories.sh
+          # We don't need Docker in this test workflow
           sed -i '/docker-compose-plugin/d' .cds/deps-ubuntu-focal.txt
           # Tox will be installed later with pip (to be able to control its version)
           sed -i '/tox/d' .cds/deps-ubuntu-focal.txt
-          apt update
-
-          apt install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE} cargo-${RUST_VERSION}
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${PYTHON_PACKAGE} cargo-${RUST_VERSION}
           echo "export PATH=/opt/${PYTHON_PACKAGE}/bin:/usr/lib/rust-${RUST_VERSION}/bin:$PATH" > $HOME/swift-env.sh
           echo "export PIP_INDEX_URL=https://${PYPI_SNAPSHOT}-pypi.snap.mirrors.ovh.net/simple/" >> $HOME/swift-env.sh
           source $HOME/swift-env.sh

@@ -11,23 +11,14 @@ jobs:
         script: |+
           #!/bin/bash
           set -x
+          systemctl disable --now apt-daily.timer
+          systemctl disable --now apt-daily-upgrade.timer
           . .cds/versions
+          . .cds/configure-repositories.sh
 
           # --- Packages ---
           export DEBIAN_FRONTEND=noninteractive
-          echo "deb [trusted=yes] http://read:{{.cds.proj.private_ovh_objectstorage_openio_read_password}}@last-private-ovh-objectstorage-openio.snap-priv.mirrors.ovh.net/ubuntu focal/main main" >> /etc/apt/sources.list.d/obsto.list
-          echo "deb [trusted=yes] http://last-public-ovh-pcs.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/obsto.list
-          echo "deb [trusted=yes] http://last-public.canonical.ubuntu.archive.snap.mirrors.ovh.net/ubuntu focal main" >> /etc/apt/sources.list.d/snapmirror-focal.list
-          echo "deb [trusted=yes] http://last-public.canonical.ubuntu.archive.snap.mirrors.ovh.net/ubuntu focal-updates main" >> /etc/apt/sources.list.d/snapmirror-focal.list
-          # Docker repo for docker compose plugin should be removed after https://jira.ovhcloud.tools/browse/CORDEV-2545 completion
-          sudo install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-          sudo chmod a+r /etc/apt/keyrings/docker.gpg
-          echo \
-            "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-            "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          apt update
+          apt-get update
           # rabbitmq-server is not is the list as only necessary for oio-tests
           apt-get install -y rabbitmq-server $(tr '\n' ' ' < .cds/deps-ubuntu-focal.txt) ${GO_PACKAGE} ${PYTHON_PACKAGE} ${ZOOKEEPER_PACKAGE}
           systemctl stop redis.service
