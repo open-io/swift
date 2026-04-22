@@ -93,7 +93,7 @@ from swift.common.middleware.s3api.controllers.tagging import \
     HTTP_HEADER_TAGGING_KEY, OBJECT_TAGGING_HEADER, tagging_header_to_xml
 from swift.common.middleware.s3api.exception import S3InputChecksumMismatch
 from swift.common.middleware.s3api.s3response import BrokenMPU, \
-    InvalidArgument, ErrorResponse, MalformedXML, BadDigest, \
+    InvalidArgument, ErrorResponse, MalformedXML, BadDigest, InternalError, \
     InvalidPart, BucketAlreadyExists, EntityTooSmall, InvalidPartOrder, \
     InvalidRequest, HTTPOk, HTTPNoContent, NoSuchKey, NoSuchUpload, \
     NoSuchBucket, BucketAlreadyOwnedByYou, NoSuchVersion, InvalidPartNumber, \
@@ -1115,7 +1115,19 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         # Because the parts are out of order in Swift, we list up to the
         # maximum number of parts and then apply the marker and limit options.
         objects = []
+        previous_marker = None
         while True:
+            current_marker = query.get('marker')
+            if previous_marker is not None \
+                    and previous_marker == current_marker:
+                error_message = (
+                    'Pagination loop detected while listing parts of '
+                    '%s/%s: marker %r did not advance (reqid=%s)' % (
+                        container, object_name, current_marker,
+                        req.trans_id)
+                )
+                raise InternalError(reason=error_message)
+            previous_marker = current_marker
             resp = req.get_response(self.app, container=container, obj='',
                                     query=query)
             new_objects = json.loads(resp.body)
