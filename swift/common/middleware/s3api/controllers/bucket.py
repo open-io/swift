@@ -107,7 +107,16 @@ class BucketController(Controller):
         # Request the master for an up-to-date list
         oio_query['force_master'] = True
         try:
+            previous_marker = None
             while True:
+                if previous_marker is not None and previous_marker == marker:
+                    error_message = (
+                        'Pagination loop detected while listing segments '
+                        'of %s: marker %r did not advance (reqid=%s)' % (
+                            container, marker, req.trans_id)
+                    )
+                    raise InternalError(reason=error_message)
+                previous_marker = marker
                 # delete all segments
                 resp = req.get_response(self.app, 'GET', container,
                                         query={'format': 'json',
