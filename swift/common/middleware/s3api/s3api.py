@@ -814,6 +814,10 @@ class S3ApiMiddleware(object):
             start_response('200 OK', headers)
             return [b'']
 
+        # Need to store those info because they might be dropped from the req.
+        has_if_match = 'HTTP_IF_MATCH' in env
+        has_if_none_match = 'HTTP_IF_NONE_MATCH' in env
+
         try:
             # XXX(FVE): this should be done in an independent middleware
             if self.bucket_db:
@@ -868,6 +872,16 @@ class S3ApiMiddleware(object):
             err_resp = InternalError(reason=str(e))
             env.setdefault('s3api.info', {})['error_code'] = err_resp._code
             resp = err_resp
+
+        # Populate error_detail with conditional header info
+        s3api_info = env.setdefault('s3api.info', {})
+        if has_if_match or has_if_none_match:
+            cond = 'IfMatch' if has_if_match else 'IfNoneMatch'
+            existing = s3api_info.get('error_detail')
+            if not existing:
+                s3api_info['error_detail'] = cond
+            elif 'Condition=' not in existing:
+                s3api_info['error_detail'] = existing + ',' + cond
 
         if isinstance(resp, S3ResponseBase) and 'swift.trans_id' in env:
             resp.headers['x-amz-id-2'] = env['swift.trans_id']
