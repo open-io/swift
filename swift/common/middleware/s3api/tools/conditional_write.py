@@ -19,12 +19,15 @@ from swift.common.swob import Response, normalize_etag, Match
 from swift.common.middleware.versioned_writes.object_versioning import (
     DELETE_MARKER_CONTENT_TYPE,
 )
+from swift.common.middleware.crypto.crypto_utils import SSEC_ALGO_HEADER
+
 from swift.common.middleware.s3api.s3response import (
     ConditionalRequestConflict,
     ErrorResponse,
     InternalError,
     NoSuchKey,
     PreconditionFailed,
+    S3NotImplemented,
     ServiceUnavailable,
 )
 
@@ -285,6 +288,13 @@ class ConditionalWriteMixin(object):
         """
         if not req.if_match and not req.if_none_match:
             return
+
+        if SSEC_ALGO_HEADER in req.headers:
+            if req.if_match:
+                header = 'If-Match'
+            else:
+                header = 'If-None-Match'
+            raise S3NotImplemented(f"SSEC not implemented with {header}")
 
         oiocache = req.environ.get("oio.cache")
         if oiocache is None:
