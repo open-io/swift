@@ -1580,15 +1580,13 @@ class TestS3ApiObj(S3ApiTestCase):
         header = {'X-Amz-Copy-Source-If-Match': etag,
                   'Date': self.get_date_header()}
         status, header, body = \
-            self._test_object_PUT_copy(swob.HTTPPreconditionFailed,
-                                       header)
-        self.assertEqual(self._get_error_code(body), 'PreconditionFailed')
+            self._test_object_PUT_copy(swob.HTTPOk, header)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
 
         header = {'X-Amz-Copy-Source-If-None-Match': etag}
         status, header, body = \
-            self._test_object_PUT_copy(swob.HTTPNotModified,
-                                       header)
-        self.assertEqual(self._get_error_code(body), 'PreconditionFailed')
+            self._test_object_PUT_copy(swob.HTTPOk, header)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
 
         header = {'X-Amz-Copy-Source-If-Modified-Since': last_modified_since}
         status, header, body = \
@@ -1612,14 +1610,7 @@ class TestS3ApiObj(S3ApiTestCase):
                   'Date': self.get_date_header()}
         status, header, body = \
             self._test_object_PUT_copy(swob.HTTPOk, header)
-        self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 4)
-        _, _, headers = self.swift.calls_with_headers[-1]
-        self.assertTrue(headers.get('If-Match') is None)
-        self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[2]
-        self.assertEqual(headers['If-Match'], etag)
-        self.assertEqual(headers['If-Modified-Since'], last_modified_since)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
 
     @s3acl(s3acl_only=True)
     def test_object_PUT_copy_headers_with_match_and_s3acl(self):
@@ -1631,20 +1622,7 @@ class TestS3ApiObj(S3ApiTestCase):
                   'Date': self.get_date_header()}
         status, header, body = \
             self._test_object_PUT_copy(swob.HTTPOk, header)
-
-        self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 3)
-        # After the check of the copy source in the case of s3acl is valid,
-        # s3api check the bucket write permissions of the destination.
-        _, _, headers = self.swift.calls_with_headers[-2]
-        self.assertTrue(headers.get('If-Match') is None)
-        self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[-1]
-        self.assertTrue(headers.get('If-Match') is None)
-        self.assertTrue(headers.get('If-Modified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[0]
-        self.assertEqual(headers['If-Match'], etag)
-        self.assertEqual(headers['If-Modified-Since'], last_modified_since)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
 
     def test_object_PUT_copy_headers_with_not_match(self):
         etag = '7dfa07a8e59ddbcd1dc84d4c4f82aea1'
@@ -1655,15 +1633,7 @@ class TestS3ApiObj(S3ApiTestCase):
                   'Date': self.get_date_header()}
         status, header, body = \
             self._test_object_PUT_copy(swob.HTTPOk, header)
-
-        self.assertEqual(status.split()[0], '200')
-        self.assertEqual(len(self.swift.calls_with_headers), 4)
-        _, _, headers = self.swift.calls_with_headers[-1]
-        self.assertTrue(headers.get('If-None-Match') is None)
-        self.assertTrue(headers.get('If-Unmodified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[2]
-        self.assertEqual(headers['If-None-Match'], etag)
-        self.assertEqual(headers['If-Unmodified-Since'], last_modified_since)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
 
     @s3acl(s3acl_only=True)
     def test_object_PUT_copy_headers_with_not_match_and_s3acl(self):
@@ -1675,16 +1645,21 @@ class TestS3ApiObj(S3ApiTestCase):
                   'Date': self.get_date_header()}
         status, header, body = \
             self._test_object_PUT_copy(swob.HTTPOk, header)
-        self.assertEqual(status.split()[0], '200')
-        # After the check of the copy source in the case of s3acl is valid,
-        # s3api check the bucket write permissions of the destination.
-        self.assertEqual(len(self.swift.calls_with_headers), 3)
-        _, _, headers = self.swift.calls_with_headers[-1]
-        self.assertTrue(headers.get('If-None-Match') is None)
-        self.assertTrue(headers.get('If-Unmodified-Since') is None)
-        _, _, headers = self.swift.calls_with_headers[0]
-        self.assertEqual(headers['If-None-Match'], etag)
-        self.assertEqual(headers['If-Unmodified-Since'], last_modified_since)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
+
+    def test_object_PUT_copy_with_if_match(self):
+        header = {'If-Match': '"some-etag"',
+                  'Date': self.get_date_header()}
+        status, header, body = \
+            self._test_object_PUT_copy(swob.HTTPOk, header)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
+
+    def test_object_PUT_copy_with_if_none_match(self):
+        header = {'If-None-Match': '"some-etag"',
+                  'Date': self.get_date_header()}
+        status, header, body = \
+            self._test_object_PUT_copy(swob.HTTPOk, header)
+        self.assertEqual(self._get_error_code(body), 'NotImplemented')
 
     @s3acl
     def test_object_POST_error(self):

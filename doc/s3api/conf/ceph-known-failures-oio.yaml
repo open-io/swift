@@ -82,6 +82,10 @@ ceph_s3:
   s3tests_boto3.functional.test_s3.test_bucketv2_policy_acl: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_bucketv2_policy_another_bucket: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_bucketv2_policy_different_tenant: {status: KNOWN}
+  s3tests_boto3.functional.test_s3.test_copy_object_ifmatch_good: {status: KNOWN}
+  s3tests_boto3.functional.test_s3.test_copy_object_ifmatch_failed: {status: KNOWN}
+  s3tests_boto3.functional.test_s3.test_copy_object_ifnonematch_good: {status: KNOWN}
+  s3tests_boto3.functional.test_s3.test_copy_object_ifnonematch_failed: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_cors_origin_response: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_cors_origin_wildcard: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_cors_presigned_get_object_tenant_v2: {status: KNOWN}

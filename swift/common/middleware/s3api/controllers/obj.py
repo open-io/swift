@@ -378,6 +378,15 @@ class ObjectController(Controller, ConditionalWriteMixin):
                                   req.headers['X-Amz-Copy-Source-Range'],
                                   'Illegal copy header')
 
+        # Conditional headers are not supported on CopyObject
+        if 'X-Amz-Copy-Source' in req.headers:
+            for header in ('If-Match', 'If-None-Match',
+                           'X-Amz-Copy-Source-If-Match',
+                           'X-Amz-Copy-Source-If-None-Match'):
+                if header in req.headers:
+                    raise S3NotImplemented(
+                        f"Copy object not implemented with {header}")
+
         if HTTP_HEADER_TAGGING_KEY in req.headers:
             # Headers are always "wsgi"
             tagging = tagging_header_to_xml(
