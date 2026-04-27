@@ -146,6 +146,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_restore_object': True,
             'token_prefix': "",
             'backup_pepper': None,
+            'delete_slo_parts': False,
         })
         s3api = S3ApiMiddleware(None, {})
         self.assertEqual(expected, s3api.conf)
@@ -202,6 +203,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
             'enable_encryption': True,
             'token_prefix': '',
             'backup_pepper': True,
+            'delete_slo_parts': True,
         }
         s3api = S3ApiMiddleware(None, conf)
         conf['cors_preflight_allow_origin'] = \

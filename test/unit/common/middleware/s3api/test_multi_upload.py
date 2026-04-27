@@ -2068,6 +2068,35 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
             self.swift.calls)
 
     @s3acl
+    def test_object_multipart_upload_abort_delete_slo_parts(self):
+        # When delete_slo_parts is enabled, parts are deleted synchronously
+        # in reverse order, then the marker is deleted (no slo_manifest=1).
+        self.s3api.conf.delete_slo_parts = True
+        req = Request.blank('/bucket/object?uploadId=VXBsb2FkIElE',
+                            environ={'REQUEST_METHOD': 'DELETE'},
+                            headers={'Authorization': 'AWS test:tester:hmac',
+                                     'Date': self.get_date_header()})
+        status, headers, body = self.call_s3api(req)
+        self.assertEqual(status.split()[0], '204')
+        # Parts must be listed synchronously
+        self.assertTrue(any(
+            method == 'GET' and 'prefix=object%2FVXBsb2FkIElE%2F' in path
+            for method, path in self.swift.calls))
+        # Marker is deleted plainly (no slo_manifest=1)
+        self.assertNotIn(
+            ('DELETE',
+             self.segment_bucket + '/object/VXBsb2FkIElE?slo_manifest=1'),
+            self.swift.calls)
+        # Parts deleted in reverse order, then marker last
+        self.assertEqual([
+            path for method, path in self.swift.calls if method == 'DELETE'
+        ], [
+            self.segment_bucket + '/object/VXBsb2FkIElE/2',
+            self.segment_bucket + '/object/VXBsb2FkIElE/1',
+            self.segment_bucket + '/object/VXBsb2FkIElE',
+        ])
+
+    @s3acl
     def test_upload_part_aborted_mpu(self):
         self.swift.register(
             'HEAD', self.segment_bucket + '/object/VXBsb2FkIElE',
@@ -2677,6 +2706,31 @@ class TestS3ApiMultiUpload(S3ApiTestCase):
         ], [
             '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE?'
             'slo_manifest=1',
+        ])
+
+    @s3acl(s3acl_only=True)
+    def test_abort_multipart_upload_acl_with_fullcontrol_permission_sync(self):
+        # Same as the async ACL test, but with delete_slo_parts=True so parts
+        # are deleted synchronously in reverse order, then the marker.
+        self.s3api.conf.delete_slo_parts = True
+        self.swift.register(
+            'HEAD', '/v1/AUTH_test/bucket/object',
+            swob.HTTPNotFound,
+            {'x-object-meta-foo': 'bar',
+             'content-type': 'application/directory',
+             'x-object-sysmeta-s3api-has-content-type': 'yes',
+             'x-object-sysmeta-s3api-content-type':
+             'baz/quux'}, None)
+        status, headers, body = \
+            self._test_for_s3acl('DELETE', '?uploadId=VXBsb2FkIElE',
+                                 'test:full_control')
+        self.assertEqual(status.split()[0], '204')
+        self.assertEqual([
+            path for method, path in self.swift.calls if method == 'DELETE'
+        ], [
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/2',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE/1',
+            '/v1/AUTH_test/bucket+segments/object/VXBsb2FkIElE',
         ])
 
     @s3acl(s3acl_only=True)

@@ -322,6 +322,8 @@ class S3ApiMiddleware(object):
             wsgi_conf.get('force_swift_request_proxy_log', False))
         self.conf.allow_multipart_uploads = config_true_value(
             wsgi_conf.get('allow_multipart_uploads', True))
+        self.conf.delete_slo_parts = config_true_value(
+            wsgi_conf.get('delete_slo_parts', False))
         self.conf.min_segment_size = config_positive_int_value(
             wsgi_conf.get('min_segment_size', 5242880))
         self.conf.allowable_clock_skew = config_positive_int_value(
