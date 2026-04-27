@@ -782,6 +782,13 @@ use = egg:swift#s3api
 # middleware.(specification of S3: 10000)
 # max_upload_part_num = 1000
 #
+# On AbortMultipartUpload, delete uploaded segments synchronously in reverse
+# order from the s3api middleware itself, instead of relying on the proxy
+# backend's asynchronous SLO parts deletion. Reverse-order deletion prevents
+# races between abort and complete (the complete fails safely if a part is
+# missing). (default: false)
+# delete_slo_parts = false
+#
 # Enable returning only buckets which owner are the user who requested
 # GET Service operation. (default: false)
 # If you want to enable the above feature, set this and s3_acl to true.

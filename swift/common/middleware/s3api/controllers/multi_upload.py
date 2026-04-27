@@ -1224,15 +1224,56 @@ class UploadController(Controller, LifecycleAbortDateMixin):
         except NoSuchKey:
             raise NoSuchUpload(upload_id=upload_id)
 
-        # Delete the marker with slo_manifest=True
-        # so the backend delete the parts asynchronously.
         try:
-            req.get_response(
-                self.app,
-                container=segment_container,
-                obj=marker,
-                query={'slo_manifest': '1'},
-            )
+            if self.conf.delete_slo_parts:
+                # The marker was found so this
+                # must be a multipart upload abort.
+                # We must delete any uploaded segments for this UploadID.
+                # To prevent conflicts between abort and complete operations,
+                # MPU parts are deleted in reverse order. This ensures that
+                # an abort can always remove parts before a complete, causing
+                # the complete to fail safely if necessary.
+
+                object_name = wsgi_to_str(req.object_name)
+                query = {
+                    'format': 'json',
+                    'prefix': '%s/%s/' % (object_name, upload_id),
+                    'delimiter': '/',
+                }
+
+                resp = req.get_response(
+                    self.app,
+                    'GET',
+                    segment_container,
+                    '',
+                    query=query,
+                )
+                total_objects = []
+                objects = json.loads(resp.body)
+                while objects:
+                    total_objects.extend(objects)
+                    query['marker'] = objects[-1]['name']
+                    resp = req.get_response(
+                        self.app, 'GET', segment_container, '', query=query)
+                    objects = json.loads(resp.body)
+                # Iterate over the segment objects in reversed order
+                # and delete them individually
+                for o in reversed(total_objects):
+                    obj = bytes_to_wsgi(o['name'].encode('utf-8'))
+                    req.get_response(
+                        self.app, container=segment_container, obj=obj)
+                # Finally remove the marker itself
+                req.get_response(
+                    self.app, container=segment_container, obj=marker)
+            else:
+                # Delete the marker with slo_manifest=True
+                # so the backend delete the parts asynchronously.
+                req.get_response(
+                    self.app,
+                    container=segment_container,
+                    obj=marker,
+                    query={'slo_manifest': '1'},
+                )
         except NoSuchKey as exc:
             self.logger.warning(
                 "Failed to delete MPU marker %s in %s. It was likely removed "
