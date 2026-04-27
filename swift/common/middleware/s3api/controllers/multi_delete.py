@@ -46,6 +46,8 @@ class MultiObjectDeleteController(Controller):
     operation in the S3 server log.
     """
 
+    param_resource = 'delete'
+
     _iam_map = {
         'BATCH.DELETE.OBJECT': 's3:DeleteObject',
     }

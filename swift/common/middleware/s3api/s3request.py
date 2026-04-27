@@ -56,13 +56,16 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     ObjectController, AclController, MultiObjectDeleteController, \
     LocationController, LoggingStatusController, PartController, \
     UploadController, UploadsController, VersioningController, \
-    UnsupportedController, S3AclController, BucketController, \
+    S3AclController, BucketController, \
     TaggingController, UniqueBucketController, CorsController, \
     LifecycleController, IntelligentTieringController, BucketLockController, \
     ObjectLockRetentionController, ObjectLockLegalHoldController, \
     S3WebsiteController, WebsiteController, ReplicationController, \
     EncryptionController, RestoreObjectController, \
-    ObjectAttributesController
+    AccelerateController, AnalyticsController, AttributesController, \
+    InventoryController, MetricsController, NotificationController, \
+    OwnershipControlsController, PolicyController, PolicyStatusController, \
+    PublicAccessBlockController, RequestPaymentController, TorrentController
 from swift.common.middleware.s3api.s3response import AccessDenied, \
     InvalidArgument, InvalidDigest, BucketAlreadyOwnedByYou, \
     InvalidObjectState, RequestTimeTooSkewed, S3Response, \
@@ -107,6 +110,48 @@ ALLOWED_SUB_RESOURCES = sorted([
     'response-content-type', 'response-expires', 'cors', 'tagging', 'restore',
     'object-lock'
 ])
+
+
+# Maps query-string sub-resource names to their controller class.
+_PARAM_CONTROLLERS = {
+    cls.param_resource: cls
+    for cls in (
+        AccelerateController,
+        AclController,  # S3AclController is handled separately in S3AclRequest
+        AnalyticsController,
+        AttributesController,
+        BucketLockController,
+        CorsController,
+        EncryptionController,
+        IntelligentTieringController,
+        InventoryController,
+        LifecycleController,
+        LocationController,
+        LoggingStatusController,
+        MetricsController,
+        MultiObjectDeleteController,
+        NotificationController,
+        ObjectLockLegalHoldController,
+        ObjectLockRetentionController,
+        OwnershipControlsController,
+        # PartController must come before UploadController: an UploadPart
+        # request carries both 'partNumber' and 'uploadId' query parameters
+        # and must be routed to PartController.
+        PartController,
+        PolicyController,
+        PolicyStatusController,
+        PublicAccessBlockController,
+        ReplicationController,
+        RequestPaymentController,
+        RestoreObjectController,
+        TaggingController,
+        TorrentController,
+        UploadController,
+        UploadsController,
+        VersioningController,
+        WebsiteController,
+    )
+}
 
 
 MAX_32BIT_INT = 2147483647
@@ -2089,51 +2134,16 @@ class S3Request(swob.Request):
             if len([p for p in multi_part if p in self.params]):
                 raise S3NotImplemented("Multi-part feature isn't support")
 
-        if 'acl' in self.params:
-            return AclController
-        if 'cors' in self.params:
-            return CorsController
-        if 'delete' in self.params:
-            return MultiObjectDeleteController
-        if 'encryption' in self.params:
-            return EncryptionController
-        if 'intelligent-tiering' in self.params:
-            return IntelligentTieringController
-        if 'lifecycle' in self.params:
-            return LifecycleController
-        if 'location' in self.params:
-            return LocationController
-        if 'logging' in self.params:
-            return LoggingStatusController
-        if 'object-lock' in self.params:
-            return BucketLockController
-        if 'retention' in self.params:
-            return ObjectLockRetentionController
-        if 'restore' in self.params:
-            return RestoreObjectController
-        if 'legal-hold' in self.params:
-            return ObjectLockLegalHoldController
-        if 'partNumber' in self.params:
-            return PartController
-        if 'replication' in self.params:
-            return ReplicationController
-        if 'uploadId' in self.params:
-            return UploadController
-        if 'uploads' in self.params:
-            return UploadsController
-        if 'versioning' in self.params:
-            return VersioningController
-        if 'website' in self.params:
-            return WebsiteController
-        if 'tagging' in self.params:
-            return TaggingController
-        if 'attributes' in self.params:
-            return ObjectAttributesController
-
-        unsupported = ('notification', 'policy',
-                       'requestPayment', 'torrent', 'restore')
-        if set(unsupported) & set(self.params):
-            return UnsupportedController
+        # Iterate _PARAM_CONTROLLERS rather than self.params so that
+        # priority between sub-resources is deterministic (defined by the
+        # dict order) and not dependent on the order of query parameters.
+        # In particular, an UploadPart request carries both 'partNumber'
+        # and 'uploadId' and must be routed to PartController, which the
+        # dict order guarantees as long as 'partNumber' appears before
+        # 'uploadId'.
+        for param, ctrl in _PARAM_CONTROLLERS.items():
+            if param in self.params:
+                return ctrl
 
         if self.is_object_request:
             return ObjectController
@@ -3270,7 +3280,10 @@ class S3AclRequest(S3Request):
         if self.is_website:
             return S3WebsiteController
 
-        if 'acl' in self.params and not self.is_service_request:
+        if (
+            S3AclController.param_resource in self.params
+            and not self.is_service_request
+        ):
             return S3AclController
         return super(S3AclRequest, self)._get_controller()
 

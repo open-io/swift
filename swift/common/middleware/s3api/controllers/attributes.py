@@ -44,7 +44,7 @@ VALID_OBJECT_ATTRIBUTES = frozenset([
 ])
 
 
-class ObjectAttributesController(Controller):
+class AttributesController(Controller):
     """
     Handles the GetObjectAttributes API.
 

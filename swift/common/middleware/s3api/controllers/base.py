@@ -303,7 +303,35 @@ class Controller(object):
 
 class UnsupportedController(Controller):
     """
-    Handles unsupported requests.
+    Base controller for S3 sub-resources that are not yet implemented.
+
+    All HTTP verbs return a 501 Not Implemented response. Subclasses only
+    need to set ``param_resource``, ``bucket_resource_type``, and/or
+    ``object_resource_type`` so that :meth:`get_s3_operation` can build the
+    correct ``REST.METHOD.RESOURCE`` log entry before the error is raised.
     """
-    def __init__(self, app, conf, logger, **kwargs):
-        raise S3NotImplemented('The requested resource is not implemented')
+
+    @ratelimit
+    @public
+    def GET(self, req):
+        raise S3NotImplemented()
+
+    @ratelimit
+    @public
+    def PUT(self, req):
+        raise S3NotImplemented()
+
+    @ratelimit
+    @public
+    def DELETE(self, req):
+        raise S3NotImplemented()
+
+    @ratelimit
+    @public
+    def HEAD(self, req):
+        raise S3NotImplemented()
+
+    @ratelimit
+    @public
+    def POST(self, req):
+        raise S3NotImplemented()

@@ -259,7 +259,7 @@ class UniqueBucketAclHandler(BucketAclHandler):
 
 class ObjectAttributesAclHandler(BaseAclHandler):
     """
-    ObjectAttributesAclHandler: Handler for ObjectAttributesController
+    ObjectAttributesAclHandler: Handler for AttributesController
     """
     def GET(self, app):
         # Need for internal « ListPart » to get parts checksums

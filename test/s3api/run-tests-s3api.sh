@@ -20,7 +20,8 @@ export PYTHONPATH="$PYTHONPATH:$(pwd)"
 run_functional_test etc/s3-default.cfg \
     ../../test/s3api/test_input_errors.py \
     ../../test/s3api/test_object_checksums.py \
-    ../../test/s3api/test_encryption.py
+    ../../test/s3api/test_encryption.py \
+    ../../test/s3api/test_unsupported_operations.py
 #    ../../test/s3api/
 
 exit $RET
