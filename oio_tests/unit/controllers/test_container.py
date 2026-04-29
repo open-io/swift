@@ -154,3 +154,30 @@ class TestContainerController(unittest.TestCase):
         controller, _ = self.app.get_controller(req)
         res = controller(self.app, "a", "c").update_data_record(broken_record)
         self.assertEqual(expected, res)
+
+    def test_update_data_record_storage_policy(self):
+        record = {
+            "name": "myobj",
+            "size": 100,
+            "mtime": 1731940635,
+            "version": 1731940635000000,
+            "policy": "EC21",
+        }
+        req = Request.blank('/v1/a/c', method='GET')
+        controller, _ = self.app.get_controller(req)
+        res = controller(self.app, "a", "c").update_data_record(record)
+        self.assertEqual("EC21", res["storage_policy"])
+
+    def test_update_data_record_target_policy(self):
+        record = {
+            "name": "myobjwithtargetpolicy",
+            "size": 100,
+            "mtime": 1731940635,
+            "version": 1731940635000000,
+            "policy": "EC21",
+            "target-policy": "THREECOPIES",
+        }
+        req = Request.blank('/v1/a/c', method='GET')
+        controller, _ = self.app.get_controller(req)
+        res = controller(self.app, "a", "c").update_data_record(record)
+        self.assertEqual("THREECOPIES", res["storage_policy"])

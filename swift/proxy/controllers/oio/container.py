@@ -280,7 +280,7 @@ class ContainerController(SwiftContainerController):
         else:
             response['content_type'] = \
                 record.get('mime_type') or 'application/octet-stream'
-        storage_policy = record.get('policy')
+        storage_policy = record.get('target-policy') or record.get('policy')
         if storage_policy:
             response['storage_policy'] = storage_policy
         if versions:
