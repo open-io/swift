@@ -1061,6 +1061,7 @@ class S3Request(swob.Request):
         self._secret = None
         self._chunk_signature_valid = True
         self._checksum_input = None
+        self._controller = None
         self.app = app
         self.callback_resp = None
 
@@ -2070,6 +2071,11 @@ class S3Request(swob.Request):
 
     @property
     def controller(self):
+        if self._controller is None:
+            self._controller = self._get_controller()
+        return self._controller
+
+    def _get_controller(self):
         if self.is_website:
             return S3WebsiteController
 
@@ -3258,14 +3264,13 @@ class S3AclRequest(S3Request):
             self.storage_class_domain,
         ) = self._get_storage_class_after_authentication()
 
-    @property
-    def controller(self):
+    def _get_controller(self):
         if self.is_website:
             return S3WebsiteController
 
         if 'acl' in self.params and not self.is_service_request:
             return S3AclController
-        return super(S3AclRequest, self).controller
+        return super(S3AclRequest, self)._get_controller()
 
     def authenticate(self, app):
         """
