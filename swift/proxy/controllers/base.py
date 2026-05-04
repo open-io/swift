@@ -279,7 +279,7 @@ def headers_from_container_info(info):
     headers['x-storage-policy'] = POLICIES[int(policy_index)].name
     prefix = get_user_meta_prefix('container')
     headers.update(
-        (prefix + k, v)
+        (prefix + k, str_to_wsgi(v) if isinstance(v, str) else v)
         for k, v in info.get('meta', {}).items())
     for hdr, key in cors_optional:
         try:
@@ -288,7 +288,7 @@ def headers_from_container_info(info):
             pass
     prefix = get_sys_meta_prefix('container')
     headers.update(
-        (prefix + k, v)
+        (prefix + k, str_to_wsgi(v) if isinstance(v, str) else v)
         for k, v in info.get('sysmeta', {}).items())
 
     return headers

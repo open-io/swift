@@ -43,6 +43,7 @@ from test.unit import (
 from swift.common.request_helpers import (
     get_sys_meta_prefix, get_object_transient_sysmeta
 )
+from swift.common.swob import wsgi_to_str
 
 
 class FakeResponse(object):
@@ -843,6 +844,43 @@ class TestFuncs(BaseTest):
             incomplete_expected.pop('X-Container-Meta-' + hdr)
             self.assertEqual(incomplete_expected,
                              headers_from_container_info(incomplete_info))
+
+    def test_headers_from_container_meta_non_ascii(self):
+        # U+202F: Narrow No-Break Space
+        tagging_xml = (
+            '<Tagging><TagSet><Tag><Key>Key</Key><Value>1\u202f2</Value></Tag>'
+            '</TagSet></Tagging>'
+        )
+
+        info = {
+            'status': 200,
+            'read_acl': None,
+            'write_acl': None,
+            'sync_to': None,
+            'sync_key': None,
+            'object_count': 0,
+            'bytes': 0,
+            'versions': None,
+            'storage_policy': '0',
+            'cors': {},
+            'created_at': '123.456_12',
+            'put_timestamp': '234.567_34',
+            'delete_timestamp': '345_67',
+            'status_changed_at': '246.8_9',
+            'meta': {'tag-info': tagging_xml},
+            'sysmeta': {'s3api-tagging': tagging_xml},
+            'sharding_state': 'unsharded',
+        }
+
+        res = headers_from_container_info(info)
+        self.assertIsNotNone(res)
+
+        self.assertIn(
+            '1\u202f2', wsgi_to_str(res['X-Container-Sysmeta-S3Api-Tagging']),
+        )
+        self.assertIn(
+            '1\u202f2', wsgi_to_str(res['X-Container-Meta-Tag-Info']),
+        )
 
     def test_container_info_needs_req(self):
         base = Controller(self.app)
