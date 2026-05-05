@@ -36,6 +36,7 @@ echo "############################################################"
 echo ""
 sed \
   -e "s#%IAM_RULES_CONN%#${CONN_STR}#g" \
+  -e "s/^#accept_absolute_form_requests = True$/accept_absolute_form_requests = True/" \
   etc/s3-default.cfg.in \
   > etc/s3-default.cfg
 export COV_CONTEXT="ceph-s3-tests"

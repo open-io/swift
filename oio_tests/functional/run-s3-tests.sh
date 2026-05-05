@@ -19,6 +19,7 @@ RET=0
 # Run all suites in the same environment.
 # They do not share buckets so this should be OK.
 cp etc/s3-default.cfg.in etc/s3-default.cfg
+sed -i "s/^#accept_absolute_form_requests = True$/accept_absolute_form_requests = True/" etc/s3-default.cfg
 run_functional_test s3-default.cfg \
     s3-presigned.py \
     s3-bucket-db.sh \
@@ -31,7 +32,8 @@ run_functional_test s3-default.cfg \
     bucket-log-deliverer.py \
     s3-acl.py \
     s3-xxe-injection.py \
-    s3-server-side-copy.py
+    s3-server-side-copy.py \
+    s3-absolute-form.py
 
 configure_aws
 run_functional_test s3-default.cfg \

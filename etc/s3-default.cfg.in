@@ -277,6 +277,7 @@ allow_account_management = True
 sds_chunk_checksum_algo = blake3
 account_autocreate = True
 #require_proxy_protocol = True
+#accept_absolute_form_requests = True
 
 [filter:replication]
 use = egg:swift#replication
