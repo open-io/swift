@@ -36,6 +36,7 @@ from io import BytesIO
 
 import six
 from six import StringIO
+from six.moves.urllib.parse import urlsplit
 
 from swift.common import utils, constraints
 from swift.common.storage_policy import BindPortsCache
@@ -387,6 +388,13 @@ def load_app_config(conf_file):
 class SwiftHttpProtocol(wsgi.HttpProtocol):
     default_request_version = "HTTP/1.0"
 
+    # When True, accept the RFC 7230 §5.3.2 absolute-form request-target
+    # (e.g. "GET http://host/path HTTP/1.1") by rewriting the environ to
+    # origin-form before the application sees it. The URI's authority
+    # overrides any Host header per RFC 7230 §5.5. Configured via the
+    # proxy server option ``accept_absolute_form_requests``.
+    accept_absolute_form_requests = False
+
     def __init__(self, *args, **kwargs):
         # See https://github.com/eventlet/eventlet/pull/590
         self.pre_shutdown_bugfix_eventlet = not getattr(
@@ -506,7 +514,24 @@ class SwiftHttpProtocol(wsgi.HttpProtocol):
                     environ['wsgi.input'].wfile = self.wfile
                     environ['wsgi.input'].wfile_line = \
                         b'HTTP/1.1 100 Continue\r\n'
+            if self.accept_absolute_form_requests:
+                self._rewrite_absolute_form(environ)
             return environ
+
+    @staticmethod
+    def _rewrite_absolute_form(environ):
+        path_info = environ.get('PATH_INFO', '')
+        if not path_info.startswith(('http://', 'https://')):
+            return
+        parsed = urlsplit(path_info)
+        if not parsed.netloc:
+            return
+        environ['PATH_INFO'] = parsed.path or '/'
+        environ['HTTP_HOST'] = parsed.netloc
+        environ['wsgi.url_scheme'] = parsed.scheme
+        raw = environ.get('RAW_PATH_INFO')
+        if raw and raw.startswith(('http://', 'https://')):
+            environ['RAW_PATH_INFO'] = urlsplit(raw).path or '/'
 
     def _read_request_line(self):
         # Note this is not a new-style class, so super() won't work
@@ -650,6 +675,9 @@ def run_server(conf, logger, sock, global_conf=None, ready_callback=None,
         protocol_class = SwiftHttpProxiedProtocol
     else:
         protocol_class = SwiftHttpProtocol
+
+    protocol_class.accept_absolute_form_requests = \
+        config_true_value(conf.get('accept_absolute_form_requests', 'no'))
 
     server_kwargs = {
         'custom_pool': pool,

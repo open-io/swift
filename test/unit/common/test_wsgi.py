@@ -594,6 +594,72 @@ class TestWSGI(unittest.TestCase):
         self.assertEqual(proto_class, wsgi.SwiftHttpProxiedProtocol)
         self.assertEqual('HTTP/1.0', proto_class.default_request_version)
 
+    def test_run_server_accept_absolute_form_requests(self):
+        config = """
+        [DEFAULT]
+        swift_dir = TEMPDIR
+
+        [pipeline:main]
+        pipeline = proxy-server
+
+        [app:proxy-server]
+        use = egg:swift#proxy
+        accept_absolute_form_requests = true
+        """
+
+        contents = dedent(config)
+        with temptree(['proxy-server.conf']) as t:
+            conf_file = os.path.join(t, 'proxy-server.conf')
+            with open(conf_file, 'w') as f:
+                f.write(contents.replace('TEMPDIR', t))
+            _fake_rings(t)
+            with mock.patch('swift.proxy.server.Application.'
+                            'modify_wsgi_pipeline'), \
+                    mock.patch('swift.common.wsgi.wsgi') as _wsgi, \
+                    mock.patch('swift.common.wsgi.eventlet'):
+                conf = wsgi.appconfig(conf_file, name='proxy-server')
+                logger = logging.getLogger('test')
+                sock = listen_zero()
+                wsgi.run_server(conf, logger, sock)
+
+        self.assertTrue(_wsgi.server.called)
+        _, kwargs = _wsgi.server.call_args
+        proto_class = kwargs['protocol']
+        self.assertTrue(proto_class.accept_absolute_form_requests)
+
+    def test_run_server_accept_absolute_form_default_off(self):
+        config = """
+        [DEFAULT]
+        swift_dir = TEMPDIR
+
+        [pipeline:main]
+        pipeline = proxy-server
+
+        [app:proxy-server]
+        use = egg:swift#proxy
+        """
+
+        contents = dedent(config)
+        with temptree(['proxy-server.conf']) as t:
+            conf_file = os.path.join(t, 'proxy-server.conf')
+            with open(conf_file, 'w') as f:
+                f.write(contents.replace('TEMPDIR', t))
+            _fake_rings(t)
+            with mock.patch('swift.proxy.server.Application.'
+                            'modify_wsgi_pipeline'), \
+                    mock.patch('swift.common.wsgi.wsgi') as _wsgi, \
+                    mock.patch('swift.common.wsgi.eventlet'):
+                conf = wsgi.appconfig(conf_file, name='proxy-server')
+                logger = logging.getLogger('test')
+                sock = listen_zero()
+                wsgi.run_server(conf, logger, sock)
+
+        _, kwargs = _wsgi.server.call_args
+        proto_class = kwargs['protocol']
+        # Without the flag, run_server passes the bare class through.
+        self.assertIs(proto_class, wsgi.SwiftHttpProtocol)
+        self.assertFalse(proto_class.accept_absolute_form_requests)
+
     def test_run_server_with_latest_eventlet(self):
         config = """
         [DEFAULT]
@@ -1241,6 +1307,117 @@ class TestSwiftHttpProtocolSomeMore(ProtocolTest):
 
         lines = [l for l in bytes_out.split(b"\r\n") if l]
         self.assertEqual(lines[-1], b'/oh\xffboy%what$now%E2%80%bd')
+
+
+class _AbsoluteFormProtocol(wsgi.SwiftHttpProtocol):
+    accept_absolute_form_requests = True
+
+
+class TestSwiftHttpProtocolAbsoluteFormDisabled(ProtocolTest):
+    protocol_class = wsgi.SwiftHttpProtocol
+
+    @staticmethod
+    def app(env, start_response):
+        start_response("200 OK", [])
+        body = '|'.join([
+            env.get('RAW_PATH_INFO', '<missing>'),
+            env.get('PATH_INFO', '<missing>'),
+            env.get('HTTP_HOST', '<missing>'),
+            env.get('QUERY_STRING', '<missing>'),
+            env.get('wsgi.url_scheme', '<missing>'),
+        ])
+        return [body.encode('latin-1')]
+
+    def test_absolute_form_left_untouched_by_default(self):
+        bytes_out = self._run_bytes_through_protocol((
+            b"GET http://example.com/bucket/key HTTP/1.0\r\n"
+            b"Host: ignored.example\r\n"
+            b"\r\n"
+        ))
+        body = bytes_out.split(b"\r\n\r\n", 1)[1]
+        raw_path, path, host, qs, scheme = body.split(b'|')
+        # Default behavior preserved: absolute-form bleeds into PATH_INFO.
+        self.assertEqual(raw_path, b'http://example.com/bucket/key')
+        self.assertEqual(path, b'http://example.com/bucket/key')
+        self.assertEqual(host, b'ignored.example')
+        self.assertEqual(scheme, b'http')
+
+
+class TestSwiftHttpProtocolAbsoluteFormEnabled(ProtocolTest):
+    protocol_class = _AbsoluteFormProtocol
+
+    @staticmethod
+    def app(env, start_response):
+        start_response("200 OK", [])
+        body = '|'.join([
+            env.get('RAW_PATH_INFO', '<missing>'),
+            env.get('PATH_INFO', '<missing>'),
+            env.get('HTTP_HOST', '<missing>'),
+            env.get('QUERY_STRING', '<missing>'),
+            env.get('wsgi.url_scheme', '<missing>'),
+        ])
+        return [body.encode('latin-1')]
+
+    def _request(self, raw):
+        bytes_out = self._run_bytes_through_protocol(raw)
+        return bytes_out.split(b"\r\n\r\n", 1)[1].split(b'|')
+
+    def test_http_path_style(self):
+        raw_path, path, host, qs, scheme = self._request((
+            b"GET http://h.example/bucket/key HTTP/1.0\r\n"
+            b"Host: h.example\r\n"
+            b"\r\n"
+        ))
+        self.assertEqual(path, b'/bucket/key')
+        self.assertEqual(raw_path, b'/bucket/key')
+        self.assertEqual(host, b'h.example')
+        self.assertEqual(scheme, b'http')
+
+    def test_https_with_port_and_query(self):
+        raw_path, path, host, qs, scheme = self._request((
+            b"GET https://h.example:8443/b/k?versionId=42 HTTP/1.0\r\n"
+            b"Host: h.example:8443\r\n"
+            b"\r\n"
+        ))
+        self.assertEqual(path, b'/b/k')
+        self.assertEqual(raw_path, b'/b/k')
+        self.assertEqual(host, b'h.example:8443')
+        self.assertEqual(qs, b'versionId=42')
+        self.assertEqual(scheme, b'https')
+
+    def test_uri_authority_overrides_host_header(self):
+        # RFC 7230 §5.5: when absolute-form is used, the URI's authority
+        # MUST be used in preference to any Host header value.
+        raw_path, path, host, qs, scheme = self._request((
+            b"GET http://from-uri.example/b/k HTTP/1.0\r\n"
+            b"Host: from-header.example\r\n"
+            b"\r\n"
+        ))
+        self.assertEqual(path, b'/b/k')
+        self.assertEqual(host, b'from-uri.example')
+
+    def test_empty_path_becomes_root(self):
+        raw_path, path, host, qs, scheme = self._request((
+            b"GET http://h.example HTTP/1.0\r\n"
+            b"Host: h.example\r\n"
+            b"\r\n"
+        ))
+        self.assertEqual(path, b'/')
+        self.assertEqual(raw_path, b'/')
+        self.assertEqual(host, b'h.example')
+
+    def test_origin_form_unchanged_when_flag_on(self):
+        # Plain origin-form requests must still pass through untouched even
+        # when the feature flag is enabled.
+        raw_path, path, host, qs, scheme = self._request((
+            b"GET /bucket/key?x=1 HTTP/1.0\r\n"
+            b"Host: h.example\r\n"
+            b"\r\n"
+        ))
+        self.assertEqual(path, b'/bucket/key')
+        self.assertEqual(raw_path, b'/bucket/key')
+        self.assertEqual(host, b'h.example')
+        self.assertEqual(qs, b'x=1')
 
 
 class TestProxyProtocol(ProtocolTest):

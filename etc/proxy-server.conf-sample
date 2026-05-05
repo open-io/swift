@@ -134,6 +134,15 @@ use = egg:swift#proxy
 # is supported.
 # require_proxy_protocol = false
 #
+# Accept HTTP/1.1 absolute-form request lines (RFC 7230 §5.3.2) such as
+# "GET http://host/path HTTP/1.1". When enabled, the proxy strips the
+# scheme and authority from the request target and uses the URI's
+# authority as the Host (overriding any Host header, per RFC 7230 §5.5).
+# Leave this off unless you knowingly front this proxy with a client that
+# sends absolute-form: enabling it changes virtual-hosted-style bucket
+# resolution (the URI authority wins over the Host header).
+# accept_absolute_form_requests = false
+#
 # log_handoffs = true
 # recheck_account_existence = 60
 # recheck_container_existence = 60
