@@ -28,3 +28,4 @@ dict2xml
 oio[all]>7.2
 pika
 xmltodict
+xxhash>=3.0

@@ -893,7 +893,6 @@ class UploadsController(Controller, LifecycleAbortDateMixin):
                 allowed_algo = sorted([
                     name.upper()
                     for name, info in CHECKSUMS_BY_NAME.items()
-                    if checksum_type in info.allowed_types_for_mpu
                 ])
                 raise InvalidRequest(
                     'Checksum algorithm provided is unsupported. Please '
@@ -1703,12 +1702,6 @@ class UploadController(
                 return
             part_s3_etag_header = sysmeta_header(
                 'object', 'checksum-' + part_algo)
-            if checksum_resp.etag is None and \
-               checksum_type == CHECKSUM_FULL_OBJECT:
-                raise InvalidPart(
-                    upload_id=upload_id,
-                    part_number=part_number,
-                )
 
             if checksum_resp.headers.get(part_s3_etag_header) != expected:
                 raise InvalidPart(
@@ -1725,7 +1718,6 @@ class UploadController(
                 checksums_to_combine[index] = (part_checksum, content_length)
 
         req.environ['swift.callback.slo_segment_hook'] = checksum_checker
-        # if checksum_type != CHECKSUM_FULL_OBJECT:
         headers[get_container_update_override_key('etag')] = c_etag
 
         too_small_message = ('s3api requires that each segment be at least '

@@ -30,6 +30,31 @@
                 <data type="string"/>
               </element>
             </optional>
+            <optional>
+              <element name="ChecksumSHA512">
+                <data type="string"/>
+              </element>
+            </optional>
+            <optional>
+              <element name="ChecksumMD5">
+                <data type="string"/>
+              </element>
+            </optional>
+            <optional>
+              <element name="ChecksumXXHASH64">
+                <data type="string"/>
+              </element>
+            </optional>
+            <optional>
+              <element name="ChecksumXXHASH3">
+                <data type="string"/>
+              </element>
+            </optional>
+            <optional>
+              <element name="ChecksumXXHASH128">
+                <data type="string"/>
+              </element>
+            </optional>
             <element name="ETag">
               <data type="string"/>
             </element>

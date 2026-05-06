@@ -22,6 +22,7 @@ import regex
 import six
 import time
 import uuid
+import xxhash
 import zlib
 
 from swift.common import utils
@@ -334,12 +335,62 @@ class SHA256Info(ChecksumInfo):
         return hashlib.sha256()
 
 
+class SHA512Info(ChecksumInfo):
+    digest_size = 64
+    name = 'sha512'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return hashlib.sha512()
+
+
+class MD5Info(ChecksumInfo):
+    digest_size = 16
+    name = 'md5'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return hashlib.md5(usedforsecurity=False)  # nosec B303
+
+
+class XXHash64Info(ChecksumInfo):
+    digest_size = 8
+    name = 'xxhash64'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return xxhash.xxh64()
+
+
+class XXHash3Info(ChecksumInfo):
+    digest_size = 8
+    name = 'xxhash3'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return xxhash.xxh3_64()
+
+
+class XXHash128Info(ChecksumInfo):
+    digest_size = 16
+    name = 'xxhash128'
+    allowed_types_for_mpu = [CHECKSUM_COMPOSITE]
+
+    def new_hasher(self):
+        return xxhash.xxh3_128()
+
+
 CHECKSUMS = [
     CRC32Info(),
     CRC32CInfo(),
     CRC64NVMEInfo(),
     SHA1Info(),
     SHA256Info(),
+    SHA512Info(),
+    MD5Info(),
+    XXHash64Info(),
+    XXHash3Info(),
+    XXHash128Info(),
 ]
 CHECKSUMS_BY_NAME = {info.name: info for info in CHECKSUMS}
 CHECKSUMS_BY_HEADER = {info.client_header: info for info in CHECKSUMS}

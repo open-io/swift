@@ -142,6 +142,40 @@ class TestS3ApiUtils(unittest.TestCase):
             self.assertEqual(len(info.new_hasher().hexdigest()),
                              2 * info.digest_size)
 
+    def test_new_algorithms_registered(self):
+        # The five algorithms added in 2026-04 (XXHASH64, XXHASH3,
+        # XXHASH128, MD5, SHA512) must be reachable by name and by header.
+        for name in ('sha512', 'md5', 'xxhash64', 'xxhash3', 'xxhash128'):
+            info = utils.CHECKSUMS_BY_NAME[name]
+            self.assertEqual(info.name, name)
+            self.assertEqual(info.client_header, f'x-amz-checksum-{name}')
+            self.assertIn(utils.CHECKSUM_COMPOSITE, info.allowed_types_for_mpu)
+
+    def test_new_algorithms_round_trip(self):
+        # ChecksummingInput must accept a request whose digest matches and
+        # raise on mismatch for each newly-registered algorithm.
+        body = b'hello world\n' * 8
+        for name in ('sha512', 'md5', 'xxhash64', 'xxhash3', 'xxhash128'):
+            info = utils.CHECKSUMS_BY_NAME[name]
+            hasher = info.new_hasher()
+            hasher.update(body)
+            import base64
+            from io import BytesIO
+            good_b64 = base64.b64encode(hasher.digest()).decode('ascii')
+
+            ok = s3request.ChecksummingInput(
+                BytesIO(body), len(body), info.client_header, good_b64)
+            self.assertEqual(ok.read(), body)
+
+            # corrupt the digest by flipping one bit of the last byte
+            bad = bytearray(hasher.digest())
+            bad[-1] ^= 0x01
+            bad_b64 = base64.b64encode(bytes(bad)).decode('ascii')
+            ko = s3request.ChecksummingInput(
+                BytesIO(body), len(body), info.client_header, bad_b64)
+            with self.assertRaises(s3request.S3InputChecksumMismatch):
+                ko.read()
+
 
 class TestConfig(unittest.TestCase):
 

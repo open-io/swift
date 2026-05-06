@@ -9,6 +9,11 @@ start =
       element ChecksumCRC64NVME { xsd:string }? &
       element ChecksumSHA1 { xsd:string }? &
       element ChecksumSHA256 { xsd:string }? &
+      element ChecksumSHA512 { xsd:string }? &
+      element ChecksumMD5 { xsd:string }? &
+      element ChecksumXXHASH64 { xsd:string }? &
+      element ChecksumXXHASH3 { xsd:string }? &
+      element ChecksumXXHASH128 { xsd:string }? &
       element ChecksumType { xsd:string }?
     }?,
     element ObjectParts {
@@ -24,7 +29,12 @@ start =
         element ChecksumCRC32C { xsd:string }?,
         element ChecksumCRC64NVME { xsd:string }?,
         element ChecksumSHA1 { xsd:string }?,
-        element ChecksumSHA256 { xsd:string }?
+        element ChecksumSHA256 { xsd:string }?,
+        element ChecksumSHA512 { xsd:string }?,
+        element ChecksumMD5 { xsd:string }?,
+        element ChecksumXXHASH64 { xsd:string }?,
+        element ChecksumXXHASH3 { xsd:string }?,
+        element ChecksumXXHASH128 { xsd:string }?
       }*
     }?,
     element StorageClass { xsd:string }?,

@@ -18,6 +18,7 @@ import base64
 import botocore
 import hashlib
 import struct
+from botocore.config import Config
 from unittest import SkipTest
 
 from swift.common.checksum import crc32c
@@ -206,18 +207,13 @@ class ObjectChecksumMixin(object):
         self.assertEqual(404, resp['ResponseMetadata']['HTTPStatusCode'])
 
     def _skip_if_unsupported_checksum_type(self, checksumtype):
-        if (
-            self.ALGORITHM in ('SHA256', 'SHA1') and
-            checksumtype == "FULL_OBJECT"
-        ):
-            self.skipTest(
-                f"ChecksumType {checksumtype} cannot be used with "
-                f"{self.ALGORITHM}"
-            )
-        if (
-            self.ALGORITHM in ('CRC64NVME',) and
-            checksumtype == "COMPOSITE"
-        ):
+        # Data-driven so newly-registered algorithms are picked up
+        # automatically: skip if the (algorithm, checksum-type) pair is not
+        # in the algorithm's allowed_types_for_mpu list.
+        info = CHECKSUMS_BY_NAME.get(self.ALGORITHM.lower())
+        if info is None:
+            return
+        if checksumtype not in info.allowed_types_for_mpu:
             self.skipTest(
                 f"ChecksumType {checksumtype} cannot be used with "
                 f"{self.ALGORITHM}"
@@ -2049,7 +2045,8 @@ class ObjectChecksumMixin(object):
             'InvalidRequest',
             'Checksum algorithm provided is unsupported. '
             'Please try again with any of the valid types: '
-            '[CRC32, CRC32C, SHA1, SHA256]',
+            '[CRC32, CRC32C, CRC64NVME, MD5, SHA1, SHA256, SHA512, '
+            'XXHASH128, XXHASH3, XXHASH64]',
             obj_name,
         )
 
@@ -2198,6 +2195,171 @@ class TestObjectChecksumSHA256(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
                 f"with the {self.ALGORITHM.lower()} checksum algorithm."
             ),
         })
+
+
+def _reject_full_object(test_case):
+    obj_name = test_case.create_name('mpu-full-object-checksum')
+    with test_case.assertRaises(botocore.exceptions.ClientError) as caught:
+        test_case.client.create_multipart_upload(
+            Bucket=test_case.bucket_name, Key=obj_name,
+            ChecksumAlgorithm=test_case.ALGORITHM, ChecksumType='FULL_OBJECT')
+    resp = caught.exception.response
+    test_case.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+    test_case.assertEqual(resp['Error'], {
+        'Code': 'InvalidRequest',
+        'Message': (
+            "The FULL_OBJECT checksum type cannot be used "
+            f"with the {test_case.ALGORITHM.lower()} checksum algorithm."
+        ),
+    })
+
+
+class TestObjectChecksumSHA512(ObjectChecksumMixin, BaseS3TestCaseWithBucket):
+    ALGORITHM = 'SHA512'
+    DIFF_ALGORITHM = 'CRC32'
+    INVALID_ALGO = 'INVALIDALGO'
+    TYPE = 'COMPOSITE'
+    EXPECTED = ('2eZ2LdHI6vbWGzxhkvxAjU1tXxF20MKRabwk5xw/J0rSf81YEbMT'
+                '1oH35V7ALXPUmclUVba1u1A6z1dPuo/+hQ==')
+    EXPECTED_COMPOSITE_1 = ('BAhVESR8pFuv/S2pHMrDSxjHVgcYCwozEda98ahLvKJ8'
+                            'll4B1SyOb7caBgdNEU6tpyb0mS26scvZwucvSD0i8A==')
+    DIFFERENT = 'y/Q5Jg=='
+    # INVALID is non-canonical base64 (last char's padding bits are
+    # non-zero) so strict_b64decode rejects it -> InvalidRequest.
+    INVALID = ('2eZ2LdHI6vbWGzxhkvxAjU1tXxF20MKRabwk5xw/J0rSf81YEbMT'
+               '1oH35V7ALXPUmclUVba1u1A6z1dPuo/+hR==')
+    BAD = ('2OZ2LdHI6vbWGzxhkvxAjU1tXxF20MKRabwk5xw/J0rSf81YEbMT'
+           '1oH35V7ALXPUmclUVba1u1A6z1dPuo/+hQ==')
+
+    def test_mpu_create_full_object_checksum_type(self):
+        _reject_full_object(self)
+
+
+class TestObjectChecksumXXHash64(
+        ObjectChecksumMixin, BaseS3TestCaseWithBucket):
+    ALGORITHM = 'XXHASH64'
+    DIFF_ALGORITHM = 'CRC32'
+    INVALID_ALGO = 'INVALIDALGO'
+    TYPE = 'COMPOSITE'
+    EXPECTED = 'jLhB20DmroM='
+    EXPECTED_COMPOSITE_1 = 'aIYCMYPSWcc='
+    DIFFERENT = 'y/Q5Jg=='
+    # INVALID = non-canonical base64 (rejected by strict decoder).
+    INVALID = 'jLhB20DmroN='
+    BAD = 'jbhB20DmroM='
+
+    def test_mpu_create_full_object_checksum_type(self):
+        _reject_full_object(self)
+
+
+class TestObjectChecksumXXHash3(
+        ObjectChecksumMixin, BaseS3TestCaseWithBucket):
+    ALGORITHM = 'XXHASH3'
+    DIFF_ALGORITHM = 'CRC32'
+    INVALID_ALGO = 'INVALIDALGO'
+    TYPE = 'COMPOSITE'
+    EXPECTED = 'ctyxi2ehff8='
+    EXPECTED_COMPOSITE_1 = 'ksPmtVIgSbU='
+    DIFFERENT = 'y/Q5Jg=='
+    # INVALID = non-canonical base64 (rejected by strict decoder).
+    INVALID = 'ctyxi2ehff9='
+    BAD = 'c9yxi2ehff8='
+
+    def test_mpu_create_full_object_checksum_type(self):
+        _reject_full_object(self)
+
+
+class TestObjectChecksumXXHash128(
+        ObjectChecksumMixin, BaseS3TestCaseWithBucket):
+    ALGORITHM = 'XXHASH128'
+    DIFF_ALGORITHM = 'CRC32'
+    INVALID_ALGO = 'INVALIDALGO'
+    TYPE = 'COMPOSITE'
+    EXPECTED = 'MxGUd+3l3NXpcWQnaB1YYA=='
+    EXPECTED_COMPOSITE_1 = 'qhtapxAN/tUuBHXli2H9nQ=='
+    DIFFERENT = 'y/Q5Jg=='
+    # INVALID = non-canonical base64 (rejected by strict decoder).
+    INVALID = 'MxGUd+3l3NXpcWQnaB1YYB=='
+    BAD = 'MhGUd+3l3NXpcWQnaB1YYA=='
+
+    def test_mpu_create_full_object_checksum_type(self):
+        _reject_full_object(self)
+
+
+class TestObjectChecksumMD5(BaseS3TestCaseWithBucket):
+    # botocore (as of 1.43.x) registers 'MD5' in the ChecksumAlgorithm enum
+    # but does not implement it in _CHECKSUM_CLS, so passing
+    # ChecksumAlgorithm='MD5' raises FlexibleChecksumError client-side.
+    # We exercise the server-side x-amz-checksum-md5 path by injecting the
+    # header through a before-sign event hook (same trick used for CRC32
+    # rewriting in this file).
+
+    ALGORITHM = 'MD5'
+    EXPECTED = 'JfnnlDI7RTiF9RgfG2JNCw=='
+    # canonical base64 of a different MD5 -> server returns BadDigest
+    BAD = 'JPnnlDI7RTiF9RgfG2JNCw=='
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Suppress boto3's default x-amz-checksum-crc32 auto-add so the
+        # injected x-amz-checksum-md5 doesn't collide with it (botocore
+        # 1.43+ defaults request_checksum_calculation to 'when_supported',
+        # which produces a CRC32 header even when no ChecksumAlgorithm is
+        # passed). 'before-parameter-build' lets us mutate the per-request
+        # context the resolver consults a few events later.
+
+        def _disable_auto_checksum(params, context, **_kwargs):
+            context['client_config'] = context['client_config'].merge(Config(
+                request_checksum_calculation='when_required',
+                response_checksum_validation='when_required',
+            ))
+        cls.client = cls.get_s3_client(1)
+        cls.client.meta.events.register(
+            'before-parameter-build.s3.*', _disable_auto_checksum)
+
+    def _inject_md5_header(self, value):
+        def _hook(request, **_kwargs):
+            # HTTPHeaders supports 'in' / 'del' but not 'pop'; mirror the
+            # existing replace_crc32_headers pattern in this file.
+            if 'Content-MD5' in request.headers:
+                del request.headers['Content-MD5']
+            request.headers['x-amz-checksum-md5'] = value
+        return _hook
+
+    def _put_with_md5(self, obj_name, value):
+        hook = self._inject_md5_header(value)
+        self.client.meta.events.register('before-sign.s3.PutObject', hook)
+        try:
+            return self.client.put_object(
+                Bucket=self.bucket_name, Key=obj_name, Body=TEST_BODY)
+        finally:
+            self.client.meta.events.unregister(
+                'before-sign.s3.PutObject', hook)
+
+    def test_put_with_md5_header_succeeds(self):
+        obj_name = self.create_name('put-md5-header')
+        resp = self._put_with_md5(obj_name, self.EXPECTED)
+        self.assertEqual(200, resp['ResponseMetadata']['HTTPStatusCode'])
+        head = self.client.head_object(
+            Bucket=self.bucket_name, Key=obj_name, ChecksumMode='ENABLED')
+        self.assertEqual(self.EXPECTED, head.get('ChecksumMD5'))
+
+    def test_put_with_md5_header_mismatch_rejected(self):
+        obj_name = self.create_name('put-md5-mismatch')
+        with self.assertRaises(botocore.exceptions.ClientError) as caught:
+            self._put_with_md5(obj_name, self.BAD)
+        resp = caught.exception.response
+        self.assertEqual(400, resp['ResponseMetadata']['HTTPStatusCode'])
+        self.assertEqual('BadDigest', resp['Error']['Code'])
+
+    def test_get_object_attributes_returns_md5(self):
+        obj_name = self.create_name('get-attrs-md5')
+        self._put_with_md5(obj_name, self.EXPECTED)
+        attrs = self.client.get_object_attributes(
+            Bucket=self.bucket_name, Key=obj_name,
+            ObjectAttributes=['Checksum'])
+        self.assertEqual(self.EXPECTED, attrs['Checksum'].get('ChecksumMD5'))
 
 
 class TestObjectChecksums(BaseS3TestCaseWithBucket):
@@ -2455,7 +2617,8 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
             'Code': 'InvalidRequest',
             'Message': ('Checksum algorithm provided is unsupported. Please '
                         'try again with any of the valid types: [CRC32, '
-                        'CRC32C, SHA1, SHA256]'),
+                        'CRC32C, CRC64NVME, MD5, SHA1, SHA256, SHA512, '
+                        'XXHASH128, XXHASH3, XXHASH64]'),
         })
 
     def test_mpu_create_multiple_checksum_algorithms(self):
@@ -3228,8 +3391,7 @@ class TestObjectChecksums(BaseS3TestCaseWithBucket):
                 'UploadId': upload_id,
                 'PartNumber': '2',
             }
-            if cs_type != "FULL_OBJECT":
-                expected['ETag'] = upload_part_resp['ETag'].strip('"')
+            expected['ETag'] = upload_part_resp['ETag'].strip('"')
             self.assertEqual(resp['Error'], expected)
             return
 
