@@ -109,6 +109,8 @@ class TestS3ApiObjAttributes(S3ApiTestCase):
                 VERSION_ID_HEADER: '1700000000000000',
                 sysmeta_header('object', 'etag'):
                     '"abc123def456-3"',
+                sysmeta_header('object', 'checksum-sha256'):
+                    'YWJjMTIz-3',
             },
             SLO_MANIFEST)
 
@@ -140,6 +142,8 @@ class TestS3ApiObjAttributes(S3ApiTestCase):
                 VERSION_ID_HEADER: '1700000000000000',
                 sysmeta_header('object', 'etag'):
                     '"abc123def456-3"',
+                sysmeta_header('object', 'checksum-sha256'):
+                    'YWJjMTIz-3',
             },
             None)
 
@@ -372,6 +376,53 @@ class TestS3ApiObjAttributes(S3ApiTestCase):
         self.assertEqual('3', part_elems[2].find('./PartNumber').text)
         self.assertEqual('1048576', part_elems[2].find('./Size').text)
 
+    def test_get_object_parts_slo_no_checksum(self):
+        """SLO without composite checksum: only PartsCount, no Parts list.
+
+        Matches AWS S3 behaviour: when ChecksumType is FULL_OBJECT or no
+        additional checksum is present, GetObjectAttributes returns only
+        TotalPartsCount inside ObjectParts (no per-part listing, no
+        pagination metadata).
+        """
+        slo_manifest = json.dumps([
+            {'path': '/bucket+segments/slo-nochk/up1/1',
+             'etag': 'aa', 'size_bytes': 100},
+            {'path': '/bucket+segments/slo-nochk/up1/2',
+             'etag': 'bb', 'size_bytes': 200},
+            {'path': '/bucket+segments/slo-nochk/up1/3',
+             'etag': 'cc', 'size_bytes': 300},
+        ])
+        self.swift.register(
+            'GET', '/v1/AUTH_test/bucket/slo-nochk',
+            swob.HTTPOk,
+            {
+                'ETag': '"manifest-etag"',
+                'Content-Length': str(len(slo_manifest)),
+                'Content-Type': 'application/octet-stream',
+                'Last-Modified': 'Thu, 01 Jan 2024 00:00:00 GMT',
+                'X-Static-Large-Object': 'True',
+                'x-object-sysmeta-slo-size': '600',
+                VERSION_ID_HEADER: '1700000000000000',
+                sysmeta_header('object', 'etag'): '"nochk-3"',
+                # Intentionally no checksum-* sysmeta -> not COMPOSITE
+            },
+            slo_manifest)
+        status, headers, body = self._make_request(
+            obj='slo-nochk', attributes='ObjectParts')
+        self.assertEqual('200 OK', status)
+        elem = fromstring(body, 'GetObjectAttributesResponse')
+        parts = elem.find('./ObjectParts')
+        self.assertIsNotNone(parts)
+        # Only PartsCount must be present.
+        parts_count = parts.find('./PartsCount')
+        self.assertIsNotNone(parts_count)
+        self.assertEqual('3', parts_count.text)
+        self.assertEqual([], parts.findall('./Part'))
+        self.assertIsNone(parts.find('./IsTruncated'))
+        self.assertIsNone(parts.find('./MaxParts'))
+        self.assertIsNone(parts.find('./PartNumberMarker'))
+        self.assertIsNone(parts.find('./NextPartNumberMarker'))
+
     def test_get_object_parts_non_slo(self):
         """ObjectParts on a non-SLO object should be omitted."""
         status, headers, body = self._make_request(
@@ -512,6 +563,8 @@ class TestS3ApiObjAttributes(S3ApiTestCase):
                 'x-object-sysmeta-slo-size': '6000',
                 VERSION_ID_HEADER: '1700000000000000',
                 sysmeta_header('object', 'etag'): '"aabb-3"',
+                sysmeta_header('object', 'checksum-sha256'):
+                    'YWFiYg==-3',
             },
             manifest)
         prefix = '%s/%s/' % (obj_name, upload_id)
@@ -572,6 +625,8 @@ class TestS3ApiObjAttributes(S3ApiTestCase):
                 VERSION_ID_HEADER: '1700000000000000',
                 sysmeta_header('object', 'etag'):
                     '"aabbccdd-%d"' % total,
+                sysmeta_header('object', 'checksum-sha256'):
+                    'YWFiYmNjZGQ=-%d' % total,
             },
             manifest)
 
@@ -886,8 +941,11 @@ class TestS3ApiObjAttributes(S3ApiTestCase):
         self.assertIsNotNone(elem.find('./ObjectParts'))
         self.assertIsNotNone(elem.find('./StorageClass'))
         self.assertIsNotNone(elem.find('./ObjectSize'))
-        # No checksum stored for slo-object -> Checksum absent
-        self.assertIsNone(elem.find('./Checksum'))
+        # slo-object now carries a composite SHA256 checksum (-> Parts visible)
+        self.assertIsNotNone(elem.find('./Checksum'))
+        self.assertEqual(
+            'COMPOSITE',
+            elem.find('./Checksum/ChecksumType').text)
 
     # --- Pagination edge cases ---
 

@@ -13,9 +13,9 @@ start =
     }?,
     element ObjectParts {
       element PartsCount { xsd:int },
-      element IsTruncated { xsd:boolean },
-      element MaxParts { xsd:int },
-      element PartNumberMarker { xsd:int },
+      element IsTruncated { xsd:boolean }?,
+      element MaxParts { xsd:int }?,
+      element PartNumberMarker { xsd:int }?,
       element NextPartNumberMarker { xsd:int }?,
       element Part {
         element PartNumber { xsd:int },

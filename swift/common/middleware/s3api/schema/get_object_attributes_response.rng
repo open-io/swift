@@ -49,15 +49,21 @@
           <element name="PartsCount">
             <data type="int"/>
           </element>
-          <element name="IsTruncated">
-            <data type="boolean"/>
-          </element>
-          <element name="MaxParts">
-            <data type="int"/>
-          </element>
-          <element name="PartNumberMarker">
-            <data type="int"/>
-          </element>
+          <optional>
+            <element name="IsTruncated">
+              <data type="boolean"/>
+            </element>
+          </optional>
+          <optional>
+            <element name="MaxParts">
+              <data type="int"/>
+            </element>
+          </optional>
+          <optional>
+            <element name="PartNumberMarker">
+              <data type="int"/>
+            </element>
+          </optional>
           <optional>
             <element name="NextPartNumberMarker">
               <data type="int"/>

@@ -106,7 +106,6 @@ ceph_s3:
   s3tests_boto3.functional.test_s3.test_get_bucket_encryption_kms: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_get_bucket_policy_status: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_get_default_public_block: {status: KNOWN}
-  s3tests_boto3.functional.test_s3.test_get_multipart_checksum_object_attributes: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_get_nonpublicpolicy_acl_bucket_policy_status: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_get_nonpublicpolicy_deny_bucket_policy_status: {status: KNOWN}
   s3tests_boto3.functional.test_s3.test_get_nonpublicpolicy_principal_bucket_policy_status: {status: KNOWN}

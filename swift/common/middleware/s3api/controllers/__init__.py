@@ -26,8 +26,8 @@ from swift.common.middleware.s3api.controllers.accelerate import \
 from swift.common.middleware.s3api.controllers.acl import AclController
 from swift.common.middleware.s3api.controllers.analytics import \
     AnalyticsController
-from swift.common.middleware.s3api.controllers.attributes import \
-    AttributesController
+from swift.common.middleware.s3api.controllers.obj_attributes import \
+    ObjectAttributesController
 from swift.common.middleware.s3api.controllers.object_lock import \
     BucketLockController, ObjectLockLegalHoldController, \
     ObjectLockRetentionController
@@ -89,7 +89,6 @@ __all__ = [
     'AccelerateController',
     'AclController',
     'AnalyticsController',
-    'AttributesController',
     'BucketLockController',
     'CorsController',
     'EncryptionController',
@@ -101,6 +100,7 @@ __all__ = [
     'MetricsController',
     'MultiObjectDeleteController',
     'NotificationController',
+    'ObjectAttributesController',
     'ObjectLockLegalHoldController',
     'ObjectLockRetentionController',
     'OwnershipControlsController',

@@ -62,7 +62,7 @@ from swift.common.middleware.s3api.controllers import ServiceController, \
     ObjectLockRetentionController, ObjectLockLegalHoldController, \
     S3WebsiteController, WebsiteController, ReplicationController, \
     EncryptionController, RestoreObjectController, \
-    AccelerateController, AnalyticsController, AttributesController, \
+    AccelerateController, AnalyticsController, ObjectAttributesController, \
     InventoryController, MetricsController, NotificationController, \
     OwnershipControlsController, PolicyController, PolicyStatusController, \
     PublicAccessBlockController, RequestPaymentController, TorrentController
@@ -119,7 +119,6 @@ _PARAM_CONTROLLERS = {
         AccelerateController,
         AclController,  # S3AclController is handled separately in S3AclRequest
         AnalyticsController,
-        AttributesController,
         BucketLockController,
         CorsController,
         EncryptionController,
@@ -131,6 +130,7 @@ _PARAM_CONTROLLERS = {
         MetricsController,
         MultiObjectDeleteController,
         NotificationController,
+        ObjectAttributesController,
         ObjectLockLegalHoldController,
         ObjectLockRetentionController,
         OwnershipControlsController,

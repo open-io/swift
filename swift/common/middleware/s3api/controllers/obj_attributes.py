@@ -44,7 +44,7 @@ VALID_OBJECT_ATTRIBUTES = frozenset([
 ])
 
 
-class AttributesController(Controller):
+class ObjectAttributesController(Controller):
     """
     Handles the GetObjectAttributes API.
 
@@ -197,23 +197,30 @@ class AttributesController(Controller):
 
         # Detect which checksum algorithm is stored (if any)
         detected_checksum_info = None
+        detected_checksum_val = None
         if 'Checksum' in requested or 'ObjectParts' in requested:
             for info in CHECKSUMS:
                 checksum_val = resp.sysmeta_headers.get(info.sysmeta_header)
                 if checksum_val:
                     detected_checksum_info = info
+                    detected_checksum_val = checksum_val
                     break
 
+        # AWS S3: per-part listings (and pagination metadata) are only
+        # returned when the object's ChecksumType is COMPOSITE. The "-N"
+        # suffix in the stored value indicates a composite checksum
+        # (i.e. a hash-of-hashes with N as the part count).
+        is_composite_checksum = bool(
+            detected_checksum_val and '-' in detected_checksum_val)
+
         if 'Checksum' in requested and detected_checksum_info:
-            checksum_val = resp.sysmeta_headers.get(
-                detected_checksum_info.sysmeta_header)
             checksum_elem = SubElement(root, 'Checksum')
             SubElement(
                 checksum_elem,
                 detected_checksum_info.client_listing_name
-            ).text = checksum_val
+            ).text = detected_checksum_val
             checksum_type = (
-                CHECKSUM_COMPOSITE if '-' in checksum_val
+                CHECKSUM_COMPOSITE if is_composite_checksum
                 else CHECKSUM_FULL_OBJECT
             )
             SubElement(
@@ -230,7 +237,8 @@ class AttributesController(Controller):
                 self._build_object_parts(
                     req, root, wsgi_to_str(req.object_name),
                     upload_id, len(slo_parts), max_parts,
-                    part_number_marker, detected_checksum_info)
+                    part_number_marker, detected_checksum_info,
+                    is_composite=is_composite_checksum)
 
         if 'StorageClass' in requested:
             storage_class = resp.headers.get(
@@ -302,14 +310,22 @@ class AttributesController(Controller):
 
     def _build_object_parts(self, req, root, object_name, upload_id,
                             total_parts, max_parts, part_number_marker,
-                            checksum_info):
+                            checksum_info, is_composite=False):
         """
         Build the ObjectParts XML element by listing the segments
         container. Part checksums are only available from the container
         listing, not from the SLO manifest.
+
+        Per AWS S3 behavior, per-part details and pagination metadata are
+        only returned when the object's ChecksumType is COMPOSITE. For
+        FULL_OBJECT (or no additional checksum), only PartsCount is
+        emitted, and we skip the segments-container listing entirely.
         """
         parts_elem = SubElement(root, 'ObjectParts')
         SubElement(parts_elem, 'PartsCount').text = str(total_parts)
+
+        if not is_composite:
+            return
 
         if max_parts is None:
             max_parts = DEFAULT_MAX_PARTS_LISTING
