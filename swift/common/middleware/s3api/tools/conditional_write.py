@@ -22,6 +22,7 @@ from swift.common.middleware.versioned_writes.object_versioning import (
 from swift.common.middleware.crypto.crypto_utils import SSEC_ALGO_HEADER
 
 from swift.common.middleware.s3api.s3response import (
+    AccessDenied,
     ConditionalRequestConflict,
     ErrorResponse,
     InternalError,
@@ -71,6 +72,22 @@ class ConditionalWriteMixin(object):
             last_modified = resp.sw_headers.get("Last-Modified")
             return etag, last_modified
         except NoSuchKey:
+            return VALUE_NO_EXISTING_OBJECT, None
+        except AccessDenied as exc:
+            # Head on delete markers may return 403, do a check directly to
+            # the backend.
+            try:
+                object_info = req.get_object_info(self.app)
+            except Exception:
+                # If something went wrong, raise the AccessDenied instead.
+                raise exc
+            # Not a delete marker, re raise the AccessDenied.
+            if object_info.get("type") != DELETE_MARKER_CONTENT_TYPE:
+                raise
+            # We are bypassing the head which is doing permission checks,
+            # check ourself if we have the permission to return 404 here.
+            if self.has_bucket_or_object_read_permission(req) is False:
+                raise
             return VALUE_NO_EXISTING_OBJECT, None
         except ErrorResponse:
             raise
