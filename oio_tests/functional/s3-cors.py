@@ -253,6 +253,7 @@ class TestS3Cors(unittest.TestCase):
                 "Access-Control-Allow-Methods": "GET,HEAD,PUT,POST,DELETE",
                 "Access-Control-Expose-Headers": None,
                 "Access-Control-Allow-Credentials": "true",
+                "Vary": "Origin,Access-Control-Request-Headers",
             }
         }
         if self.bucket_name:
@@ -279,6 +280,7 @@ class TestS3Cors(unittest.TestCase):
                 "Access-Control-Allow-Methods": method,
                 "Access-Control-Expose-Headers": "Access-Control-Allow-Origin",
                 "Access-Control-Allow-Credentials": "true",
+                "Vary": "Origin",
             }
 
         def _check_response(response, expected_access_control):
@@ -289,6 +291,7 @@ class TestS3Cors(unittest.TestCase):
                 "Access-Control-Allow-Methods",
                 "Access-Control-Expose-Headers",
                 "Access-Control-Allow-Credentials",
+                "Vary",
             ):
                 if expected_access_control:
                     expected_header_value = expected_access_control[
@@ -316,11 +319,21 @@ class TestS3Cors(unittest.TestCase):
         response = request(url, headers=headers)
         _check_response(response, None)
 
-        for origin, expected_access_control in expected_access_controls.items():
+        for (
+            origin,
+            expected_access_control,
+        ) in expected_access_controls.items():
+            extra_headers = {}
+            if (
+                "Access-Control-Request-Headers"
+                in expected_access_control["Vary"]
+            ):
+                extra_headers["Access-Control-Request-Headers"] = "foo"
             # Check with only origin in headers
             url = get_presigned_url()
             headers = {
                 "Origin": origin,
+                **extra_headers,
             }
             response = request(url, headers=headers)
             _check_response(response, expected_access_control)
@@ -330,7 +343,9 @@ class TestS3Cors(unittest.TestCase):
             headers = {
                 "Access-Control-Request-Method": method,
                 "Origin": origin,
+                **extra_headers,
             }
+            expected_access_control["Vary"] += ",Access-Control-Request-Method"
             response = request(url, headers=headers)
             _check_response(response, expected_access_control)
 
@@ -340,6 +355,7 @@ class TestS3Cors(unittest.TestCase):
             headers = {
                 "Access-Control-Request-Method": "POST",
                 "Origin": origin,
+                **extra_headers,
             }
             response = request(url, headers=headers)
             if "POST" in expected_access_control[

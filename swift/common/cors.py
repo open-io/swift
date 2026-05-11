@@ -26,6 +26,12 @@ BUCKET_CORS_HEADER = sysmeta_header('bucket', 'cors')
 
 CORS_ALLOWED_HTTP_METHOD = ('GET', 'POST', 'PUT', 'HEAD', 'DELETE')
 
+CORS_HEADERS_VARY = (
+    "Origin",
+    "Access-Control-Request-Headers",
+    "Access-Control-Request-Method",
+)
+
 
 def match_cors(pattern, value):
     """
@@ -143,6 +149,13 @@ def cors_fill_headers(req, resp, rule):
     set_header_if_items('Access-Control-Expose-Headers', 'ExposeHeader')
     set_header_if_item('Access-Control-Max-Age', 'MaxAgeSeconds')
     resp.headers['Access-Control-Allow-Credentials'] = 'true'
+
+    vary_headers = (
+        *resp.headers.get("Vary", ()),
+        *(h for h in CORS_HEADERS_VARY if h in req.headers),
+    )
+    if vary_headers:
+        resp.headers["Vary"] = ",".join(vary_headers)
 
     return resp
 
