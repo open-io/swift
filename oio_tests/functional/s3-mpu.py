@@ -16,6 +16,8 @@
 # limitations under the License.
 
 
+import base64
+import hashlib
 import io
 import json
 import os
@@ -360,6 +362,84 @@ class TestS3Mpu(unittest.TestCase):
 
         data = run_awscli_s3api("head-object", bucket=self.bucket, key=path)
         self.assertEqual(content_type, data['ContentType'])
+
+    def test_complete_mpu_with_checksum(self):
+        path = random_str(10)
+        content_type = random_str(10)
+
+        # Create MPU with a specific Content-Type
+        data = self._create_multipart_upload(
+            self.bucket,
+            path,
+            "--content-type",
+            content_type,
+            "--acl",
+            "public-read",
+        )
+        upload_id = data["UploadId"]
+
+        # Upload 1 part
+        mpu_parts = []
+        part = run_awscli_s3api(
+            "upload-part",
+            "--part-number",
+            "1",
+            "--upload-id",
+            upload_id,
+            "--body",
+            "/etc/magic",
+            bucket=self.bucket,
+            key=path,
+        )
+        mpu_parts.append({"ETag": part["ETag"], "PartNumber": 1})
+
+        complete_body = (
+            "<CompleteMultipartUpload xmlns="
+            "\"http://s3.amazonaws.com/doc/2006-03-01/\">"
+            f"<Part><PartNumber>1</PartNumber><ETag>{part['ETag']}</ETag>"
+            "</Part></CompleteMultipartUpload>"
+        )
+        hasher = hashlib.sha256()
+        hasher.update(complete_body.encode('ascii'))
+        manifest_hash = base64.b64encode(hasher.digest()).decode('ascii')
+
+        def add_checksum(request, **_kwargs):
+            request.headers["Content-MD5"] = "Ng9kJDQhyWFgG3mhWKX52Q=="
+            request.headers["x-amz-checksum-sha256"] = manifest_hash
+            request.headers["x-amz-checksum-type"] = "FULL_OBJECT"
+
+        # Complete the MPU with a Content-Type to text/xml
+        # Some tools specify the Content-Type on this operation,
+        # and since the data sent is indeed XML, this should be allowed
+        # without affecting the object Content-Type.
+        try:
+            self.boto_client.meta.events.register(
+                "before-sign.s3.*", add_checksum
+            )
+            final = self.boto_client.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=path,
+                MultipartUpload={
+                    "Parts": mpu_parts,
+                },
+                UploadId=upload_id,
+            )
+        finally:
+            self.boto_client.meta.events.unregister(
+                "before-sign.s3.*", add_checksum
+            )
+        self.assertEqual(final["Key"], path)
+
+        data = run_awscli_s3api("get-object-acl", bucket=self.bucket, key=path)
+        res = [
+            entry
+            for entry in data["Grants"]
+            if entry["Grantee"].get("URI") == ALL_USERS
+        ]
+        self.assertEqual("READ", res[0]["Permission"])
+
+        data = run_awscli_s3api("head-object", bucket=self.bucket, key=path)
+        self.assertEqual(content_type, data["ContentType"])
 
     def test_list_mpus_with_params(self):
         self._create_multipart_upload(self.bucket, "sub/" + random_str(10))

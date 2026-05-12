@@ -1803,6 +1803,11 @@ class S3Request(swob.Request):
                     if old_update_footers:
                         old_update_footers(footers)
 
+                    if self.operation == "REST.POST.UPLOAD":
+                        # Adding the checksum to the metadata is handled
+                        # by the complete MPU
+                        return
+
                     if override_hdr in footers:
                         base = footers[override_hdr]
                     elif override_hdr in self.headers:
@@ -1813,15 +1818,11 @@ class S3Request(swob.Request):
                         base = self.headers['etag']
                     else:
                         base = etag_input.hexdigest()
-                    if self.method == 'PUT':
-                        footers[override_hdr] = base + '; %s=%s' % (
-                            checksum_info.listing_param_name,
-                            self._checksum_input._expected_b64)
-                        footers[storage_hdr] = \
-                            self._checksum_input._expected_b64
-                    # else:  # POST
-                    # Adding the checksum to the metadata is handled
-                    # by the complete MPU
+                    footers[override_hdr] = (
+                        f"{base}; {checksum_info.listing_param_name}="
+                        f"{self._checksum_input._expected_b64}"
+                    )
+                    footers[storage_hdr] = self._checksum_input._expected_b64
 
                 self.environ['swift.callback.update_footers'] = \
                     update_for_checksum
