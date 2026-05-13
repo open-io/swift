@@ -1721,7 +1721,9 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.keystone_auth = KeystoneAuth(
             self.swift, {'operator_roles': 'swift-user'})
         self.auth_token = AuthProtocol(
-            self.keystone_auth, {'delay_auth_decision': 'True'})
+            self.keystone_auth,
+            {'delay_auth_decision': 'True',
+             'www_authenticate_uri': 'https://fakehost/identity'})
         self.s3_token = S3Token(
             self.auth_token, {
                 'auth_uri': 'https://fakehost/identity',
@@ -1797,7 +1799,7 @@ class TestS3ApiMiddleware(S3ApiTestCase):
         self.swift.register('PUT', '/v1/AUTH_TENANT_ID/bucket',
                             swob.HTTPCreated, {}, None)
         # For now, s3 acl commits the bucket owner acl via POST
-        # after PUT container so we need to register the resposne here
+        # after PUT container so we need to register the response here
         self.swift.register('POST', '/v1/AUTH_TENANT_ID/bucket',
                             swob.HTTPNoContent, {}, None)
         self.swift.register('TEST', '/v1/AUTH_TENANT_ID',
